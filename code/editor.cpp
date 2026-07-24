@@ -721,7 +721,7 @@ static void EditorUpdateUI_InspectorRoom(Engine &engine, Room &room)
 
 	static char name[64];
 	StrCopy(name, room.name);
-	UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
+	UI_InputText(ui, "room#Name", name, ARRAY_COUNT(name));
 	room.name = InternString(name);
 
 	UI_InputInt2(ui, "Pos", &room.pos);
@@ -742,9 +742,10 @@ static void EditorUpdateUI_InspectorLayer(Engine &engine, Layer &layer)
 
 	static char name[64];
 	StrCopy(name, layer.name);
-	UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
+	UI_InputText(ui, "layer#Name", name, ARRAY_COUNT(name));
 	layer.name = InternString(name);
 
+	UI_InputUInt2(ui, "Size", &layer.size);
 	UI_InputInt(ui, "Order", &layer.order);
 	UI_Checkbox(ui, "Visible", &layer.visible);
 	UI_Checkbox(ui, "Collider", &layer.isCollider);
@@ -1829,7 +1830,7 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 				const Camera &camera = editor.camera[ProjectionOrthographic];
 				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos) - editor.context.room->pos;
 
-				TileGrid &grid = editor.context.layer->grid;
+				Layer &layer = *editor.context.layer;
 
 				if ( editor.context.layer->isCollider )
 				{
@@ -1837,13 +1838,13 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 						editor.context.tool == EditorTool_ColliderSolid ? 1
 						: editor.context.tool == EditorTool_ColliderPlatform ? 2
 						: 0;
-					SetGridTileAtCoord(engine, grid, collider, gridCoord);
+					SetGridTileAtCoord(engine, layer, collider, gridCoord);
 				}
 				else
 				{
 					const SpriteH spriteH = editor.context.tool == EditorTool_Draw
 						? editor.context.spriteH : InvalidHandle;
-					SetGridTileAtCoord(engine, grid, spriteH, gridCoord);
+					SetGridTileAtCoord(engine, layer, spriteH, gridCoord);
 				}
 			}
 		}
@@ -1876,11 +1877,11 @@ void EditorDebugDraw(Engine &engine)
 					DrawBox(worldPos, float2{1, 1}, color);
 				}
 
-				for (u32 y = 0; y < layer.grid.size.y; ++y)
+				for (u32 y = 0; y < layer.size.y; ++y)
 				{
-					for (u32 x = 0; x < layer.grid.size.x; ++x)
+					for (u32 x = 0; x < layer.size.x; ++x)
 					{
-						if ( layer.grid.cells[x][y].collider != 0 )
+						if ( layer.cells[x][y].collider != 0 )
 						{
 							const float2 cellWorldPos = {(f32)x, (f32)y};
 							DrawBox(cellWorldPos, float2{1, 1}, color);

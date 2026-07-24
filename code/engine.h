@@ -271,20 +271,15 @@ union Cell
 	u32 collider;
 };
 
-struct TileGrid
-{
-	Cell cells[TILE_GRID_SIZE_X][TILE_GRID_SIZE_Y]; // sprite per cell, InvalidHandle if empty
-	uint2 size;
-};
-
 struct Layer
 {
 	bool initialized;
 	const char *name;
-	TileGrid grid;
 	i32 order; // draw order within the room, lower values drawn first (further back)
 	bool visible;
 	bool isCollider;
+	uint2 size;
+	Cell cells[TILE_GRID_SIZE_X][TILE_GRID_SIZE_Y]; // sprite per cell, InvalidHandle if empty
 };
 
 // MAX_LAYERS is defined in data.h (RoomDesc needs it)

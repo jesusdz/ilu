@@ -738,6 +738,35 @@ u32 StrToUnsignedInt(const String &s)
 	return number;
 }
 
+i64 StrToI64(const char *str, u32 len = U32_MAX)
+{
+	i64 integer = 0;
+
+	// scan sign
+	bool negative = false;
+	if (*str == '-') {
+		negative = true;
+		str++;
+		len--;
+	}
+
+	// scan integer part
+	while (*str >= '0' && *str <= '9' && len > 0) {
+		integer = (integer << 3) + (integer << 1); // x10
+		integer += *str++ - '0';
+		len--;
+	}
+
+	const i64 result = negative ? -integer : integer;
+	return result;
+}
+
+i64 StrToI64(const String &s)
+{
+	const i64 number = StrToI64(s.str, s.size);
+	return number;
+}
+
 f32 StrToFloat(const char *str, u32 len = U32_MAX)
 {
 	i32 integer = 0;

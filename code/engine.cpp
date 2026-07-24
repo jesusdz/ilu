@@ -1404,23 +1404,23 @@ int2 GetGridTileCoord(const Engine &engine, const Camera &camera, int2 pixelCoor
 	return res;
 }
 
-void SetGridTileAtCoord(Engine &engine, TileGrid &tileGrid, u32 collider, int2 coord)
+void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord)
 {
-	const bool coordValid = coord.x >= 0 && coord.x < TILE_GRID_SIZE_X &&
-			coord.y >= 0 && coord.y < TILE_GRID_SIZE_Y;
+	const bool coordValid = coord.x >= 0 && coord.x < layer.size.x &&
+			coord.y >= 0 && coord.y < layer.size.y;
 	if (coordValid)
 	{
-		tileGrid.cells[coord.x][coord.y].collider = collider;
+		layer.cells[coord.x][coord.y].collider = collider;
 	}
 }
 
-void SetGridTileAtCoord(Engine &engine, TileGrid &tileGrid, SpriteH spriteH, int2 coord)
+void SetGridTileAtCoord(Engine &engine, Layer &layer, SpriteH spriteH, int2 coord)
 {
-	const bool coordValid = coord.x >= 0 && coord.x < TILE_GRID_SIZE_X &&
-			coord.y >= 0 && coord.y < TILE_GRID_SIZE_Y;
+	const bool coordValid = coord.x >= 0 && coord.x < layer.size.y &&
+			coord.y >= 0 && coord.y < layer.size.y;
 	if (coordValid)
 	{
-		tileGrid.cells[coord.x][coord.y].handle = spriteH;
+		layer.cells[coord.x][coord.y].handle = spriteH;
 	}
 }
 
@@ -1437,17 +1437,19 @@ static u32 GetColliderAtGridCoord(Scene &scene, int2 coord)
 		const Room &room = GetRoom(scene, *it);
 		const int2 localCoord = coord - room.pos;
 
-		const bool coordValid = localCoord.x >= 0 && localCoord.x < TILE_GRID_SIZE_X &&
-				localCoord.y >= 0 && localCoord.y < TILE_GRID_SIZE_Y;
-		if (!coordValid) continue;
-
 		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 		{
 			const Layer &layer = room.layers[i];
 			if (!layer.initialized || !layer.isCollider) continue;
 
-			if (layer.grid.cells[localCoord.x][localCoord.y].collider)
-				return layer.grid.cells[localCoord.x][localCoord.y].collider;
+			if ( localCoord.x >= 0 && localCoord.x < layer.size.x &&
+				localCoord.y >= 0 && localCoord.y < layer.size.y )
+			{
+				if (layer.cells[localCoord.x][localCoord.y].collider != 0)
+				{
+					return layer.cells[localCoord.x][localCoord.y].collider;
+				}
+			}
 		}
 	}
 	return 0;
@@ -2374,16 +2376,34 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 			layerDesc.isCollider = layer.isCollider;
 			layerDesc.tiles = (TileDesc*)(arena.base + arena.used);
 			layerDesc.tileCount = 0;
-			for (u32 x = 0; x < TILE_GRID_SIZE_X; ++x) {
-				for (u32 y = 0; y < TILE_GRID_SIZE_Y; ++y) {
-					const SpriteH spriteH = layer.grid.cells[x][y].handle;
-					if (spriteH == InvalidHandle) continue;
-					if (!IsValidHandle(engine.scene.spriteHandles, spriteH)) continue;
-					TileDesc &tile = *PushStruct(arena, TileDesc);
-					tile.x = (u16)x;
-					tile.y = (u16)y;
-					tile.spriteIndex = spriteIndexByHandleIdx[spriteH.idx];
-					layerDesc.tileCount++;
+			if (layer.isCollider)
+			{
+				for (u32 x = 0; x < layer.size.x; ++x) {
+					for (u32 y = 0; y < layer.size.y; ++y) {
+						const u16 collider = (u16)layer.cells[x][y].collider;
+						if (collider == 0) continue;
+						TileDesc &tile = *PushStruct(arena, TileDesc);
+						tile.x = (u16)x;
+						tile.y = (u16)y;
+						tile.collider = collider;
+						layerDesc.tileCount++;
+					}
+				}
+			}
+			else
+			{
+				// Sprites
+				for (u32 x = 0; x < layer.size.x; ++x) {
+					for (u32 y = 0; y < layer.size.y; ++y) {
+						const SpriteH spriteH = layer.cells[x][y].handle;
+						if (spriteH == InvalidHandle) continue;
+						if (!IsValidHandle(engine.scene.spriteHandles, spriteH)) continue;
+						TileDesc &tile = *PushStruct(arena, TileDesc);
+						tile.x = (u16)x;
+						tile.y = (u16)y;
+						tile.spriteIndex = spriteIndexByHandleIdx[spriteH.idx];
+						layerDesc.tileCount++;
+					}
 				}
 			}
 		}
@@ -2479,7 +2499,7 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 			CreateEntity(engine, assetDescriptors.entityDescs[i]);
 		}
 
-		// Rooms (grid cells reference sprites by index into the sprite list)
+		// Rooms (layer cells reference sprites by index into the sprite list)
 		if (assetDescriptors.roomDescCount > 0)
 		{
 			for (u32 i = 0; i < assetDescriptors.roomDescCount; ++i)
@@ -2552,7 +2572,7 @@ void LoadSceneFromBin(Engine &engine)
 			CreateEntity(engine, *engine.assets.entities[i].desc);
 		}
 
-		// Rooms (grid cells reference sprites by index into the sprite list)
+		// Rooms (layer cells reference sprites by index into the sprite list)
 		if (engine.assets.header.roomCount > 0)
 		{
 			for (u32 i = 0; i < engine.assets.header.roomCount; ++i)
@@ -2632,7 +2652,7 @@ u32 CreateLayer(Room &room, const LayerDesc &desc)
 				layer.order = desc.order;
 				layer.visible = desc.visible;
 				layer.isCollider = desc.isCollider;
-				layer.grid.size = { TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y };
+				layer.size = desc.size;
 				index = i;
 				break;
 			}
@@ -2657,7 +2677,7 @@ void RemoveLayer(Room &room, u32 index)
 
 float2 LayerSize(const Layer &layer)
 {
-	const float2 res = Float2(layer.grid.size);
+	const float2 res = Float2(layer.size);
 	return res;
 }
 
@@ -2675,9 +2695,9 @@ Handle CreateRoom(Engine &engine)
 	room.name = InternString("Room");
 	room.pos = {};
 
-	const LayerDesc desc1 = { .name = "Layer", .visible = true, .isCollider = false };
+	const LayerDesc desc1 = { .name = "Layer", .visible = true, .isCollider = false, .size {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} };
 	CreateLayer(room, desc1);
-	const LayerDesc desc2 = { .name = "Colliders", .visible = true, .isCollider = true };
+	const LayerDesc desc2 = { .name = "Colliders", .visible = true, .isCollider = true, .size {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} };
 	CreateLayer(room, desc2);
 
 	return roomH;
@@ -2703,12 +2723,23 @@ Handle CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHan
 		}
 
 		Layer &layer = room.layers[index];
-		for (u32 t = 0; t < layerDesc.tileCount; ++t)
+		if (layerDesc.isCollider) {
+			for (u32 t = 0; t < layerDesc.tileCount; ++t) {
+				const TileDesc &tile = layerDesc.tiles[t];
+				if (tile.x < layer.size.x && tile.y < layer.size.y) {
+					layer.cells[tile.x][tile.y].collider = tile.collider;
+				}
+			}
+		}
+		else
 		{
-			const TileDesc &tile = layerDesc.tiles[t];
-			if (tile.x < TILE_GRID_SIZE_X && tile.y < TILE_GRID_SIZE_Y && tile.spriteIndex < spriteHandleCount)
-			{
-				layer.grid.cells[tile.x][tile.y].handle = spriteHandles[tile.spriteIndex];
+			for (u32 t = 0; t < layerDesc.tileCount; ++t) {
+				const TileDesc &tile = layerDesc.tiles[t];
+				if (tile.x < layer.size.x && tile.y < layer.size.y) {
+					if (tile.spriteIndex < spriteHandleCount) {
+						layer.cells[tile.x][tile.y].handle = spriteHandles[tile.spriteIndex];
+					}
+				}
 			}
 		}
 	}
@@ -2732,8 +2763,9 @@ Handle CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteH
 			.order = ld.order,
 			.visible = ld.visible != 0,
 			.isCollider = ld.isCollider != 0,
+			.size = ld.size,
 			.tiles = binRoom.tiles[l],
-			.tileCount = ld.tileCount,
+			.tileCount = ld.tiles.size / sizeof(TileDesc),
 		};
 	}
 
@@ -3242,11 +3274,11 @@ bool RenderGraphics(Engine &engine)
 		}
 	}
 
-	// TileGrid: Update tile data buffer
-	const u32 tileScratchSize = MAX_TILES * sizeof(STileData);
+	// Layer: Update tile data buffer
+	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(Handle));
 	Scratch tileScratch(tileScratchSize);
-	//STileData *tileDataPtr = (STileData*)GetBufferPtr(gfx.device, gfx.tileDataBuffer[frameIndex]);
 	STileData *tileDataPtr = PushArray(tileScratch.arena, STileData, MAX_TILES);
+	Handle *tileSpriteHandles = PushArray(tileScratch.arena, Handle, MAX_TILES);
 
 	u32 tileCount = 0;
 	for (HandleIter it = BeginIter(scene.roomHandles); it; it++)
@@ -3255,23 +3287,24 @@ bool RenderGraphics(Engine &engine)
 
 		// TODO: Skip room if not in camera
 
-		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+		for (i32 i = ARRAY_COUNT(room.layers); i >= 0; --i)
 		{
 			const Layer &layer = room.layers[i];
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{
-				for (i32 y = 0; y < layer.grid.size.y; ++y)
+				for (i32 y = 0; y < layer.size.y; ++y)
 				{
-					for (i32 x = 0; x < layer.grid.size.x; ++x)
+					for (i32 x = 0; x < layer.size.x; ++x)
 					{
 						// TODO: Skip cell if not in camera
 
-						const Handle spriteH = layer.grid.cells[x][y].handle;
+						const Handle spriteH = layer.cells[x][y].handle;
 						if (IsValidHandle(scene.spriteHandles, spriteH) && tileCount < MAX_TILES)
 						{
 							tileDataPtr[tileCount].pos = room.pos + int2{x, y};
 							tileDataPtr[tileCount].spriteIndex = spriteH.idx;
+							tileSpriteHandles[tileCount] = spriteH;
 							tileCount++;
 						}
 					}
@@ -3453,9 +3486,9 @@ bool RenderGraphics(Engine &engine)
 			EndDebugGroup(commandList);
 		}
 
-		// TileGrid
+		// Layer tiles
 		{
-			PROFILE_BLOCK(TileGrid);
+			PROFILE_BLOCK(LayerTiles);
 
 			BeginDebugGroup(commandList, "Tiles", ColorBlack);
 
@@ -3469,41 +3502,21 @@ bool RenderGraphics(Engine &engine)
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
 
-			u32 tileIndex = 0;
-			for (HandleIter it = BeginIter(scene.roomHandles); it; it++)
+			for (u32 i = 0; i < tileCount; ++i)
 			{
-				const Room &room = GetRoom(scene, *it);
+				const Handle spriteH = tileSpriteHandles[i];
+				const Sprite &sprite = GetSprite(scene, spriteH);
+				const ImageH imageH = GetTextureImage(gfx, sprite.textureH, gfx.pinkImageH);
+				const BindGroupDesc textureBindGroupDesc = {
+					.layout = tilePipeline.layout.bindGroupLayouts[2],
+					.bindings = {
+						{ .index = 0, .image = imageH },
+					},
+				};
+				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
 
-				for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
-				{
-					const Layer &layer = room.layers[i];
-
-					if (!layer.initialized || !layer.visible || layer.isCollider) continue;
-
-					for (u32 y = 0; y < layer.grid.size.y; ++y)
-					{
-						for (u32 x = 0; x < layer.grid.size.x; ++x)
-						{
-							const Handle spriteH = layer.grid.cells[x][y].handle;
-							if (!IsValidHandle(scene.spriteHandles, spriteH)) continue;
-
-							const Sprite &sprite = GetSprite(scene, spriteH);
-							const ImageH imageH = GetTextureImage(gfx, sprite.textureH, gfx.pinkImageH);
-							const BindGroupDesc textureBindGroupDesc = {
-								.layout = tilePipeline.layout.bindGroupLayouts[2],
-								.bindings = {
-									{ .index = 0, .image = imageH },
-								},
-							};
-							const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
-
-							SetBindGroup(commandList, 2, textureBindGroup);
-							DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, tileIndex);
-
-							tileIndex++;
-						}
-					}
-				}
+				SetBindGroup(commandList, 2, textureBindGroup);
+				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, i);
 			}
 
 			EndDebugGroup(commandList);

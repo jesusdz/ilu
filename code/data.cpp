@@ -346,6 +346,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 			WriteLine(ctx, ".order = %d,", layer.order);
 			WriteLine(ctx, ".visible = %d,", layer.visible);
 			WriteLine(ctx, ".isCollider = %d,", layer.isCollider);
+			WriteLine(ctx, ".size = {%u, %u},", layer.size.x, layer.size.y);
 
 			if (layer.tileCount > 0)
 			{
@@ -956,6 +957,7 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 			static const String sOrder = MakeString("order");
 			static const String sVisible = MakeString("visible");
 			static const String sIsCollider = MakeString("isCollider");
+			static const String sSize = MakeString("size");
 			static const String sTiles = MakeString("tiles");
 
 			if ( StrEq( field, sName ) ) {
@@ -966,6 +968,8 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 				layerDesc.visible = DParser_ConsumeU8(parser) != 0;
 			} else if ( StrEq( field, sIsCollider ) ) {
 				layerDesc.isCollider = DParser_ConsumeU8(parser) != 0;
+			} else if ( StrEq( field, sSize ) ) {
+				layerDesc.size = DParser_ConsumeUint2(parser);
 			} else if ( StrEq( field, sTiles ) ) {
 				DParser_ConsumeTiles(parser, layerDesc);
 			}
@@ -1614,7 +1618,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 				ld.order        = layer.order;
 				ld.visible      = layer.visible ? 1 : 0;
 				ld.isCollider   = layer.isCollider ? 1 : 0;
-				ld.tileCount    = layer.tileCount;
+				ld.size         = layer.size;
 				ld.tiles.offset = PostIncrement(&offset, payloadSize);
 				ld.tiles.size   = U64ToU32(payloadSize);
 

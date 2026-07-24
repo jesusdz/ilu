@@ -84,7 +84,11 @@ struct TileDesc
 {
 	u16 x;
 	u16 y;
-	u16 spriteIndex; // index into AssetDescriptors::spriteDescs
+	union
+	{
+		u16 spriteIndex; // index into AssetDescriptors::spriteDescs
+		u16 collider;
+	};
 };
 
 struct LayerDesc
@@ -93,6 +97,7 @@ struct LayerDesc
 	i32 order;
 	bool visible;
 	bool isCollider;
+	uint2 size;
 	TileDesc *tiles; // non-empty grid cells only
 	u32 tileCount;
 };
@@ -241,8 +246,8 @@ struct BinLayerDesc
 	i32 order;
 	u8 visible;
 	u8 isCollider;
-	u32 tileCount;
-	BinLocation tiles; // payload with tileCount TileDesc entries
+	uint2 size;
+	BinLocation tiles; // payload of TileDesc entries; count == tiles.size / sizeof(TileDesc)
 };
 
 struct BinRoomDesc
@@ -253,7 +258,7 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-constexpr u32 BinAssetsVersion = 1;
+constexpr u32 BinAssetsVersion = 2;
 
 struct BinAssetsHeader
 {

@@ -369,6 +369,12 @@ struct UI
 	u32 infoCount;
 };
 
+static const char *UI_RemoveNamePrefix(const char *label)
+{
+	const char *res = StrChar(label, '#');
+	return res ? res + 1 : label;
+}
+
 static void UI_SetNextWindowDefaultSize(UI &ui, uint2 size)
 {
 	ui.defaultWindowSize = {(f32)size.x, (f32)size.y};
@@ -2335,6 +2341,7 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 	UI_EndWidget(ui);
 
 	const float2 text2Pos = widgetPos + float2{widgetSize.x + UiSpacing, padding.y};
+	label = UI_RemoveNamePrefix(label);
 	UI_AddText(ui, text2Pos, label);
 
 	UI_CursorAdvance(ui, widgetSize);
@@ -2342,9 +2349,9 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 	return !StrEq(buffer, bufferBeforeEdit);
 }
 
-bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing)
+bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing)
 {
-	const i32 numberBeforeEdit = *number;
+	const i64 numberBeforeEdit = *number;
 
 	const float2 padding = UI_GetPadding(ui);
 	const f32 textHeight = UI_TextHeight(ui);
@@ -2362,10 +2369,10 @@ bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing
 	static char activeBuffer[TEXT_BOX_BUFER_LEN] = {};
 	static Clock activeBeginClock;
 	static i32 cursorIndex;
-	static i32 originalNumber;
+	static i64 originalNumber;
 	static bool dragging;
 	static u32 draggingId;
-	static i32 numberBeforeDrag;
+	static i64 numberBeforeDrag;
 
 	UI_BeginWidget(ui, boxPos, boxSize);
 	UI_PushColor(ui, UIElementInput);
@@ -2388,7 +2395,7 @@ bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing
 	if (dragging && draggingId == id)
 	{
 		const f32 dragDelta = (f32)(UI_MousePos(ui).x - UI_LastMouseClickPos(ui).x);
-		*number = numberBeforeDrag + (i32)dragDelta;
+		*number = numberBeforeDrag + (i64)dragDelta;
 
 		if ( ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE )
 		{
@@ -2396,7 +2403,7 @@ bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing
 			if ( dragDelta > -UiDragClickThreshold && dragDelta < UiDragClickThreshold )
 			{
 				UI_SetActiveWidget(ui, id);
-				SPrintf(activeBuffer, "%d", *number);
+				SPrintf(activeBuffer, "%lld", *number);
 				originalNumber = *number;
 				activeBeginClock = GetClock();
 				const float2 textOrigin = UI_AdjustTextHorizontally(ui, boxPos, boxSize.x, activeBuffer);
@@ -2414,7 +2421,7 @@ bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing
 			*number -= wheel; // Scrolling up (negative wheel) increases the number
 			if (active)
 			{
-				SPrintf(activeBuffer, "%d", *number);
+				SPrintf(activeBuffer, "%lld", *number);
 				cursorIndex = StrLen(activeBuffer);
 			}
 		}
@@ -2433,7 +2440,7 @@ bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing
 		{
 			if ( StrIsInteger(activeBuffer) )
 			{
-				*number = StrToInt(activeBuffer);
+				*number = StrToI64(activeBuffer);
 			}
 			if ( action == UpdateTextDone )
 			{
@@ -2471,7 +2478,7 @@ bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing
 	else
 	{
 		char numberText[TEXT_BOX_BUFER_LEN];
-		SPrintf(numberText, "%d", *number);
+		SPrintf(numberText, "%lld", *number);
 		const float2 textPos = UI_AdjustTextHorizontally(ui, boxPos + float2{0.0f, padding.y}, boxSize.x, numberText);
 		UI_AddText(ui, textPos, numberText);
 	}
@@ -2483,6 +2490,23 @@ bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing
 	UI_CursorAdvance(ui, widgetSize, spacing);
 
 	return *number != numberBeforeEdit;
+}
+
+bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing)
+{
+	i64 value = *number;
+	const bool modified = UI_InputI64(ui, label, &value, spacing);
+	*number = (i32)value;
+	return modified;
+}
+
+bool UI_InputUInt(UI &ui, const char *label, u32 *number, f32 spacing = UiSpacing)
+{
+	i64 value = *number;
+	const bool modified = UI_InputI64(ui, label, &value, spacing);
+	if (value < 0) value = 0; // unsigned can't go below zero
+	*number = (u32)value;
+	return modified;
 }
 
 bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 spacing = UiSpacing)
@@ -2642,6 +2666,28 @@ bool UI_InputInt2(UI &ui, const char *label, int2 *value)
 	modified |= UI_InputInt(ui, subLabel, &value->x, UiSpacingTight);
 	SPrintf(subLabel, "Y");
 	modified |= UI_InputInt(ui, subLabel, &value->y);
+
+	UI_PopID(ui);
+
+	UI_PopPadding(ui);
+
+	return modified;
+}
+
+bool UI_InputUInt2(UI &ui, const char *label, uint2 *value)
+{
+	const float2 padding = UI_GetPadding(ui);
+	UI_PushPadding(ui, float2{padding.x, 2.0f});
+
+	const i32 id = UI_MakeID(ui, label);
+	UI_PushID(ui, id);
+
+	bool modified = false;
+	char subLabel[128];
+	SPrintf(subLabel, "X %s", label);
+	modified |= UI_InputUInt(ui, subLabel, &value->x, UiSpacingTight);
+	SPrintf(subLabel, "Y");
+	modified |= UI_InputUInt(ui, subLabel, &value->y);
 
 	UI_PopID(ui);
 
