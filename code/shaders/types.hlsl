@@ -38,7 +38,7 @@ struct SSpriteData
 
 struct STileData
 {
-	int2 pos;
+	float2 pos;
 	uint spriteIndex;
 };
 

@@ -2374,6 +2374,7 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 			layerDesc.order = layer.order;
 			layerDesc.visible = layer.visible;
 			layerDesc.isCollider = layer.isCollider;
+			layerDesc.size = layer.size;
 			layerDesc.tiles = (TileDesc*)(arena.base + arena.used);
 			layerDesc.tileCount = 0;
 			if (layer.isCollider)
@@ -3069,6 +3070,22 @@ static f32 GetSceneAspectRatio(const Graphics &gfx)
 	return ar;
 }
 
+static float2 GetRoomScrollRatio(const float2 &cameraPos, const float2 &roomPos, const float2 &roomSizeWorld, const float2 &viewportSizeWorld)
+{
+	const float2 viewMin = cameraPos - 0.5f * viewportSizeWorld - roomPos;
+	const float2 travel = roomSizeWorld - viewportSizeWorld;
+	float2 ratio = { 0.5f, 0.5f };
+	if (travel.x > 0.0f) ratio.x = Clamp(viewMin.x / travel.x, 0.0f, 1.0f);
+	if (travel.y > 0.0f) ratio.y = Clamp(viewMin.y / travel.y, 0.0f, 1.0f);
+	return ratio;
+}
+
+static float2 GetParallaxOffset(const float2 &scrollRatio, const uint2 &baseLayerSize, const uint2 &layerSize)
+{
+	const float2 slack = Max(Float2(baseLayerSize) - Float2(layerSize), float2{0.0f, 0.0f});
+	return scrollRatio * slack;
+}
+
 bool RenderGraphics(Engine &engine)
 {
 	PROFILE_BLOCK(RenderGraphics);
@@ -3280,6 +3297,10 @@ bool RenderGraphics(Engine &engine)
 	STileData *tileDataPtr = PushArray(tileScratch.arena, STileData, MAX_TILES);
 	Handle *tileSpriteHandles = PushArray(tileScratch.arena, Handle, MAX_TILES);
 
+
+	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / PIXELS_PER_METER;
+	const bool parallaxEnabled = engine.game.state == GameStateRunning; // The editor shows all layers unshifted
+
 	u32 tileCount = 0;
 	for (HandleIter it = BeginIter(scene.roomHandles); it; it++)
 	{
@@ -3287,12 +3308,19 @@ bool RenderGraphics(Engine &engine)
 
 		// TODO: Skip room if not in camera
 
-		for (i32 i = ARRAY_COUNT(room.layers); i >= 0; --i)
+		// Layer 0 is the room's base layer: it never scrolls, the rest parallax against it
+		const uint2 baseLayerSize = room.layers[0].size;
+		const float2 roomPos = Float2(room.pos);
+		const float2 scrollRatio = GetRoomScrollRatio(camera.position.xy, roomPos, Float2(baseLayerSize), viewportSizeWorld);
+
+		for (i32 i = ARRAY_COUNT(room.layers) - 1; i >= 0; --i)
 		{
 			const Layer &layer = room.layers[i];
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{
+				const float2 parallax = parallaxEnabled ? GetParallaxOffset(scrollRatio, baseLayerSize, layer.size) : float2{0.0f, 0.0f};
+
 				for (i32 y = 0; y < layer.size.y; ++y)
 				{
 					for (i32 x = 0; x < layer.size.x; ++x)
@@ -3302,7 +3330,7 @@ bool RenderGraphics(Engine &engine)
 						const Handle spriteH = layer.cells[x][y].handle;
 						if (IsValidHandle(scene.spriteHandles, spriteH) && tileCount < MAX_TILES)
 						{
-							tileDataPtr[tileCount].pos = room.pos + int2{x, y};
+							tileDataPtr[tileCount].pos = roomPos + Float2(int2{x, y}) + parallax;
 							tileDataPtr[tileCount].spriteIndex = spriteH.idx;
 							tileSpriteHandles[tileCount] = spriteH;
 							tileCount++;
@@ -3600,7 +3628,7 @@ bool RenderGraphics(Engine &engine)
 
 #if USE_EDITOR
 		// Editor grid
-		if (editor.showGrid)
+		if (editor.showGrid && engine.game.state == GameStateStopped)
 		{
 			PROFILE_BLOCK(EditorGrid);
 

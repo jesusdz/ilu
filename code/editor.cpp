@@ -452,6 +452,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 							.order = 0,
 							.visible = true,
 							.isCollider = false,
+							.size = {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y},
 						};
 						CreateLayer(room, desc);
 					}
