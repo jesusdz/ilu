@@ -26,6 +26,7 @@ constexpr f32 CG = 0.15;
 constexpr f32 CB = 0.3;
 
 constexpr float4 UiColorWhite = { 1.0, 1.0, 1.0, 1.0 };
+constexpr float4 UiColorBlack = { 0.0, 0.0, 0.0, 1.0 };
 constexpr float4 UiColorOrange = { 1.0, 0.6, 0.0, 1.0 };
 constexpr float4 UiColorBorder = { 0.1, 0.1, 0.1, 0.9 };
 constexpr float4 UiColorCaption = { CR, CG, CB, 1.0 };
@@ -231,6 +232,7 @@ struct UIElementColorStack
 
 enum UIElement
 {
+	UIElementText,
 	UIElementBackground,
 	UIElementSection,
 	UIElementButton,
@@ -251,6 +253,7 @@ struct UIInfo
 
 constexpr const char *UIElementName[] =
 {
+	"Text",
 	"Background",
 	"Section",
 	"Button",
@@ -275,6 +278,7 @@ struct UI
 	UIVertex *vertexPtr;
 	u32 vertexCount;
 	u32 vertexCountLimit;
+	bool vertexOverflow;
 
 	UIDrawList drawLists[128];
 	u32 drawListCount;
@@ -1029,15 +1033,21 @@ void UI_PushColor(UI &ui, UIElement elem)
 
 void UI_AddTriangle(UI &ui, const UIVertex &v0, const UIVertex &v1, const UIVertex v2)
 {
-	ASSERT(ui.vertexCount + 3 <= ui.vertexCountLimit);
-	*ui.vertexPtr++ = v0;
-	*ui.vertexPtr++ = v1;
-	*ui.vertexPtr++ = v2;
-	ui.vertexCount += 3;
+	if ( ui.vertexCount + 3 <= ui.vertexCountLimit )
+	{
+		*ui.vertexPtr++ = v0;
+		*ui.vertexPtr++ = v1;
+		*ui.vertexPtr++ = v2;
+		ui.vertexCount += 3;
 
-	UIDrawList &drawList = UI_GetDrawList(ui);
-	UIVertexRange &vertexRange = drawList.vertexRanges[drawList.vertexRangeCount-1];
-	vertexRange.count += 3;
+		UIDrawList &drawList = UI_GetDrawList(ui);
+		UIVertexRange &vertexRange = drawList.vertexRanges[drawList.vertexRangeCount-1];
+		vertexRange.count += 3;
+	}
+	else
+	{
+		ui.vertexOverflow = true;
+	}
 }
 
 void UI_AddTriangle(UI &ui, float2 p0, float2 p1, float2 p2, float4 fcolor )
@@ -1205,7 +1215,10 @@ void UI_AddText(UI &ui, float2 pos, const char *text)
 		const float2 charUv = {pc.x0/ui.fontAtlasSize.x, pc.y0/ui.fontAtlasSize.y};
 		const float2 charUvSize = {charWidth/ui.fontAtlasSize.x, charHeight/ui.fontAtlasSize.y};
 
-		UI_AddQuad(ui, charPos, charSize, charUv, charUvSize, UiColorWhite);
+		UI_AddQuad(ui, charPos + float2{0, 1}, charSize, charUv, charUvSize, UiColorBlack);
+
+		const UIElementColor &textColor = UI_GetElemColor(ui, UIElementText);
+		UI_AddQuad(ui, charPos, charSize, charUv, charUvSize, textColor.base);
 
 		cursorx = Round( cursorx + pc.xadvance );
 		ptr++;
@@ -3492,6 +3505,7 @@ void UI_InitializeColors(UI &ui)
 		ui.colorElems[i].stackSize = 0;
 	}
 
+	UI_PushElemColor(ui, UIElementText,       { UiColorWhite,      UiColorWhite,          UiColorWhite,          UiColorWhite });
 	UI_PushElemColor(ui, UIElementBackground, { UiColorBackground, UiColorBackground,     UiColorBackground,     UiColorBackground });
 	UI_PushElemColor(ui, UIElementSection,    { UiColorSection,    UiColorSectionHover,   UiColorSectionHover,   UiColorSection });
 	UI_PushElemColor(ui, UIElementButton,     { UiColorButton,     UiColorButtonHover,    UiColorButtonHover,    UiColorButton });
@@ -3507,7 +3521,7 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 {
 	ui.tempString = PushArray(globalArena, char, UI_TEMP_STRING_SIZE);
 
-	const u32 vertexBufferSize = KB(128);
+	const u32 vertexBufferSize = KB(256);
 	ui.vertexCountLimit = vertexBufferSize / sizeof(UIVertex);
 	ui.frontendVertices = PushArray(globalArena, UIVertex, ui.vertexCountLimit);
 
@@ -3537,6 +3551,7 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 		{ "editor/fonts/proggy/ProggyClean.ttf", 13 },
 		{ "editor/fonts/pixelarial/PIXEARG_.ttf", 11 },
 		{ "editor/fonts/refixedsys/refixedsys-mono.ttf", 15 },
+		//{ "editor/fonts/kode.ttf", 17 },
 	};
 
 	Scratch scratch;
@@ -3682,6 +3697,7 @@ void UI_BeginFrame(UI &ui)
 	ui.frameIndex = ( ui.frameIndex + 1 ) % MAX_FRAMES_IN_FLIGHT;
 	ui.vertexPtr = ui.frontendVertices;
 	ui.vertexCount = 0;
+	ui.vertexOverflow = false;
 	ui.drawListCount = 0;
 	ui.drawListStackSize = 0;
 
@@ -3906,6 +3922,11 @@ void UI_EndFrame(UI &ui)
 	if ( UI_IsMouseIdle(ui) )
 	{
 		ui.avoidWindowInteraction = false;
+	}
+
+	if ( ui.vertexOverflow )
+	{
+		LOG(Warning, "UI vertexCount limit (%u) reached!\n", ui.vertexCountLimit);
 	}
 }
 
