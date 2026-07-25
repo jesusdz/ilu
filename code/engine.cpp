@@ -2050,41 +2050,51 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 	// Create Global BindGroup allocator
 	{
-		const BindGroupAllocatorCounts allocatorCounts = {
-			.uniformBufferCount = MAX_FRAMES_IN_FLIGHT,
-			.storageBufferCount = MAX_FRAMES_IN_FLIGHT * 2,
-			.textureCount = 1000,
-			.samplerCount = MAX_FRAMES_IN_FLIGHT * 5,
-			.groupCount = MAX_FRAMES_IN_FLIGHT,
+		const BindGroupAllocatorDesc desc = {
+			.name = "GlobalBindGroup",
+			.counts = {
+				.uniformBufferCount = MAX_FRAMES_IN_FLIGHT,
+				.storageBufferCount = MAX_FRAMES_IN_FLIGHT * 3,
+				.textureCount = 1000,
+				.samplerCount = MAX_FRAMES_IN_FLIGHT * 5,
+				.groupCount = MAX_FRAMES_IN_FLIGHT,
+			},
 		};
-		gfx.globalBindGroupAllocator = CreateBindGroupAllocator(gfx.device, allocatorCounts);
+		gfx.globalBindGroupAllocator = CreateBindGroupAllocator(gfx.device, desc);
 	}
 
 	// Create Material BindGroup allocator
 	{
-		const BindGroupAllocatorCounts allocatorCounts = {
-			.uniformBufferCount = MAX_MATERIALS,
-			.textureCount = MAX_MATERIALS,
-			.groupCount = MAX_MATERIALS,
+		const BindGroupAllocatorDesc desc = {
+			.name = "MaterialBindGroup",
+			.counts = {
+				.uniformBufferCount = MAX_MATERIALS,
+				.textureCount = MAX_MATERIALS,
+				.groupCount = MAX_MATERIALS,
+			},
 		};
-		gfx.materialBindGroupAllocator = CreateBindGroupAllocator(gfx.device, allocatorCounts);
+		gfx.materialBindGroupAllocator = CreateBindGroupAllocator(gfx.device, desc);
 	}
 
 	// Create dynamic per-frame BindGroup allocator
 	for (u32 i = 0; i < ARRAY_COUNT(gfx.dynamicBindGroupAllocator); ++i)
 	{
-		const BindGroupAllocatorCounts allocatorCounts = {
-			.uniformBufferCount = 1000,
-			.storageBufferCount = 1000,
-			.storageTexelBufferCount = 1000,
-			.textureCount = 1000,
-			.samplerCount = 1000,
-			.groupCount = 100,
+		const BindGroupAllocatorDesc desc = {
+			.name = "DynamicBindGroup",
+			.counts = {
+				.uniformBufferCount = 1000,
+				.storageBufferCount = 1000,
+				.storageTexelBufferCount = 1000,
+				.textureCount = 1000,
+				.samplerCount = 1000,
+				.groupCount = 100,
+			},
 		};
-		gfx.dynamicBindGroupAllocator[i] = CreateBindGroupAllocator(gfx.device, allocatorCounts);
+		gfx.dynamicBindGroupAllocator[i] = CreateBindGroupAllocator(gfx.device, desc);
 	}
 
 	// Create global BindGroup layout
+
 	const ShaderBinding globalShaderBindings[] = {
 		{ .set = 0, .binding = BINDING_GLOBALS, .type = SpvTypeUniformBuffer, .stageFlags = SpvStageFlagsVertexBit | SpvStageFlagsFragmentBit | SpvStageFlagsComputeBit },
 		{ .set = 0, .binding = BINDING_SAMPLER_POINT, .type = SpvTypeSampler, .stageFlags = SpvStageFlagsFragmentBit },

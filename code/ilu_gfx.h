@@ -295,18 +295,42 @@ struct ShaderBinding
 
 struct BindGroupAllocatorCounts
 {
-	u32 uniformBufferCount;
-	u32 storageBufferCount;
-	u32 storageTexelBufferCount;
-	u32 textureCount;
-	u32 samplerCount;
-	u32 combinedImageSamplerCount;
-	u32 groupCount;
+	union
+	{
+		struct
+		{
+			u32 uniformBufferCount;
+			u32 storageBufferCount;
+			u32 storageTexelBufferCount;
+			u32 textureCount;
+			u32 samplerCount;
+			u32 combinedImageSamplerCount;
+			u32 groupCount;
+		};
+		u32 type[7];
+	};
 	bool allowIndividualFrees;
+};
+
+constexpr const char *sCountTypeName[] = {
+	"uniformBufferCount",
+	"storageBufferCount",
+	"storageTexelBufferCount",
+	"textureCount",
+	"samplerCount",
+	"combinedImageSamplerCount",
+	"groupCount",
+};
+
+struct BindGroupAllocatorDesc
+{
+	const char *name;
+	BindGroupAllocatorCounts counts;
 };
 
 struct BindGroupAllocator
 {
+	const char *name;
 	BindGroupAllocatorCounts maxCounts;
 	BindGroupAllocatorCounts usedCounts;
 	VkDescriptorPool handle;
@@ -684,7 +708,7 @@ typedef bool FN_InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch);
 typedef bool FN_InitializeGraphicsSurface(GraphicsDevice &device, const Window &window);
 typedef bool FN_InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch);
 typedef bool FN_IsValidGraphicsDevice(const GraphicsDevice &device);
-typedef BindGroupAllocator FN_CreateBindGroupAllocator(const GraphicsDevice &device, const BindGroupAllocatorCounts &counts);
+typedef BindGroupAllocator FN_CreateBindGroupAllocator(const GraphicsDevice &device, const BindGroupAllocatorDesc &desc);
 typedef void FN_DestroyBindGroupAllocator(const GraphicsDevice &device, const BindGroupAllocator &bindGroupAllocator);
 typedef void FN_ResetBindGroupAllocator(const GraphicsDevice &device, BindGroupAllocator &bindGroupAllocator);
 typedef BindGroupLayout FN_CreateBindGroupLayout(GraphicsDevice &device, const ShaderBinding bindings[], u8 bindingCount);
@@ -2924,8 +2948,10 @@ bool IsValidGraphicsDevice(const GraphicsDevice &device)
 // BindGroupAllocator
 //////////////////////////////
 
-BindGroupAllocator CreateBindGroupAllocator(const GraphicsDevice &device, const BindGroupAllocatorCounts &counts)
+BindGroupAllocator CreateBindGroupAllocator(const GraphicsDevice &device, const BindGroupAllocatorDesc &desc)
 {
+	const BindGroupAllocatorCounts &counts = desc.counts;
+
 	u32 poolSizeCount = 0;
 	VkDescriptorPoolSize poolSizes[8] = {};
 
@@ -2962,6 +2988,7 @@ BindGroupAllocator CreateBindGroupAllocator(const GraphicsDevice &device, const 
 	VK_CALL( vkCreateDescriptorPool( device.handle, &createInfo, VULKAN_ALLOCATORS, &descriptorPool) );
 
 	const BindGroupAllocator allocator = {
+		.name = InternStringGfx(desc.name),
 		.maxCounts = counts,
 		.handle = descriptorPool,
 	};
@@ -3059,6 +3086,33 @@ BindGroup CreateBindGroup(const GraphicsDevice &device, const BindGroupLayout &l
 
 	if (layout.handle)
 	{
+		BindGroupAllocatorCounts copyCounts = allocator.usedCounts;
+
+		// Update the used descriptor counters in the allocator
+		for (u32 i = 0; i < layout.bindingCount; ++i)
+		{
+			const ShaderBinding &binding = layout.bindings[i];
+			switch (binding.type) {
+				case SpvTypeImage: copyCounts.textureCount++; break;
+				case SpvTypeSampler: copyCounts.samplerCount++; break;
+				case SpvTypeSampledImage: copyCounts.combinedImageSamplerCount++; break;
+				case SpvTypeUniformBuffer: copyCounts.uniformBufferCount++; break;
+				case SpvTypeStorageBuffer: copyCounts.storageBufferCount++; break;
+				case SpvTypeStorageTexelBuffer: copyCounts.storageTexelBufferCount++; break;
+				default: INVALID_CODE_PATH();
+			}
+		}
+
+		for (u32 i = 0; i < ARRAY_COUNT(copyCounts.type); ++i)
+		{
+			if (copyCounts.type[i] > allocator.maxCounts.type[i]) {
+				const char *typeName = sCountTypeName[i];
+				LOG(Warning, "BindGroupAllocator %s: Type %s exceeded allocation (%u > %u)\n", allocator.name, typeName, copyCounts.type[i], allocator.maxCounts.type[i]);
+			}
+		}
+
+		allocator.usedCounts = copyCounts;
+
 		const VkDescriptorSetAllocateInfo allocateInfo = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 			.descriptorPool = allocator.handle,
@@ -3066,21 +3120,6 @@ BindGroup CreateBindGroup(const GraphicsDevice &device, const BindGroupLayout &l
 			.pSetLayouts = &layout.handle,
 		};
 		VK_CALL( vkAllocateDescriptorSets(device.handle, &allocateInfo, &bindGroup.handle) );
-
-		// Update the used descriptor counters in the allocator
-		for (u32 i = 0; i < layout.bindingCount; ++i)
-		{
-			const ShaderBinding &binding = layout.bindings[i];
-			switch (binding.type) {
-				case SpvTypeImage: allocator.usedCounts.textureCount++; break;
-				case SpvTypeSampler: allocator.usedCounts.samplerCount++; break;
-				case SpvTypeSampledImage: allocator.usedCounts.combinedImageSamplerCount++; break;
-				case SpvTypeUniformBuffer: allocator.usedCounts.uniformBufferCount++; break;
-				case SpvTypeStorageBuffer: allocator.usedCounts.storageBufferCount++; break;
-				case SpvTypeStorageTexelBuffer: allocator.usedCounts.storageTexelBufferCount++; break;
-				default: INVALID_CODE_PATH();
-			}
-		}
 	}
 
 	return bindGroup;
