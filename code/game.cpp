@@ -36,6 +36,25 @@ void GameStart(Game &game)
 	game.room = GetRoom("Room");
 }
 
+// Translate platform input to game input controls
+void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mouse, const Gamepad &gamepad)
+{
+	game.input = {};
+
+	// Keyboard
+
+	game.input.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
+	game.input.move.x -= KeyPressed(keyboard, K_A) ? 1.0f : 0.0f;
+	game.input.jump.press = KeyPress(keyboard, K_SPACE);
+	game.input.jump.pressed = KeyPressed(keyboard, K_SPACE);
+
+	// Gamepad
+
+	game.input.move += gamepad.leftAxis;
+	game.input.jump.press |= ButtonPress(gamepad.a);
+	game.input.jump.pressed |= ButtonPressed(gamepad.a);
+}
+
 void GameSimulate(Game &game)
 {
 	LOG(Debug, "- GameUpdate!\n");
@@ -70,19 +89,12 @@ void GameSimulate(Game &game)
 		float2 playerPos = game.ent->position.xy;
 		const float2 playerSize = { game.ent->scale, game.ent->scale };
 
-		i32 direction = 0;
+		f32 direction = game.input.move.x;
 
 		// X ///////////////////////////////////////////////////////////
 
-		if (KeyPressed(game.input.keyboard, K_D)) {
-			direction++;
-		}
-		if (KeyPressed(game.input.keyboard, K_A)) {
-			direction--;
-		}
-
-		if (direction < 0 && game.speed2.x > 0 ||
-				direction > 0 && game.speed2.x < 0 ||
+		if (direction < 0.0f && game.speed2.x > 0.0f ||
+				direction > 0.0f && game.speed2.x < 0.0f ||
 				!direction )
 		{
 			game.speed2.x *= 0.8;
@@ -108,14 +120,14 @@ void GameSimulate(Game &game)
 		constexpr f32 jumpSpeed = 14.0f;
 		constexpr f32 jumpCutMultiplier = 0.35f; // Kills upward speed quickly if the button is released early
 
-		if (KeyPress(game.input.keyboard, K_SPACE)) {
+		if (game.input.jump.press) {
 			if (game.speed2.y == 0) {
 				game.speed2.y = jumpSpeed;
 				PlayAudioClip(game.sndJump);
 			}
 		}
 
-		if (game.speed2.y > 0 && !KeyPressed(game.input.keyboard, K_SPACE)) {
+		if (game.speed2.y > 0 && !game.input.jump.pressed) {
 			game.speed2.y *= jumpCutMultiplier;
 		}
 

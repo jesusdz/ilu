@@ -3888,8 +3888,16 @@ void UIEndFrameRecording(Engine &engine)
 #endif
 
 static bool sKeyPendingRelease[K_COUNT];
+static bool sGamepadButtonPendingRelease[ARRAY_COUNT(Gamepad::buttons)];
 
-static void GameInputAccumulate(Input &input, const Input &newInput)
+struct PlatformInput
+{
+	Gamepad gamepad;
+	Keyboard keyboard;
+	Mouse mouse;
+};
+
+static void InputAccumulate(PlatformInput &input, const PlatformInput &newInput)
 {
 	for (u32 i = 0; i < K_COUNT; ++i)
 	{
@@ -3912,9 +3920,34 @@ static void GameInputAccumulate(Input &input, const Input &newInput)
 			}
 		}
 	}
+	for (u32 i = 0; i < ARRAY_COUNT(input.gamepad.buttons); ++i)
+	{
+		const ButtonState newState = newInput.gamepad.buttons[i];
+		ButtonState &state = input.gamepad.buttons[i];
+
+		if (newState == BUTTON_STATE_PRESS)
+		{
+			// Latch the edge until a fixed step consumes it
+			state = BUTTON_STATE_PRESS;
+			sGamepadButtonPendingRelease[i] = false;
+		}
+		else if (newState == BUTTON_STATE_RELEASE)
+		{
+			if (state == BUTTON_STATE_PRESS) {
+				// The press was not consumed yet: keep it and release right after
+				sGamepadButtonPendingRelease[i] = true;
+			} else {
+				state = BUTTON_STATE_RELEASE;
+			}
+		}
+	}
+	input.gamepad.leftTrigger = newInput.gamepad.leftTrigger;
+	input.gamepad.rightTrigger = newInput.gamepad.rightTrigger;
+	input.gamepad.leftAxis = newInput.gamepad.leftAxis;
+	input.gamepad.rightAxis = newInput.gamepad.rightAxis;
 }
 
-static void GameInputConsume(Input &input)
+static void InputConsume(PlatformInput &input)
 {
 	for (u32 i = 0; i < K_COUNT; ++i)
 	{
@@ -3930,11 +3963,28 @@ static void GameInputConsume(Input &input)
 			state = KEY_STATE_IDLE;
 		}
 	}
+	for (u32 i = 0; i < ARRAY_COUNT(input.gamepad.buttons); ++i)
+	{
+		ButtonState &state = input.gamepad.buttons[i];
+
+		if (state == BUTTON_STATE_PRESS)
+		{
+			state = sGamepadButtonPendingRelease[i] ? BUTTON_STATE_RELEASE : BUTTON_STATE_PRESSED;
+			sGamepadButtonPendingRelease[i] = false;
+		}
+		else if (state == BUTTON_STATE_RELEASE)
+		{
+			state = BUTTON_STATE_IDLE;
+		}
+	}
 }
 
 void GameUpdate(Engine &engine, const Plat &platform)
 {
 	Game &game = engine.game;
+
+	static PlatformInput accumulatedInput = {};
+	static f32 accumulatedSeconds = 0.0f;
 
 	if (game.state == GameStateStarting)
 	{
@@ -3942,8 +3992,8 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
 		CreateRenderTargets(engine.gfx, SCENE_WIDTH, SCENE_HEIGHT);
 
-		game.input = {};
-		game.accumulatedSeconds = 0.0f;
+		accumulatedInput = {};
+		accumulatedSeconds = 0.0f;
 		MemSet(sKeyPendingRelease, sizeof(sKeyPendingRelease), 0);
 
 		GameStart(game);
@@ -3955,22 +4005,23 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		constexpr f32 fixedStepSeconds = 1.0f / 60.0f;
 		constexpr f32 maxFrameSeconds = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 
-		const Input newInput = {
+		const PlatformInput platformInput = {
 			.gamepad = *platform.gamepad,
 			.keyboard = platform.window->keyboard,
 			.mouse = platform.window->mouse,
 		};
 
-		GameInputAccumulate(game.input, newInput);
+		InputAccumulate(accumulatedInput, platformInput);
 
-		game.accumulatedSeconds += Min(engine.gfx.deltaSeconds, maxFrameSeconds);
+		accumulatedSeconds += Min(engine.gfx.deltaSeconds, maxFrameSeconds);
 
-		while (game.accumulatedSeconds >= fixedStepSeconds)
+		while (accumulatedSeconds >= fixedStepSeconds)
 		{
 			game.deltaSeconds = fixedStepSeconds;
+			GameSetInput(game, accumulatedInput.keyboard, accumulatedInput.mouse, accumulatedInput.gamepad);
 			GameSimulate(game);
-			GameInputConsume(game.input);
-			game.accumulatedSeconds -= fixedStepSeconds;
+			InputConsume(accumulatedInput);
+			accumulatedSeconds -= fixedStepSeconds;
 		}
 
 		GameUpdate(game);

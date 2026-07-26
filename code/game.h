@@ -20,11 +20,17 @@ enum GameState
 	GameStateCount,
 };
 
-struct Input
+union InputButton
 {
-	Gamepad gamepad;
-	Keyboard keyboard;
-	Mouse mouse;
+	u8 press : 1;
+	u8 pressed : 1;
+	u8 release : 1;
+};
+
+struct GameInput
+{
+	float2 move;
+	InputButton jump;
 };
 
 struct Box
@@ -41,7 +47,7 @@ struct Game
 	f32 deltaSeconds;
 	f32 accumulatedSeconds;
 
-	Input input;
+	GameInput input;
 
 	Box box1;
 	float2 speed;
@@ -66,7 +72,7 @@ struct Game
 // Engine -> Game interface
 ////////////////////////////////////////////////////////////////////////
 
-void GameSetInput(Input input);
+void GameSetInput(Game &game, const Keyboard &, const Mouse &, const Gamepad &);
 void GameStart(Game &game);
 void GameSimulate(Game &game);
 void GameUpdate(Game &game);
