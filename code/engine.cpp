@@ -3129,7 +3129,7 @@ bool RenderGraphics(Engine &engine)
 	}
 
 #if USE_UI
-	UI_UploadVerticesToGPU(engine.ui);
+	UI_FinalizeDrawData(engine.ui);
 #endif
 
 	// Display size

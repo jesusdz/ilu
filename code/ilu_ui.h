@@ -14,6 +14,28 @@
 
 #define UI_TEMP_STRING_SIZE KB(4)
 
+// Fixed capacities. All of them are hard limits guarded by ASSERTs at their
+// push sites, so raising a ceiling is a matter of bumping the value here.
+#define UI_MAX_WINDOWS 16
+#define UI_MAX_WINDOW_SECTIONS 16
+#define UI_MAX_WINDOW_CAPTION 64
+#define UI_MAX_WIDGET_INFOS 1024
+#define UI_MAX_DRAW_LISTS 128
+#define UI_MAX_DRAW_LIST_VERTEX_RANGES 32
+#define UI_MAX_LAYOUT_GROUPS 16
+#define UI_MAX_ELEMENT_COLOR_STACK 8
+#define UI_MAX_COLOR_STACK 16
+#define UI_MAX_CURSOR_STACK 16
+#define UI_MAX_INDENT_STACK 16
+#define UI_MAX_PADDING_STACK 16
+#define UI_MAX_WINDOW_STACK 16
+#define UI_MAX_MODAL_WINDOW_STACK 16
+#define UI_MAX_ID_STACK 16
+#define UI_MAX_WIDGET_STACK 16
+#define UI_FONT_CHAR_COUNT 255
+#define UI_TEXT_BUFFER_SIZE 128
+#define UI_LABEL_BUFFER_SIZE 128
+
 #define UI_VSPRINTF(format, text) \
 	va_list vaList; \
 	va_start(vaList, format); \
@@ -62,6 +84,10 @@ constexpr float UiSpacingTight = 2.0f; // Vertical gap between stacked component
 constexpr float UiDragClickThreshold = 3.0f; // Max drag distance (px) still considered a click
 constexpr float2 UiDefaultInputPadding = { 4.0f, 3.0f };
 
+// Identifies a window / widget / stored piece of state. Derived from a label hash
+// combined with the enclosing window and ID stack. Zero means "no ID".
+typedef u32 UIID;
+
 struct UIVertex
 {
 	float2 position;
@@ -98,15 +124,15 @@ enum UIWindowFlags
 
 enum UIModalFlags
 {
-	UIModalFlags_Default = 0,
-	UIModalFlags_NoBackground = 1 << 0,
+	UIModalFlag_Default = 0,
+	UIModalFlag_NoBackground = 1 << 0,
 };
 
 struct UIWindow
 {
-	u32 id;
+	UIID id;
 	i32 index;
-	char caption[64];
+	char caption[UI_MAX_WINDOW_CAPTION];
 	float2 pos;
 	float2 size;
 	float2 anchor;
@@ -128,7 +154,7 @@ struct UIWindow
 	u32 flags;
 	u32 modalFlags;
 
-	UISection sections[16];
+	UISection sections[UI_MAX_WINDOW_SECTIONS];
 	u32 sectionCount;
 };
 
@@ -148,9 +174,9 @@ struct UIWidget
 
 enum UILayout
 {
-	UiLayoutVertical,
-	UiLayoutHorizontal,
-	UiLayoutItemBrowser,
+	UILayout_Vertical,
+	UILayout_Horizontal,
+	UILayout_ItemBrowser,
 };
 
 struct UILayoutGroup
@@ -174,14 +200,14 @@ struct UISortKey
 
 enum UIDrawListFlags
 {
-	UIDrawListFlags_None = 0 << 0,
-	UIDrawListFlags_Topmost = 1 << 0,
+	UIDrawListFlag_None = 0,
+	UIDrawListFlag_Topmost = 1 << 0,
 };
 
 struct UIDrawList
 {
 	rect scissorRect;
-	UIVertexRange vertexRanges[32];
+	UIVertexRange vertexRanges[UI_MAX_DRAW_LIST_VERTEX_RANGES];
 	u32 vertexRangeCount;
 	ImageH imageHandle;
 	UISortKey sortKey;
@@ -189,14 +215,14 @@ struct UIDrawList
 
 struct UICombo
 {
-	u32 id;
+	UIID id;
 	float2 pos;
 	float2 size;
 };
 
 struct UIColorPicker
 {
-	u32 id;
+	UIID id;
 };
 
 struct UIIcon
@@ -226,7 +252,7 @@ struct UIElementColor
 
 struct UIElementColorStack
 {
-	UIElementColor stack[8];
+	UIElementColor stack[UI_MAX_ELEMENT_COLOR_STACK];
 	uint stackSize;
 };
 
@@ -247,8 +273,29 @@ enum UIElement
 
 struct UIInfo
 {
-	i32 id;
+	UIID id;
 	bool isOpen;
+};
+
+enum UINextWindowBits
+{
+	UINextWindow_None = 0,
+	UINextWindow_Size = 1 << 0,
+	UINextWindow_AnchorAndPivot = 1 << 1,
+	UINextWindow_Displacement = 1 << 2,
+	UINextWindow_Modal = 1 << 3,
+};
+
+// One-shot overrides applied to the next UI_BeginWindow and cleared by it.
+// Adding a new override means adding a bit plus a field, not another bool pair.
+struct UINextWindow
+{
+	u32 setMask;
+	float2 size;
+	float2 anchor;
+	float2 pivot;
+	float2 displacement;
+	u32 modalFlags;
 };
 
 constexpr const char *UIElementName[] =
@@ -280,10 +327,10 @@ struct UI
 	u32 vertexCountLimit;
 	bool vertexOverflow;
 
-	UIDrawList drawLists[128];
+	UIDrawList drawLists[UI_MAX_DRAW_LISTS];
 	u32 drawListCount;
 
-	u32 drawListStack[128];
+	u32 drawListStack[UI_MAX_DRAW_LISTS];
 	u32 drawListStackSize;
 
 	ImageH fontAtlasH;
@@ -292,35 +339,35 @@ struct UI
 
 	float2 whitePixelUv;
 
-	stbtt_packedchar charData[255];
+	stbtt_packedchar charData[UI_FONT_CHAR_COUNT];
 
-	float4 colors[16];
+	float4 colors[UI_MAX_COLOR_STACK];
 	u32 colorCount;
 
 	UIElementColorStack colorElems[UIElementCount];
 
-	float2 cursorStack[16];
+	float2 cursorStack[UI_MAX_CURSOR_STACK];
 	u32 cursorStackSize;
 
-	f32 indentStack[16];
+	f32 indentStack[UI_MAX_INDENT_STACK];
 	u32 indentStackSize;
 
-	float2 paddingStack[16];
+	float2 paddingStack[UI_MAX_PADDING_STACK];
 	u32 paddingStackSize;
 
 	UIInput input;
 	uint2 viewportSize;
 
-	UIWindow windows[16];
+	UIWindow windows[UI_MAX_WINDOWS];
 	u32 windowCount;
 
-	u32 windowStack[16];
+	u32 windowStack[UI_MAX_WINDOW_STACK];
 	u32 windowStackSize;
 
-	UIWindow *modalWindowStack[16];
+	UIWindow *modalWindowStack[UI_MAX_MODAL_WINDOW_STACK];
 	u32 modalWindowStackSize;
 
-	i32 idStack[16];
+	UIID idStack[UI_MAX_ID_STACK];
 	u32 idStackSize;
 
 	UIWindow *activeWindow;
@@ -329,26 +376,17 @@ struct UI
 	float2 defaultWindowDisplacement;
 	float2 defaultWindowSize;
 
-	bool nextWindowModal;
-	u32 nextWindowModalFlags;
+	UINextWindow nextWindow;
 
-	bool nextWindowForceSize;
-	bool nextWindowForceAnchorAndPivot;
-	bool nextWindowForceDisplacement;
-	float2 nextWindowSize;
-	float2 nextWindowAnchor;
-	float2 nextWindowPivot;
-	float2 nextWindowDisplacement;
-
-	UIWidget widgetStack[16];
+	UIWidget widgetStack[UI_MAX_WIDGET_STACK];
 	u32 widgetStackSize;
 
-	u32 activeWidgetId;
+	UIID activeWidgetId;
 
 	float2 lastWidgetPos;
 	float2 lastWidgetSize;
 
-	UILayoutGroup layoutGroups[16];
+	UILayoutGroup layoutGroups[UI_MAX_LAYOUT_GROUPS];
 	u32 layoutGroupCount;
 
 	UICombo comboBox;
@@ -369,7 +407,7 @@ struct UI
 
 	UIDragAndDrop dragAndDrop;
 
-	UIInfo info[1024];
+	UIInfo info[UI_MAX_WIDGET_INFOS];
 	u32 infoCount;
 };
 
@@ -386,8 +424,8 @@ static void UI_SetNextWindowDefaultSize(UI &ui, uint2 size)
 
 static void UI_SetNextWindowSize(UI &ui, uint2 size)
 {
-	ui.nextWindowSize = {(f32)size.x, (f32)size.y};
-	ui.nextWindowForceSize = true;
+	ui.nextWindow.size = {(f32)size.x, (f32)size.y};
+	ui.nextWindow.setMask |= UINextWindow_Size;
 }
 
 static void UI_SetNextWindowDefaultDisplacement(UI &ui, float2 disp)
@@ -397,15 +435,15 @@ static void UI_SetNextWindowDefaultDisplacement(UI &ui, float2 disp)
 
 static void UI_SetNextWindowDisplacement(UI &ui, float2 displacement)
 {
-	ui.nextWindowDisplacement = displacement;
-	ui.nextWindowForceDisplacement = true;
+	ui.nextWindow.displacement = displacement;
+	ui.nextWindow.setMask |= UINextWindow_Displacement;
 }
 
 static void UI_SetNextWindowAnchorAndPivot(UI &ui, float2 anchor, float2 pivot)
 {
-	ui.nextWindowAnchor = anchor;
-	ui.nextWindowPivot = pivot;
-	ui.nextWindowForceAnchorAndPivot = true;
+	ui.nextWindow.anchor = anchor;
+	ui.nextWindow.pivot = pivot;
+	ui.nextWindow.setMask |= UINextWindow_AnchorAndPivot;
 }
 
 static void UI_SetNextWindowAnchor(UI &ui, float2 anchor)
@@ -445,18 +483,6 @@ static void UI_PositionWindow(UIWindow &window, float2 position)
 	window.anchor = {0, 0};
 	window.pivot = {0, 0};
 	window.displacement = position;
-}
-
-static float2 dX(float2 v)
-{
-	const float2 res = { v.x, 0 };
-	return res;
-}
-
-static float2 dY(float2 v)
-{
-	const float2 res = { 0, v.y };
-	return res;
 }
 
 bool UI_IsMouseClickWithAnyButton(const UI &ui)
@@ -620,15 +646,15 @@ void UI_CursorAdvance(UI &ui, float2 prevWidgetSize, float spacing = UiSpacing)
 	const UILayout layout = UI_GetLayout(ui);
 	const UILayoutGroup group = UI_GetLayoutGroup(ui);
 
-	if ( layout == UiLayoutHorizontal )
+	if ( layout == UILayout_Horizontal )
 	{
 		UI_MoveCursorRight(ui, prevWidgetSize.x + spacing);
 	}
-	else if ( layout == UiLayoutVertical )
+	else if ( layout == UILayout_Vertical )
 	{
 		UI_MoveCursorDown(ui, prevWidgetSize.y + spacing);
 	}
-	else if ( layout == UiLayoutItemBrowser )
+	else if ( layout == UILayout_ItemBrowser )
 	{
 		const UIDrawList &drawlist = UI_GetDrawList(ui);
 		const f32 prevWidgetX = UI_GetCursorPos(ui).x;
@@ -715,7 +741,7 @@ const UIDrawList &UI_GetDrawList(const UI &ui)
 	return ui.drawLists[drawListIndex];
 }
 
-void UI_PushDrawList(UI &ui, rect scissorRect, ImageH imageHandle, UIDrawListFlags flags = UIDrawListFlags_None)
+void UI_PushDrawList(UI &ui, rect scissorRect, ImageH imageHandle, UIDrawListFlags flags = UIDrawListFlag_None)
 {
 	ASSERT(ui.drawListCount < ARRAY_COUNT(ui.drawLists));
 
@@ -728,7 +754,7 @@ void UI_PushDrawList(UI &ui, rect scissorRect, ImageH imageHandle, UIDrawListFla
 	drawList.scissorRect = scissorRect;
 	drawList.imageHandle = imageHandle;
 
-	drawList.sortKey.order = ( flags & UIDrawListFlags_Topmost ) ? U32_MAX : drawListIndex;
+	drawList.sortKey.order = ( flags & UIDrawListFlag_Topmost ) ? U32_MAX : drawListIndex;
 	if (ui.drawListStackSize > 0)
 	{
 		const u32 parentDrawListIndex = ui.drawListStack[ui.drawListStackSize-1];
@@ -783,7 +809,10 @@ void UI_PopDrawList(UI &ui)
 
 }
 
-void UI_UploadVerticesToGPU(UI &ui)
+// Merges each draw list's scattered vertex ranges into one contiguous run in the
+// mapped GPU buffer, leaving every draw list with a single range. Call once all
+// draw lists for the frame are closed.
+void UI_FinalizeDrawData(UI &ui)
 {
 	const UIVertex *srcVertexBase = ui.frontendVertices;
 	UIVertex *dstVertexBase = ui.backendVertices[ui.frameIndex];
@@ -1225,7 +1254,7 @@ void UI_AddText(UI &ui, float2 pos, const char *text)
 	}
 }
 
-UIWindow &UI_FindWindow(UI &ui, u32 windowId)
+UIWindow &UI_FindWindow(UI &ui, UIID windowId)
 {
 	for (u32 i = 0; i < ui.windowCount; ++i)
 	{
@@ -1241,7 +1270,7 @@ UIWindow &UI_FindWindow(UI &ui, u32 windowId)
 	return window;
 }
 
-UIWindow &UI_FindOrCreateWindow(UI &ui, u32 windowId, const char *caption)
+UIWindow &UI_FindOrCreateWindow(UI &ui, UIID windowId, const char *caption)
 {
 	for (u32 i = 0; i < ui.windowCount; ++i)
 	{
@@ -1273,7 +1302,7 @@ UIWindow &UI_FindOrCreateWindow(UI &ui, u32 windowId, const char *caption)
 	return window;
 }
 
-UIInfo &UI_FindOrCreateInfo(UI &ui, i32 infoId)
+UIInfo &UI_FindOrCreateInfo(UI &ui, UIID infoId)
 {
 	for (u32 i = 0; i < ui.infoCount; ++i)
 	{
@@ -1290,14 +1319,14 @@ UIInfo &UI_FindOrCreateInfo(UI &ui, i32 infoId)
 	return info;
 }
 
-void UI_SetNextWindowModal(UI &ui, UIModalFlags flags = UIModalFlags_Default)
+void UI_SetNextWindowModal(UI &ui, UIModalFlags flags = UIModalFlag_Default)
 {
 	ASSERT(ui.modalWindowStackSize < ARRAY_COUNT(ui.modalWindowStack));
-	ui.nextWindowModal = true;
-	ui.nextWindowModalFlags = flags;
+	ui.nextWindow.modalFlags = flags;
+	ui.nextWindow.setMask |= UINextWindow_Modal;
 }
 
-void UI_BeginWindow(UI &ui, u32 windowId, u32 flags, bool *isOpen = nullptr)
+void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 {
 	ASSERT(ui.windowStackSize < ARRAY_COUNT(ui.windowStack));
 
@@ -1306,53 +1335,47 @@ void UI_BeginWindow(UI &ui, u32 windowId, u32 flags, bool *isOpen = nullptr)
 	window.visible = true;
 	window.flags = flags;
 
-	bool needsRepositioning = false;
+	const UINextWindow next = ui.nextWindow;
+	ui.nextWindow = {};
 
-	if (ui.nextWindowForceSize)
+	if (next.setMask & UINextWindow_Size)
 	{
-		window.size = ui.nextWindowSize;
-		ui.nextWindowForceSize = false;
-		needsRepositioning = true;
+		window.size = next.size;
 	}
 
-	if (ui.nextWindowForceAnchorAndPivot)
+	if (next.setMask & UINextWindow_AnchorAndPivot)
 	{
-		window.anchor = ui.nextWindowAnchor;
-		window.pivot = ui.nextWindowPivot;
-		ui.nextWindowForceAnchorAndPivot = false;
-		needsRepositioning = true;
+		window.anchor = next.anchor;
+		window.pivot = next.pivot;
 	}
 
-	if (ui.nextWindowForceDisplacement)
+	if (next.setMask & UINextWindow_Displacement)
 	{
-		window.displacement = ui.nextWindowDisplacement;
-		ui.nextWindowForceDisplacement = false;
-		needsRepositioning = true;
+		window.displacement = next.displacement;
 	}
 
-	if (needsRepositioning)
+	constexpr u32 repositioningBits = UINextWindow_Size | UINextWindow_AnchorAndPivot | UINextWindow_Displacement;
+	if (next.setMask & repositioningBits)
 	{
 		UI_PositionWindow(window, ui.viewportSize, window.size, window.anchor, window.displacement);
 	}
 
-	if (ui.nextWindowModal)
+	if (next.setMask & UINextWindow_Modal)
 	{
-		window.modalFlags = ui.nextWindowModalFlags;
+		window.modalFlags = next.modalFlags;
 		ASSERT(ui.modalWindowStackSize < ARRAY_COUNT(ui.modalWindowStack));
 		ui.modalWindowStack[ui.modalWindowStackSize++] = &window;
-		ui.nextWindowModal = false;
-		ui.nextWindowModalFlags = 0;
 	}
 
 	UI_PushCursorPos(ui, window.pos);
 
-	UI_PushDrawList(ui, rect{0, 0, ui.viewportSize.x, ui.viewportSize.y}, ui.fontAtlasH, UIDrawListFlags_None);
+	UI_PushDrawList(ui, rect{0, 0, ui.viewportSize.x, ui.viewportSize.y}, ui.fontAtlasH, UIDrawListFlag_None);
 
 	UIDrawList &drawList = UI_GetDrawList(ui);
 	drawList.sortKey.layer = window.layer;
 	drawList.sortKey.order = 0;
 
-	UI_BeginLayout(ui, UiLayoutVertical);
+	UI_BeginLayout(ui, UILayout_Vertical);
 	float2 panelPos = window.pos;
 	float2 panelSize = window.size;
 
@@ -1530,13 +1553,13 @@ void UI_BeginWindow(UI &ui, u32 windowId, u32 flags, bool *isOpen = nullptr)
 	window.containerSize = panelSize;
 
 	UI_SetCursorPos(ui, cursorPos);
-	UI_BeginLayout(ui, UiLayoutVertical);
+	UI_BeginLayout(ui, UILayout_Vertical);
 }
 
-void UI_PushID(UI &ui, i32 id)
+void UI_PushID(UI &ui, UIID id)
 {
 	ASSERT(ui.idStackSize < ARRAY_COUNT(ui.idStack));
-	const i32 parentId = ui.idStackSize > 0 ? ui.idStack[ui.idStackSize-1] : 1;
+	const UIID parentId = ui.idStackSize > 0 ? ui.idStack[ui.idStackSize-1] : 1;
 	ui.idStack[ui.idStackSize++] = parentId * id;
 }
 
@@ -1546,7 +1569,7 @@ void UI_PopID(UI &ui)
 	ui.idStackSize--;
 }
 
-i32 UI_MakeID(const UI &ui, const char *text, u32 parentId = 1)
+UIID UI_MakeID(const UI &ui, const char *text, UIID parentId = 1)
 {
 	if ( ui.windowStackSize > 0 )
 	{
@@ -1559,22 +1582,22 @@ i32 UI_MakeID(const UI &ui, const char *text, u32 parentId = 1)
 		parentId *= ui.idStack[ui.idStackSize-1];
 	}
 
-	const u32 id = HashStringFNV(text, parentId);
+	const UIID id = HashStringFNV(text, parentId);
 	ASSERT(id != 0);
 	return id;
 }
 
-i32 UI_MakeID(const UI &ui, const char *text, const void *parentPtr)
+UIID UI_MakeID(const UI &ui, const char *text, const void *parentPtr)
 {
-	const i32 res = UI_MakeID(ui, text, (u32)(uintptr_t)(parentPtr));
+	const UIID res = UI_MakeID(ui, text, (UIID)(uintptr_t)(parentPtr));
 	return res;
 }
 
-constexpr u32 UIWindowFlags_Default = UIWindowFlag_Draggable | UIWindowFlag_Resizable | UIWindowFlag_Titlebar | UIWindowFlag_CloseButton | UIWindowFlag_Border | UIWindowFlag_Background | UIWindowFlag_ClipContents;
+constexpr u32 UIWindowFlag_Default = UIWindowFlag_Draggable | UIWindowFlag_Resizable | UIWindowFlag_Titlebar | UIWindowFlag_CloseButton | UIWindowFlag_Border | UIWindowFlag_Background | UIWindowFlag_ClipContents;
 
-void UI_BeginWindow(UI &ui, const char *caption, bool *isOpen, u32 flags = UIWindowFlags_Default)
+void UI_BeginWindow(UI &ui, const char *caption, bool *isOpen, u32 flags = UIWindowFlag_Default)
 {
-	const u32 windowId = UI_MakeID(ui, caption);
+	const UIID windowId = UI_MakeID(ui, caption);
 	UIWindow &window = UI_FindOrCreateWindow(ui, windowId, caption);
 
 	UI_BeginWindow(ui, windowId, flags, isOpen);
@@ -1900,7 +1923,7 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 	const float2 text2Pos = butPos + float2{butSize.x + UiSpacing, padding.y};
 	UI_AddText(ui, text2Pos, text);
 
-	const u32 comboId = UI_MakeID(ui, text);
+	const UIID comboId = UI_MakeID(ui, text);
 	if ( clickedInside )
 	{
 		ui.comboBox.id = ui.comboBox.id == comboId ? 0 : comboId;
@@ -1959,7 +1982,7 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 
 bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen)
 {
-	i32 id = UI_MakeID(ui, text, ptr);
+	const UIID id = UI_MakeID(ui, text, ptr);
 	UIInfo &info = UI_FindOrCreateInfo(ui, id);
 
 	const float2 boxPos = UI_GetCursorPos(ui);
@@ -2027,7 +2050,7 @@ void UI_Separator(UI &ui)
 	const f32 hspacing = (f32)Floor(0.5f * spacing);
 
 	const float2 pos = UI_GetCursorPos(ui) + float2{0.0f, hspacing};
-	const float2 size = layout == UiLayoutVertical ?
+	const float2 size = layout == UILayout_Vertical ?
 		float2{ containerWidth, 1.0 } : float2{ 1.0, containerHeight };
 
 	UI_PushColor(ui, UiColorBorder);
@@ -2147,38 +2170,38 @@ void UI_Text(UI &ui, const char *label, const char *format, ...)
 	UI_CursorAdvance(ui, widgetSize);
 }
 
-void UI_SetActiveWidget(UI &ui, u32 widgetId)
+void UI_SetActiveWidget(UI &ui, UIID widgetId)
 {
 	ui.activeWidgetId = widgetId;
 }
 
-u32 UI_IsActiveWidget(UI &ui, u32 widgetId)
+bool UI_IsActiveWidget(UI &ui, UIID widgetId)
 {
 	const bool isActive = widgetId == ui.activeWidgetId;
 	return isActive;
 }
 
-enum UpdateTextAction
+enum UITextEditAction
 {
-	UpdateTextNone,
-	UpdateTextUpdating,
-	UpdateTextDone,
-	UpdateTextCancel,
-};
-#define TEXT_BOX_BUFER_LEN 128
-enum UpdateTextFilter
-{
-	UpdateTextFilterNone,
-	UpdateTextFilterInt,
-	UpdateTextFilterFloat,
+	UITextEdit_None,
+	UITextEdit_Updating,
+	UITextEdit_Done,
+	UITextEdit_Cancel,
 };
 
-UpdateTextAction UpdateText(UI &ui, char activeBuffer[TEXT_BOX_BUFER_LEN], i32 &cursorIndex, UpdateTextFilter filter = UpdateTextFilterNone)
+enum UITextEditFilter
 {
-	UpdateTextAction action = UpdateTextUpdating;
+	UITextEditFilter_None,
+	UITextEditFilter_Int,
+	UITextEditFilter_Float,
+};
+
+UITextEditAction UI_UpdateText(UI &ui, char activeBuffer[UI_TEXT_BUFFER_SIZE], i32 &cursorIndex, UITextEditFilter filter = UITextEditFilter_None)
+{
+	UITextEditAction action = UITextEdit_Updating;
 
 	const int len = StrLen(activeBuffer);
-	char tmp[TEXT_BOX_BUFER_LEN];
+	char tmp[UI_TEXT_BUFFER_SIZE];
 
 	if ( ui.input.chars.charCount > 0 )
 	{
@@ -2186,11 +2209,11 @@ UpdateTextAction UpdateText(UI &ui, char activeBuffer[TEXT_BOX_BUFER_LEN], i32 &
 		for (u32 i = 0; i < ui.input.chars.charCount; ++i)
 		{
 			const char c = ui.input.chars.chars[i];
-			if ( filter == UpdateTextFilterInt || filter == UpdateTextFilterFloat )
+			if ( filter == UITextEditFilter_Int || filter == UITextEditFilter_Float )
 			{
 				const bool isDigit = c >= '0' && c <= '9';
 				const bool isMinusSign = c == '-' && cursorIndex == 0;
-				const bool isDot = filter == UpdateTextFilterFloat && c == '.' && StrChar(activeBuffer, '.') == nullptr;
+				const bool isDot = filter == UITextEditFilter_Float && c == '.' && StrChar(activeBuffer, '.') == nullptr;
 				if ( !isDigit && !isMinusSign && !isDot )
 					continue;
 			}
@@ -2224,15 +2247,15 @@ UpdateTextAction UpdateText(UI &ui, char activeBuffer[TEXT_BOX_BUFER_LEN], i32 &
 	}
 	else if ( ui.input.keyboard.keys[K_RETURN] == KEY_STATE_PRESS )
 	{
-		action = UpdateTextDone;
+		action = UITextEdit_Done;
 	}
 	else if ( ui.input.keyboard.keys[K_ESCAPE] == KEY_STATE_PRESS )
 	{
-		action = UpdateTextCancel;
+		action = UITextEdit_Cancel;
 	}
 	else
 	{
-		action = UpdateTextNone;
+		action = UITextEdit_None;
 	}
 
 	return action;
@@ -2265,7 +2288,7 @@ i32 UI_TextCursorIndexAtPos(const UI &ui, const char *text, f32 relativeX)
 
 bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 {
-	char bufferBeforeEdit[128];
+	char bufferBeforeEdit[UI_TEXT_BUFFER_SIZE];
 	StrCopy(bufferBeforeEdit, buffer);
 
 	const float2 padding = UI_GetPadding(ui);
@@ -2289,10 +2312,10 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 
 	const float2 textPos = boxPos + padding;
 
-	const u32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 
-	static char activeBuffer[128] = {};
-	static char originalBuffer[128] = {};
+	static char activeBuffer[UI_TEXT_BUFFER_SIZE] = {};
+	static char originalBuffer[UI_TEXT_BUFFER_SIZE] = {};
 	static Clock activeBeginClock;
 	static i32 cursorIndex;
 
@@ -2310,9 +2333,9 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 
 	if (active)
 	{
-		const UpdateTextAction action = UpdateText(ui, activeBuffer, cursorIndex);
+		const UITextEditAction action = UI_UpdateText(ui, activeBuffer, cursorIndex);
 
-		if ( action == UpdateTextCancel )
+		if ( action == UITextEdit_Cancel )
 		{
 			StrCopy(buffer, originalBuffer);
 			UI_SetActiveWidget(ui, 0);
@@ -2320,11 +2343,11 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 		else
 		{
 			StrCopy(buffer, activeBuffer);
-			if ( action == UpdateTextDone )
+			if ( action == UITextEdit_Done )
 			{
 				UI_SetActiveWidget(ui, 0);
 			}
-			else if ( action == UpdateTextUpdating )
+			else if ( action == UITextEdit_Updating )
 			{
 				activeBeginClock = GetClock();
 			}
@@ -2377,14 +2400,14 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing
 	const float2 boxPos = widgetPos;
 	const float2 boxSize = widgetSize;
 
-	const u32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 
-	static char activeBuffer[TEXT_BOX_BUFER_LEN] = {};
+	static char activeBuffer[UI_TEXT_BUFFER_SIZE] = {};
 	static Clock activeBeginClock;
 	static i32 cursorIndex;
 	static i64 originalNumber;
 	static bool dragging;
-	static u32 draggingId;
+	static UIID draggingId;
 	static i64 numberBeforeDrag;
 
 	UI_BeginWidget(ui, boxPos, boxSize);
@@ -2442,9 +2465,9 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing
 
 	if (active)
 	{
-		const UpdateTextAction action = UpdateText(ui, activeBuffer, cursorIndex, UpdateTextFilterInt);
+		const UITextEditAction action = UI_UpdateText(ui, activeBuffer, cursorIndex, UITextEditFilter_Int);
 
-		if ( action == UpdateTextCancel )
+		if ( action == UITextEdit_Cancel )
 		{
 			*number = originalNumber;
 			UI_SetActiveWidget(ui, 0);
@@ -2455,11 +2478,11 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing
 			{
 				*number = StrToI64(activeBuffer);
 			}
-			if ( action == UpdateTextDone )
+			if ( action == UITextEdit_Done )
 			{
 				UI_SetActiveWidget(ui, 0);
 			}
-			else if ( action == UpdateTextUpdating )
+			else if ( action == UITextEdit_Updating )
 			{
 				activeBeginClock = GetClock();
 			}
@@ -2490,7 +2513,7 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing
 	}
 	else
 	{
-		char numberText[TEXT_BOX_BUFER_LEN];
+		char numberText[UI_TEXT_BUFFER_SIZE];
 		SPrintf(numberText, "%lld", *number);
 		const float2 textPos = UI_AdjustTextHorizontally(ui, boxPos + float2{0.0f, padding.y}, boxSize.x, numberText);
 		UI_AddText(ui, textPos, numberText);
@@ -2537,14 +2560,14 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 	const float2 boxPos = widgetPos;
 	const float2 boxSize = widgetSize;
 
-	const u32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 
-	static char activeBuffer[TEXT_BOX_BUFER_LEN] = {};
+	static char activeBuffer[UI_TEXT_BUFFER_SIZE] = {};
 	static Clock activeBeginClock;
 	static i32 cursorIndex;
 	static f32 originalNumber;
 	static bool dragging;
-	static u32 draggingId;
+	static UIID draggingId;
 	static f32 numberBeforeDrag;
 
 	UI_BeginWidget(ui, boxPos, boxSize);
@@ -2602,9 +2625,9 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 
 	if (active)
 	{
-		const UpdateTextAction action = UpdateText(ui, activeBuffer, cursorIndex, UpdateTextFilterFloat);
+		const UITextEditAction action = UI_UpdateText(ui, activeBuffer, cursorIndex, UITextEditFilter_Float);
 
-		if ( action == UpdateTextCancel )
+		if ( action == UITextEdit_Cancel )
 		{
 			*number = originalNumber;
 			UI_SetActiveWidget(ui, 0);
@@ -2615,11 +2638,11 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 			{
 				*number = StrToFloat(activeBuffer);
 			}
-			if ( action == UpdateTextDone )
+			if ( action == UITextEdit_Done )
 			{
 				UI_SetActiveWidget(ui, 0);
 			}
-			else if ( action == UpdateTextUpdating )
+			else if ( action == UITextEdit_Updating )
 			{
 				activeBeginClock = GetClock();
 			}
@@ -2650,7 +2673,7 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 	}
 	else
 	{
-		char numberText[TEXT_BOX_BUFER_LEN];
+		char numberText[UI_TEXT_BUFFER_SIZE];
 		SPrintf(numberText, "%f", *number);
 		const float2 textPos = UI_AdjustTextHorizontally(ui, boxPos + float2{0.0f, padding.y}, boxSize.x, numberText);
 		UI_AddText(ui, textPos, numberText);
@@ -2670,11 +2693,11 @@ bool UI_InputInt2(UI &ui, const char *label, int2 *value)
 	const float2 padding = UI_GetPadding(ui);
 	UI_PushPadding(ui, float2{padding.x, 2.0f});
 
-	const i32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 	UI_PushID(ui, id);
 
 	bool modified = false;
-	char subLabel[128];
+	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
 	modified |= UI_InputInt(ui, subLabel, &value->x, UiSpacingTight);
 	SPrintf(subLabel, "Y");
@@ -2692,11 +2715,11 @@ bool UI_InputUInt2(UI &ui, const char *label, uint2 *value)
 	const float2 padding = UI_GetPadding(ui);
 	UI_PushPadding(ui, float2{padding.x, 2.0f});
 
-	const i32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 	UI_PushID(ui, id);
 
 	bool modified = false;
-	char subLabel[128];
+	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
 	modified |= UI_InputUInt(ui, subLabel, &value->x, UiSpacingTight);
 	SPrintf(subLabel, "Y");
@@ -2714,11 +2737,11 @@ bool UI_InputInt3(UI &ui, const char *label, int3 *value)
 	const float2 padding = UI_GetPadding(ui);
 	UI_PushPadding(ui, float2{padding.x, 2.0f});
 
-	const i32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 	UI_PushID(ui, id);
 
 	bool modified = false;
-	char subLabel[128];
+	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
 	modified |= UI_InputInt(ui, subLabel, &value->x, UiSpacingTight);
 	SPrintf(subLabel, "Y");
@@ -2738,11 +2761,11 @@ bool UI_InputInt4(UI &ui, const char *label, int4 *value)
 	const float2 padding = UI_GetPadding(ui);
 	UI_PushPadding(ui, float2{padding.x, 2.0f});
 
-	const i32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 	UI_PushID(ui, id);
 
 	bool modified = false;
-	char subLabel[128];
+	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
 	modified |= UI_InputInt(ui, subLabel, &value->x, UiSpacingTight);
 	SPrintf(subLabel, "Y");
@@ -2764,11 +2787,11 @@ bool UI_InputFloat2(UI &ui, const char *label, float2 *value)
 	const float2 padding = UI_GetPadding(ui);
 	UI_PushPadding(ui, float2{padding.x, 1.0f});
 
-	const i32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 	UI_PushID(ui, id);
 
 	bool modified = false;
-	char subLabel[128];
+	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
 	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, UiSpacingTight);
 	SPrintf(subLabel, "Y");
@@ -2786,11 +2809,11 @@ bool UI_InputFloat3(UI &ui, const char *label, float3 *value)
 	const float2 padding = UI_GetPadding(ui);
 	UI_PushPadding(ui, float2{padding.x, 1.0f});
 
-	const i32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 	UI_PushID(ui, id);
 
 	bool modified = false;
-	char subLabel[128];
+	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
 	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, UiSpacingTight);
 	SPrintf(subLabel, "Y");
@@ -2810,11 +2833,11 @@ bool UI_InputFloat4(UI &ui, const char *label, float4 *value)
 	const float2 padding = UI_GetPadding(ui);
 	UI_PushPadding(ui, float2{padding.x, 1.0f});
 
-	const i32 id = UI_MakeID(ui, label);
+	const UIID id = UI_MakeID(ui, label);
 	UI_PushID(ui, id);
 
 	bool modified = false;
-	char subLabel[128];
+	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
 	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, UiSpacingTight);
 	SPrintf(subLabel, "Y");
@@ -2835,12 +2858,7 @@ bool UI_InputFloat4(UI &ui, const char *label, float4 *value)
 ////////////////////////////////////////////////////////////////////////
 // Color picker
 
-static f32 AbsF(f32 value)
-{
-	return value < 0.0f ? -value : value;
-}
-
-static float3 RgbToHsv(float3 rgb)
+static float3 UI_RgbToHsv(float3 rgb)
 {
 	const f32 maxc = Max(Max(rgb.r, rgb.g), rgb.b);
 	const f32 minc = Min(Min(rgb.r, rgb.g), rgb.b);
@@ -2864,7 +2882,7 @@ static float3 RgbToHsv(float3 rgb)
 	return float3{ h, s, v };
 }
 
-static float3 HsvToRgb(float3 hsv)
+static float3 UI_HsvToRgb(float3 hsv)
 {
 	const f32 h = Clamp(hsv.x, 0.0f, 1.0f) * 6.0f;
 	const f32 s = Clamp(hsv.y, 0.0f, 1.0f);
@@ -2956,25 +2974,25 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 	if (colorChangedThisFrame)
 	{
 		activeColorPtr = color;
-		activeHsv = RgbToHsv(float3{color->r, color->g, color->b});
+		activeHsv = UI_RgbToHsv(float3{color->r, color->g, color->b});
 	}
 	else
 	{
 		// If RGB changed by some other means than this widget's own HSV controls
 		// (e.g. the numeric fields below, or code elsewhere), resync from RGB.
-		const float3 expectedRgb = HsvToRgb(activeHsv);
+		const float3 expectedRgb = UI_HsvToRgb(activeHsv);
 		constexpr f32 epsilon = 1.0f / 512.0f;
 		const bool changedExternally =
-			AbsF(expectedRgb.r - color->r) > epsilon ||
-			AbsF(expectedRgb.g - color->g) > epsilon ||
-			AbsF(expectedRgb.b - color->b) > epsilon;
+			Abs(expectedRgb.r - color->r) > epsilon ||
+			Abs(expectedRgb.g - color->g) > epsilon ||
+			Abs(expectedRgb.b - color->b) > epsilon;
 		if (changedExternally)
 		{
-			activeHsv = RgbToHsv(float3{color->r, color->g, color->b});
+			activeHsv = UI_RgbToHsv(float3{color->r, color->g, color->b});
 		}
 	}
 
-	const u32 colorPickerId = UI_MakeID(ui, "$colorpicker");
+	const UIID colorPickerId = UI_MakeID(ui, "$colorpicker");
 	const UIWindow &window = UI_FindOrCreateWindow(ui, colorPickerId, "Color picker");
 
 	if ( isOpen != nullptr )
@@ -2996,7 +3014,7 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 		}
 	}
 
-	UI_SetNextWindowModal(ui, UIModalFlags_NoBackground);
+	UI_SetNextWindowModal(ui, UIModalFlag_NoBackground);
 	UI_SetNextWindowAnchor(ui, {0.5f, 0.5f});
 	UI_SetNextWindowSize(ui, {234, 317});
 	UI_BeginWindow(ui, colorPickerId, UIWindowFlag_Border | UIWindowFlag_Background | UIWindowFlag_Draggable | UIWindowFlag_Titlebar | UIWindowFlag_CloseButton | UIWindowFlag_ClipContents, isOpen);
@@ -3004,14 +3022,14 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 	UI_MoveCursorRight(ui, padding.x);
 	UI_MoveCursorDown(ui, padding.y);
 
-	UI_BeginLayout(ui, UiLayoutHorizontal);
+	UI_BeginLayout(ui, UILayout_Horizontal);
 
 	// Saturation/Value box (for the current hue)
 	{
 		const float2 svPos = UI_GetCursorPos(ui);
 		UI_BeginWidget(ui, svPos, svSize);
 
-		const float3 hueRgb = HsvToRgb(float3{activeHsv.x, 1.0f, 1.0f});
+		const float3 hueRgb = UI_HsvToRgb(float3{activeHsv.x, 1.0f, 1.0f});
 		const float4 white = {1.0f, 1.0f, 1.0f, 1.0f};
 		const float4 hueColor = {hueRgb.r, hueRgb.g, hueRgb.b, 1.0f};
 		const float4 transparentBlack = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -3051,8 +3069,8 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 		{
 			const f32 t0 = (f32)i / hueStops;
 			const f32 t1 = (f32)(i + 1) / hueStops;
-			const float3 c0 = HsvToRgb(float3{t0, 1.0f, 1.0f});
-			const float3 c1 = HsvToRgb(float3{t1, 1.0f, 1.0f});
+			const float3 c0 = UI_HsvToRgb(float3{t0, 1.0f, 1.0f});
+			const float3 c1 = UI_HsvToRgb(float3{t1, 1.0f, 1.0f});
 			const float2 segPos = huePos + float2{0.0f, t0 * hueSize.y};
 			const float2 segSize = {hueSize.x, hueSize.y / hueStops};
 			const float4 col0 = {c0.r, c0.g, c0.b, 1.0f};
@@ -3085,7 +3103,7 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 		const float2 alphaSize = {stripWidth, svSize.y};
 		UI_BeginWidget(ui, alphaPos, alphaSize);
 
-		const float3 rgb = HsvToRgb(activeHsv);
+		const float3 rgb = UI_HsvToRgb(activeHsv);
 		const float4 opaque = {rgb.r, rgb.g, rgb.b, 1.0f};
 		const float4 transparent = {rgb.r, rgb.g, rgb.b, 0.0f};
 		UI_AddGradientQuad(ui, alphaPos, alphaSize, opaque, opaque, transparent, transparent);
@@ -3113,7 +3131,7 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 
 	// HSV is the source of truth for RGB while this panel is open (alpha is edited directly above).
 	{
-		const float3 rgb = HsvToRgb(activeHsv);
+		const float3 rgb = UI_HsvToRgb(activeHsv);
 		color->r = rgb.r;
 		color->g = rgb.g;
 		color->b = rgb.b;
@@ -3163,7 +3181,7 @@ bool UI_BeginMenuBar(UI &ui)
 	ui.menuBarBegan = true;
 
 	const char *idString = "UI_BeginMenuBar";
-	const u32 windowId = UI_MakeID(ui, idString);
+	const UIID windowId = UI_MakeID(ui, idString);
 	UIWindow &window = UI_FindOrCreateWindow(ui, windowId, idString);
 	UI_BeginWindow(ui, windowId, UIWindowFlag_None);
 
@@ -3185,7 +3203,7 @@ bool UI_BeginMenuBar(UI &ui)
 	UI_PopColor(ui);
 
 	UI_SetCursorPos( ui, pos + float2{UiSpacing, 0.0f} );
-	UI_BeginLayout(ui, UiLayoutHorizontal);
+	UI_BeginLayout(ui, UILayout_Horizontal);
 
 	return true;
 }
@@ -3206,7 +3224,7 @@ bool UI_BeginToolBar(UI &ui)
 	ui.toolBarBegan = true;
 
 	const char *idString = "UI_BeginToolBar";
-	const u32 windowId = UI_MakeID(ui, idString);
+	const UIID windowId = UI_MakeID(ui, idString);
 	UIWindow &window = UI_FindOrCreateWindow(ui, windowId, idString);
 	UI_BeginWindow(ui, windowId, UIWindowFlag_None);
 
@@ -3230,7 +3248,7 @@ bool UI_BeginToolBar(UI &ui)
 	UI_PopColor(ui);
 
 	UI_SetCursorPos(ui, pos + float2{UiSpacing, 0.0f});
-	UI_BeginLayout(ui, UiLayoutHorizontal);
+	UI_BeginLayout(ui, UILayout_Horizontal);
 
 	return true;
 }
@@ -3247,7 +3265,7 @@ void UI_EndToolBar(UI &ui)
 
 bool UI_BeginMenu(UI &ui, const char *name, bool *isOpen = nullptr)
 {
-	const u32 windowId = UI_MakeID(ui, name);
+	const UIID windowId = UI_MakeID(ui, name);
 	UIWindow &window = UI_FindOrCreateWindow(ui, windowId, name);
 
 	if ( ui.menuBarBegan )
@@ -3342,7 +3360,7 @@ void UI_EndMenu(UI &ui)
 
 bool UI_BeginContextMenu(UI &ui, const char *name, bool *isOpen = nullptr)
 {
-	const u32 windowId = UI_MakeID(ui, name);
+	const UIID windowId = UI_MakeID(ui, name);
 	UIWindow &window = UI_FindOrCreateWindow(ui, windowId, name);
 
 	if (UI_IsMouseClick(ui, MOUSE_BUTTON_RIGHT) && UI_MouseInArea(ui, ui.lastWidgetPos, ui.lastWidgetSize))
@@ -3418,7 +3436,9 @@ bool UI_MenuItem(UI &ui, const char *name, bool checked = false)
 	return clicked;
 }
 
-bool UI_MessageBox(UI &ui, const char *caption, const char *text, const char **buttons, u32 *result)
+// Returns true on the frame a button is pressed, writing its index into *result.
+// *result is left at -1 while no button has been pressed.
+bool UI_MessageBox(UI &ui, const char *caption, const char *text, const char **buttons, i32 *result)
 {
 	UI_SetNextWindowModal(ui);
 	UI_SetNextWindowAnchor(ui, {0.5, 0.5});
@@ -3426,11 +3446,10 @@ bool UI_MessageBox(UI &ui, const char *caption, const char *text, const char **b
 	UI_SetNextWindowDefaultDisplacement(ui, {0, 0});
 
 	constexpr u32 flags = UIWindowFlag_Draggable | UIWindowFlag_Titlebar | UIWindowFlag_Border | UIWindowFlag_Background | UIWindowFlag_ClipContents;
-	UI_SetNextWindowSize(ui, uint2{350, 120});
 	UI_BeginWindow(ui, caption, nullptr, flags);
 	UI_Label(ui, text);
 
-	UI_BeginLayout(ui, UiLayoutHorizontal);
+	UI_BeginLayout(ui, UILayout_Horizontal);
 
 	*result = -1;
 	i32 res = 0;
@@ -3452,8 +3471,9 @@ bool UI_MessageBox(UI &ui, const char *caption, const char *text, const char **b
 
 void UI_DragAndDropSource(UI &ui, const char *payloadType, void *payload, ImageH imageH)
 {
-	float2 prevWidgetPos = ui.widgetStack[ui.widgetStackSize].pos;
-	float2 prevWidgetSize = ui.widgetStack[ui.widgetStackSize].size;
+	// Applies to the widget that was just ended, which UI_EndWidget recorded here.
+	const float2 prevWidgetPos = ui.lastWidgetPos;
+	const float2 prevWidgetSize = ui.lastWidgetSize;
 	const bool clicked = UI_IsMouseClick(ui) && UI_WidgetHovered(ui, prevWidgetPos, prevWidgetSize);
 	if (clicked)
 	{
@@ -3819,7 +3839,7 @@ void UI_EndFrame(UI &ui)
 	if ( ui.dragAndDrop.payload )
 	{
 		const char *idString = "$draganddrop";
-		const u32 windowId = UI_MakeID(ui, idString);
+		const UIID windowId = UI_MakeID(ui, idString);
 		UIWindow &window = UI_FindOrCreateWindow(ui, windowId, idString);
 		window.size = float2{ 32, 32 };
 		window.pos.x = UI_MousePos(ui).x - 0.5f * window.size.x;
@@ -3842,7 +3862,7 @@ void UI_EndFrame(UI &ui)
 		bool backgroundNeeded = true;
 		for (u32 i = 0; i < ui.modalWindowStackSize; ++i)
 		{
-			if ( ui.modalWindowStack[i]->modalFlags & UIModalFlags_NoBackground )
+			if ( ui.modalWindowStack[i]->modalFlags & UIModalFlag_NoBackground )
 			{
 				backgroundNeeded = false;
 				break;
@@ -3850,7 +3870,7 @@ void UI_EndFrame(UI &ui)
 		}
 
 		const char *idString = "$modalbg";
-		const u32 bgWindowId = UI_MakeID(ui, idString);
+		const UIID bgWindowId = UI_MakeID(ui, idString);
 
 		if  ( backgroundNeeded )
 		{

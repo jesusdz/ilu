@@ -19,6 +19,7 @@ void GameStart(Game &game)
 	game.accel2 = 50;
 
 	game.ent = GetEntity("player");
+	game.ent->position.xy = float2{1, 1};
 	game.sndJump = GetAudioClip("snd_bell_wav");
 	game.modEquinox = GetMusic("mod_equinox_mod");
 	game.playingMusic = false;

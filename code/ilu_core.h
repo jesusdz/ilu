@@ -2081,6 +2081,14 @@ i32 Clamp( i32 v, i32 min, i32 max ) { return Min( Max( v, min ), max ); }
 u32 Clamp( u32 v, u32 min, u32 max ) { return Min( Max( v, min ), max ); }
 f32 Clamp( f32 v, f32 min, f32 max ) { return Min( Max( v, min ), max ); }
 
+i32 Abs(i32 v) { return v < 0 ? -v : v; }
+f32 Abs(f32 v) { return v < 0.0f ? -v : v; }
+
+// Component isolation: dX({w,h}) is the horizontal extent, dY({w,h}) the vertical one.
+// Handy to offset a position along a single axis of a size vector.
+float2 dX(float2 v) { return { v.x, 0.0f }; }
+float2 dY(float2 v) { return { 0.0f, v.y }; }
+
 rgba Rgba(float4 color)
 {
 	const rgba res = {

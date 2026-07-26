@@ -408,7 +408,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "Scene") )
 	{
-		UI_BeginLayout(ui, UiLayoutHorizontal);
+		UI_BeginLayout(ui, UILayout_Horizontal);
 		bool sceneIsOpen;
 		if (UI_TreeNode(ui, "Scene", &scene, &sceneIsOpen))
 		{
@@ -437,7 +437,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			{
 				Room &room = GetRoom(scene, *it);
 
-				UI_BeginLayout(ui, UiLayoutHorizontal);
+				UI_BeginLayout(ui, UILayout_Horizontal);
 				bool roomIsOpen;
 				if (UI_TreeNode(ui, room.name, &room, &roomIsOpen))
 				{
@@ -474,7 +474,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 					for (u32 layerIndex = 0; layerIndex < room.layerCount; ++layerIndex)
 					{
-						UI_BeginLayout(ui, UiLayoutHorizontal);
+						UI_BeginLayout(ui, UILayout_Horizontal);
 
 						Layer &layer = room.layers[layerIndex];
 						bool layerIsOpen;
@@ -544,7 +544,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 	{
 		static TextureH selectedHandle = {};
 		constexpr u32 imagesPerRow = 3;
-		UI_BeginLayout(ui, UiLayoutItemBrowser);
+		UI_BeginLayout(ui, UILayout_ItemBrowser);
 		for (HandleIter it = BeginIter(gfx.textureHandles); it; it++)
 		{
 			Handle handle = *it;
@@ -644,7 +644,7 @@ static void EditorUpdateUI_Assets(Engine &engine)
 
 	UI_BeginWindow(ui, "Assets", &editor.showAssets);
 
-	UI_BeginLayout(ui, UiLayoutItemBrowser);
+	UI_BeginLayout(ui, UILayout_ItemBrowser);
 
 	static char selectedName[MAX_PATH_LENGTH] = {};
 	FilePath path;
@@ -1114,7 +1114,7 @@ static void EditorUpdateUI_Profiler(Engine &engine)
 
 	if ( UI_Section(ui, "Memory") )
 	{
-		UI_BeginLayout(ui, UiLayoutHorizontal);
+		UI_BeginLayout(ui, UILayout_Horizontal);
 		const char *unitsStrArray[] = { "B", "KB", "MB" };
 		const u32 unitsSizeArray[] = { 1, KB(1), MB(1) };
 		static u32 units = 0;
@@ -1281,7 +1281,7 @@ static void EditorUpdateUI_Settings(Engine &engine)
 	{
 		static float4 *colorToEdit = nullptr;
 
-		UI_BeginLayout(ui, UiLayoutHorizontal);
+		UI_BeginLayout(ui, UILayout_Horizontal);
 		UI_Label(ui, "Base    ");
 		UI_Label(ui, "Hover");
 		UI_EndLayout(ui);
@@ -1296,7 +1296,7 @@ static void EditorUpdateUI_Settings(Engine &engine)
 			const float4 hbase = Lerp(base, UiColorWhite, 0.2);
 			const float4 hhover = Lerp(hover, UiColorWhite, 0.2);
 
-			UI_BeginLayout(ui, UiLayoutHorizontal);
+			UI_BeginLayout(ui, UILayout_Horizontal);
 
 			UI_PushElemColor(ui, UIElementButton, {base, hbase});
 			if ( UI_Button(ui, "        ") )
@@ -1442,7 +1442,7 @@ static void EditorUpdateUI(Engine &engine)
 	if ( saveScene )
 	{
 		const char *buttons[] = { "Yes", "No", nullptr };
-		u32 result = 0;
+		i32 result = 0;
 		if ( ExistsFile(saveSceneFilepath.str) )
 		{
 			if ( UI_MessageBox(ui, "Save scene", "File already exists. Overwrite contents?", buttons, &result) )
@@ -1507,7 +1507,7 @@ static void EditorUpdateUI(Engine &engine)
 
 	if ( editor.showQuit )
 	{
-		u32 result = 0;
+		i32 result = 0;
 		const char *buttons[] = { "Yes", "No", nullptr };
 		if ( UI_MessageBox(ui, "Quit", "Do you really want to quit?", buttons, &result) )
 		{
