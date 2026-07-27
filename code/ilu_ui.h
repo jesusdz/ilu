@@ -43,13 +43,18 @@
 	va_end(vaList); \
 	const char *text = ui.tempString;
 
+// Literal ink, not theme slots: glyph shadows, checkmarks, arrows and text
+// cursors are always drawn in plain black or white. Everything themeable lives
+// in UIStyle below and is reached through ui.style.
+constexpr float4 UiColorWhite = { 1.0, 1.0, 1.0, 1.0 };
+constexpr float4 UiColorBlack = { 0.0, 0.0, 0.0, 1.0 };
+
+// Default theme palette. Only UI_StyleDefault() reads these; widgets must not.
 constexpr f32 CR = 0.05;
 constexpr f32 CG = 0.15;
 constexpr f32 CB = 0.3;
 
-constexpr float4 UiColorWhite = { 1.0, 1.0, 1.0, 1.0 };
-constexpr float4 UiColorBlack = { 0.0, 0.0, 0.0, 1.0 };
-constexpr float4 UiColorOrange = { 1.0, 0.6, 0.0, 1.0 };
+constexpr float4 UiColorAccent = { 1.0, 0.6, 0.0, 1.0 };
 constexpr float4 UiColorBorder = { 0.1, 0.1, 0.1, 0.9 };
 constexpr float4 UiColorCaption = { CR, CG, CB, 1.0 };
 constexpr float4 UiColorCaptionInactive = { 0.05, 0.05, 0.05, 1.0 };
@@ -76,13 +81,10 @@ constexpr float4 UiColorScrollbarHover = { 0.2, 0.2, 0.2, 1.0 };
 constexpr float4 UiColorMenu = { 0.02, 0.02, 0.02, 1.0 };
 constexpr float4 UiColorMenuHover = { 2*CR, 2*CG, 2*CB, 1.0 };
 
-// Metrics
-constexpr float2 UiBorderSize = { 1.0, 1.0 };
-constexpr float2 UiWindowPadding = { 4.0f, 8.0f };
-constexpr float UiSpacing = 8.0f;
-constexpr float UiSpacingTight = 2.0f; // Vertical gap between stacked components of a vector control
-constexpr float UiDragClickThreshold = 3.0f; // Max drag distance (px) still considered a click
-constexpr float2 UiDefaultInputPadding = { 4.0f, 3.0f };
+// Sentinel for spacing arguments: "use whatever the current style says". A
+// default argument cannot read ui.style (ui is itself a parameter), so callers
+// that want the styled value fall through this instead.
+constexpr f32 UI_StyleSpacing = -1.0f;
 
 // Identifies a window / widget / stored piece of state. Derived from a label hash
 // combined with the enclosing window and ID stack. Zero means "no ID".
@@ -271,6 +273,36 @@ enum UIElement
 	UIElementCount,
 };
 
+// The theme: every colour and metric a widget is allowed to depend on. Widgets
+// read it through ui.style (or UI_GetElemColor / UI_GetPadding / UI_GetSpacing,
+// which layer the temporary override stacks on top), never from file-scope
+// constants. Adding a themeable value means adding a field here and a default
+// in UI_StyleDefault, not hunting for a literal in a widget body.
+struct UIStyle
+{
+	// Colours
+	UIElementColor colors[UIElementCount];
+	float4 borderColor;
+	float4 accentColor;   // Selection outlines, histogram bars, canvas boxes
+	float4 modalOverlayColor;
+
+	// Metrics
+	float2 borderSize;
+	float2 windowPadding;
+	float2 framePadding;  // Inside one-line controls, between the box and its text
+	float2 minWindowSize;
+	f32 itemSpacing;
+	f32 itemSpacingTight; // Between stacked components of a vector control
+	f32 indentWidth;
+	f32 titlebarHeight;
+	f32 menuBarHeight;
+	f32 scrollbarWidth;
+	f32 scrollSpeed;      // Pixels advanced per mouse wheel notch
+	f32 resizeCornerSize;
+	f32 dragClickThreshold; // Max drag distance (px) still counted as a click
+	f32 labelRatio;       // Fraction of the container a labelled control's box takes
+};
+
 struct UIInfo
 {
 	UIID id;
@@ -341,9 +373,13 @@ struct UI
 
 	stbtt_packedchar charData[UI_FONT_CHAR_COUNT];
 
+	UIStyle style;
+
 	float4 colors[UI_MAX_COLOR_STACK];
 	u32 colorCount;
 
+	// Temporary per-element overrides layered on top of ui.style.colors.
+	// An empty stack means "use the theme".
 	UIElementColorStack colorElems[UIElementCount];
 
 	float2 cursorStack[UI_MAX_CURSOR_STACK];
@@ -597,11 +633,22 @@ void UI_MoveCursorRight(UI &ui, float amount)
 	UI_SetCursorPos(ui, cursorPos);
 }
 
-void UI_Indent(UI &ui, f32 amount = UiSpacing)
+// Resolve a spacing/indent argument that may be the UI_StyleSpacing sentinel.
+f32 UI_GetSpacing(const UI &ui, f32 spacing)
+{
+	return spacing < 0.0f ? ui.style.itemSpacing : spacing;
+}
+
+f32 UI_GetIndentWidth(const UI &ui, f32 amount)
+{
+	return amount < 0.0f ? ui.style.indentWidth : amount;
+}
+
+void UI_Indent(UI &ui, f32 amount = UI_StyleSpacing)
 {
 	ASSERT(ui.indentStackSize < ARRAY_COUNT(ui.indentStack));
 	ui.indentStack[ui.indentStackSize++] = UI_GetCursorPos(ui).x;
-	UI_MoveCursorRight(ui, amount);
+	UI_MoveCursorRight(ui, UI_GetIndentWidth(ui, amount));
 }
 
 void UI_Unindent(UI &ui)
@@ -639,10 +686,11 @@ void UI_GrowLayoutGroup(UI &ui, float2 pos, float2 size)
 
 const UIDrawList &UI_GetDrawList(const UI &ui);
 
-void UI_CursorAdvance(UI &ui, float2 prevWidgetSize, float spacing = UiSpacing)
+void UI_CursorAdvance(UI &ui, float2 prevWidgetSize, float spacingArg = UI_StyleSpacing)
 {
 	UI_GrowLayoutGroup(ui, UI_GetCursorPos(ui), prevWidgetSize);
 
+	const f32 spacing = UI_GetSpacing(ui, spacingArg);
 	const UILayout layout = UI_GetLayout(ui);
 	const UILayoutGroup group = UI_GetLayoutGroup(ui);
 
@@ -1007,14 +1055,15 @@ void UI_PushPadding(UI &ui, float2 padding)
 
 void UI_PopPadding(UI &ui)
 {
-	ASSERT(ui.paddingStackSize > 1); // Avoid popping the default padding
+	ASSERT(ui.paddingStackSize > 0);
 	ui.paddingStackSize--;
 }
 
 float2 UI_GetPadding(const UI &ui)
 {
-	ASSERT(ui.paddingStackSize > 0);
-	const float2 padding = ui.paddingStack[ui.paddingStackSize-1];
+	const float2 padding = ui.paddingStackSize > 0 ?
+		ui.paddingStack[ui.paddingStackSize-1] :
+		ui.style.framePadding;
 	return padding;
 }
 
@@ -1044,13 +1093,16 @@ void UI_PushElemColor(UI &ui, UIElement elem, UIElementColor color)
 
 void UI_PopElemColor(UI &ui, UIElement elem)
 {
-	ASSERT(ui.colorElems[elem].stackSize > 1);
+	ASSERT(ui.colorElems[elem].stackSize > 0);
 	ui.colorElems[elem].stackSize--;
 }
 
 const UIElementColor &UI_GetElemColor(UI &ui, UIElement elem)
 {
-	return ui.colorElems[elem].stack[ui.colorElems[elem].stackSize-1];
+	const UIElementColorStack &overrides = ui.colorElems[elem];
+	return overrides.stackSize > 0 ?
+		overrides.stack[overrides.stackSize-1] :
+		ui.style.colors[elem];
 }
 
 void UI_PushColor(UI &ui, UIElement elem)
@@ -1381,26 +1433,26 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 
 	if ( flags & UIWindowFlag_Border )
 	{
-		UI_PushColor(ui, UiColorBorder);
-		UI_AddBorder(ui, window.pos, window.size, UiBorderSize.x);
+		UI_PushColor(ui, ui.style.borderColor);
+		UI_AddBorder(ui, window.pos, window.size, ui.style.borderSize.x);
 		UI_PopColor(ui);
 
-		panelPos = panelPos + UiBorderSize;
-		panelSize = panelSize - 2.0f * UiBorderSize;
+		panelPos = panelPos + ui.style.borderSize;
+		panelSize = panelSize - 2.0f * ui.style.borderSize;
 	}
 
 	if (flags & UIWindowFlag_Titlebar)
 	{
 		const bool activeWindow = ui.activeWindow == &window;
 		const float2 titlebarPos = panelPos;
-		const float2 titlebarSize = float2{panelSize.x, 18.0f};
+		const float2 titlebarSize = float2{panelSize.x, ui.style.titlebarHeight};
 
 		const UIElementColor &captionColor = UI_GetElemColor(ui, UIElementCaption);
 		UI_PushColor(ui, activeWindow ? captionColor.base : captionColor.inactive);
 		UI_AddRectangle(ui, titlebarPos, titlebarSize);
 		UI_PopColor(ui);
 
-		const float2 captionPos = UI_AdjustTextVertically(ui, titlebarPos + float2{UiWindowPadding.x, 0.0}, titlebarSize.y);
+		const float2 captionPos = UI_AdjustTextVertically(ui, titlebarPos + float2{ui.style.windowPadding.x, 0.0}, titlebarSize.y);
 		UI_AddText(ui, captionPos, window.caption);
 
 		panelPos.y += titlebarSize.y;
@@ -1451,11 +1503,11 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 		UI_PopColor(ui);
 	}
 
-	const float cornerSize = 14;
+	const float cornerSize = ui.style.resizeCornerSize;
 
 	if ( flags & UIWindowFlag_Resizable )
 	{
-		const float2 cornerBR = window.pos + window.size - (flags & UIWindowFlag_Border ? UiBorderSize : float2{0, 0});
+		const float2 cornerBR = window.pos + window.size - (flags & UIWindowFlag_Border ? ui.style.borderSize : float2{0, 0});
 		const float2 cornerTR = cornerBR + float2{0.0, -cornerSize};
 		const float2 cornerBL = cornerBR + float2{-cornerSize, 0.0};
 		const float2 cornerTL = cornerBR + float2{-cornerSize, -cornerSize};
@@ -1479,19 +1531,19 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 	{
 		window.clippedContents = true;
 
-		const u32 containerHeight = (u32)(panelSize.y - 2.0f * UiWindowPadding.y);
+		const u32 containerHeight = (u32)(panelSize.y - 2.0f * ui.style.windowPadding.y);
 
 		const bool renderScrollbar = containerHeight < window.contentSize.y;
-		const i32 scrollbarWidth = renderScrollbar ? UiWindowPadding.x : 0;
-		const i32 scrollbarOuterWidth = renderScrollbar ? 3.0f * UiWindowPadding.x : 0;
+		const i32 scrollbarWidth = renderScrollbar ? ui.style.scrollbarWidth : 0;
+		const i32 scrollbarOuterWidth = renderScrollbar ? 3.0f * ui.style.scrollbarWidth : 0;
 
 		const u32 containerWidth = renderScrollbar ?
-			(u32)(panelSize.x - UiWindowPadding.x - scrollbarOuterWidth) :
-			(u32)(panelSize.x - 2.0f * UiWindowPadding.x - scrollbarWidth);
+			(u32)(panelSize.x - ui.style.windowPadding.x - scrollbarOuterWidth) :
+			(u32)(panelSize.x - 2.0f * ui.style.windowPadding.x - scrollbarWidth);
 
 		const int2 containerPos = {
-			.x = (i32)(panelPos.x + UiWindowPadding.x),
-			.y = (i32)(panelPos.y + UiWindowPadding.y),
+			.x = (i32)(panelPos.x + ui.style.windowPadding.x),
+			.y = (i32)(panelPos.y + ui.style.windowPadding.y),
 		};
 		const uint2 containerSize = {
 			.x = containerWidth,
@@ -1509,7 +1561,7 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 				const f32 scrollDelta = window.contentSize.y * mouseDelta / containerHeight;
 				window.contentOffset = window.contentOffsetBeforeScrolling + scrollDelta;
 			} else if (UI_WindowHovered(ui)) {
-				const f32 scrollDelta = UI_MouseScroll(ui).y * 16; // Scroll by mouse
+				const f32 scrollDelta = UI_MouseScroll(ui).y * ui.style.scrollSpeed; // Scroll by mouse
 				window.contentOffset -= scrollDelta;
 			}
 
@@ -1525,7 +1577,7 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 			const f32 scrollbarMaxY = scrollbarMinY + containerHeight - scrollbarHeight;
 			const f32 scrollbarPosYNorm = 1.0f - (window.contentOffset - minTopPosition)/(maxTopPosition - minTopPosition);
 			const f32 scrollbarPosY = scrollbarMinY + (scrollbarMaxY - scrollbarMinY) * scrollbarPosYNorm;
-			const float2 scrollbarPos = { (f32)containerPos.x + (f32)containerSize.x + UiWindowPadding.x * 0.5f, scrollbarPosY };
+			const float2 scrollbarPos = { (f32)containerPos.x + (f32)containerSize.x + ui.style.windowPadding.x * 0.5f, scrollbarPosY };
 			UI_BeginWidget(ui, scrollbarPos, scrollbarSize);
 			UI_PushColor(ui, UIElementScrollbar);
 			UI_AddRectangle(ui, scrollbarPos, scrollbarSize);
@@ -1544,7 +1596,7 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 		const rect containerRect = { .pos = containerPos, .size = containerSize };
 		UI_PushDrawList(ui, containerRect, ui.fontAtlasH);
 
-		cursorPos = panelPos + UiWindowPadding;
+		cursorPos = panelPos + ui.style.windowPadding;
 		panelSize = {(f32)containerSize.x, (f32)containerSize.y};
 
 		cursorPos.y += window.contentOffset;
@@ -1654,7 +1706,7 @@ f32 UI_GetAlignedWidgetWidth(UI &ui)
 	const UIWindow &window = UI_GetCurrentWindow(ui);
 	const f32 containerWidth = UI_GetContainerSize(window).x;
 	const f32 indent = ui.indentStackSize > 0 ? UI_GetCursorPos(ui).x - ui.indentStack[0] : 0.0f;
-	return Round(containerWidth * 0.6f - indent);
+	return Round(containerWidth * ui.style.labelRatio - indent);
 }
 
 bool UI_Section(UI &ui, const char *caption)
@@ -1708,7 +1760,7 @@ void UI_Label(UI &ui, const char *format, ...)
 
 	const f32 textWidth = UI_TextWidth(ui, text);
 	const f32 textHeight = UI_TextHeight(ui);
-	const float2 size = { textWidth + UiSpacing, textHeight };
+	const float2 size = { textWidth + ui.style.itemSpacing, textHeight };
 	UI_CursorAdvance(ui, size);
 }
 
@@ -1763,7 +1815,7 @@ void UI_DrawBox(UI &ui, float2 a, float2 b)
 	const float2 pos = canvas.pos + a * canvas.size;
 	const float2 size = (b - a) * canvas.size;
 
-	UI_PushColor(ui, UiColorOrange);
+	UI_PushColor(ui, ui.style.accentColor);
 	UI_AddRectangle(ui, pos, size);
 	UI_PopColor(ui);
 }
@@ -1800,11 +1852,11 @@ bool UI_Radio(UI &ui, const char *text, bool active)
 {
 	const float2 widgetPos = UI_GetCursorPos(ui);
 	const float controlHeight = UI_ControlHeight(ui);
-	const float2 textPos = widgetPos + float2{controlHeight + UiSpacing * 0.5f, 0.0};
+	const float2 textPos = widgetPos + float2{controlHeight + ui.style.itemSpacing * 0.5f, 0.0};
 	const float2 adjustedPos = UI_AdjustTextVertically(ui, textPos, controlHeight);
 	const float  textWidth = UI_TextWidth(ui, text);
 
-	const float2 widgetSize = float2{controlHeight, controlHeight} + float2{UiSpacing, 0.0f} + float2{textWidth, 0.0f};
+	const float2 widgetSize = float2{controlHeight, controlHeight} + float2{ui.style.itemSpacing, 0.0f} + float2{textWidth, 0.0f};
 	UI_BeginWidget(ui, widgetPos, widgetSize);
 
 	UI_PushColor(ui, UIElementToggle);
@@ -1839,12 +1891,12 @@ bool UI_Checkbox(UI &ui, const char *text, bool *checked)
 	const float2 boxPos = UI_GetCursorPos(ui);
 	const float controlHeight = UI_ControlHeight(ui);
 	const float2 boxSize = {controlHeight, controlHeight};
-	const float2 textPos = boxPos + float2{boxSize.x + UiSpacing * 0.5f, 0.0};
+	const float2 textPos = boxPos + float2{boxSize.x + ui.style.itemSpacing * 0.5f, 0.0};
 	const float2 adjustedPos = UI_AdjustTextVertically(ui, textPos, boxSize.y);
 	const float  textWidth = UI_TextWidth(ui, text);
 
 	const float2 widgetPos = boxPos;
-	const float2 widgetSize = boxSize + float2{UiSpacing, 0.0f} + float2{textWidth, 0.0f};
+	const float2 widgetSize = boxSize + float2{ui.style.itemSpacing, 0.0f} + float2{textWidth, 0.0f};
 	UI_BeginWidget(ui, widgetPos, widgetSize);
 
 	UI_PushColor(ui, UIElementToggle);
@@ -1893,7 +1945,7 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 	UI_PushColor(ui, UIElementInput);
 	UI_AddRectangle(ui, boxPos, boxSize);
 	UI_PopColor(ui);
-	//UI_PushColor(ui, UiColorBorder);
+	//UI_PushColor(ui, ui.style.borderColor);
 	//UI_AddBorder(ui, boxPos, boxSize, 1);
 	//UI_PopColor(ui);
 
@@ -1920,7 +1972,7 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 	UI_EndWidget(ui);
 	UI_CursorAdvance(ui, widgetSize);
 
-	const float2 text2Pos = butPos + float2{butSize.x + UiSpacing, padding.y};
+	const float2 text2Pos = butPos + float2{butSize.x + ui.style.itemSpacing, padding.y};
 	UI_AddText(ui, text2Pos, text);
 
 	const UIID comboId = UI_MakeID(ui, text);
@@ -1933,7 +1985,7 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 	{
 		const f32 itemHeight = UI_ControlHeight(ui);
 		const float2 panelPos = boxPos + float2{0.0f, boxSize.y};
-		float2 panelSize = 2.0f * UiBorderSize;
+		float2 panelSize = 2.0f * ui.style.borderSize;
 		for (u32 i = 0; i < itemCount; ++i)
 		{
 			const f32 itemWidth = Max( widgetSize.x, UI_TextWidth(ui, items[i]) + 2.0*padding.x );
@@ -1948,15 +2000,17 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 
 		UI_BeginWindow(ui, comboId, UIWindowFlag_Border);
 
-		float2 itemPos = panelPos + UiBorderSize;
-		const f32 itemWidth = panelSize.x - 2.0f*UiBorderSize.x;
+		float2 itemPos = panelPos + ui.style.borderSize;
+		const f32 itemWidth = panelSize.x - 2.0f*ui.style.borderSize.x;
 		const float2 itemSize = float2{itemWidth, itemHeight};
 		for (u32 i = 0; i < itemCount; ++i)
 		{
 			const f32 textWidth = Max( widgetSize.x, UI_TextWidth(ui, items[i]) );
 			UI_BeginWidget(ui, itemPos, itemSize);
 			const bool itemHovered = UI_WidgetHovered(ui);
-			UI_PushColor(ui, itemHovered ? UiColorInputHover : UiColorBackground);
+			UI_PushColor(ui, itemHovered ?
+				UI_GetElemColor(ui, UIElementInput).hovered :
+				UI_GetElemColor(ui, UIElementBackground).base);
 			UI_AddRectangle(ui, itemPos, itemSize);
 			UI_PopColor(ui);
 			const float2 textPos = itemPos + padding;
@@ -2022,7 +2076,7 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen)
 
 	const float2 widgetPos = boxPos;
 
-	const float2 textPos = boxPos + float2{boxSize.x + UiSpacing * 0.5f, 0.0};
+	const float2 textPos = boxPos + float2{boxSize.x + ui.style.itemSpacing * 0.5f, 0.0};
 	const float2 adjustedPos = UI_AdjustTextVertically(ui, textPos, boxSize.y);
 	const float  textWidth = UI_TextWidth(ui, text);
 
@@ -2031,7 +2085,7 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen)
 	const bool textClicked = UI_WidgetClicked(ui);
 	UI_EndWidget(ui);
 
-	const float2 widgetSize = boxSize + float2{UiSpacing, 0.0f} + float2{textWidth, 0.0f};
+	const float2 widgetSize = boxSize + float2{ui.style.itemSpacing, 0.0f} + float2{textWidth, 0.0f};
 	UI_CursorAdvance(ui, widgetSize);
 
 	*isOpen = info.isOpen;
@@ -2053,7 +2107,7 @@ void UI_Separator(UI &ui)
 	const float2 size = layout == UILayout_Vertical ?
 		float2{ containerWidth, 1.0 } : float2{ 1.0, containerHeight };
 
-	UI_PushColor(ui, UiColorBorder);
+	UI_PushColor(ui, ui.style.borderColor);
 	UI_AddRectangle(ui, pos, size);
 	UI_PopColor(ui);
 
@@ -2080,13 +2134,13 @@ void UI_SeparatorLabel(UI &ui, const char *format, ...)
 	const float2 line2Pos = cornerPos + float2{line1Size.x + textSize.x + 2.0f*padding, middle};
 	const float2 line2Size = float2{Max(0.0f, size.x - line1Size.x - textSize.x), line1Size.y};
 
-	UI_PushColor(ui, UiColorBorder);
+	UI_PushColor(ui, ui.style.borderColor);
 	UI_AddRectangle(ui, line1Pos, line1Size);
 	UI_PopColor(ui);
 
 	UI_AddText(ui, textPos, text);
 
-	UI_PushColor(ui, UiColorBorder);
+	UI_PushColor(ui, ui.style.borderColor);
 	UI_AddRectangle(ui, line2Pos, line2Size);
 	UI_PopColor(ui);
 
@@ -2130,7 +2184,7 @@ bool UI_Image(UI &ui, ImageH image, float2 proposedImageSize = float2{32, 32}, U
 
 	if (flags & UIWidgetFlag_Outline )
 	{
-		UI_PushColor(ui, UiColorOrange);
+		UI_PushColor(ui, ui.style.accentColor);
 		UI_AddBorder(ui, framePos, frameSize, 1);
 		UI_PopColor(ui);
 	}
@@ -2164,7 +2218,7 @@ void UI_Text(UI &ui, const char *label, const char *format, ...)
 
 	UI_EndWidget(ui);
 
-	const float2 labelPos = widgetPos + float2{widgetSize.x + UiSpacing, padding.y};
+	const float2 labelPos = widgetPos + float2{widgetSize.x + ui.style.itemSpacing, padding.y};
 	UI_AddText(ui, labelPos, label);
 
 	UI_CursorAdvance(ui, widgetSize);
@@ -2306,7 +2360,7 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 	UI_PushColor(ui, UIElementInput);
 	UI_AddRectangle(ui, boxPos, boxSize);
 	UI_PopColor(ui);
-	//UI_PushColor(ui, UiColorBorder);
+	//UI_PushColor(ui, ui.style.borderColor);
 	//UI_AddBorder(ui, boxPos, boxSize, 1);
 	//UI_PopColor(ui);
 
@@ -2376,7 +2430,7 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 
 	UI_EndWidget(ui);
 
-	const float2 text2Pos = widgetPos + float2{widgetSize.x + UiSpacing, padding.y};
+	const float2 text2Pos = widgetPos + float2{widgetSize.x + ui.style.itemSpacing, padding.y};
 	label = UI_RemoveNamePrefix(label);
 	UI_AddText(ui, text2Pos, label);
 
@@ -2385,7 +2439,7 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 	return !StrEq(buffer, bufferBeforeEdit);
 }
 
-bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing)
+bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UI_StyleSpacing)
 {
 	const i64 numberBeforeEdit = *number;
 
@@ -2414,7 +2468,7 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing
 	UI_PushColor(ui, UIElementInput);
 	UI_AddRectangle(ui, boxPos, boxSize);
 	UI_PopColor(ui);
-	//UI_PushColor(ui, UiColorBorder);
+	//UI_PushColor(ui, ui.style.borderColor);
 	//UI_AddBorder(ui, boxPos, boxSize, 1);
 	//UI_PopColor(ui);
 
@@ -2436,7 +2490,7 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing
 		if ( ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE )
 		{
 			dragging = false;
-			if ( dragDelta > -UiDragClickThreshold && dragDelta < UiDragClickThreshold )
+			if ( dragDelta > -ui.style.dragClickThreshold && dragDelta < ui.style.dragClickThreshold )
 			{
 				UI_SetActiveWidget(ui, id);
 				SPrintf(activeBuffer, "%lld", *number);
@@ -2520,7 +2574,7 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing
 	}
 
 	// Label
-	const float2 labelPos = widgetPos + float2{widgetSize.x + UiSpacing, padding.y};
+	const float2 labelPos = widgetPos + float2{widgetSize.x + ui.style.itemSpacing, padding.y};
 	UI_AddText(ui, labelPos, label);
 
 	UI_CursorAdvance(ui, widgetSize, spacing);
@@ -2528,7 +2582,7 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UiSpacing
 	return *number != numberBeforeEdit;
 }
 
-bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing)
+bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UI_StyleSpacing)
 {
 	i64 value = *number;
 	const bool modified = UI_InputI64(ui, label, &value, spacing);
@@ -2536,7 +2590,7 @@ bool UI_InputInt(UI &ui, const char *label, i32 *number, f32 spacing = UiSpacing
 	return modified;
 }
 
-bool UI_InputUInt(UI &ui, const char *label, u32 *number, f32 spacing = UiSpacing)
+bool UI_InputUInt(UI &ui, const char *label, u32 *number, f32 spacing = UI_StyleSpacing)
 {
 	i64 value = *number;
 	const bool modified = UI_InputI64(ui, label, &value, spacing);
@@ -2545,7 +2599,7 @@ bool UI_InputUInt(UI &ui, const char *label, u32 *number, f32 spacing = UiSpacin
 	return modified;
 }
 
-bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 spacing = UiSpacing)
+bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 spacing = UI_StyleSpacing)
 {
 	const f32 numberBeforeEdit = *number;
 
@@ -2574,7 +2628,7 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 	UI_PushColor(ui, UIElementInput);
 	UI_AddRectangle(ui, boxPos, boxSize);
 	UI_PopColor(ui);
-	//UI_PushColor(ui, UiColorBorder);
+	//UI_PushColor(ui, ui.style.borderColor);
 	//UI_AddBorder(ui, boxPos, boxSize, 1);
 	//UI_PopColor(ui);
 
@@ -2596,7 +2650,7 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 		if ( ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE )
 		{
 			dragging = false;
-			if ( dragDelta > -UiDragClickThreshold && dragDelta < UiDragClickThreshold )
+			if ( dragDelta > -ui.style.dragClickThreshold && dragDelta < ui.style.dragClickThreshold )
 			{
 				UI_SetActiveWidget(ui, id);
 				SPrintf(activeBuffer, "%f", *number);
@@ -2680,7 +2734,7 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 	}
 
 	// Label
-	const float2 labelPos = widgetPos + float2{widgetSize.x + UiSpacing, padding.y};
+	const float2 labelPos = widgetPos + float2{widgetSize.x + ui.style.itemSpacing, padding.y};
 	UI_AddText(ui, labelPos, label);
 
 	UI_CursorAdvance(ui, widgetSize, spacing);
@@ -2699,7 +2753,7 @@ bool UI_InputInt2(UI &ui, const char *label, int2 *value)
 	bool modified = false;
 	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
-	modified |= UI_InputInt(ui, subLabel, &value->x, UiSpacingTight);
+	modified |= UI_InputInt(ui, subLabel, &value->x, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Y");
 	modified |= UI_InputInt(ui, subLabel, &value->y);
 
@@ -2721,7 +2775,7 @@ bool UI_InputUInt2(UI &ui, const char *label, uint2 *value)
 	bool modified = false;
 	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
-	modified |= UI_InputUInt(ui, subLabel, &value->x, UiSpacingTight);
+	modified |= UI_InputUInt(ui, subLabel, &value->x, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Y");
 	modified |= UI_InputUInt(ui, subLabel, &value->y);
 
@@ -2743,9 +2797,9 @@ bool UI_InputInt3(UI &ui, const char *label, int3 *value)
 	bool modified = false;
 	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
-	modified |= UI_InputInt(ui, subLabel, &value->x, UiSpacingTight);
+	modified |= UI_InputInt(ui, subLabel, &value->x, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Y");
-	modified |= UI_InputInt(ui, subLabel, &value->y, UiSpacingTight);
+	modified |= UI_InputInt(ui, subLabel, &value->y, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Z");
 	modified |= UI_InputInt(ui, subLabel, &value->z);
 
@@ -2767,11 +2821,11 @@ bool UI_InputInt4(UI &ui, const char *label, int4 *value)
 	bool modified = false;
 	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
-	modified |= UI_InputInt(ui, subLabel, &value->x, UiSpacingTight);
+	modified |= UI_InputInt(ui, subLabel, &value->x, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Y");
-	modified |= UI_InputInt(ui, subLabel, &value->y, UiSpacingTight);
+	modified |= UI_InputInt(ui, subLabel, &value->y, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Z");
-	modified |= UI_InputInt(ui, subLabel, &value->z, UiSpacingTight);
+	modified |= UI_InputInt(ui, subLabel, &value->z, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "W");
 	modified |= UI_InputInt(ui, subLabel, &value->w);
 
@@ -2793,7 +2847,7 @@ bool UI_InputFloat2(UI &ui, const char *label, float2 *value)
 	bool modified = false;
 	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
-	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, UiSpacingTight);
+	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Y");
 	modified |= UI_InputFloat(ui, subLabel, &value->y);
 
@@ -2815,9 +2869,9 @@ bool UI_InputFloat3(UI &ui, const char *label, float3 *value)
 	bool modified = false;
 	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
-	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, UiSpacingTight);
+	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Y");
-	modified |= UI_InputFloat(ui, subLabel, &value->y, 0.1f, UiSpacingTight);
+	modified |= UI_InputFloat(ui, subLabel, &value->y, 0.1f, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Z");
 	modified |= UI_InputFloat(ui, subLabel, &value->z);
 
@@ -2839,11 +2893,11 @@ bool UI_InputFloat4(UI &ui, const char *label, float4 *value)
 	bool modified = false;
 	char subLabel[UI_LABEL_BUFFER_SIZE];
 	SPrintf(subLabel, "X %s", label);
-	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, UiSpacingTight);
+	modified |= UI_InputFloat(ui, subLabel, &value->x, 0.1f, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Y");
-	modified |= UI_InputFloat(ui, subLabel, &value->y, 0.1f, UiSpacingTight);
+	modified |= UI_InputFloat(ui, subLabel, &value->y, 0.1f, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "Z");
-	modified |= UI_InputFloat(ui, subLabel, &value->z, 0.1f, UiSpacingTight);
+	modified |= UI_InputFloat(ui, subLabel, &value->z, 0.1f, ui.style.itemSpacingTight);
 	SPrintf(subLabel, "W");
 	modified |= UI_InputFloat(ui, subLabel, &value->w);
 
@@ -3159,7 +3213,7 @@ void UI_Histogram(UI &ui, const float *values, u32 valueCount, f32 maxValue = 10
 	const f32 barWidth = histogramWidth / valueCount;
 	const float2 barBase = histPos + float2{0.0f, histSize.y};
 
-	UI_PushColor(ui, UiColorOrange);
+	UI_PushColor(ui, ui.style.accentColor);
 	for (u32 i = 0; i < valueCount; ++i)
 	{
 		const float heightRatio = values[i] / maxValue;
@@ -3188,7 +3242,7 @@ bool UI_BeginMenuBar(UI &ui)
 	window.pos = {0, 0};
 	window.anchor = {0, 0};
 	window.displacement = {0, 0};
-	window.size = {(f32)ui.viewportSize.x, 22.0f};
+	window.size = {(f32)ui.viewportSize.x, ui.style.menuBarHeight};
 
 	const float2 pos = window.pos;
 	const float2 size = window.size;
@@ -3198,11 +3252,11 @@ bool UI_BeginMenuBar(UI &ui)
 
 	const float2 borderPos = pos + float2{0.0f, size.y};
 	const float2 borderSize = float2{size.x, 1.0f};
-	UI_PushColor(ui, UiColorBorder);
+	UI_PushColor(ui, ui.style.borderColor);
 	UI_AddRectangle(ui, borderPos, borderSize);
 	UI_PopColor(ui);
 
-	UI_SetCursorPos( ui, pos + float2{UiSpacing, 0.0f} );
+	UI_SetCursorPos( ui, pos + float2{ui.style.itemSpacing, 0.0f} );
 	UI_BeginLayout(ui, UILayout_Horizontal);
 
 	return true;
@@ -3228,12 +3282,11 @@ bool UI_BeginToolBar(UI &ui)
 	UIWindow &window = UI_FindOrCreateWindow(ui, windowId, idString);
 	UI_BeginWindow(ui, windowId, UIWindowFlag_None);
 
-	constexpr float menuBarHeight = 22.0f;
-	constexpr float borderHeight = 1.0f;
-	window.pos = {0, menuBarHeight + borderHeight};
+	// Sits directly under the menu bar and its bottom border.
+	window.pos = {0, ui.style.menuBarHeight + ui.style.borderSize.y};
 	window.anchor = {0, 0};
 	window.displacement = window.pos;
-	window.size = {(f32)ui.viewportSize.x, 22.0f};
+	window.size = {(f32)ui.viewportSize.x, ui.style.menuBarHeight};
 
 	const float2 pos = window.pos;
 	const float2 size = window.size;
@@ -3243,11 +3296,11 @@ bool UI_BeginToolBar(UI &ui)
 
 	const float2 borderPos = pos + float2{0.0f, size.y};
 	const float2 borderSize = float2{size.x, 1.0f};
-	UI_PushColor(ui, UiColorBorder);
+	UI_PushColor(ui, ui.style.borderColor);
 	UI_AddRectangle(ui, borderPos, borderSize);
 	UI_PopColor(ui);
 
-	UI_SetCursorPos(ui, pos + float2{UiSpacing, 0.0f});
+	UI_SetCursorPos(ui, pos + float2{ui.style.itemSpacing, 0.0f});
 	UI_BeginLayout(ui, UILayout_Horizontal);
 
 	return true;
@@ -3519,22 +3572,59 @@ void * UI_DragAndDropPayload(UI &ui)
 struct Graphics;
 ImageH EngineCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
 
-void UI_InitializeColors(UI &ui)
+UIStyle UI_StyleDefault()
+{
+	UIStyle style = {};
+
+	style.colors[UIElementText]       = { UiColorWhite,      UiColorWhite,          UiColorWhite,          UiColorWhite };
+	style.colors[UIElementBackground] = { UiColorBackground, UiColorBackground,     UiColorBackground,     UiColorBackground };
+	style.colors[UIElementSection]    = { UiColorSection,    UiColorSectionHover,   UiColorSectionHover,   UiColorSection };
+	style.colors[UIElementButton]     = { UiColorButton,     UiColorButtonHover,    UiColorButtonHover,    UiColorButton };
+	style.colors[UIElementToggle]     = { UiColorToggle,     UiColorToggleHover,    UiColorToggleHover,    UiColorToggle };
+	style.colors[UIElementInput]      = { UiColorInput,      UiColorInputHover,     UiColorInputHover,     UiColorInput };
+	style.colors[UIElementBox]        = { UiColorBox,        UiColorBoxHover,       UiColorBoxHover,       UiColorBox };
+	style.colors[UIElementScrollbar]  = { UiColorScrollbar,  UiColorScrollbarHover, UiColorScrollbarHover, UiColorScrollbar };
+	style.colors[UIElementMenu]       = { UiColorMenu,       UiColorMenuHover,      UiColorMenuHover,      UiColorMenu };
+	style.colors[UIElementCaption]    = { UiColorCaption,    UiColorCaption,        UiColorCaption,        UiColorCaptionInactive };
+
+	style.borderColor = UiColorBorder;
+	style.accentColor = UiColorAccent;
+	style.modalOverlayColor = { 0.0f, 0.0f, 0.0f, 0.8f };
+
+	style.borderSize = { 1.0f, 1.0f };
+	style.windowPadding = { 4.0f, 8.0f };
+	style.framePadding = { 4.0f, 3.0f };
+	style.minWindowSize = { 100.0f, 100.0f };
+	style.itemSpacing = 8.0f;
+	style.itemSpacingTight = 2.0f;
+	style.indentWidth = 8.0f;
+	style.titlebarHeight = 18.0f;
+	style.menuBarHeight = 22.0f;
+	style.scrollbarWidth = 4.0f;
+	style.scrollSpeed = 16.0f;
+	style.resizeCornerSize = 14.0f;
+	style.dragClickThreshold = 3.0f;
+	style.labelRatio = 0.6f;
+
+	return style;
+}
+
+// Drops every temporary override so the theme in ui.style is what widgets see.
+void UI_ResetStyleOverrides(UI &ui)
 {
 	for (u32 i = 0; i < UIElementCount; ++i) {
 		ui.colorElems[i].stackSize = 0;
 	}
+	ui.paddingStackSize = 0;
+}
 
-	UI_PushElemColor(ui, UIElementText,       { UiColorWhite,      UiColorWhite,          UiColorWhite,          UiColorWhite });
-	UI_PushElemColor(ui, UIElementBackground, { UiColorBackground, UiColorBackground,     UiColorBackground,     UiColorBackground });
-	UI_PushElemColor(ui, UIElementSection,    { UiColorSection,    UiColorSectionHover,   UiColorSectionHover,   UiColorSection });
-	UI_PushElemColor(ui, UIElementButton,     { UiColorButton,     UiColorButtonHover,    UiColorButtonHover,    UiColorButton });
-	UI_PushElemColor(ui, UIElementToggle,     { UiColorToggle,     UiColorToggleHover,    UiColorToggleHover,    UiColorToggle });
-	UI_PushElemColor(ui, UIElementInput,      { UiColorInput,      UiColorInputHover,     UiColorInputHover,     UiColorInput });
-	UI_PushElemColor(ui, UIElementBox,        { UiColorBox,        UiColorBoxHover,       UiColorBoxHover,       UiColorBox });
-	UI_PushElemColor(ui, UIElementScrollbar,  { UiColorScrollbar,  UiColorScrollbarHover, UiColorScrollbarHover, UiColorScrollbar });
-	UI_PushElemColor(ui, UIElementMenu,       { UiColorMenu,       UiColorMenuHover,      UiColorMenuHover,      UiColorMenu });
-	UI_PushElemColor(ui, UIElementCaption,    { UiColorCaption,    UiColorCaption,        UiColorCaption,        UiColorCaptionInactive });
+// Restores the built-in theme, discarding both runtime edits and any override
+// left on the stacks. Also what a DLL hot-reload calls so palette changes made
+// in UI_StyleDefault show up without restarting.
+void UI_ResetStyle(UI &ui)
+{
+	ui.style = UI_StyleDefault();
+	UI_ResetStyleOverrides(ui);
 }
 
 void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalArena, UIIcon *icons, u32 iconCount)
@@ -3556,10 +3646,10 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 		ui.backendVertices[i] = (UIVertex*)GetBufferPtr(gfxDev, ui.vertexBuffer[i]);
 	}
 
-	UI_PushColor(ui, UiColorButton);
-	UI_PushPadding(ui, UiDefaultInputPadding);
+	UI_ResetStyle(ui);
 
-	UI_InitializeColors(ui);
+	// Bottom of the draw-colour stack; UI_PopColor refuses to pop it.
+	UI_PushColor(ui, ui.style.colors[UIElementButton].base);
 
 	struct SizedFont
 	{
@@ -3750,11 +3840,10 @@ void UI_BeginFrame(UI &ui)
 		{
 			if ( window.resizing )
 			{
-				constexpr float2 minWindowSize = { 100.0f, 100.0f };
 				const int2 resizeDelta = UI_MousePos(ui) - UI_LastMouseClickPos(ui);
 				const int2 newWindowSize = window.sizeBeforeResize + resizeDelta;
 				const float2 oldSize = window.size;
-				window.size = Max(minWindowSize, float2{(float)newWindowSize.x, (float)newWindowSize.y});
+				window.size = Max(ui.style.minWindowSize, float2{(float)newWindowSize.x, (float)newWindowSize.y});
 				window.displacement += window.pivot * (window.size - oldSize);
 			}
 			else if ( window.dragging )
@@ -3874,8 +3963,8 @@ void UI_EndFrame(UI &ui)
 
 		if  ( backgroundNeeded )
 		{
-			constexpr float4 modalOverlayColor = {0.0, 0.0, 0.0, 0.8};
-			UI_PushElemColor(ui, UIElementBackground, { modalOverlayColor, modalOverlayColor, modalOverlayColor, modalOverlayColor });
+			const float4 overlay = ui.style.modalOverlayColor;
+			UI_PushElemColor(ui, UIElementBackground, { overlay, overlay, overlay, overlay });
 			UI_SetNextWindowSize(ui, ui.viewportSize);
 			UI_SetNextWindowAnchorAndPivot(ui, float2{0, 0}, float2{0, 0});
 			UI_BeginWindow(ui, idString, nullptr, UIWindowFlag_Background | UIWindowFlag_NoRaise );

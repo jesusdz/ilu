@@ -1288,10 +1288,10 @@ static void EditorUpdateUI_Settings(Engine &engine)
 
 		for ( u32 i = 0; i < UIElementCount; ++i )
 		{
-			float4 &base = ui.colorElems[i].stack[0].base;
-			float4 &hover = ui.colorElems[i].stack[0].hovered;
-			//const float4 active = ui.colorElems[i].stack[0].active;
-			//const float4 inactive = ui.colorElems[i].stack[0].inactive;
+			float4 &base = ui.style.colors[i].base;
+			float4 &hover = ui.style.colors[i].hovered;
+			//const float4 active = ui.style.colors[i].active;
+			//const float4 inactive = ui.style.colors[i].inactive;
 
 			const float4 hbase = Lerp(base, UiColorWhite, 0.2);
 			const float4 hhover = Lerp(hover, UiColorWhite, 0.2);
@@ -1327,7 +1327,7 @@ static void EditorUpdateUI_Settings(Engine &engine)
 		}
 
 		if ( UI_Button(ui, "Reset") ) {
-			UI_InitializeColors(ui);
+			UI_ResetStyle(ui);
 		}
 	}
 

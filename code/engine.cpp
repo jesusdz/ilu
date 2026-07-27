@@ -4086,7 +4086,7 @@ ENGINE_API void OnPlatformSetupAPI(Plat &platform)
 
 	if ( platform.engine )
 	{
-		UI_InitializeColors(platform.engine->ui);
+		UI_ResetStyle(platform.engine->ui);
 	}
 }
 
