@@ -1037,6 +1037,17 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 }
 
 #if USE_PROFILE
+static bool UI_ProfilerTreeNode(UI &ui, bool *isOpen, bool hasChildren, const char *nodeName, f32 millis, f32 pct)
+{
+	void *ctx = (void*)isOpen;
+	u32 flags = hasChildren ? UITreeNodeFlag_None : UITreeNodeFlag_Leaf;
+	UI_BeginLayout(ui, UILayout_Horizontal);
+	UI_TreeNode(ui, nodeName, ctx, isOpen, flags);
+	UI_Text(ui, "", "%.3f ms (%.2f %%)", millis, pct);
+	UI_EndLayout(ui);
+	return *isOpen;
+}
+
 static void EditorUpdateUI_Profiler(Engine &engine)
 {
 	UI &ui = engine.ui;
@@ -1073,24 +1084,45 @@ static void EditorUpdateUI_Profiler(Engine &engine)
 
 			if (UI_Section(ui, ProfileGetThreadName(t)))
 			{
-				UI_Text(ui, "Frame", "%.3f ms", frameMillis);
-				u16 depths[MAX_PROFILE_NODES];
-				u32 indentLevel = 0;
-				for (u32 i = 0; i < frame.nodeCount; ++i)
+				bool isFrameOpen = true;
+				if ( UI_ProfilerTreeNode(ui, &isFrameOpen, true, "Frame", frameMillis, 100.0f) )
 				{
-					const ProfileNode *node = &frame.nodes[i];
-					const u16 depth = node->parentIndex == PROFILE_NODE_NONE ? 0 : depths[node->parentIndex] + 1;
-					depths[i] = depth;
+					UI_Indent(ui);
 
-					while (indentLevel < depth) { UI_Indent(ui); ++indentLevel; }
-					while (indentLevel > depth) { UI_Unindent(ui); --indentLevel; }
+					bool hasChildren[MAX_PROFILE_NODES] = {};
+					for (u32 i = 0; i < frame.nodeCount; ++i) {
+						const ProfileNode *node = &frame.nodes[i];
+						if (node->parentIndex != PROFILE_NODE_NONE) {
+							hasChildren[node->parentIndex] = true;
+						}
+					}
 
-					const f32 millis = 1000.0f * SecondsFromTicks(node->end - node->begin);
-					const f32 pct = frameMillis > 0.0f ? 100.0f * millis / frameMillis : 0.0f;
-					UI_Text(ui, ProfileGetName(node->nameId), "%.3f ms (%.1f %%)", millis, pct);
+					bool isOpen[MAX_PROFILE_NODES] = {};
+					u16 depth[MAX_PROFILE_NODES];
+					u32 indent = 0;
+					for (u32 i = 0; i < frame.nodeCount; ++i)
+					{
+						const ProfileNode *node = &frame.nodes[i];
+
+						depth[i] = node->parentIndex == PROFILE_NODE_NONE ? 0 : depth[node->parentIndex] + 1;
+						while (indent < depth[i]) { UI_Indent(ui); ++indent; }
+						while (indent > depth[i]) { UI_Unindent(ui); --indent; }
+
+						if (node->parentIndex == PROFILE_NODE_NONE || isOpen[node->parentIndex])
+						{
+							const char *name = ProfileGetName(node->nameId);
+							const f32 millis = 1000.0f * SecondsFromTicks(node->end - node->begin);
+							const f32 pct = frameMillis > 0.0f ? 100.0f * millis / frameMillis : 0.0f;
+							UI_ProfilerTreeNode(ui, &isOpen[i], hasChildren[i], name, millis, pct);
+						}
+					}
+
+					while (indent > 0) { UI_Unindent(ui); --indent; }
+
+					UI_Text(ui, "Dropped events", "%u", frame.droppedEventCount);
+
+					UI_Unindent(ui);
 				}
-				while (indentLevel > 0) { UI_Unindent(ui); --indentLevel; }
-				UI_Text(ui, "Dropped events", "%u", frame.droppedEventCount);
 			}
 		}
 	}

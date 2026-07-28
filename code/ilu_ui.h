@@ -47,6 +47,7 @@
 // cursors are always drawn in plain black or white. Everything themeable lives
 // in UIStyle below and is reached through ui.style.
 constexpr float4 UiColorWhite = { 1.0, 1.0, 1.0, 1.0 };
+constexpr float4 UiColorGray = { 0.5, 0.5, 0.5, 1.0 };
 constexpr float4 UiColorBlack = { 0.0, 0.0, 0.0, 1.0 };
 
 // Default theme palette. Only UI_StyleDefault() reads these; widgets must not.
@@ -142,6 +143,7 @@ struct UIWindow
 	float2 displacement;
 	float2 containerSize;
 	float2 contentSize; // Only known after filling container
+	u32 contentLayoutGroup; // Index of the layout group wrapping the window contents
 	float contentOffset;
 	float contentOffsetBeforeScrolling;
 	bool visible;
@@ -328,6 +330,12 @@ struct UINextWindow
 	float2 pivot;
 	float2 displacement;
 	u32 modalFlags;
+};
+
+enum UITreeNodeFlags
+{
+	UITreeNodeFlag_None = 0,
+	UITreeNodeFlag_Leaf = 1 << 0,
 };
 
 constexpr const char *UIElementName[] =
@@ -1278,6 +1286,42 @@ float2 UI_TextSize(const UI &ui, const char *text)
 	return textSize;
 }
 
+static bool UI_IsRectInRect(float2 charPos, float2 charSize, float2 containerPos, float2 containerSize)
+{
+	const bool outside = charPos.x + charSize.x < containerPos.x || charPos.y + charSize.y < containerPos.y ||
+		charPos.x >= containerPos.x + containerSize.x ||
+		charSize.y >= containerPos.y + containerSize.y;
+	return !outside;
+}
+
+void UI_AdjustCharRect(float2 &charPos, float2 &charSize, float2 &charUvPos, float2 &charUvSize, const float2 containerPos, const float2 containerSize)
+{
+	if ( charSize.x <= 0.0f || charSize.y <= 0.0f )
+	{
+		charSize = float2{0.0f, 0.0f};
+		charUvSize = float2{0.0f, 0.0f};
+		return;
+	}
+
+	const float2 clippedMin = Max( charPos, containerPos );
+	const float2 clippedMax = Min( charPos + charSize, containerPos + containerSize );
+
+	if ( clippedMax.x <= clippedMin.x || clippedMax.y <= clippedMin.y )
+	{
+		charSize = float2{0.0f, 0.0f};
+		charUvSize = float2{0.0f, 0.0f};
+		return;
+	}
+
+	// Texels per pixel, to translate the clipping made in space coords into uv coords
+	const float2 uvPerPixel = charUvSize / charSize;
+
+	charUvPos = charUvPos + ( clippedMin - charPos ) * uvPerPixel;
+	charUvSize = ( clippedMax - clippedMin ) * uvPerPixel;
+	charPos = clippedMin;
+	charSize = clippedMax - clippedMin;
+}
+
 void UI_AddText(UI &ui, float2 pos, const char *text)
 {
 	const float cursory = Round( pos.y + ui.fontAscent );
@@ -1291,15 +1335,29 @@ void UI_AddText(UI &ui, float2 pos, const char *text)
 
 		const float charWidth = pc.x1 - pc.x0;
 		const float charHeight = pc.y1 - pc.y0;
-		const float2 charPos = {cursorx + pc.xoff, cursory + pc.yoff};
-		const float2 charSize = {charWidth, charHeight};
-		const float2 charUv = {pc.x0/ui.fontAtlasSize.x, pc.y0/ui.fontAtlasSize.y};
-		const float2 charUvSize = {charWidth/ui.fontAtlasSize.x, charHeight/ui.fontAtlasSize.y};
 
-		UI_AddQuad(ui, charPos + float2{0, 1}, charSize, charUv, charUvSize, UiColorBlack);
+		float2 charPos = {cursorx + pc.xoff, cursory + pc.yoff};
+		float2 charSize = {charWidth, charHeight};
+		float2 charUv = {pc.x0/ui.fontAtlasSize.x, pc.y0/ui.fontAtlasSize.y};
+		float2 charUvSize = {charWidth/ui.fontAtlasSize.x, charHeight/ui.fontAtlasSize.y};
 
-		const UIElementColor &textColor = UI_GetElemColor(ui, UIElementText);
-		UI_AddQuad(ui, charPos, charSize, charUv, charUvSize, textColor.base);
+		float2 containerPos = {0, 0};
+		float2 containerSize = Float2(ui.viewportSize);
+		if (ui.widgetStackSize > 0) {
+			const UIWidget &widget = ui.widgetStack[ui.widgetStackSize-1];
+			containerPos = widget.pos;
+			containerSize = widget.size;
+		}
+
+		UI_AdjustCharRect(charPos, charSize, charUv, charUvSize, containerPos, containerSize);
+
+		if ( charSize.x > 0.0f && charSize.y > 0.0f )
+		{
+			UI_AddQuad(ui, charPos + float2{1, 1}, charSize, charUv, charUvSize, UiColorBlack);
+
+			const UIElementColor &textColor = UI_GetElemColor(ui, UIElementText);
+			UI_AddQuad(ui, charPos, charSize, charUv, charUvSize, textColor.base);
+		}
 
 		cursorx = Round( cursorx + pc.xadvance );
 		ptr++;
@@ -1354,15 +1412,25 @@ UIWindow &UI_FindOrCreateWindow(UI &ui, UIID windowId, const char *caption)
 	return window;
 }
 
-UIInfo &UI_FindOrCreateInfo(UI &ui, UIID infoId)
+UIInfo &UI_FindOrCreateInfo(UI &ui, UIID infoId, bool *wasCreated)
 {
+	if (wasCreated) {
+		*wasCreated = false;
+	}
+
 	for (u32 i = 0; i < ui.infoCount; ++i)
 	{
 		UIInfo &info = ui.info[i];
 		if ( info.id == infoId )
 		{
+			if (wasCreated) {
+			}
 			return info;
 		}
+	}
+
+	if (wasCreated) {
+		*wasCreated = true;
 	}
 
 	ASSERT( ui.infoCount < ARRAY_COUNT(ui.info) );
@@ -1605,6 +1673,7 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 	window.containerSize = panelSize;
 
 	UI_SetCursorPos(ui, cursorPos);
+	window.contentLayoutGroup = ui.layoutGroupCount;
 	UI_BeginLayout(ui, UILayout_Vertical);
 }
 
@@ -1698,15 +1767,17 @@ float2 UI_GetContainerSize(const UIWindow &window)
 	return window.containerSize;
 }
 
-// Width of the left-hand control box of a labelled widget. The label is drawn to
-// the right of this box, so we subtract the current indentation to keep every label
-// aligned to the same column regardless of how deeply the widget is indented.
+// Width of the left-hand control box of a labelled widget. The label is drawn to the
+// right of this box, so we subtract however far the cursor already sits from the window
+// content origin (indentation, plus whatever a horizontal layout placed before us) to
+// keep every label aligned to the same column.
 f32 UI_GetAlignedWidgetWidth(UI &ui)
 {
 	const UIWindow &window = UI_GetCurrentWindow(ui);
 	const f32 containerWidth = UI_GetContainerSize(window).x;
-	const f32 indent = ui.indentStackSize > 0 ? UI_GetCursorPos(ui).x - ui.indentStack[0] : 0.0f;
-	return Round(containerWidth * ui.style.labelRatio - indent);
+	const f32 contentOriginX = ui.layoutGroups[window.contentLayoutGroup].pos.x;
+	const f32 offset = UI_GetCursorPos(ui).x - contentOriginX;
+	return Round(containerWidth * ui.style.labelRatio - offset);
 }
 
 bool UI_Section(UI &ui, const char *caption)
@@ -2034,10 +2105,15 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 	UI_CursorAdvance(ui, widgetSize);
 }
 
-bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen)
+bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen, u32 flags = UITreeNodeFlag_None)
 {
+	bool wasCreated;
 	const UIID id = UI_MakeID(ui, text, ptr);
-	UIInfo &info = UI_FindOrCreateInfo(ui, id);
+	UIInfo &info = UI_FindOrCreateInfo(ui, id, &wasCreated);
+
+	if (wasCreated && isOpen) {
+		info.isOpen = *isOpen;
+	}
 
 	const float2 boxPos = UI_GetCursorPos(ui);
 	const float controlHeight = UI_ControlHeight(ui);
@@ -2045,25 +2121,34 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen)
 
 	UI_BeginWidget(ui, boxPos, boxSize);
 
-	UI_PushColor(ui, UIElementButton);
-	UI_AddRectangle(ui, boxPos, boxSize);
-	UI_PopColor(ui);
+	const bool drawOpenControl = !( flags & UITreeNodeFlag_Leaf );
 
-	const float2 margin = {6.0, 6.0};
-	const float2 innerSize = boxSize - 2.0 * margin;
-	const float2 p1 = boxPos + margin;
+	if ( drawOpenControl )
+	{
+		//UI_PushColor(ui, UIElementButton);
+		//UI_AddRectangle(ui, boxPos, boxSize);
+		//UI_PopColor(ui);
 
-	if (info.isOpen)
-	{
-		const float2 p2 = p1 + float2{0.5f*innerSize.x, innerSize.y};
-		const float2 p3 = p1 + dX(innerSize);
-		UI_AddTriangle(ui, p1, p2, p3, UiColorWhite);
-	}
-	else
-	{
-		const float2 p2 = p1 + dY(innerSize);
-		const float2 p3 = p1 + float2{innerSize.x, 0.5f*innerSize.y};
-		UI_AddTriangle(ui, p1, p2, p3, UiColorWhite);
+		const float2 margin = {6.0, 6.0};
+		const float2 innerSize = boxSize - 2.0 * margin;
+
+		if (info.isOpen)
+		{
+			const float2 p0 = boxPos + margin;
+			const float2 p1 = p0 + dY(innerSize);
+			const float2 p2 = p0 + innerSize;
+			const float2 p3 = p0 + dX(innerSize);
+			UI_AddTriangle(ui, p1, p2, p3, UiColorWhite);
+		}
+		else
+		{
+			const float2 p1 = boxPos + margin;
+			const float2 p2 = p1 + dY(innerSize);
+			const float2 p3 = p1 + float2{innerSize.x, 0.5f*innerSize.y};
+
+			float4 color = UI_WidgetHovered(ui) ? UiColorWhite : UiColorGray;
+			UI_AddTriangle(ui, p1, p2, p3, color);
+		}
 	}
 
 	const bool nodeClicked = UI_WidgetClicked(ui);
@@ -2088,7 +2173,10 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen)
 	const float2 widgetSize = boxSize + float2{ui.style.itemSpacing, 0.0f} + float2{textWidth, 0.0f};
 	UI_CursorAdvance(ui, widgetSize);
 
-	*isOpen = info.isOpen;
+	if (isOpen) {
+		*isOpen = info.isOpen;
+	}
+
 	return textClicked;
 }
 
