@@ -1037,14 +1037,37 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 }
 
 #if USE_PROFILE
-static bool UI_ProfilerTreeNode(UI &ui, bool *isOpen, bool hasChildren, const char *nodeName, f32 millis, f32 pct)
+// Meter fill by weight of the node in the frame, so the expensive rows stand out
+constexpr float4 UiColorProfileCold = { 0.10, 0.30, 0.60, 1.0 };
+constexpr float4 UiColorProfileWarm = { 0.70, 0.50, 0.10, 1.0 };
+constexpr float4 UiColorProfileHot  = { 0.70, 0.20, 0.15, 1.0 };
+
+// Position of a timestamp within the frame, from 0 (frame begin) to 1 (frame end)
+static f32 ProfileNormalizedTime(ProfileTime time, ProfileTime frameBegin, ProfileTime frameTicks)
+{
+	const f32 res = ( frameTicks > 0 && time > frameBegin ) ? (f32)( time - frameBegin ) / (f32)frameTicks : 0.0f;
+	return res;
+}
+
+// One row of the profiler tree: the node name on the left, and on the right a bar
+// spanning the slice of the frame the node was running, so the column reads as a
+// flame graph from top to bottom.
+static bool UI_ProfilerTreeNode(UI &ui, bool *isOpen, u32 depth, bool hasChildren, const char *nodeName, f32 start, f32 end, f32 millis, f32 pct)
 {
 	void *ctx = (void*)isOpen;
 	u32 flags = hasChildren ? UITreeNodeFlag_None : UITreeNodeFlag_Leaf;
-	UI_BeginLayout(ui, UILayout_Horizontal);
+	UI_TableNextRow(ui);
+	UI_TableNextColumn(ui);
+	UI_MoveCursorRight(ui, (f32)depth * UI_GetIndentWidth(ui, UI_StyleSpacing));
 	UI_TreeNode(ui, nodeName, ctx, isOpen, flags);
-	UI_Text(ui, "", "%.3f ms (%.2f %%)", millis, pct);
-	UI_EndLayout(ui);
+	UI_TableNextColumn(ui);
+
+	const float4 track = UI_GetElemColor(ui, UIElementMeter).base;
+	const float4 heat = pct > 50.0f ? UiColorProfileHot : ( pct > 20.0f ? UiColorProfileWarm : UiColorProfileCold );
+	UI_PushElemColor(ui, UIElementMeter, { track, heat, heat, track });
+	UI_MeterRange(ui, start, end, "%.3f ms (%.2f %%)", millis, pct);
+	UI_PopElemColor(ui, UIElementMeter);
+
 	return *isOpen;
 }
 
@@ -1074,21 +1097,41 @@ static void EditorUpdateUI_Profiler(Engine &engine)
 	UI_DrawBox(ui, a, b);
 	UI_EndCanvas(ui);
 
+	const char *threadNames[MAX_PROFILE_THREADS] = {};
+	u32 threadNameCount;
+
 	const u32 threadCount = ProfileGetThreadCount();
 	for (u32 t = 0; t < threadCount; ++t)
 	{
 		if (ProfileGetThreadFrameCount(t) > 0)
 		{
+			const char *threadName = ProfileGetThreadName(t);
+			bool threadProcessed = false;
+			for ( u32 i = 0; i < threadNameCount; ++i ) {
+				if ( StrEq(threadName, threadNames[i]) ) {
+					threadProcessed = true;
+					break;
+				}
+			}
+			if ( threadProcessed ) {
+				continue;
+			}
+			threadNames[threadNameCount++] = threadName;
+
 			const ProfileFrame frame = ProfileGetThreadFrame(t, 0); // by-value snapshot
 			const f32 frameMillis = 1000.0f * SecondsFromTicks(frame.end - frame.begin);
 
-			if (UI_Section(ui, ProfileGetThreadName(t)))
+			if (UI_Section(ui, threadName))
 			{
-				bool isFrameOpen = true;
-				if ( UI_ProfilerTreeNode(ui, &isFrameOpen, true, "Frame", frameMillis, 100.0f) )
-				{
-					UI_Indent(ui);
+				UI_BeginTable(ui, threadName, 2);
+				UI_TableSetupColumn(ui, "Name");
+				UI_TableSetupColumn(ui, "Time");
 
+				const ProfileTime frameTicks = frame.end - frame.begin;
+
+				bool isFrameOpen = true;
+				if ( UI_ProfilerTreeNode(ui, &isFrameOpen, 0, true, "Frame", 0.0f, 1.0f, frameMillis, 100.0f) )
+				{
 					bool hasChildren[MAX_PROFILE_NODES] = {};
 					for (u32 i = 0; i < frame.nodeCount; ++i) {
 						const ProfileNode *node = &frame.nodes[i];
@@ -1098,31 +1141,29 @@ static void EditorUpdateUI_Profiler(Engine &engine)
 					}
 
 					bool isOpen[MAX_PROFILE_NODES] = {};
-					u16 depth[MAX_PROFILE_NODES];
-					u32 indent = 0;
+					u16 depth[MAX_PROFILE_NODES] = {};
+
 					for (u32 i = 0; i < frame.nodeCount; ++i)
 					{
 						const ProfileNode *node = &frame.nodes[i];
 
-						depth[i] = node->parentIndex == PROFILE_NODE_NONE ? 0 : depth[node->parentIndex] + 1;
-						while (indent < depth[i]) { UI_Indent(ui); ++indent; }
-						while (indent > depth[i]) { UI_Unindent(ui); --indent; }
+						depth[i] = node->parentIndex == PROFILE_NODE_NONE ? 1 : depth[node->parentIndex] + 1;
 
 						if (node->parentIndex == PROFILE_NODE_NONE || isOpen[node->parentIndex])
 						{
 							const char *name = ProfileGetName(node->nameId);
 							const f32 millis = 1000.0f * SecondsFromTicks(node->end - node->begin);
 							const f32 pct = frameMillis > 0.0f ? 100.0f * millis / frameMillis : 0.0f;
-							UI_ProfilerTreeNode(ui, &isOpen[i], hasChildren[i], name, millis, pct);
+							const f32 start = ProfileNormalizedTime(node->begin, frame.begin, frameTicks);
+							const f32 end = ProfileNormalizedTime(node->end, frame.begin, frameTicks);
+							UI_ProfilerTreeNode(ui, &isOpen[i], depth[i], hasChildren[i], name, start, end, millis, pct);
 						}
 					}
-
-					while (indent > 0) { UI_Unindent(ui); --indent; }
-
-					UI_Text(ui, "Dropped events", "%u", frame.droppedEventCount);
-
-					UI_Unindent(ui);
 				}
+
+				UI_EndTable(ui);
+
+				UI_Text(ui, "Dropped events", "%u", frame.droppedEventCount);
 			}
 		}
 	}

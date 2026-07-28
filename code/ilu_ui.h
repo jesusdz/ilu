@@ -32,6 +32,10 @@
 #define UI_MAX_MODAL_WINDOW_STACK 16
 #define UI_MAX_ID_STACK 16
 #define UI_MAX_WIDGET_STACK 16
+#define UI_MAX_TABLES 16
+#define UI_MAX_TABLE_STACK 4
+#define UI_MAX_TABLE_COLUMNS 8
+#define UI_MAX_TABLE_COLUMN_LABEL 32
 #define UI_FONT_CHAR_COUNT 255
 #define UI_TEXT_BUFFER_SIZE 128
 #define UI_LABEL_BUFFER_SIZE 128
@@ -81,6 +85,18 @@ constexpr float4 UiColorScrollbarHover = { 0.2, 0.2, 0.2, 1.0 };
 
 constexpr float4 UiColorMenu = { 0.02, 0.02, 0.02, 1.0 };
 constexpr float4 UiColorMenuHover = { 2*CR, 2*CG, 2*CB, 1.0 };
+
+constexpr float4 UiColorTableHeader = { CR, CG, CB, 1.0 };
+constexpr float4 UiColorTableHeaderHover = { 2*CR, 2*CG, 2*CB, 1.0 };
+
+// Rows are transparent by default: only hovered and selected ones paint.
+constexpr float4 UiColorTableRow = { 0.0, 0.0, 0.0, 0.0 };
+constexpr float4 UiColorTableRowHover = { CR, CG, CB, 1.0 };
+constexpr float4 UiColorTableRowSelected = { 2*CR, 2*CG, 2*CB, 1.0 };
+
+constexpr float4 UiColorMeter = { 0.06, 0.06, 0.06, 1.0 };
+constexpr float4 UiColorMeterFill = { 2*CR, 2*CG, 2*CB, 1.0 };
+constexpr float4 UiColorMeterFillHover = { 3*CR, 3*CG, 3*CB, 1.0 };
 
 // Sentinel for spacing arguments: "use whatever the current style says". A
 // default argument cannot read ui.style (ui is itself a parameter), so callers
@@ -272,6 +288,9 @@ enum UIElement
 	UIElementScrollbar,
 	UIElementMenu,
 	UIElementCaption,
+	UIElementTableHeader,
+	UIElementTableRow,
+	UIElementMeter, // base is the track, active the fill, hovered the fill under the mouse
 	UIElementCount,
 };
 
@@ -303,6 +322,8 @@ struct UIStyle
 	f32 resizeCornerSize;
 	f32 dragClickThreshold; // Max drag distance (px) still counted as a click
 	f32 labelRatio;       // Fraction of the container a labelled control's box takes
+	f32 tableGripWidth;   // Grab area around a table column divider
+	f32 tableMinColumnWidth;
 };
 
 struct UIInfo
@@ -338,6 +359,68 @@ enum UITreeNodeFlags
 	UITreeNodeFlag_Leaf = 1 << 0,
 };
 
+enum UITableFlags
+{
+	UITableFlag_None = 0,
+	UITableFlag_Resizable = 1 << 0, // Column dividers in the header can be dragged
+	UITableFlag_RowHighlight = 1 << 1, // Paint the row under the mouse
+	UITableFlag_Default = UITableFlag_Resizable | UITableFlag_RowHighlight,
+};
+
+enum UITableColumnSizing
+{
+	UITableColumnSizing_Stretch, // Shares the leftover width, proportionally to its size value
+	UITableColumnSizing_Fixed,   // Takes its size value in pixels
+};
+
+struct UITableColumn
+{
+	char label[UI_MAX_TABLE_COLUMN_LABEL];
+	UITableColumnSizing sizing;
+	f32 size;   // Weight when stretching, pixels when fixed
+	f32 width;  // Resolved width, in pixels
+	f32 offset; // Resolved offset from the left edge of the table, in pixels
+};
+
+// The part of a table that outlives the frame: widths the user dragged the
+// columns to, plus the drag in progress. Everything else is rebuilt every frame.
+struct UITableState
+{
+	UIID id;
+	u32 columnCount;
+	f32 userWidths[UI_MAX_TABLE_COLUMNS]; // 0 means "the column was never resized"
+	i32 resizedColumn;                    // -1 when no divider is being dragged
+	f32 widthBeforeResize;
+};
+
+// A table being filled in, from UI_BeginTable to UI_EndTable. Rows are laid out
+// top to bottom and cells left to right; a cell is a layout group of its own, so
+// any widget can be placed inside one.
+struct UITable
+{
+	UIID id;
+	UITableState *state;
+	u32 flags;
+	float2 pos;
+	f32 width;
+	f32 height;      // Grown by the header and every row added so far
+	f32 rowHeight;
+	UITableColumn columns[UI_MAX_TABLE_COLUMNS];
+	u32 columnCount; // Announced in UI_BeginTable
+	u32 setupCount;  // Columns described through UI_TableSetupColumn so far
+	bool resolved;   // Column widths already computed for this frame
+	i32 rowIndex;
+	i32 columnIndex;
+	float2 rowPos;
+	bool rowOpen;
+	bool cellOpen;
+
+	// Window state a cell replaces so that widgets measuring themselves against
+	// the container end up measuring themselves against the cell instead
+	float2 containerSizeBackup;
+	u32 contentLayoutGroupBackup;
+};
+
 constexpr const char *UIElementName[] =
 {
 	"Text",
@@ -350,6 +433,9 @@ constexpr const char *UIElementName[] =
 	"Scrollbar",
 	"Menu",
 	"Caption",
+	"TableHeader",
+	"TableRow",
+	"Meter",
 };
 
 CT_ASSERT(ARRAY_COUNT(UIElementName) == UIElementCount);
@@ -453,6 +539,12 @@ struct UI
 
 	UIInfo info[UI_MAX_WIDGET_INFOS];
 	u32 infoCount;
+
+	UITableState tableStates[UI_MAX_TABLES];
+	u32 tableStateCount;
+
+	UITable tableStack[UI_MAX_TABLE_STACK];
+	u32 tableStackSize;
 };
 
 static const char *UI_RemoveNamePrefix(const char *label)
@@ -2125,9 +2217,7 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen, u32 fl
 
 	if ( drawOpenControl )
 	{
-		//UI_PushColor(ui, UIElementButton);
-		//UI_AddRectangle(ui, boxPos, boxSize);
-		//UI_PopColor(ui);
+		const float4 arrowColor = ( info.isOpen || UI_WidgetHovered(ui) ) ? UiColorWhite : UiColorGray;
 
 		const float2 margin = {6.0, 6.0};
 		const float2 innerSize = boxSize - 2.0 * margin;
@@ -2138,7 +2228,7 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen, u32 fl
 			const float2 p1 = p0 + dY(innerSize);
 			const float2 p2 = p0 + innerSize;
 			const float2 p3 = p0 + dX(innerSize);
-			UI_AddTriangle(ui, p1, p2, p3, UiColorWhite);
+			UI_AddTriangle(ui, p1, p2, p3, arrowColor);
 		}
 		else
 		{
@@ -2146,8 +2236,7 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen, u32 fl
 			const float2 p2 = p1 + dY(innerSize);
 			const float2 p3 = p1 + float2{innerSize.x, 0.5f*innerSize.y};
 
-			float4 color = UI_WidgetHovered(ui) ? UiColorWhite : UiColorGray;
-			UI_AddTriangle(ui, p1, p2, p3, color);
+			UI_AddTriangle(ui, p1, p2, p3, arrowColor);
 		}
 	}
 
@@ -2166,7 +2255,10 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen, u32 fl
 	const float  textWidth = UI_TextWidth(ui, text);
 
 	UI_BeginWidget(ui, textPos, float2{textWidth, controlHeight});
+	const float4 textColor = ( info.isOpen || UI_WidgetHovered(ui) ) ? UiColorWhite : UiColorGray;
+	UI_PushElemColor(ui, UIElementText, {textColor, textColor, textColor, textColor} );
 	UI_AddText(ui, adjustedPos, text);
+	UI_PopElemColor(ui, UIElementText);
 	const bool textClicked = UI_WidgetClicked(ui);
 	UI_EndWidget(ui);
 
@@ -3288,6 +3380,59 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 }
 
 
+static void UI_AddMeter(UI &ui, f32 start, f32 end, const char *text)
+{
+	const UIWindow &window = UI_GetCurrentWindow(ui);
+	const float2 pos = UI_GetCursorPos(ui);
+	const float2 size = { UI_GetContainerSize(window).x, UI_ControlHeight(ui) };
+
+	UI_BeginWidget(ui, pos, size);
+
+	const UIElementColor &meterColor = UI_GetElemColor(ui, UIElementMeter);
+	const bool hovered = UI_WidgetHovered(ui);
+
+	UI_PushColor(ui, meterColor.base);
+	UI_AddRectangle(ui, pos, size);
+	UI_PopColor(ui);
+
+	// Keep the bar visible (one pixel) even when the span rounds down to nothing
+	const f32 x0 = Clamp(start, 0.0f, 1.0f);
+	const f32 x1 = Clamp(end, x0, 1.0f);
+	const float2 fillPos = pos + float2{Round(x0 * size.x), 0.0f};
+	const float2 fillSize = { Max(Round(( x1 - x0 ) * size.x), 1.0f), size.y };
+
+	UI_PushColor(ui, hovered ? meterColor.hovered : meterColor.active);
+	UI_AddRectangle(ui, fillPos, fillSize);
+	UI_PopColor(ui);
+
+	// Text is clipped against the widget, so it can never spill out of the meter
+	const float2 centeredPos = UI_AdjustTextHorizontally(ui, pos, size.x, text);
+	const float2 textPos = UI_AdjustTextVertically(ui, centeredPos, size.y);
+	UI_AddText(ui, textPos, text);
+
+	UI_EndWidget(ui);
+
+	UI_CursorAdvance(ui, size);
+}
+
+// A bar covering the [start, end] portion of the container, with the text centered
+// on top of it. Both ends are normalized, so the bar can float anywhere along the
+// track (a span in a timeline) instead of always growing from the left.
+void UI_MeterRange(UI &ui, f32 start, f32 end, const char *format, ...)
+{
+	UI_VSPRINTF(format, text);
+
+	UI_AddMeter(ui, start, end, text);
+}
+
+// A bar growing from the left, filled up to fraction (0 to 1)
+void UI_Meter(UI &ui, f32 fraction, const char *format, ...)
+{
+	UI_VSPRINTF(format, text);
+
+	UI_AddMeter(ui, 0.0f, fraction, text);
+}
+
 void UI_Histogram(UI &ui, const float *values, u32 valueCount, f32 maxValue = 1000.0f/120.0f)
 {
 	UIWindow &window = UI_GetCurrentWindow(ui);
@@ -3316,6 +3461,281 @@ void UI_Histogram(UI &ui, const float *values, u32 valueCount, f32 maxValue = 10
 
 	UI_CursorAdvance(ui, histSize);
 }
+
+////////////////////////////////////////////////////////////////////////
+// Tables
+//
+// A table lays out rows top to bottom and cells left to right. Cells are plain
+// layout groups, so anything can go inside one:
+//
+//   UI_BeginTable(ui, "Entities", 3);
+//   UI_TableSetupColumn(ui, "Name");
+//   UI_TableSetupColumn(ui, "Type", UITableColumnSizing_Fixed, 80.0f);
+//   UI_TableSetupColumn(ui, "Visible", UITableColumnSizing_Fixed, 60.0f);
+//   for (u32 i = 0; i < entityCount; ++i) {
+//       if ( UI_TableNextRow(ui, i == selectedEntity) ) { selectedEntity = i; }
+//       UI_TableNextColumn(ui);
+//       // Draw some widgets here...
+//       UI_TableNextColumn(ui);
+//       // Draw some other widgets here...
+//       UI_TableNextColumn(ui);
+//       // Draw some more widgets...
+//   }
+//   UI_EndTable(ui);
+//
+// Rows are one line tall (UI_ControlHeight, or whatever UI_BeginTable was given)
+// and cell contents are clipped to their cell, so a table never grows to fit an
+// oversized cell.
+
+static UITableState &UI_FindOrCreateTableState(UI &ui, UIID tableId)
+{
+	for (u32 i = 0; i < ui.tableStateCount; ++i)
+	{
+		if ( ui.tableStates[i].id == tableId )
+		{
+			return ui.tableStates[i];
+		}
+	}
+
+	ASSERT(ui.tableStateCount < ARRAY_COUNT(ui.tableStates));
+	UITableState &state = ui.tableStates[ui.tableStateCount++];
+	state = {};
+	state.id = tableId;
+	state.resizedColumn = -1;
+	return state;
+}
+
+UITable &UI_GetCurrentTable(UI &ui)
+{
+	ASSERT(ui.tableStackSize > 0);
+	return ui.tableStack[ui.tableStackSize-1];
+}
+
+void UI_BeginTable(UI &ui, const char *name, u32 columnCount, u32 flags = UITableFlag_Default, f32 rowHeight = 0.0f)
+{
+	ASSERT(ui.tableStackSize < ARRAY_COUNT(ui.tableStack));
+	ASSERT(columnCount > 0 && columnCount <= UI_MAX_TABLE_COLUMNS);
+
+	const UIWindow &window = UI_GetCurrentWindow(ui);
+	const UIID id = UI_MakeID(ui, name);
+	UITableState &state = UI_FindOrCreateTableState(ui, id);
+
+	if ( state.columnCount != columnCount )
+	{
+		// The table changed shape, so widths dragged for the old columns mean nothing now
+		state.columnCount = columnCount;
+		state.resizedColumn = -1;
+		for (u32 i = 0; i < ARRAY_COUNT(state.userWidths); ++i) {
+			state.userWidths[i] = 0.0f;
+		}
+	}
+
+	// Same reasoning as UI_GetAlignedWidgetWidth: the table takes whatever is left
+	// of the container from wherever the cursor already sits.
+	const f32 contentOriginX = ui.layoutGroups[window.contentLayoutGroup].pos.x;
+	const f32 offset = UI_GetCursorPos(ui).x - contentOriginX;
+
+	UITable &table = ui.tableStack[ui.tableStackSize++];
+	table = {};
+	table.id = id;
+	table.state = &state;
+	table.flags = flags;
+	table.pos = UI_GetCursorPos(ui);
+	table.width = Max(UI_GetContainerSize(window).x - offset, 0.0f);
+	table.rowHeight = rowHeight > 0.0f ? rowHeight : UI_ControlHeight(ui);
+	table.columnCount = columnCount;
+	table.rowIndex = -1;
+	table.columnIndex = -1;
+
+	UI_BeginLayout(ui, UILayout_Vertical);
+}
+
+void UI_TableSetupColumn(UI &ui, const char *label, UITableColumnSizing sizing = UITableColumnSizing_Stretch, f32 size = 1.0f)
+{
+	UITable &table = UI_GetCurrentTable(ui);
+	ASSERT(!table.resolved); // Columns are described before the header and the first row
+	ASSERT(table.setupCount < table.columnCount);
+
+	UITableColumn &column = table.columns[table.setupCount++];
+	StrCopyN(column.label, label, ARRAY_COUNT(column.label) - 1);
+	column.sizing = sizing;
+	column.size = size;
+}
+
+// Turns the declared columns into pixel widths and offsets. Called once per frame
+// by whatever comes first, the header row or the first row.
+static void UI_TableResolveColumns(UI &ui, UITable &table)
+{
+	if ( table.resolved ) {
+		return;
+	}
+
+	UITableState &state = *table.state;
+
+	// Columns nobody described take an equal share of the leftover width
+	for (u32 i = table.setupCount; i < table.columnCount; ++i)
+	{
+		UITableColumn &column = table.columns[i];
+		column.label[0] = 0;
+		column.sizing = UITableColumnSizing_Stretch;
+		column.size = 1.0f;
+	}
+	table.setupCount = table.columnCount;
+
+	// Advance a drag started on a previous frame before measuring anything
+	if ( state.resizedColumn >= 0 )
+	{
+		if ( UI_IsMouseIdle(ui) )
+		{
+			state.resizedColumn = -1;
+		}
+		else
+		{
+			const f32 delta = (f32)( UI_MousePos(ui).x - UI_LastMouseClickPos(ui).x );
+			state.userWidths[state.resizedColumn] = Max(state.widthBeforeResize + delta, ui.style.tableMinColumnWidth);
+		}
+	}
+
+	// Fixed columns (declared as such, or pinned by a drag) keep their width, the
+	// rest share what is left proportionally to their weight
+	f32 fixedWidth = 0.0f;
+	f32 totalWeight = 0.0f;
+	for (u32 i = 0; i < table.columnCount; ++i)
+	{
+		const UITableColumn &column = table.columns[i];
+		const bool fixed = state.userWidths[i] > 0.0f || column.sizing == UITableColumnSizing_Fixed;
+		if ( fixed ) {
+			const f32 width = state.userWidths[i] > 0.0f ? state.userWidths[i] : column.size;
+			fixedWidth += Max(width, ui.style.tableMinColumnWidth);
+		} else {
+			totalWeight += Max(column.size, 0.0f);
+		}
+	}
+
+	const f32 stretchWidth = Max(table.width - fixedWidth, 0.0f);
+
+	f32 offset = 0.0f;
+	for (u32 i = 0; i < table.columnCount; ++i)
+	{
+		UITableColumn &column = table.columns[i];
+		const bool fixed = state.userWidths[i] > 0.0f || column.sizing == UITableColumnSizing_Fixed;
+		const f32 width = fixed ?
+			( state.userWidths[i] > 0.0f ? state.userWidths[i] : column.size ) :
+			( totalWeight > 0.0f ? stretchWidth * Max(column.size, 0.0f) / totalWeight : 0.0f );
+
+		column.width = Max(Round(width), ui.style.tableMinColumnWidth);
+		column.offset = offset;
+		offset += column.width;
+	}
+
+	table.resolved = true;
+}
+
+static void UI_TableEndCell(UI &ui, UITable &table)
+{
+	if ( !table.cellOpen ) {
+		return;
+	}
+
+	UIWindow &window = UI_GetCurrentWindow(ui);
+	window.containerSize = table.containerSizeBackup;
+	window.contentLayoutGroup = table.contentLayoutGroupBackup;
+
+	UI_EndLayout(ui, false); // The table tracks its own size, no need to grow anything
+	UI_PopCursorPos(ui);
+	UI_EndWidget(ui);
+
+	table.cellOpen = false;
+}
+
+static void UI_TableEndRow(UI &ui, UITable &table)
+{
+	UI_TableEndCell(ui, table);
+
+	if ( !table.rowOpen ) {
+		return;
+	}
+
+	UI_EndWidget(ui);
+	table.rowOpen = false;
+}
+
+bool UI_TableNextRow(UI &ui, bool selected = false)
+{
+	UITable &table = UI_GetCurrentTable(ui);
+	UI_TableResolveColumns(ui, table);
+	UI_TableEndRow(ui, table);
+
+	table.rowIndex++;
+	table.columnIndex = -1;
+	table.rowPos = table.pos + float2{0.0f, table.height};
+	table.height += table.rowHeight;
+
+	const float2 rowSize = { table.width, table.rowHeight };
+
+	// The row widget stays open until the next row, so cell text clips against it
+	UI_BeginWidget(ui, table.rowPos, rowSize);
+	table.rowOpen = true;
+
+	const bool highlight = ( table.flags & UITableFlag_RowHighlight ) && UI_WidgetHovered(ui);
+	const UIElementColor &rowColor = UI_GetElemColor(ui, UIElementTableRow);
+	const float4 color = selected ? rowColor.active : ( highlight ? rowColor.hovered : rowColor.base );
+
+	if ( color.a > 0.0f )
+	{
+		UI_PushColor(ui, color);
+		UI_AddRectangle(ui, table.rowPos, rowSize);
+		UI_PopColor(ui);
+	}
+
+	const bool clicked = UI_WidgetClicked(ui);
+
+	return clicked;
+}
+
+void UI_TableNextColumn(UI &ui)
+{
+	UITable &table = UI_GetCurrentTable(ui);
+	ASSERT(table.rowOpen); // Cells belong to a row started by UI_TableNextRow
+	ASSERT(table.columnIndex + 1 < (i32)table.columnCount);
+
+	UI_TableEndCell(ui, table);
+
+	const UITableColumn &column = table.columns[++table.columnIndex];
+
+	const float2 padding = UI_GetPadding(ui);
+	const float2 cellPos = table.rowPos + float2{column.offset, 0.0f};
+	const float2 cellSize = { column.width, table.rowHeight };
+
+	UI_BeginWidget(ui, cellPos, cellSize, false); // The row already blocks window interaction
+	UI_PushCursorPos(ui, cellPos + float2{padding.x, 0.0f});
+	UI_BeginLayout(ui, UILayout_Horizontal);
+
+	// Widgets that measure themselves against the container must fit the cell
+	UIWindow &window = UI_GetCurrentWindow(ui);
+	table.containerSizeBackup = window.containerSize;
+	table.contentLayoutGroupBackup = window.contentLayoutGroup;
+	window.containerSize = { Max(cellSize.x - 2.0f * padding.x, 0.0f), cellSize.y };
+	window.contentLayoutGroup = ui.layoutGroupCount - 1;
+
+	table.cellOpen = true;
+}
+
+void UI_EndTable(UI &ui)
+{
+	UITable &table = UI_GetCurrentTable(ui);
+	UI_TableEndRow(ui, table);
+
+	const float2 size = { table.width, table.height };
+
+	UI_EndLayout(ui, false);
+	UI_SetCursorPos(ui, table.pos);
+	UI_CursorAdvance(ui, size);
+
+	ASSERT(ui.tableStackSize > 0);
+	ui.tableStackSize--;
+}
+
 
 bool UI_BeginMenuBar(UI &ui)
 {
@@ -3674,6 +4094,9 @@ UIStyle UI_StyleDefault()
 	style.colors[UIElementScrollbar]  = { UiColorScrollbar,  UiColorScrollbarHover, UiColorScrollbarHover, UiColorScrollbar };
 	style.colors[UIElementMenu]       = { UiColorMenu,       UiColorMenuHover,      UiColorMenuHover,      UiColorMenu };
 	style.colors[UIElementCaption]    = { UiColorCaption,    UiColorCaption,        UiColorCaption,        UiColorCaptionInactive };
+	style.colors[UIElementTableHeader]= { UiColorTableHeader,UiColorTableHeaderHover, UiColorTableHeaderHover, UiColorTableHeader };
+	style.colors[UIElementTableRow]   = { UiColorTableRow,   UiColorTableRowHover,  UiColorTableRowSelected, UiColorTableRow };
+	style.colors[UIElementMeter]      = { UiColorMeter,      UiColorMeterFillHover, UiColorMeterFill,      UiColorMeter };
 
 	style.borderColor = UiColorBorder;
 	style.accentColor = UiColorAccent;
@@ -3693,6 +4116,8 @@ UIStyle UI_StyleDefault()
 	style.resizeCornerSize = 14.0f;
 	style.dragClickThreshold = 3.0f;
 	style.labelRatio = 0.6f;
+	style.tableGripWidth = 6.0f;
+	style.tableMinColumnWidth = 20.0f;
 
 	return style;
 }
