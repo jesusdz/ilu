@@ -18,7 +18,7 @@ struct Globals
 	float unused1;
 	float unused2;
 
-	int2 sceneResolution;
+	uint2 sceneResolution;
 	int2 mousePosition;
 	uint selectedEntity;
 };
@@ -38,7 +38,7 @@ struct SSpriteData
 
 struct STileData
 {
-	float2 pos;
+	float3 pos;
 	uint spriteIndex;
 };
 

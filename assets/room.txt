@@ -52,7 +52,7 @@ Sprite spr_sky02_png = {
 
 Entity player = {
  .spriteName = "spr_diamond_png",
- .pos = {31.570538, 3.000000, 0.000000},
+ .pos = {30.934855, 3.000000, 0.000000},
  .scale = 1.000000,
  .layer = 0,
 };
@@ -114,7 +114,7 @@ Room Room = {
   },
   {
    .name = "Background",
-   .order = 0,
+   .order = -1,
    .visible = 1,
    .isCollider = 0,
    .size = {30, 20},
@@ -136,7 +136,7 @@ Room Room = {
   },
   {
    .name = "Sky",
-   .order = 0,
+   .order = -2,
    .visible = 1,
    .isCollider = 0,
    .size = {20, 11},

@@ -241,6 +241,7 @@ struct Graphics
 	PipelineH spriteIdPipelineH;
 #endif
 	PipelineH debugDrawPipelineH;
+	PipelineH fogPipelineH;
 
 #define USE_COMPUTE_TEST 0
 #if USE_COMPUTE_TEST

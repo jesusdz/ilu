@@ -226,6 +226,8 @@ static ShaderSourceDesc shaderSourceDescs[] = {
 	{ .type = ShaderTypeCompute,  .filename = "compute.hlsl",        .entryPoint = "main_update", .name = "compute_update" },
 	{ .type = ShaderTypeVertex,   .filename = "debug_draw.hlsl",     .entryPoint = "VSMain",      .name = "vs_debug_draw" },
 	{ .type = ShaderTypeFragment, .filename = "debug_draw.hlsl",     .entryPoint = "PSMain",      .name = "fs_debug_draw" },
+	{ .type = ShaderTypeVertex,   .filename = "fog.hlsl",            .entryPoint = "VSMain",      .name = "vs_fog" },
+	{ .type = ShaderTypeFragment, .filename = "fog.hlsl",            .entryPoint = "PSMain",      .name = "fs_fog" },
 };
 
 static const ShaderAndPipelineDesc pipelineDescs[] =
@@ -474,6 +476,25 @@ static const ShaderAndPipelineDesc pipelineDescs[] =
 				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat2, },
 				{ .bufferIndex = 0, .location = 1, .offset = 8,  .format = FormatFloat2, },
 				{ .bufferIndex = 0, .location = 2, .offset = 16, .format = FormatRGBA8, },
+			},
+			.depthTest = false,
+			.blending = true,
+		}
+	},
+	{
+		.vsName = "vs_fog",
+		.fsName = "fs_fog",
+		.renderPass = "scene_renderpass",
+		.desc = {
+			.name = "pipeline_fog",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
 			},
 			.depthTest = false,
 			.blending = true,
@@ -1826,6 +1847,7 @@ void LinkHandles(Graphics &gfx)
 	gfx.spriteIdPipelineH = FindPipelineHandle(gfx, "pipeline_sprite_id");
 #endif // USE_EDITOR
 	gfx.debugDrawPipelineH = FindPipelineHandle(gfx, "pipeline_debug_draw");
+	gfx.fogPipelineH = FindPipelineHandle(gfx, "pipeline_fog");
 
 	// Compute pipelines
 #if USE_COMPUTE_TEST
@@ -3256,6 +3278,7 @@ bool RenderGraphics(Engine &engine)
 		.eyePosition = Float4(camera.position, 1.0f),
 		.shadowmapDepthBias = 0.005,
 		.time = totalSeconds,
+		.sceneResolution = GetFramebufferSize(gfx.renderTargets.sceneFramebuffer),
 		.mousePosition = window.mouse.pos,
 #if USE_EDITOR
 		.selectedEntity = selectedEntity.num,
@@ -3340,7 +3363,8 @@ bool RenderGraphics(Engine &engine)
 						const Handle spriteH = layer.cells[x][y].handle;
 						if (IsValidHandle(scene.spriteHandles, spriteH) && tileCount < MAX_TILES)
 						{
-							tileDataPtr[tileCount].pos = roomPos + Float2(int2{x, y}) + parallax;
+							tileDataPtr[tileCount].pos.xy = roomPos + Float2(int2{x, y}) + parallax;
+							tileDataPtr[tileCount].pos.z = layer.order;
 							tileDataPtr[tileCount].spriteIndex = spriteH.idx;
 							tileSpriteHandles[tileCount] = spriteH;
 							tileCount++;
@@ -3714,6 +3738,28 @@ bool RenderGraphics(Engine &engine)
 
 			gfx.debugDrawVertexCount = 0;
 			gfx.debugDrawBatchCount = 0;
+
+			EndDebugGroup(commandList);
+		}
+
+		if ( engine.game.state == GameStateRunning )
+		{
+			PROFILE_BLOCK(Fog);
+
+			BeginDebugGroup(commandList, "Fog", ColorBlack);
+
+			SetPipeline(commandList, gfx.fogPipelineH);
+
+			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+
+			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
+			const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
+			const uint32_t indexCount = indices.size/sizeof(Index);
+			const uint32_t firstIndex = indices.offset/sizeof(Index);
+			const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
+			SetVertexBuffer(commandList, vertexBuffer);
+			SetIndexBuffer(commandList, indexBuffer);
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0);
 
 			EndDebugGroup(commandList);
 		}

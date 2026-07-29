@@ -1098,7 +1098,7 @@ static void EditorUpdateUI_Profiler(Engine &engine)
 	UI_EndCanvas(ui);
 
 	const char *threadNames[MAX_PROFILE_THREADS] = {};
-	u32 threadNameCount;
+	u32 threadNameCount = 0;
 
 	const u32 threadCount = ProfileGetThreadCount();
 	for (u32 t = 0; t < threadCount; ++t)
