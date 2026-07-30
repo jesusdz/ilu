@@ -210,6 +210,7 @@ extern "C"
 	float ceilf(float value);
 	float floorf(float value);
 	float log2f(float value);
+	float powf(float base, float exponent);
 }
 #else
 #include <math.h>
@@ -2178,6 +2179,12 @@ f32 Tan(f32 value)
 f32 Sqrt(f32 value)
 {
 	const f32 res = ::sqrtf(value);
+	return res;
+}
+
+f32 Pow(f32 base, f32 exponent)
+{
+	const f32 res = ::powf(base, exponent);
 	return res;
 }
 

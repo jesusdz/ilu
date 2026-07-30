@@ -17,6 +17,7 @@ void GameStart(Game &game)
 	game.speed = {2.0f, 10.0f};
 	game.speed2 = {};
 	game.accel2 = 50;
+	game.grounded = false;
 
 	game.ent = GetEntity("player");
 	game.ent->position.xy = float2{1, 1};
@@ -62,6 +63,7 @@ void GameSimulate(Game &game)
 	if (!game.playingMusic)
 	{
 		PlayMusic(game.modEquinox);
+		game.playingMusic = true;
 	}
 
 
@@ -93,17 +95,20 @@ void GameSimulate(Game &game)
 
 		// Speed epsilon ///////////////////////////////////////////////
 
+		// Only X: friction decays toward zero without ever reaching it, so it needs a deadzone.
+		// Y must not be snapped, or the jump apex would read as grounded for a frame.
 		constexpr f32 SPEED_EPSILON = 0.01;
 		if ( Abs(game.speed2.x) < SPEED_EPSILON ) { game.speed2.x = 0.0f; }
-		if ( Abs(game.speed2.y) < SPEED_EPSILON ) { game.speed2.y = 0.0f; }
 
 		// X ///////////////////////////////////////////////////////////
 
-		if (direction < 0.0f && game.speed2.x > 0.0f ||
-				direction > 0.0f && game.speed2.x < 0.0f ||
+		if ((direction < 0.0f && game.speed2.x > 0.0f) ||
+				(direction > 0.0f && game.speed2.x < 0.0f) ||
 				!direction )
 		{
-			game.speed2.x *= 0.8;
+			// Retune of the old per-frame 0.8 factor, kept identical at 60Hz but framerate independent
+			constexpr f32 frictionAt60Hz = 0.8f;
+			game.speed2.x *= Pow(frictionAt60Hz, deltaSeconds * 60.0f);
 		}
 
 		if (direction != 0) {
@@ -126,9 +131,11 @@ void GameSimulate(Game &game)
 		constexpr f32 jumpSpeed = 14.0f;
 		constexpr f32 jumpCutMultiplier = 0.35f; // Kills upward speed quickly if the button is released early
 
+		// Grounded state comes from last frame's collision resolution, before this frame moves the player
 		if (game.input.jump.press) {
-			if (game.speed2.y == 0) {
+			if (game.grounded) {
 				game.speed2.y = jumpSpeed;
+				game.grounded = false;
 				PlayAudioClip(game.sndJump);
 			}
 		}
@@ -141,11 +148,17 @@ void GameSimulate(Game &game)
 		const f32 prevY = playerPos.y;
 		playerPos.y += game.speed2.y * deltaSeconds + 0.5 * gravity2 * deltaSeconds * deltaSeconds;
 		game.speed2.y = game.speed2.y + gravity2 * deltaSeconds;
+
+		// Only landing on a surface grounds the player, hitting a ceiling does not
+		game.grounded = false;
+
 		if (IsColliderInBox(playerPos, playerSize, 1)) {
-			if (prevY < playerPos.y)
+			if (prevY < playerPos.y) {
 				playerPos.y = Ceil(prevY);
-			else
+			} else {
 				playerPos.y = Floor(prevY);
+				game.grounded = true;
+			}
 			game.speed2.y = 0.0f;
 		}
 
@@ -157,6 +170,7 @@ void GameSimulate(Game &game)
 				if (prevY > playerPos.y) {
 					playerPos.y = Floor(prevY);
 					game.speed2.y = 0.0f;
+					game.grounded = true;
 				}
 			}
 		}
@@ -164,10 +178,7 @@ void GameSimulate(Game &game)
 		if (playerPos.y < 0) {
 			playerPos.y = 0;
 			game.speed2.y = 0;
-		}
-
-		if (playerPos.y < 0.0f ) {
-			playerPos.y = 0.0f;
+			game.grounded = true;
 		}
 
 		// Player bounds

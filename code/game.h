@@ -55,6 +55,7 @@ struct Game
 	Box box2;
 	float2 speed2;
 	float accel2;
+	bool grounded;
 
 	Entity *ent;
 

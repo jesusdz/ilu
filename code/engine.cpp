@@ -2156,6 +2156,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.blackImageH = EngineCreateImage(gfx, "blackImage", 1, 1, 4, false, blackImagePixels);
 	const u32 noiseWidth = 32;
 	const u32 noiseHeight = 32;
+	ResetArena(scratch.arena);
 	rgba *noiseImagePixels = PushArray(scratch.arena, rgba, noiseWidth * noiseHeight);
 	for (u32 y = 0; y < noiseHeight; ++y) {
 		for (u32 x = 0; x < noiseWidth; ++x) {
