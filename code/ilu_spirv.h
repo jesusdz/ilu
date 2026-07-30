@@ -34,7 +34,7 @@ Check the following link for reference on the implementation of Spirv tools:
 
 #define SPV_INDEX_INSTRUCTION 5u
 #define SPV_MAX_DESCRIPTOR_SETS 4u
-#define SPV_MAX_DESCRIPTORS_PER_SET 8u
+#define SPV_MAX_DESCRIPTORS_PER_SET 16u
 
 #define SPV_CT_ASSERT3(expression, line) static int ct_assert_##line[(expression) ? 1 : 0]
 #define SPV_CT_ASSERT2(expression, line) SPV_CT_ASSERT3(expression, line)

@@ -37,9 +37,11 @@ float Noise(float p)
 
 float Noise(float2 p)
 {
-	float3 p3 = frac(p.xyx * 0.1031);
-	p3 += dot(p3, p3.yzx + 33.33);
-	return frac((p3.x + p3.y) * p3.z);
+	float n = noise2D.Sample(pointSampler, p/32.0);
+	return n;
+	//float3 p3 = frac(p.xyx * 0.1031);
+	//p3 += dot(p3, p3.yzx + 33.33);
+	//return frac((p3.x + p3.y) * p3.z);
 }
 
 float Noise(float3 p)
@@ -208,10 +210,14 @@ PixelOutput PSMain(PixelInput IN) : SV_Target
 	// one integer cell per rendered pixel at any camera zoom.
 	float2 viewportSizeMeters = abs(globals.cameraFrustumTopLeft.xy - globals.cameraFrustumBottomRight.xy);
 	float2 viewportSizePixels = float2(320, 180); //float2(globals.sceneResolution);
-	float pixelsPerMeter = 32.0;
-	float2 noiseInput = floor(IN.positionWs * pixelsPerMeter);
-	float alpha = 0.5 * smoothstep( 1.0, 0.0, IN.positionWs.y * 0.2 );
-	OUT.color = float4(Fbm(IN.positionWs + globals.time * float2(0.5, 0.1), globals.time * 1.0).xxx, alpha);
+	//float pixelsPerMeter = 32.0;
+	//float2 noiseInput = floor(IN.positionWs * pixelsPerMeter);
+	float alpha = 0.5 * smoothstep( 1.0, 0.0, IN.positionWs.y * 0.2 ) * ( 0.2 * sin(globals.time + 1.8) + 1.0 );
+	float layer1 = Fbm(IN.positionWs + globals.time * float2(0.5, -0.3)) * ( 0.2 * sin(globals.time) + 1.0 );
+	float layer2 = Fbm(IN.positionWs + globals.time * float2(-0.5, -0.3));
+	float fog = (layer1 + 0.5 * layer2);
+	float fog2 = 2.0f * fog * fog;
+	OUT.color = float4(fog2.xxx, alpha );
 	return OUT;
 }
 

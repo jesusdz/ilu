@@ -1350,6 +1350,10 @@ static void EditorUpdateUI_Settings(Engine &engine)
 
 	UI_BeginWindow(ui, "Settings", &editor.showSettings);
 
+	if ( UI_Section(ui, "General") )
+	{
+		UI_Checkbox(ui, "Hot reload", &engine.settings.hotReload);
+	}
 	if ( UI_Section(ui, "UI Colors") )
 	{
 		static float4 *colorToEdit = nullptr;

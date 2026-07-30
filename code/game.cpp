@@ -91,6 +91,12 @@ void GameSimulate(Game &game)
 
 		f32 direction = game.input.move.x;
 
+		// Speed epsilon ///////////////////////////////////////////////
+
+		constexpr f32 SPEED_EPSILON = 0.01;
+		if ( Abs(game.speed2.x) < SPEED_EPSILON ) { game.speed2.x = 0.0f; }
+		if ( Abs(game.speed2.y) < SPEED_EPSILON ) { game.speed2.y = 0.0f; }
+
 		// X ///////////////////////////////////////////////////////////
 
 		if (direction < 0.0f && game.speed2.x > 0.0f ||
@@ -178,10 +184,17 @@ void GameSimulate(Game &game)
 		const f32 cameraRight = screenRight - halfSceneSize.x;
 		const f32 cameraBottom = screenBottom + halfSceneSize.y;
 		const f32 cameraTop = screenTop - halfSceneSize.y;
-		const f32 cameraX = Lerp(game.camera.position.x, playerPos.x, 0.2f);
-		const f32 cameraY = Lerp(game.camera.position.y, playerPos.y, 0.2f);
-		game.camera.position.x = Clamp(cameraX, cameraLeft, cameraRight);
-		game.camera.position.y = Clamp(cameraY, cameraBottom, cameraTop);
+		//const f32 cameraX = Lerp(game.camera.position.x, playerPos.x, 0.2f);
+		//const f32 cameraY = Lerp(game.camera.position.y, playerPos.y, 0.2f);
+		float2 cameraPos = game.camera.position.xy;
+		cameraPos.x = cameraPos.x < playerPos.x - 1.0 ? playerPos.x - 1.0 : cameraPos.x;
+		cameraPos.x = cameraPos.x > playerPos.x + 1.0 ? playerPos.x + 1.0 : cameraPos.x;
+		cameraPos.y = cameraPos.y < playerPos.y - 1.0 ? playerPos.y - 1.0 : cameraPos.y;
+		cameraPos.y = cameraPos.y > playerPos.y + 1.0 ? playerPos.y + 1.0 : cameraPos.y;
+		if ( game.input.move.x == 0.0f ) { cameraPos.x = Lerp(cameraPos.x, playerPos.x, 0.2f); }
+		if ( game.input.move.y == 0.0f ) { cameraPos.y = Lerp(cameraPos.y, playerPos.y, 0.2f); }
+		game.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
+		game.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
 		EntitySetPosition(*game.ent, Float3(playerPos, game.ent->position.z));
 	}

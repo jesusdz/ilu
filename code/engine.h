@@ -222,9 +222,11 @@ struct Graphics
 	ImageH pinkImageH;
 	ImageH grayImageH;
 	ImageH blackImageH;
+	ImageH noiseImageH;
 
 	TextureH skyTextureH;
 	TextureH defaultTexture;
+	TextureH noiseTexture;
 
 	MaterialH defaultMaterial;
 

@@ -96,8 +96,8 @@
 // Definitions
 ////////////////////////////////////////////////////////////////////////
 
-#define MAX_BIND_GROUPS 4
-#define MAX_SHADER_BINDINGS 16
+#define MAX_BIND_GROUPS SPV_MAX_DESCRIPTOR_SETS
+#define MAX_SHADER_BINDINGS SPV_MAX_DESCRIPTORS_PER_SET
 #define MAX_BIND_GROUP_LAYOUTS 256
 #define MAX_FENCES 128
 #define MAX_RENDER_TARGETS 4
@@ -3016,7 +3016,7 @@ void ResetBindGroupAllocator(const GraphicsDevice &device, BindGroupAllocator &b
 BindGroupLayout CreateBindGroupLayout(GraphicsDevice &device, const ShaderBinding bindings[], u8 bindingCount)
 {
 	// Try finding if an equal layout was already created
-	const u32 crc = HashFNV(bindings, bindingCount);
+	const u32 crc = HashFNV(bindings, bindingCount * sizeof(ShaderBinding));
 
 	for (u32 i = 0; i < device.bindGroupLayoutCount; ++i)
 	{

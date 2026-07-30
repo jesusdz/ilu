@@ -55,6 +55,11 @@ struct ImagePixels
 #include "editor.h"
 #endif
 
+struct Settings
+{
+	bool hotReload;
+};
+
 struct Engine
 {
 	Graphics gfx;
@@ -67,6 +72,7 @@ struct Engine
 #if USE_EDITOR
 	Editor editor;
 #endif
+	Settings settings;
 
 	BinAssets shaderAssets;
 	BinAssets assets;
@@ -1832,6 +1838,7 @@ void LinkHandles(Graphics &gfx)
 	// Textures
 	gfx.skyTextureH = FindTextureHandle(gfx, "tex_sky");
 	gfx.defaultTexture = FindTextureHandle(gfx, "tex_default");
+	gfx.noiseTexture = FindTextureHandle(gfx, "tex_noise");
 
 	// Graphics pipelines
 	gfx.shadowmapPipelineH = FindPipelineHandle(gfx, "pipeline_shadowmap");
@@ -2126,6 +2133,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		{ .set = 0, .binding = BINDING_SHADOWMAP_SAMPLER, .type = SpvTypeSampler, .stageFlags = SpvStageFlagsFragmentBit },
 		{ .set = 0, .binding = BINDING_SPRITE_DATA, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsVertexBit },
 		{ .set = 0, .binding = BINDING_TILE_DATA, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsVertexBit },
+		{ .set = 0, .binding = BINDING_NOISE2D, .type = SpvTypeImage, .stageFlags = SpvStageFlagsFragmentBit },
 	};
 	gfx.globalBindGroupLayout = CreateBindGroupLayout(gfx.device, globalShaderBindings, ARRAY_COUNT(globalShaderBindings));
 
@@ -2146,15 +2154,37 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.grayImageH = EngineCreateImage(gfx, "grayImage", 1, 1, 4, false, grayImagePixels);
 	const byte blackImagePixels[] = { 0, 0, 0, 0 };
 	gfx.blackImageH = EngineCreateImage(gfx, "blackImage", 1, 1, 4, false, blackImagePixels);
+	const u32 noiseWidth = 32;
+	const u32 noiseHeight = 32;
+	rgba *noiseImagePixels = PushArray(scratch.arena, rgba, noiseWidth * noiseHeight);
+	for (u32 y = 0; y < noiseHeight; ++y) {
+		for (u32 x = 0; x < noiseWidth; ++x) {
+			byte r = rand();
+			byte g = rand();
+			byte b = rand();
+			byte a = rand();
+			noiseImagePixels[y * noiseWidth + x] = {r, g, b, a};
+		}
+	}
+	gfx.noiseImageH = EngineCreateImage(gfx, "noiseImage", noiseWidth, noiseHeight, 4, false, (byte*)noiseImagePixels);
 
 	// Builtin texture
-	const TextureDesc textureDesc = {
+	const TextureDesc defaultTextureDesc = {
 		.name = InternString("tex_default"),
 		.filename = InternString(""),
 		.mipmap = 0,
 		.flags = AssetFlag_Builtin,
 	};
-	gfx.defaultTexture = CreateTexture(gfx, textureDesc, gfx.pinkImageH);
+	gfx.defaultTexture = CreateTexture(gfx, defaultTextureDesc, gfx.pinkImageH);
+
+	// Builtin noise texture
+	const TextureDesc noiseTextureDesc = {
+		.name = InternString("tex_noise"),
+		.filename = InternString(""),
+		.mipmap = 0,
+		.flags = AssetFlag_Builtin,
+	};
+	gfx.noiseTexture = CreateTexture(gfx, noiseTextureDesc, gfx.noiseImageH);
 
 	// Builtin material
 	const MaterialDesc materialDesc = {
@@ -2246,6 +2276,7 @@ BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameIndex)
 			{ .index = BINDING_SHADOWMAP_SAMPLER, .sampler = gfx.shadowmapSamplerH },
 			{ .index = BINDING_SPRITE_DATA, .buffer = gfx.spriteDataBuffer[frameIndex] },
 			{ .index = BINDING_TILE_DATA, .buffer = gfx.tileDataBuffer[frameIndex] },
+			{ .index = BINDING_NOISE2D, .image = gfx.noiseImageH },
 		},
 	};
 	return bindGroupDesc;
@@ -4183,6 +4214,7 @@ ENGINE_API bool OnPlatformInit(Plat &platform)
 
 #if USE_EDITOR
 	CompileModifiedShaders();
+	engine.settings.hotReload = true;
 #endif
 
 	// Initialize graphics
@@ -4283,23 +4315,26 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 #endif
 
 #if USE_EDITOR
-	static Clock lastClock = GetClock();
-	const Clock currentClock = GetClock();
-	const f32 secondsSinceLastCheck  = GetSecondsElapsed(lastClock, currentClock);
-
-	if ( secondsSinceLastCheck > 0.2 )
+	if (engine.settings.hotReload)
 	{
-		lastClock = currentClock;
+		static Clock lastClock = GetClock();
+		const Clock currentClock = GetClock();
+		const f32 secondsSinceLastCheck  = GetSecondsElapsed(lastClock, currentClock);
 
-		if ( CompileModifiedShaders() )
+		if ( secondsSinceLastCheck > 0.2 )
 		{
-			// NOTE(jesus): Recompiling all pipelines here even if likely only a shader was recompiled :-S
-			WaitDeviceIdle(gfx.device);
-			Scratch scratch;
-			RecompilePipelines(engine, scratch.arena);
-		}
+			lastClock = currentClock;
 
-		RecreateModifiedTextures(engine);
+			if ( CompileModifiedShaders() )
+			{
+				// NOTE(jesus): Recompiling all pipelines here even if likely only a shader was recompiled :-S
+				WaitDeviceIdle(gfx.device);
+				Scratch scratch;
+				RecompilePipelines(engine, scratch.arena);
+			}
+
+			RecreateModifiedTextures(engine);
+		}
 	}
 
 	EditorUpdate(engine);
