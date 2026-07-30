@@ -1911,7 +1911,9 @@ static const BindGroup &GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGro
 
 bool InitializeGraphics(Engine &engine, Arena &globalArena)
 {
-	Scratch scratch;
+	// Larger than the default MB(1): this scratch has to hold the whole pipeline cache file,
+	// which grows with the number of pipelines and already exceeds 1 MB.
+	Scratch scratch(MB(8));
 	Graphics &gfx = engine.gfx;
 
 	if ( !InitializeGraphicsDevice( gfx.device, scratch.arena ) ) {

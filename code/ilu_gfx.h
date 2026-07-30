@@ -1956,6 +1956,15 @@ static void SavePipelineCacheData(const GraphicsDevice &device, Arena scratch)
 	size_t pipelineCacheSize = 0;
 	if ( vkGetPipelineCacheData( device.handle, device.pipelineCache, &pipelineCacheSize, NULL ) == VK_SUCCESS && pipelineCacheSize > 0 )
 	{
+		// The cache only speeds up later runs, so warn and skip rather than assert inside PushSize
+		const u64 remainingSize = scratch.size - scratch.used;
+		if ( (u64)pipelineCacheSize > remainingSize )
+		{
+			LOG(Warning, "Pipeline cache (%zu bytes) does not fit in the scratch arena (%llu bytes available). Not saving it to %s.\n",
+					pipelineCacheSize, remainingSize, sPipelineCachePath);
+			return;
+		}
+
 		void *pipelineCacheData = PushSize(scratch, (u32)pipelineCacheSize);
 		if ( pipelineCacheData )
 		{
@@ -1975,15 +1984,27 @@ static void *LoadPipelineCacheData(const GraphicsDevice &device, Arena &arena, u
 	u64 pipelineCacheSize64 = 0;
 	if ( GetFileSize(sPipelineCachePath, pipelineCacheSize64, false) && pipelineCacheSize64 > 0 )
 	{
-		pipelineCacheData = PushSize(arena, (u32)pipelineCacheSize64);
-		if ( ReadEntireFile(sPipelineCachePath, pipelineCacheData, pipelineCacheSize64) )
+		// Skipping the cache is not fatal: vkCreatePipelineCache accepts null initial data and
+		// just compiles the pipelines from scratch on this run.
+		const u64 remainingSize = arena.size - arena.used;
+		if ( pipelineCacheSize64 > remainingSize )
 		{
-			LOG(Info, "Pipeline cache loaded from %s (%llu bytes).\n", sPipelineCachePath, pipelineCacheSize64);
+			LOG(Warning, "Pipeline cache at %s (%llu bytes) does not fit in the scratch arena (%llu bytes available). Ignoring it.\n",
+					sPipelineCachePath, pipelineCacheSize64, remainingSize);
+			pipelineCacheSize64 = 0;
 		}
 		else
 		{
-			pipelineCacheData = NULL;
-			pipelineCacheSize64 = 0;
+			pipelineCacheData = PushSize(arena, (u32)pipelineCacheSize64);
+			if ( ReadEntireFile(sPipelineCachePath, pipelineCacheData, pipelineCacheSize64) )
+			{
+				LOG(Info, "Pipeline cache loaded from %s (%llu bytes).\n", sPipelineCachePath, pipelineCacheSize64);
+			}
+			else
+			{
+				pipelineCacheData = NULL;
+				pipelineCacheSize64 = 0;
+			}
 		}
 	}
 
