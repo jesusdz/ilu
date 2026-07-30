@@ -3146,10 +3146,13 @@ static float2 GetRoomScrollRatio(const float2 &cameraPos, const float2 &roomPos,
 	return ratio;
 }
 
-static float2 GetParallaxOffset(const float2 &scrollRatio, const uint2 &baseLayerSize, const uint2 &layerSize)
+static float2 GetParallaxOffset(const float2 &scrollRatio, const uint2 &baseLayerSize, const uint2 &layerSize, const float2 &viewportSizeWorld)
 {
-	const float2 slack = Max(Float2(baseLayerSize) - Float2(layerSize), float2{0.0f, 0.0f});
-	return scrollRatio * slack;
+	const float2 maxSlack = Max(Float2(baseLayerSize) - viewportSizeWorld, float2{0.0f, 0.0f});
+	const float2 slack = Min(Max(Float2(baseLayerSize) - Float2(layerSize), float2{0.0f, 0.0f}), maxSlack);
+	const float2 offset = scrollRatio * slack;
+	constexpr f32 pixelSize = 1.0f / PIXELS_PER_METER;
+	return pixelSize * Floor(offset / pixelSize);
 }
 
 bool RenderGraphics(Engine &engine)
@@ -3386,7 +3389,7 @@ bool RenderGraphics(Engine &engine)
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{
-				const float2 parallax = parallaxEnabled ? GetParallaxOffset(scrollRatio, baseLayerSize, layer.size) : float2{0.0f, 0.0f};
+				const float2 parallax = parallaxEnabled ? GetParallaxOffset(scrollRatio, baseLayerSize, layer.size, viewportSizeWorld) : float2{0.0f, 0.0f};
 
 				for (i32 y = 0; y < layer.size.y; ++y)
 				{

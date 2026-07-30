@@ -14,6 +14,7 @@ struct Interpolators
 {
 	float4 position : SV_Position;
 	float2 texCoord : TEXCOORD0;
+	float depth : POSITION0;
 #if USE_ENTITY_SELECTION
 	nointerpolation bool isSelected : POSITION2;
 #endif
@@ -58,6 +59,7 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 
 	OUT.position = mul(globals.cameraProj, mul(globals.cameraView, posWs));
 	OUT.texCoord = sprite.uvOffset + IN.texCoord * sprite.uvSize;
+	OUT.depth = posWs.z;
 
 	return OUT;
 }
@@ -65,6 +67,12 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 float4 PSMain(PixelInput IN) : SV_Target
 {
 	float4 albedo = spriteTexture.Sample(pointSampler, IN.texCoord);
+	if ( IN.depth == -1.0 )
+	{
+		float3 blue = float3(0.7, 0.8, 1.0);
+		albedo.rgb = lerp(albedo.rgb, blue, 0.3);
+	}
+
 	if (albedo.a == 0.0)
 		discard;
 
