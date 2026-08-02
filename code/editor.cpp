@@ -2191,14 +2191,14 @@ void EditorUpdate(Engine &engine)
 		}
 	}
 
-	if ( engine.game.state != GameStateStopped )
-	{
-		return;
-	}
+	//if ( engine.game.state != GameStateStopped )
+	//{
+	//	return;
+	//}
 
 	EditorUpdateUI(engine);
 
-	const bool handleInput = !engine.ui.wantsInput;
+	const bool handleInput = !engine.ui.wantsInput && engine.game.state == GameStateStopped;
 
 	if ( handleInput )
 	{
