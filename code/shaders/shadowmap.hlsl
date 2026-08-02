@@ -10,10 +10,15 @@ struct VertexOutput
 	float4 position : SV_Position;
 };
 
-VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
+uint EntityId(uint entityHandle)
+{
+	return entityHandle>>16;
+}
+
+VertexOutput VSMain(VertexInput IN, uint entityHandle : SV_InstanceID)
 {
 	VertexOutput OUT;
-	uint entityId = instanceID;
+	uint entityId = EntityId(entityHandle);
 	float4x4 worldMatrix = entities.Load<SEntity>(entityId * sizeof(SEntity)).world;
 	float4 positionWs = mul(worldMatrix, float4(IN.position, 1.0f));
 	OUT.position = mul(globals.sunProj, mul(globals.sunView, positionWs));

@@ -77,6 +77,10 @@ void Initialize(HandleManager &manager, Arena &arena, u16 handleLimit)
 
 bool IsValidHandle(const HandleManager &manager, Handle handle)
 {
+	// Bounds check first: a zeroed or garbage handle can carry any slot index
+	if ( handle.idx >= manager.handleLimit ) {
+		return false;
+	}
 	Handle storedHandle = manager.handles[handle.idx];
 	const bool valid = handle == storedHandle;
 	return valid;
