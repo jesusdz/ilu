@@ -2327,7 +2327,7 @@ void UI_SeparatorLabel(UI &ui, const char *format, ...)
 	UI_CursorAdvance(ui, size, 12);
 }
 
-bool UI_Image(UI &ui, ImageH image, float2 proposedImageSize = float2{32, 32}, UIWidgetFlags flags = UIWidgetFlag_None)
+bool UI_Image(UI &ui, ImageH image, float2 proposedImageSize = float2{32, 32}, UIWidgetFlags flags = UIWidgetFlag_None, float4 uvRect = {0, 0, 1, 1})
 {
 	const float2 borderSize = { 1, 1 };
 
@@ -2352,8 +2352,8 @@ bool UI_Image(UI &ui, ImageH image, float2 proposedImageSize = float2{32, 32}, U
 
 	const float2 imagePos = framePos + borderSize;
 
-	const float2 uvPos = {0.0f, 0.0f};
-	const float2 uvSize = {1.0f, 1.0f};
+	const float2 uvPos = uvRect.xy;
+	const float2 uvSize = uvRect.zw;
 	UI_PushDrawList(ui, image);
 	UI_BeginWidget(ui, imagePos, imageSize);
 	UI_AddQuad(ui, imagePos, imageSize, uvPos, uvSize, UiColorWhite);

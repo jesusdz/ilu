@@ -516,15 +516,27 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "Sprites") )
 	{
+		static Handle selectedHandle = InvalidHandle;
+		UI_BeginLayout(ui, UILayout_ItemBrowser);
+
 		for (HandleIter it = BeginIter(scene.spriteHandles); it; it++)
 		{
 			Handle handle = *it;
 			const Sprite &sprite = GetSprite(scene, handle);
+			const Texture &texture = GetTexture(engine.gfx, sprite.textureH);
+			const UIWidgetFlags flags = selectedHandle == handle ? UIWidgetFlag_Outline : UIWidgetFlag_None;
+			const float2 uvPos = Float2(sprite.pos)/Float2(texture.size);
+			const float2 uvSize = Float2(sprite.size)/Float2(texture.size);
+			const float4 uvRect = Float4(uvPos, uvSize);
 
-			if ( UI_Button(ui, sprite.name) ) {
+			if (UI_Image(ui, texture.image, float2{32, 32}, flags, uvRect))
+			{
 				EditorSelectSprite(editor, handle);
+				selectedHandle = handle;
 			}
 		}
+
+		UI_EndLayout(ui);
 	}
 
 	if ( UI_Section(ui, "Materials") )
@@ -543,7 +555,6 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 	if ( UI_Section(ui, "Textures") )
 	{
 		static TextureH selectedHandle = {};
-		constexpr u32 imagesPerRow = 3;
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
 		for (HandleIter it = BeginIter(gfx.textureHandles); it; it++)
 		{
@@ -560,17 +571,17 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 		}
 		UI_EndLayout(ui);
 
-		if (IsValidHandle(gfx.textureHandles, selectedHandle))
-		{
-			if (UI_Button(ui, "Remove"))
-			{
-				const EditorCommand command = {
-					.type = EditorCommandRemoveTexture,
-					.textureH = selectedHandle,
-				};
-				AddEditorCommand(editor, command);
-			}
-		}
+//		if (IsValidHandle(gfx.textureHandles, selectedHandle))
+//		{
+//			if (UI_Button(ui, "Remove"))
+//			{
+//				const EditorCommand command = {
+//					.type = EditorCommandRemoveTexture,
+//					.textureH = selectedHandle,
+//				};
+//				AddEditorCommand(editor, command);
+//			}
+//		}
 	}
 
 	if ( UI_Section(ui, "AudioClips") )
@@ -964,6 +975,18 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 
 				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.handle, engine.gfx.grayImageH);
 				UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
+
+				UI_SeparatorLabel(ui, "Sprite");
+				if (UI_Button(ui, "Create"))
+				{
+					TextureH textureH = inspector.selected.handle;
+
+					const SpriteDesc spriteDesc = {
+						.name = "spr_new",
+						.textureName = texture.name,
+					};
+					SpriteH spriteH = GetOrCreateSprite(engine, spriteDesc);
+				}
 			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_Audio)
