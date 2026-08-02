@@ -216,8 +216,6 @@ struct Graphics
 	BindGroup dynamicBindGroups[MAX_DYNAMIC_BIND_GROUPS];
 	u32 dynamicBindGroupCount;
 
-	TimestampPool timestampPools[MAX_FRAMES_IN_FLIGHT];
-
 	ImageH whiteImageH;
 	ImageH pinkImageH;
 	ImageH grayImageH;
@@ -253,9 +251,6 @@ struct Graphics
 	PipelineH computeSelectH;
 
 	bool deviceInitialized;
-
-	TimeSamples cpuFrameTimes;
-	TimeSamples gpuFrameTimes;
 
 	f32 deltaSeconds;
 

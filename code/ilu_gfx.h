@@ -54,6 +54,7 @@
  * - ResetTimestampPool
  * - WriteTimestamp
  * - ReadTimestamp
+ * - ReadTimestamps
  *
  * Work submission and synchronization:
  * - Submit
@@ -775,6 +776,7 @@ typedef void FN_DestroyTimestampPool(const GraphicsDevice &device, const Timesta
 typedef void FN_ResetTimestampPool(const CommandList &commandBuffer, TimestampPool &pool);
 typedef u32 FN_WriteTimestamp(const CommandList &commandBuffer, TimestampPool &pool, PipelineStage stage);
 typedef Timestamp FN_ReadTimestamp(const TimestampPool &pool, u32 queryIndex);
+typedef bool FN_ReadTimestamps(const TimestampPool &pool, u32 firstQuery, u32 queryCount, Timestamp *outTimestamps);
 typedef SubmitResult FN_Submit(GraphicsDevice &device, const CommandList &commandList);
 typedef bool FN_Present(GraphicsDevice &device, SubmitResult submitResult);
 typedef bool FN_BeginFrame(GraphicsDevice &device);
@@ -868,6 +870,7 @@ typedef const char* FN_FormatName(Format format);
 	EXPAND_MACRO(ResetTimestampPool) \
 	EXPAND_MACRO(WriteTimestamp) \
 	EXPAND_MACRO(ReadTimestamp) \
+	EXPAND_MACRO(ReadTimestamps) \
 	EXPAND_MACRO(Submit) \
 	EXPAND_MACRO(Present) \
 	EXPAND_MACRO(BeginFrame) \
@@ -4553,6 +4556,53 @@ Timestamp ReadTimestamp(const TimestampPool &pool, u32 queryIndex)
 	return timestamp;
 #else
 	return {};
+#endif
+}
+
+// Reads a range of queries at once, which is what a profiler wants when resolving a whole frame.
+// Timestamps are only readable once the GPU is done with the commands that wrote them (normally
+// MAX_FRAMES_IN_FLIGHT frames later), so this returns false, writing nothing, when any query in
+// the range is not available yet. The caller is expected to retry (or drop the frame) in that case.
+bool ReadTimestamps(const TimestampPool &pool, u32 firstQuery, u32 queryCount, Timestamp *outTimestamps)
+{
+#if DEVELOPMENT_BUILD
+	if ( firstQuery + queryCount > pool.queryCount ) {
+		return false;
+	}
+
+	constexpr u32 maxBatchCount = 64;
+	u64 data[maxBatchCount * 2]; // Pairs of (ticks, availability)
+
+	const VkDevice device = pool.deviceHandle;
+	const VkQueryPool queryPool = pool.handle;
+	const VkQueryResultFlags flags = VK_QUERY_RESULT_WITH_AVAILABILITY_BIT | VK_QUERY_RESULT_64_BIT;
+	const VkDeviceSize stride = 2 * sizeof(u64);
+
+	for (u32 i = 0; i < queryCount; i += maxBatchCount)
+	{
+		const u32 batchCount = Min(maxBatchCount, queryCount - i);
+		const VkDeviceSize dataSize = batchCount * stride;
+		VkResult result = vkGetQueryPoolResults(device, queryPool, firstQuery + i, batchCount, dataSize, data, stride, flags);
+
+		// Exit with error
+		if (result < VK_SUCCESS) {
+			CheckVulkanResult(result, "vkGetQueryPoolResults");
+		}
+
+		// result could be VK_NOT_READY, but availability is checked per query anyway
+		for (u32 j = 0; j < batchCount; ++j)
+		{
+			if ( data[2*j + 1] == 0 ) {
+				return false;
+			}
+			const double nanos = (double)data[2*j] * pool.nanosPerTick;
+			outTimestamps[i + j].millis = nanos / 1000000.0;
+		}
+	}
+
+	return true;
+#else
+	return false;
 #endif
 }
 

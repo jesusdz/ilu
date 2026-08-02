@@ -3,6 +3,7 @@
 #define TOOLS_GFX_FUNCTION_POINTERS
 #include "ilu_gfx.h"
 
+#define ILU_PROFILE_GPU
 #include "ilu_profile.h"
 
 #define PLATFORM_API
@@ -2237,11 +2238,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.shouldUpdateGlobalBindGroups = true;
 
 	// Timestamp queries
-	for (u32 i = 0; i < ARRAY_COUNT(gfx.timestampPools); ++i)
-	{
-		gfx.timestampPools[i] = CreateTimestampPool(gfx.device, 128);
-		//ResetTimestampPool(gfx.device, gfx.timestampPools[i]); // Vulkan 1.2
-	}
+	PROFILE_GPU_INIT(gfx.device);
 
 	LinkHandles(gfx);
 
@@ -2368,10 +2365,7 @@ void CleanupGraphics(Graphics &gfx)
 {
 	EngineWaitDeviceIdle( gfx );
 
-	for (u32 i = 0; i < ARRAY_COUNT(gfx.timestampPools); ++i)
-	{
-		DestroyTimestampPool(gfx.device, gfx.timestampPools[i]);
-	}
+	PROFILE_GPU_CLEANUP(gfx.device);
 
 	DestroyBindGroupAllocator( gfx.device, gfx.globalBindGroupAllocator );
 	DestroyBindGroupAllocator( gfx.device, gfx.materialBindGroupAllocator );
@@ -3176,16 +3170,9 @@ bool RenderGraphics(Engine &engine)
 		BeginFrame(gfx.device);
 	}
 
-	// We can query for previous (MAX_FRAMES_IN_FLIGHT before) frame fences
-	static u32 frameCount = 0;
-	if ( frameCount++ >= MAX_FRAMES_IN_FLIGHT )
-	{
-		const TimestampPool &timestampPool = gfx.timestampPools[frameIndex];
-		const Timestamp t0 = ReadTimestamp(timestampPool, 0);
-		const Timestamp t1 = ReadTimestamp(timestampPool, 1);
-		ASSERT(t1.millis >= t0.millis);
-		AddTimeSample(gfx.gpuFrameTimes, t1.millis - t0.millis);
-	}
+	// Now that BeginFrame waited for this frame slot fences, the timestamps written
+	// MAX_FRAMES_IN_FLIGHT frames ago into this same slot can finally be read back
+	PROFILE_GPU_RESOLVE(gfx.device);
 
 #if USE_UI
 	UI_FinalizeDrawData(engine.ui);
@@ -3461,9 +3448,8 @@ bool RenderGraphics(Engine &engine)
 	// Record commands
 	CommandList commandList = BeginCommandList(gfx.device);
 
-	// Timestamp
-	ResetTimestampPool(commandList, gfx.timestampPools[frameIndex]);
-	WriteTimestamp(commandList, gfx.timestampPools[frameIndex], PipelineStageTop);
+	// Timestamps for this frame (resolved MAX_FRAMES_IN_FLIGHT frames from now)
+	PROFILE_GPU_FRAME_BEGIN(commandList);
 
 	#if USE_COMPUTE_TEST
 	{
@@ -3494,6 +3480,7 @@ bool RenderGraphics(Engine &engine)
 	if (camera.projectionType == ProjectionPerspective)
 	{
 		PROFILE_BLOCK(ShadowMap);
+		PROFILE_GPU_BLOCK(commandList, ShadowMap);
 
 		BeginDebugGroup(commandList, "Shadow map", ColorBlack);
 
@@ -3539,6 +3526,7 @@ bool RenderGraphics(Engine &engine)
 	// Scene
 	{
 		PROFILE_BLOCK(Scene);
+		PROFILE_GPU_BLOCK(commandList, Scene);
 
 		BeginDebugGroup(commandList, "Scene", ColorBlack);
 
@@ -3782,6 +3770,7 @@ bool RenderGraphics(Engine &engine)
 		if ( engine.game.state == GameStateRunning )
 		{
 			PROFILE_BLOCK(Fog);
+			PROFILE_GPU_BLOCK(commandList, Fog);
 
 			BeginDebugGroup(commandList, "Fog", ColorBlack);
 
@@ -3809,6 +3798,7 @@ bool RenderGraphics(Engine &engine)
 	// Display
 	{
 		PROFILE_BLOCK(Display);
+		PROFILE_GPU_BLOCK(commandList, Display);
 
 		BeginDebugGroup(commandList, "Display", ColorBlack);
 
@@ -3822,6 +3812,7 @@ bool RenderGraphics(Engine &engine)
 
 		{ // Scene blit
 			PROFILE_BLOCK(Blit);
+			PROFILE_GPU_BLOCK(commandList, Blit);
 
 			BeginDebugGroup(commandList, "Blit", ColorBlack);
 
@@ -3872,6 +3863,7 @@ bool RenderGraphics(Engine &engine)
 #if USE_UI
 		{ // GUI
 			PROFILE_BLOCK(GUI);
+			PROFILE_GPU_BLOCK(commandList, GUI);
 
 			BeginDebugGroup(commandList, "GUI", ColorBlack);
 
@@ -3922,7 +3914,7 @@ bool RenderGraphics(Engine &engine)
 
 	TransitionImageLayout(commandList, shadowmapImage, ImageStateShaderInput, ImageStateRenderTarget, 0, 1);
 
-	WriteTimestamp(commandList, gfx.timestampPools[frameIndex], PipelineStageBottom);
+	PROFILE_GPU_FRAME_END(commandList);
 
 	EndCommandList(commandList);
 
@@ -4161,16 +4153,26 @@ ENGINE_API u32 OnPlatformGetStateSignature()
 	return signature;
 }
 
-ENGINE_API void OnPlatformSetupAPI(Plat &platform)
+ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 {
 	SetPlatformAPI(platform);
 	SetGraphicsAPI(&platform.graphicsAPI);
-	ProfileInit();
+	PROFILE_INIT();
 
 	if ( platform.engine )
 	{
 		UI_ResetStyle(platform.engine->ui);
+
+		// Profile state does not survive the reload, so GPU profiling starts fresh
+		PROFILE_GPU_INIT(platform.engine->gfx.device);
 	}
+}
+
+ENGINE_API void OnPlatformUnloadEngine(Plat &platform)
+{
+	Graphics &gfx = platform.engine->gfx;
+	WaitDeviceIdle(gfx.device);
+	PROFILE_GPU_CLEANUP(gfx.device);
 }
 
 ENGINE_API bool OnPlatformPreInit(Plat &platform)
@@ -4294,7 +4296,7 @@ ENGINE_API bool OnPlatformWindowInit(Plat &platform)
 
 ENGINE_API void OnPlatformUpdate(Plat &platform)
 {
-	ProfileRegisterThread("UpdateAndRender");
+	PROFILE_THREAD("UpdateAndRender");
 	PROFILE_FRAME();
 	PROFILE_BLOCK(Update);
 
@@ -4354,10 +4356,6 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 #if USE_UI
 	UIEndFrameRecording(engine);
 #endif
-
-	const Clock end = GetClock();
-	const f32 updateMillis = GetSecondsElapsed(begin, end) * 1000.0f;
-	AddTimeSample( gfx.cpuFrameTimes, updateMillis );
 }
 
 ENGINE_API void OnPlatformRenderGraphics(Plat &platform)
@@ -4413,8 +4411,8 @@ ENGINE_API void OnPlatformRenderGraphics(Plat &platform)
 
 ENGINE_API void OnPlatformPreRenderAudio(Plat &platform)
 {
-	ProfileRegisterThread("Audio");
-	ProfileFlush();
+	PROFILE_THREAD("Audio");
+	PROFILE_FLUSH();
 	PROFILE_BLOCK(PreRenderAudio);
 	Engine &engine = GetEngine(platform);
 	PreRenderAudio(engine);
@@ -4422,7 +4420,7 @@ ENGINE_API void OnPlatformPreRenderAudio(Plat &platform)
 
 ENGINE_API void OnPlatformRenderAudio(Plat &platform, SoundBuffer &soundBuffer)
 {
-	ProfileFlush();
+	PROFILE_FLUSH();
 	PROFILE_BLOCK(RenderAudio);
 	Engine &engine = GetEngine(platform);
 	RenderAudio(engine, soundBuffer);

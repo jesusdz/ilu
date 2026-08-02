@@ -174,10 +174,10 @@ static void EditorUpdateUI_MenuBar(Engine &engine)
 				editor.showProfiler = !editor.showProfiler;
 			}
 			#endif // USE_PROFILE
-			if ( UI_MenuItem(ui, "Debug UI", editor.showDebugUI) )
-			{
-				editor.showDebugUI = !editor.showDebugUI;
-			}
+			//if ( UI_MenuItem(ui, "Debug UI", editor.showDebugUI) )
+			//{
+			//	editor.showDebugUI = !editor.showDebugUI;
+			//}
 
 			UI_Separator(ui);
 
@@ -1071,6 +1071,51 @@ static bool UI_ProfilerTreeNode(UI &ui, bool *isOpen, u32 depth, bool hasChildre
 	return *isOpen;
 }
 
+// Draws the node tree of a profiled frame (either a CPU thread or the GPU) as a table of rows
+static void UI_ProfilerFrame(UI &ui, const char *frameName, const ProfileNode *nodes, u32 nodeCount, ProfileTime frameBegin, ProfileTime frameEnd)
+{
+	const ProfileTime frameTicks = frameEnd - frameBegin;
+	const f32 frameMillis = 1000.0f * SecondsFromTicks(frameTicks);
+
+	UI_BeginTable(ui, frameName, 2);
+	UI_TableSetupColumn(ui, "Name", UITableColumnSizing_Stretch, 0.35f);
+	UI_TableSetupColumn(ui, "Time", UITableColumnSizing_Stretch, 0.65f);
+
+	bool isFrameOpen = true;
+	if ( UI_ProfilerTreeNode(ui, &isFrameOpen, 0, true, "Frame", 0.0f, 1.0f, frameMillis, 100.0f) )
+	{
+		bool hasChildren[MAX_PROFILE_NODES] = {};
+		for (u32 i = 0; i < nodeCount; ++i) {
+			const ProfileNode *node = &nodes[i];
+			if (node->parentIndex != PROFILE_NODE_NONE) {
+				hasChildren[node->parentIndex] = true;
+			}
+		}
+
+		bool isOpen[MAX_PROFILE_NODES] = {};
+		u16 depth[MAX_PROFILE_NODES] = {};
+
+		for (u32 i = 0; i < nodeCount; ++i)
+		{
+			const ProfileNode *node = &nodes[i];
+
+			depth[i] = node->parentIndex == PROFILE_NODE_NONE ? 1 : depth[node->parentIndex] + 1;
+
+			if (node->parentIndex == PROFILE_NODE_NONE || isOpen[node->parentIndex])
+			{
+				const char *name = ProfileGetName(node->nameId);
+				const f32 millis = 1000.0f * SecondsFromTicks(node->end - node->begin);
+				const f32 pct = frameMillis > 0.0f ? 100.0f * millis / frameMillis : 0.0f;
+				const f32 start = ProfileNormalizedTime(node->begin, frameBegin, frameTicks);
+				const f32 end = ProfileNormalizedTime(node->end, frameBegin, frameTicks);
+				UI_ProfilerTreeNode(ui, &isOpen[i], depth[i], hasChildren[i], name, start, end, millis, pct);
+			}
+		}
+	}
+
+	UI_EndTable(ui);
+}
+
 static void EditorUpdateUI_Profiler(Engine &engine)
 {
 	UI &ui = engine.ui;
@@ -1119,71 +1164,31 @@ static void EditorUpdateUI_Profiler(Engine &engine)
 			threadNames[threadNameCount++] = threadName;
 
 			const ProfileFrame frame = ProfileGetThreadFrame(t, 0); // by-value snapshot
-			const f32 frameMillis = 1000.0f * SecondsFromTicks(frame.end - frame.begin);
 
 			if (UI_Section(ui, threadName))
 			{
-				UI_BeginTable(ui, threadName, 2);
-				UI_TableSetupColumn(ui, "Name");
-				UI_TableSetupColumn(ui, "Time");
-
-				const ProfileTime frameTicks = frame.end - frame.begin;
-
-				bool isFrameOpen = true;
-				if ( UI_ProfilerTreeNode(ui, &isFrameOpen, 0, true, "Frame", 0.0f, 1.0f, frameMillis, 100.0f) )
-				{
-					bool hasChildren[MAX_PROFILE_NODES] = {};
-					for (u32 i = 0; i < frame.nodeCount; ++i) {
-						const ProfileNode *node = &frame.nodes[i];
-						if (node->parentIndex != PROFILE_NODE_NONE) {
-							hasChildren[node->parentIndex] = true;
-						}
-					}
-
-					bool isOpen[MAX_PROFILE_NODES] = {};
-					u16 depth[MAX_PROFILE_NODES] = {};
-
-					for (u32 i = 0; i < frame.nodeCount; ++i)
-					{
-						const ProfileNode *node = &frame.nodes[i];
-
-						depth[i] = node->parentIndex == PROFILE_NODE_NONE ? 1 : depth[node->parentIndex] + 1;
-
-						if (node->parentIndex == PROFILE_NODE_NONE || isOpen[node->parentIndex])
-						{
-							const char *name = ProfileGetName(node->nameId);
-							const f32 millis = 1000.0f * SecondsFromTicks(node->end - node->begin);
-							const f32 pct = frameMillis > 0.0f ? 100.0f * millis / frameMillis : 0.0f;
-							const f32 start = ProfileNormalizedTime(node->begin, frame.begin, frameTicks);
-							const f32 end = ProfileNormalizedTime(node->end, frame.begin, frameTicks);
-							UI_ProfilerTreeNode(ui, &isOpen[i], depth[i], hasChildren[i], name, start, end, millis, pct);
-						}
-					}
-				}
-
-				UI_EndTable(ui);
+				UI_ProfilerFrame(ui, threadName, frame.nodes, frame.nodeCount, frame.begin, frame.end);
 
 				UI_Text(ui, "Dropped events", "%u", frame.droppedEventCount);
 			}
 		}
 	}
 
-	if ( UI_Section(ui, "Profiling" ) )
+#if USE_PROFILE_GPU
+	// The GPU timeline lags MAX_FRAMES_IN_FLIGHT frames behind the CPU one, and its clock is
+	// unrelated to the CPU one, so only durations are comparable between both timelines.
+	if (ProfileGpuGetFrameCount() > 0)
 	{
-		constexpr f32 maxExpectedMillis = 1000.0f / 60.0f; // Like expecting to reach 60 fps
+		const ProfileGpuFrame gpuFrame = ProfileGpuGetFrame(0);
 
-		const u32 sceneWidth = gfx.device.swapchain.extent.width;
-		const u32 sceneHeight = gfx.device.swapchain.extent.height;
-		UI_Label(ui, "Resolution: %ux%u px", sceneWidth, sceneHeight);
+		if (UI_Section(ui, "GPU"))
+		{
+			UI_ProfilerFrame(ui, "GPU", gpuFrame.nodes, gpuFrame.nodeCount, gpuFrame.begin, gpuFrame.end);
 
-		const TimeSamples &gpuTimes = gfx.gpuFrameTimes;
-		UI_Label(ui, "GPU %.02f ms / %.00f fps ", gpuTimes.average, 1000.0f / gpuTimes.average);
-		UI_Histogram(ui, gpuTimes.samples, ARRAY_COUNT(gpuTimes.samples), maxExpectedMillis);
-
-		const TimeSamples &cpuTimes = gfx.cpuFrameTimes;
-		UI_Label(ui, "CPU %.02f ms / %.00f fps ", cpuTimes.average, 1000.0f / cpuTimes.average);
-		UI_Histogram(ui, cpuTimes.samples, ARRAY_COUNT(cpuTimes.samples), maxExpectedMillis + 1.0f);
+			UI_Text(ui, "Dropped events", "%u", gpuFrame.droppedEventCount);
+		}
 	}
+#endif // USE_PROFILE_GPU
 
 	if ( UI_Section(ui, "Memory") )
 	{

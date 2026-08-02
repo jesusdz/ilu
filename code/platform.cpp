@@ -92,7 +92,8 @@ struct Platform
 	u32 stringMemorySize = KB(16);
 	u32 dataMemorySize = MB(16);
 
-	void (*SetupAPICallback)(Plat &);
+	void (*LoadEngineCallback)(Plat &);
+	void (*UnloadEngineCallback)(Plat &);
 	bool (*PreInitCallback)(Plat &);
 	bool (*InitCallback)(Plat &);
 	void (*UpdateCallback)(Plat &);
@@ -1003,12 +1004,19 @@ static bool LoadEngineDLL(Platform &platform)
 
 	// Engine interface exposed to platform
 
-	platform.SetupAPICallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformSetupAPI");
-	if( !platform.SetupAPICallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformSetupAPI\n");
+	platform.LoadEngineCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformLoadEngine");
+	if( !platform.LoadEngineCallback ) {
+		LOG(Error, "- Couldn't load symbol: OnPlatformLoadEngine\n");
 		return false;
 	}
-	LOG(Info, "- Symbol loaded: OnPlatformSetupAPI\n");
+	LOG(Info, "- Symbol loaded: OnPlatformLoadEngine\n");
+
+	platform.UnloadEngineCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformUnloadEngine");
+	if( !platform.UnloadEngineCallback ) {
+		LOG(Error, "- Couldn't load symbol: OnPlatformUnloadEngine\n");
+		return false;
+	}
+	LOG(Info, "- Symbol loaded: OnPlatformUnloadEngine\n");
 
 	platform.PreInitCallback = (bool (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformPreInit");
 	if( !platform.PreInitCallback ) {
@@ -1092,7 +1100,7 @@ static bool LoadEngineDLL(Platform &platform)
 	platform.pub.api.AcquireScratchArena = AcquireScratchArena;
 	platform.pub.api.ReleaseScratchArena = ReleaseScratchArena;
 
-	platform.SetupAPICallback(platform.pub);
+	platform.LoadEngineCallback(platform.pub);
 
 	return true;
 }
@@ -1101,6 +1109,7 @@ static void UnloadEngineDLL(Platform &platform)
 {
 	if (platform.engineLib)
 	{
+		platform.UnloadEngineCallback(platform.pub);
 		CloseLibrary(platform.engineLib);
 		platform.engineLib = 0;
 	}
