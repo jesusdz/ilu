@@ -17,7 +17,7 @@ void GameStart(Game &game)
 	game.speed = {2.0f, 10.0f};
 	game.speed2 = {};
 	game.accel2 = 50;
-	game.grounded = false;
+	game.playerState = OnAir;
 
 	game.ent = GetEntity("player");
 	game.ent->position.xy = float2{1, 1};
@@ -46,6 +46,8 @@ void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mouse, cons
 
 	game.input.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
 	game.input.move.x -= KeyPressed(keyboard, K_A) ? 1.0f : 0.0f;
+	game.input.move.y += KeyPressed(keyboard, K_W) ? 1.0f : 0.0f;
+	game.input.move.y -= KeyPressed(keyboard, K_S) ? 1.0f : 0.0f;
 	game.input.jump.press = KeyPress(keyboard, K_SPACE);
 	game.input.jump.pressed = KeyPressed(keyboard, K_SPACE);
 
@@ -133,9 +135,13 @@ void GameSimulate(Game &game)
 
 		// Grounded state comes from last frame's collision resolution, before this frame moves the player
 		if (game.input.jump.press) {
-			if (game.grounded) {
-				game.speed2.y = jumpSpeed;
-				game.grounded = false;
+			if (game.playerState == OnFloor || game.playerState == OnPlatform) {
+				if (game.input.move.y < 0.0 && game.playerState == OnPlatform) {
+					playerPos.y -= 0.1;
+				} else {
+					game.speed2.y = jumpSpeed;
+				}
+				game.playerState = OnAir;
 				PlayAudioClip(game.sndJump);
 			}
 		}
@@ -150,14 +156,14 @@ void GameSimulate(Game &game)
 		game.speed2.y = game.speed2.y + gravity2 * deltaSeconds;
 
 		// Only landing on a surface grounds the player, hitting a ceiling does not
-		game.grounded = false;
+		game.playerState = OnAir;
 
 		if (IsColliderInBox(playerPos, playerSize, 1)) {
 			if (prevY < playerPos.y) {
 				playerPos.y = Ceil(prevY);
 			} else {
 				playerPos.y = Floor(prevY);
-				game.grounded = true;
+				game.playerState = OnFloor;
 			}
 			game.speed2.y = 0.0f;
 		}
@@ -170,7 +176,7 @@ void GameSimulate(Game &game)
 				if (prevY > playerPos.y) {
 					playerPos.y = Floor(prevY);
 					game.speed2.y = 0.0f;
-					game.grounded = true;
+					game.playerState = OnPlatform;
 				}
 			}
 		}
@@ -178,7 +184,7 @@ void GameSimulate(Game &game)
 		if (playerPos.y < 0) {
 			playerPos.y = 0;
 			game.speed2.y = 0;
-			game.grounded = true;
+			game.playerState = OnFloor;
 		}
 
 		// Player bounds

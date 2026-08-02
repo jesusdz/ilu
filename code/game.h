@@ -40,6 +40,13 @@ struct Box
 	float4 color;
 };
 
+enum PlayerState
+{
+	OnFloor,
+	OnPlatform,
+	OnAir,
+};
+
 struct Game
 {
 	GameState state;
@@ -55,7 +62,7 @@ struct Game
 	Box box2;
 	float2 speed2;
 	float accel2;
-	bool grounded;
+	PlayerState playerState;
 
 	Entity *ent;
 
