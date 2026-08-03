@@ -12,6 +12,7 @@
 #error "ilu_gfx.h needs to be defined before ilu_ui.h"
 #endif
 
+#define UI_VERTEX_BUFFER_SIZE KB(512)
 #define UI_TEMP_STRING_SIZE KB(4)
 
 // Fixed capacities. All of them are hard limits guarded by ASSERTs at their
@@ -21,7 +22,9 @@
 #define UI_MAX_WINDOW_CAPTION 64
 #define UI_MAX_WIDGET_INFOS 1024
 #define UI_MAX_DRAW_LISTS 128
-#define UI_MAX_DRAW_LIST_VERTEX_RANGES 32
+// A draw list gains one range per nested draw list popped inside it, so a single
+// parent can need as many ranges as there are draw lists in the frame.
+#define UI_MAX_DRAW_LIST_VERTEX_RANGES UI_MAX_DRAW_LISTS
 #define UI_MAX_LAYOUT_GROUPS 16
 #define UI_MAX_ELEMENT_COLOR_STACK 8
 #define UI_MAX_COLOR_STACK 16
@@ -949,6 +952,7 @@ void UI_PopDrawList(UI &ui)
 		else
 		{
 			// Previous range was not empty, create a new one
+			ASSERT(drawList.vertexRangeCount < ARRAY_COUNT(drawList.vertexRanges));
 			UIVertexRange &nextRange = drawList.vertexRanges[drawList.vertexRangeCount++];
 			nextRange.index = ui.vertexCount;
 			nextRange.count = 0;
@@ -3887,10 +3891,13 @@ bool UI_BeginMenu(UI &ui, const char *name, bool *isOpen = nullptr)
 		UI_BeginWindow(ui, windowId, UIWindowFlag_None);
 		UI_RaiseWindow(ui, window);
 
-		// Add the rectangle background, save its vertices to modify the size later
-		ui.activeMenuVertexPtr = ui.vertexPtr;
+		// Add the rectangle background, save its vertices to modify the size later.
+		// UI_AddRectangle can emit nothing (scissor culled, or the vertex buffer is
+		// full), so only keep the pointer if the 6 vertices were really written.
+		UIVertex *rectVertexPtr = ui.vertexPtr;
 		const float2 tempSize = {0, 0};
 		UI_AddRectangle(ui, window.pos, tempSize );
+		ui.activeMenuVertexPtr = ui.vertexPtr == rectVertexPtr + 6 ? rectVertexPtr : nullptr;
 	}
 
 	if ( isOpen ) {
@@ -3906,15 +3913,18 @@ void UI_EndMenu(UI &ui)
 	UIWindow &window = UI_GetCurrentWindow(ui);
 	window.size = layoutGroup.size;
 
-	// Set the size of the menu background panel
-	// Tri 1
-	ui.activeMenuVertexPtr[1].position.y += window.size.y;
-	ui.activeMenuVertexPtr[2].position.x += window.size.x;
-	ui.activeMenuVertexPtr[2].position.y += window.size.y;
-	// Tri 2
-	ui.activeMenuVertexPtr[4].position.x += window.size.x;
-	ui.activeMenuVertexPtr[4].position.y += window.size.y;
-	ui.activeMenuVertexPtr[5].position.x += window.size.x;
+	// Set the size of the menu background panel (skipped if its vertices were dropped)
+	if ( ui.activeMenuVertexPtr )
+	{
+		// Tri 1
+		ui.activeMenuVertexPtr[1].position.y += window.size.y;
+		ui.activeMenuVertexPtr[2].position.x += window.size.x;
+		ui.activeMenuVertexPtr[2].position.y += window.size.y;
+		// Tri 2
+		ui.activeMenuVertexPtr[4].position.x += window.size.x;
+		ui.activeMenuVertexPtr[4].position.y += window.size.y;
+		ui.activeMenuVertexPtr[5].position.x += window.size.x;
+	}
 
 	UI_EndWindow(ui);
 }
@@ -4144,7 +4154,7 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 {
 	ui.tempString = PushArray(globalArena, char, UI_TEMP_STRING_SIZE);
 
-	const u32 vertexBufferSize = KB(256);
+	const u32 vertexBufferSize = UI_VERTEX_BUFFER_SIZE;
 	ui.vertexCountLimit = vertexBufferSize / sizeof(UIVertex);
 	ui.frontendVertices = PushArray(globalArena, UIVertex, ui.vertexCountLimit);
 
