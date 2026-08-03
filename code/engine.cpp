@@ -519,7 +519,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 		accumulatedSeconds += Min(engine.gfx.deltaSeconds, maxFrameSeconds);
 
-		u32 count = 0;
+		//u32 count = 0;
 
 		while (accumulatedSeconds >= fixedStepSeconds)
 		{
@@ -528,10 +528,10 @@ void GameUpdate(Engine &engine, const Plat &platform)
 			GameSimulate(game);
 			InputConsume(accumulatedInput);
 			accumulatedSeconds -= fixedStepSeconds;
-			count++;
+			//count++;
 		}
 
-		LOG(Info, "Update count: %u\n", count);
+		//LOG(Info, "Update count: %u\n", count);
 
 		GameUpdate(game);
 	}

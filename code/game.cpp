@@ -136,7 +136,7 @@ void GameSimulate(Game &game)
 		// Grounded state comes from last frame's collision resolution, before this frame moves the player
 		if (game.input.jump.press) {
 			if (game.playerState == OnFloor || game.playerState == OnPlatform) {
-				if (game.input.move.y < 0.0 && game.playerState == OnPlatform) {
+				if (game.input.move.y < 0.0 && Abs(game.input.move.y) > Abs(2 * game.input.move.x) && game.playerState == OnPlatform) {
 					playerPos.y -= 0.1;
 				} else {
 					game.speed2.y = jumpSpeed;

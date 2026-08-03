@@ -383,7 +383,9 @@ static const ShaderAndPipelineDesc pipelineDescs[] =
 				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
 				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
 			},
-			.depthTest = false,
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpGreaterOrEqual,
 			.blending = true,
 		}
 	},

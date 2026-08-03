@@ -37,7 +37,7 @@ float Noise(float p)
 
 float Noise(float2 p)
 {
-	float n = noise2D.Sample(pointSampler, p/32.0);
+	float n = noise2D.Sample(pointSampler, p/32.0).x;
 	return n;
 	//float3 p3 = frac(p.xyx * 0.1031);
 	//p3 += dot(p3, p3.yzx + 33.33);
@@ -184,7 +184,7 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 	float2 cameraTranslation = float2(globals.cameraView[0][3], globals.cameraView[1][3]);
 
 	VertexOutput OUT;
-	OUT.position = float4(IN.position, 1.0);
+	OUT.position = float4(IN.position.xy, 0.50, 1.0);
 	OUT.positionWs = posVs.xy - cameraTranslation;
 	OUT.texCoord = IN.texCoord;
 	return OUT;
@@ -205,6 +205,8 @@ PixelOutput PSMain(PixelInput IN) : SV_Target
 {
 	PixelOutput OUT = (PixelOutput)0;
 
+	float time = 0.3 * globals.time;
+
 	// The frustum corners are in world units and sceneResolution is in pixels, so their ratio is the
 	// scene's pixels per world unit. That maps the world position onto the scene pixel grid, giving
 	// one integer cell per rendered pixel at any camera zoom.
@@ -212,9 +214,9 @@ PixelOutput PSMain(PixelInput IN) : SV_Target
 	float2 viewportSizePixels = float2(320, 180); //float2(globals.sceneResolution);
 	//float pixelsPerMeter = 32.0;
 	//float2 noiseInput = floor(IN.positionWs * pixelsPerMeter);
-	float alpha = 1.0 / (IN.positionWs.y * IN.positionWs.y);
-	float layer1 = Fbm(IN.positionWs + globals.time * float2(0.5, -0.3)) * ( 0.2 * sin(globals.time) + 1.0 );
-	float layer2 = Fbm(IN.positionWs + globals.time * float2(-0.5, -0.3));
+	float alpha = 1.0 / (IN.positionWs.y * IN.positionWs.y * IN.positionWs.y);
+	float layer1 = Fbm(IN.positionWs * float2(1.0, 3.0) + time * float2(0.5, -0.3)) * ( 0.2 * sin(globals.time) + 1.0 );
+	float layer2 = Fbm(IN.positionWs * float2(1.0, 3.0) + time * float2(-0.5, -0.3));
 	float fog = (layer1 + 0.5 * layer2);
 	float fog2 = 2.0f * fog * fog;
 	OUT.color = float4(fog2.xxx, alpha );
