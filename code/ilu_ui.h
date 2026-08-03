@@ -13,11 +13,11 @@
 #endif
 
 #define UI_VERTEX_BUFFER_SIZE KB(512)
-#define UI_TEMP_STRING_SIZE KB(4)
+#define UI_TEMP_STRING_SIZE KB(8)
 
 // Fixed capacities. All of them are hard limits guarded by ASSERTs at their
 // push sites, so raising a ceiling is a matter of bumping the value here.
-#define UI_MAX_WINDOWS 16
+#define UI_MAX_WINDOWS 32
 #define UI_MAX_WINDOW_SECTIONS 16
 #define UI_MAX_WINDOW_CAPTION 64
 #define UI_MAX_WIDGET_INFOS 1024
@@ -633,15 +633,15 @@ bool UI_IsMouseClickWithAnyButton(const UI &ui)
 	return click;
 }
 
-bool UI_IsMouseClick(const UI &ui)
-{
-	const bool click = ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_PRESS;
-	return click;
-}
-
 bool UI_IsMouseClick(const UI &ui, MouseButton button)
 {
 	const bool click = ui.input.mouse.buttons[button] == BUTTON_STATE_PRESS;
+	return click;
+}
+
+bool UI_IsMouseClick(const UI &ui)
+{
+	const bool click = ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_PRESS;
 	return click;
 }
 
@@ -1115,6 +1115,18 @@ bool UI_WidgetClicked(const UI &ui, float2 widgetPos, float2 widgetSize)
 bool UI_WidgetClicked(const UI &ui)
 {
 	const bool clicked = UI_IsMouseClick(ui) && UI_WidgetHovered(ui);
+	return clicked;
+}
+
+bool UI_LastWidgetClicked(const UI &ui)
+{
+	const bool clicked = UI_WidgetClicked(ui, ui.lastWidgetPos, ui.lastWidgetSize);
+	return clicked;
+}
+
+bool UI_LastWidgetClicked(const UI &ui, MouseButton button)
+{
+	const bool clicked = UI_IsMouseClick(ui, button) && UI_WidgetHovered(ui, ui.lastWidgetPos, ui.lastWidgetSize);
 	return clicked;
 }
 

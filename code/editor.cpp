@@ -168,6 +168,10 @@ static void EditorUpdateUI_MenuBar(Engine &engine)
 			{
 				editor.showInspector = !editor.showInspector;
 			}
+			if ( UI_MenuItem(ui, "Sprite Sheet", editor.showSpriteSheet) )
+			{
+				editor.showSpriteSheet = !editor.showSpriteSheet;
+			}
 			#if USE_PROFILE
 			if ( UI_MenuItem(ui, "Profiler", editor.showProfiler) )
 			{
@@ -252,6 +256,9 @@ static void EditorUpdateUI_ToolBar(Engine &engine)
 					}
 					if (UI_Radio(ui, "Platform", context.tool == EditorTool_ColliderPlatform)) {
 						context.tool = EditorTool_ColliderPlatform;
+					}
+					if (UI_Radio(ui, "Erase", context.tool == EditorTool_Erase)) {
+						context.tool = EditorTool_Erase;
 					}
 				}
 				else
@@ -342,6 +349,15 @@ static void EditorSelectSprite(Editor &editor, Handle handle)
 	editor.inspector.nextSelected.type = EditorSelectedType_Sprite;
 }
 
+static void EditorUnselectSprite(Editor &editor, Handle handle)
+{
+	if (editor.context.spriteH == handle) {
+		editor.context.spriteH = InvalidHandle;
+		editor.inspector.nextSelected.type = EditorSelectedType_None;
+	}
+}
+
+
 static void EditorSelectFileImage(Editor &editor, FileNode *node)
 {
 	editor.context.selectedFile = node;
@@ -423,16 +439,13 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			UI_EndContextMenu(ui);
 		}
 
-		if (UI_Button(ui, "+"))
-		{
-			CreateRoom(engine);
-		}
 		UI_EndLayout(ui);
 
 		if (sceneIsOpen)
 		{
 			UI_Indent(ui);
 
+			UIID roomIndex = 0;
 			for (HandleIter it = BeginIter(scene.roomHandles); it; it++)
 			{
 				Room &room = GetRoom(scene, *it);
@@ -443,13 +456,13 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 				{
 					EditorSelectRoom(editor, room);
 				}
+				UI_PushID(ui, roomIndex++);
 				if (UI_BeginContextMenu(ui, "RoomContext"))
 				{
 					if (UI_MenuItem(ui, "Create layer"))
 					{
 						const LayerDesc desc = {
 							.name = "Layer",
-							.order = 0,
 							.visible = true,
 							.isCollider = false,
 							.size = {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y},
@@ -458,6 +471,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 					}
 					UI_EndContextMenu(ui);
 				}
+				UI_PopID(ui);
 				const bool removeRoom = UI_Button(ui, "x");
 				UI_EndLayout(ui);
 
@@ -472,29 +486,47 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 				{
 					UI_Indent(ui);
 
-					for (u32 layerIndex = 0; layerIndex < room.layerCount; ++layerIndex)
+					for (u32 layerIndex = 0; layerIndex < ARRAY_COUNT(room.layers); ++layerIndex)
 					{
+						Layer &layer = room.layers[layerIndex];
+						if (!layer.initialized) { continue; }
+
 						UI_BeginLayout(ui, UILayout_Horizontal);
 
-						Layer &layer = room.layers[layerIndex];
 						bool layerIsOpen;
-						if  (UI_TreeNode(ui, layer.name, &layer, &layerIsOpen))
+						// Keyed on the name within the room rather than on &layer: the slot address
+						// changes when layers are reordered, which would leave the expanded state
+						// behind with the slot instead of following the layer. The seed is the layer
+						// array and not &room, so a layer named after its room does not collide with
+						// the room's own node.
+						if  (UI_TreeNode(ui, layer.name, &room.layers, &layerIsOpen))
 						{
 							EditorSelectLayer(editor, room, layer);
 						}
-						if (UI_Button(ui, "v")) // Down
+						const bool moveDown = UI_Button(ui, "v"); // Towards the back
+						const bool moveUp = UI_Button(ui, "^"); // Towards the front
+						const bool removeLayer = !layer.isBase && UI_Button(ui, "x");
+
+						UI_EndLayout(ui);
+
+						if (moveDown || moveUp)
 						{
+							// The layer changes slot, so the selection, which holds a pointer into
+							// the array, has to follow it to where it landed.
+							const bool wasSelected = editor.context.layer == &layer;
+							const u32 movedIndex = MoveLayer(room, layerIndex, moveDown ? 1 : -1);
+							if (wasSelected) {
+								EditorSelectLayer(editor, room, room.layers[movedIndex]);
+							}
+							break;
 						}
-						if (UI_Button(ui, "^")) // Up
-						{
-						}
-						if (UI_Button(ui, "x")) // Remove
+
+						if (removeLayer)
 						{
 							EditorUnselectLayer(editor, layer);
 							RemoveLayer(room, layerIndex);
+							break;
 						}
-
-						UI_EndLayout(ui);
 					}
 
 					UI_Unindent(ui);
@@ -517,8 +549,13 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 	if ( UI_Section(ui, "Sprites") )
 	{
 		static Handle selectedHandle = InvalidHandle;
+
+		// Removing a sprite mid-loop would invalidate the handle iterator
+		Handle removeHandle = InvalidHandle;
+
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
 
+		UIID id = 0;
 		for (HandleIter it = BeginIter(scene.spriteHandles); it; it++)
 		{
 			Handle handle = *it;
@@ -534,9 +571,29 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 				EditorSelectSprite(editor, handle);
 				selectedHandle = handle;
 			}
+			UI_PushID(ui, id++);
+			if (UI_BeginContextMenu(ui, "SpriteContext"))
+			{
+				if (UI_MenuItem(ui, "Delete"))
+				{
+					removeHandle = handle;
+				}
+				UI_EndContextMenu(ui);
+			}
+			UI_PopID(ui);
 		}
 
 		UI_EndLayout(ui);
+
+		if (removeHandle != InvalidHandle)
+		{
+			EditorUnselectSprite(editor, removeHandle);
+			RemoveSprite(scene, removeHandle);
+			if (selectedHandle == removeHandle) {
+				selectedHandle = InvalidHandle;
+			}
+			removeHandle = InvalidHandle;
+		}
 	}
 
 	if ( UI_Section(ui, "Materials") )
@@ -560,6 +617,9 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 		{
 			Handle handle = *it;
 			const Texture &texture = GetTexture(gfx, handle);
+			const TextureDesc &desc = GetTextureDesc(gfx, handle);
+
+			if ( (desc.flags & AssetFlag_Ghost) && !(desc.flags & AssetFlag_Builtin) ) { continue; }
 
 			const UIWidgetFlags flags = selectedHandle == handle ? UIWidgetFlag_Outline : UIWidgetFlag_None;
 
@@ -570,18 +630,6 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			}
 		}
 		UI_EndLayout(ui);
-
-//		if (IsValidHandle(gfx.textureHandles, selectedHandle))
-//		{
-//			if (UI_Button(ui, "Remove"))
-//			{
-//				const EditorCommand command = {
-//					.type = EditorCommandRemoveTexture,
-//					.textureH = selectedHandle,
-//				};
-//				AddEditorCommand(editor, command);
-//			}
-//		}
 	}
 
 	if ( UI_Section(ui, "AudioClips") )
@@ -717,6 +765,169 @@ static void EditorUpdateUI_Assets(Engine &engine)
 	UI_EndWindow(ui);
 }
 
+static const char *EditorMakeSpriteName(const Scene &scene, const char *textureName)
+{
+	const char *base = StrEqN(textureName, "tex_", 4) ? textureName + 4 : textureName;
+
+	const char *name = MakeName("spr_%s", base);
+	for (u32 attempt = 1; FindSpriteHandle(scene, name) != InvalidHandle; ++attempt) {
+		name = MakeName("spr_%s_%u", base, attempt);
+	}
+	return name;
+}
+
+static void EditorUpdateUI_SpriteSheet(Engine &engine)
+{
+	UI &ui = GetUI(engine);
+	Graphics &gfx = engine.gfx;
+	Scene &scene = engine.scene;
+	Editor &editor = engine.editor;
+	EditorSpriteSheet &sheet = editor.spriteSheet;
+
+	constexpr uint2 size = {320, 560};
+	UI_SetNextWindowDefaultSize(ui, size);
+	UI_SetNextWindowAnchor(ui, {1, 0});
+	UI_SetNextWindowDefaultDisplacement(ui, {-220, 50});
+
+	UI_BeginWindow(ui, "Sprite Sheet", &editor.showSpriteSheet);
+
+	UI_SeparatorLabel(ui, "Texture");
+	{
+		UI_BeginLayout(ui, UILayout_ItemBrowser);
+		for (HandleIter it = BeginIter(gfx.textureHandles); it; it++)
+		{
+			const Handle handle = *it;
+			const Texture &texture = GetTexture(gfx, handle);
+			const TextureDesc &desc = GetTextureDesc(gfx, handle);
+			if ( desc.flags & AssetFlag_Ghost ) {
+				continue;
+			}
+
+			const UIWidgetFlags flags = handle == sheet.textureH ? UIWidgetFlag_Outline : UIWidgetFlag_None;
+
+			if ( UI_Image(ui, texture.image, float2{32, 32}, flags) )
+			{
+				sheet.textureH = handle;
+			}
+		}
+		UI_EndLayout(ui);
+	}
+
+	if ( IsValidHandle(gfx.textureHandles, sheet.textureH) )
+	{
+		const Texture &texture = GetTexture(gfx, sheet.textureH);
+
+		UI_SeparatorLabel(ui, "Texture");
+
+		UI_Text(ui, "Name", "%s", texture.name);
+		UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
+
+		UI_SeparatorLabel(ui, "Sprite sheet");
+		{
+			u32 sheetSpriteCount = 0;
+			for (HandleIter it = BeginIter(scene.spriteHandles); it; it++) {
+				if ( GetSprite(scene, *it).textureH == sheet.textureH ) {
+					sheetSpriteCount++;
+				}
+			}
+			UI_Text(ui, "Sprite count", "%u", sheetSpriteCount);
+
+			// One cell is the smallest region that can be picked: sprite offsets snap to
+			// it and sprite sizes are whole multiples of it
+			static const char *gridSizes[] = { "16", "32", "64" };
+
+			static u32 gridEnum = 0;
+			UI_Combo(ui, "Grid size", gridSizes, ARRAY_COUNT(gridSizes), &gridEnum);
+			const u32 grid =
+				gridEnum == 0 ? 16 :
+				gridEnum == 1 ? 32 :
+				64;
+
+			constexpr f32 maxPreviewHeight = 320.0f;
+
+			const UIWindow &window = UI_GetCurrentWindow(ui);
+			const float2 textureSize = Float2(texture.size);
+			const float2 available = { UI_GetContainerSize(window).x, maxPreviewHeight };
+
+			const float2 imagePos = UI_GetCursorPos(ui);
+			const float2 imageSize = textureSize;
+
+			UI_Image(ui, texture.image, imageSize);
+
+			// Cell under the cursor, clamped so a whole cell always fits inside the
+			// texture and the sprite never samples past the edge of its sheet
+			const float2 maxLocal = Max(float2{0, 0}, textureSize - float2{(f32)grid, (f32)grid});
+			const float2 local = Min(Max(Float2(UI_MousePos(ui)) - imagePos, float2{0, 0}), maxLocal);
+			const uint2 cell = { AlignDown((u32)local.x, grid), AlignDown((u32)local.y, grid) };
+
+			static bool spritesheetDrag = false;
+			static uint2 spriteRelPos = {};
+			static uint2 spriteSize = {};
+			if (UI_LastWidgetClicked(ui)) {
+				// The offset is decided here and stays put for the rest of the drag
+				spritesheetDrag = true;
+				spriteRelPos = cell;
+			}
+			if (spritesheetDrag)
+			{
+				// Dragging only resizes, growing from the anchor cell towards the cursor
+				spriteSize = {
+					cell.x > spriteRelPos.x ? cell.x - spriteRelPos.x + grid : grid,
+					cell.y > spriteRelPos.y ? cell.y - spriteRelPos.y + grid : grid,
+				};
+
+				if (ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE) {
+					spritesheetDrag = false;
+				}
+			}
+
+			// The outline goes into a draw list of its own, pushed after UI_Image popped
+			// the one binding the texture. Sibling draw lists are drawn in push order,
+			// so this one lands on top of the image instead of under it.
+			const float2 spritePos = imagePos + Float2(spriteRelPos);
+			UI_PushDrawList(ui, ui.fontAtlasH);
+			UI_PushColor(ui, ui.style.accentColor);
+			UI_AddBorder(ui, spritePos, Float2(spriteSize), 1);
+			UI_PopColor(ui);
+			UI_PopDrawList(ui);
+
+			if ( spriteSize.x > 0 && spriteSize.y > 0 )
+			{
+				UI_Text(ui, "Region", "%u, %u (%u x %u)",
+						spriteRelPos.x, spriteRelPos.y, spriteSize.x, spriteSize.y);
+
+				if ( UI_Button(ui, "Create sprite") )
+				{
+					if ( FindSpriteHandle(scene, sheet.textureH, spriteRelPos, spriteSize) != InvalidHandle )
+					{
+						LOG(Warning, "A sprite already covers that region of %s.\n", texture.name);
+					}
+					else if ( scene.spriteHandles.handleCount >= scene.spriteHandles.handleLimit )
+					{
+						LOG(Warning, "Sprite limit reached (%u).\n", scene.spriteHandles.handleLimit);
+					}
+					else
+					{
+						const SpriteDesc desc = {
+							.name = EditorMakeSpriteName(scene, texture.name),
+							.textureName = texture.name,
+							.pos = spriteRelPos,
+							.size = spriteSize,
+						};
+						CreateSprite(engine, desc);
+					}
+				}
+			}
+		}
+	}
+	else
+	{
+		UI_Label(ui, "Select a texture.");
+	}
+
+	UI_EndWindow(ui);
+}
+
 static void EditorUpdateUI_InspectorScene(Engine &engine, Scene &scene)
 {
 	UI &ui = engine.ui;
@@ -737,11 +948,6 @@ static void EditorUpdateUI_InspectorRoom(Engine &engine, Room &room)
 	room.name = InternString(name);
 
 	UI_InputInt2(ui, "Pos", &room.pos);
-
-	//int2 size = { (i32)room.boundingBox.size.x, (i32)room.boundingBox.size.y };
-	//UI_InputInt2(ui, "Size", &size);
-	//room.boundingBox.size = { (u32)Max(1, size.x), (u32)Max(1, size.y) };
-
 	UI_Text(ui, "Layers", "%u", room.layerCount);
 }
 
@@ -758,7 +964,7 @@ static void EditorUpdateUI_InspectorLayer(Engine &engine, Layer &layer)
 	layer.name = InternString(name);
 
 	UI_InputUInt2(ui, "Size", &layer.size);
-	UI_InputInt(ui, "Order", &layer.order);
+	UI_Text(ui, "Base", "%s", layer.isBase ? "yes" : "no"); // Set on creation, not editable here
 	UI_Checkbox(ui, "Visible", &layer.visible);
 	UI_Checkbox(ui, "Collider", &layer.isCollider);
 }
@@ -831,7 +1037,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.name = InternString("inspected_image"),
 					.filename = filename,
 					.mipmap = true,
-					.flags = AssetFlag_Builtin,
+					.flags = AssetFlag_Ghost,
 				};
 				inspector.tmpHandle = CreateTexture(engine.gfx, desc);
 			}
@@ -839,12 +1045,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 			const ImageH imageH = GetTextureImage(engine.gfx, inspector.tmpHandle, engine.gfx.grayImageH);
 			UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
 
-			if ( UI_Button(ui, "Make sprite") )
+			if ( UI_Button(ui, "Import texture") )
 			{
 				const char *basename = NameFromFilename(filename);
 				const char *texname = MakeName("tex_%s", basename);
-				const char *matname = MakeName("mat_%s", basename);
-				const char *spriteName = MakeName("spr_%s", basename);
 
 				const TextureDesc textureDesc = {
 					.name = texname,
@@ -853,13 +1057,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				};
 				TextureH textureH = GetOrCreateTexture(engine.gfx, textureDesc);
 
-				const SpriteDesc spriteDesc = {
-					.name = spriteName,
-					.textureName = texname,
-				};
-				SpriteH spriteH = GetOrCreateSprite(engine, spriteDesc);
-
-				EditorSelectSprite(editor, spriteH);
+				EditorSelectTexture(editor, textureH);
 			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_FileAudio)
@@ -871,7 +1069,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				const AudioClipDesc desc = {
 					.name = InternString("inspected_audio_clip"),
 					.filename = filename,
-					.flags = AssetFlag_Builtin,
+					.flags = AssetFlag_Ghost,
 				};
 				inspector.tmpHandle = CreateAudioClip(engine, desc);
 			}
@@ -896,7 +1094,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				const MusicFileDesc desc = {
 					.name = InternString("inspected_music_file"),
 					.filename = filename,
-					//.flags = AssetFlag_Builtin,
+					//.flags = AssetFlag_Ghost,
 				};
 				inspector.tmpHandle = CreateMusicFile(engine, desc);
 			}
@@ -967,7 +1165,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Texture)
 		{
-			if (inspector.selected.handle != InvalidHandle)
+			if (IsValidHandle(engine.gfx.textureHandles, inspector.selected.handle))
 			{
 				const Texture &texture = GetTexture(engine.gfx, inspector.selected.handle);
 				UI_Text(ui, "Name", "%s", texture.name);
@@ -977,6 +1175,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
 
 				UI_SeparatorLabel(ui, "Sprite");
+				UI_BeginLayout(ui, UILayout_Horizontal);
 				if (UI_Button(ui, "Create"))
 				{
 					TextureH textureH = inspector.selected.handle;
@@ -987,6 +1186,12 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					};
 					SpriteH spriteH = GetOrCreateSprite(engine, spriteDesc);
 				}
+				if (UI_Button(ui, "Sprite sheet..."))
+				{
+					editor.spriteSheet.textureH = inspector.selected.handle;
+					editor.showSpriteSheet = true;
+				}
+				UI_EndLayout(ui);
 			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_Audio)
@@ -1028,8 +1233,12 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				if (IsValidHandle(engine.gfx.textureHandles, sprite.textureH))
 				{
 					const Texture &texture = GetTexture(engine.gfx, sprite.textureH);
+					const float4 uvRect = {
+						.xy = Float2(sprite.pos)/Float2(texture.size),
+						.zw = Float2(sprite.size)/Float2(texture.size),
+					};
 					UI_Text(ui, "Texture", texture.name);
-					UI_Image(ui, texture.image, float2{0, 0}, UIWidgetFlag_Expand);
+					UI_Image(ui, texture.image, float2{0, 0}, UIWidgetFlag_Expand, uvRect);
 				}
 
 				int2 pos  = { (i32)sprite.pos.x,  (i32)sprite.pos.y  };
@@ -1228,10 +1437,10 @@ static void EditorUpdateUI_Profiler(Engine &engine)
 
 		const char *unitsStr = unitsStrArray[units];
 		const u32 unitsSize = unitsSizeArray[units];
-		UI_Label(ui, "- Global Arena: %u / %u %s", GlobalArena.used / unitsSize, GlobalArena.size / unitsSize, unitsStr);
-		UI_Label(ui, "- Frame Arena: %u / %u %s", FrameArena.used / unitsSize, FrameArena.size / unitsSize, unitsStr);
-		UI_Label(ui, "- String Arena: %u / %u %s", StringArena.used / unitsSize, StringArena.size / unitsSize, unitsStr);
-		UI_Label(ui, "- Data Arena: %u / %u %s", DataArena.used / unitsSize, DataArena.size / unitsSize, unitsStr);
+		UI_Text(ui, "Global Arena", "%u / %u %s", GlobalArena.used / unitsSize, GlobalArena.size / unitsSize, unitsStr);
+		UI_Text(ui, "Frame Arena", "%u / %u %s", FrameArena.used / unitsSize, FrameArena.size / unitsSize, unitsStr);
+		UI_Text(ui, "String Arena", "%u / %u %s", StringArena.used / unitsSize, StringArena.size / unitsSize, unitsStr);
+		UI_Text(ui, "Data Arena", "%u / %u %s", DataArena.used / unitsSize, DataArena.size / unitsSize, unitsStr);
 	}
 
 	UI_EndWindow(ui);
@@ -1330,7 +1539,7 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 			const AudioClipDesc desc = {
 				.name = clipname,
 				.filename = node->filename,
-				//.flags = AssetFlag_Builtin,
+				//.flags = AssetFlag_Ghost,
 			};
 			Handle clipHandle = GetOrCreateAudioClip(engine, desc);
 		}
@@ -1344,7 +1553,7 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 			const MusicFileDesc desc = {
 				.name = modname,
 				.filename = node->filename,
-				//.flags = AssetFlag_Builtin,
+				//.flags = AssetFlag_Ghost,
 			};
 			Handle clipHandle = GetOrCreateMusicFile(engine, desc);
 		}
@@ -1581,6 +1790,11 @@ static void EditorUpdateUI(Engine &engine)
 	if ( editor.showInspector )
 	{
 		EditorUpdateUI_Inspector(engine);
+	}
+
+	if ( editor.showSpriteSheet )
+	{
+		EditorUpdateUI_SpriteSheet(engine);
 	}
 
 	#if USE_PROFILE
@@ -2124,6 +2338,7 @@ void EditorInitialize(Engine &engine)
 	editor.showOutliner = true;
 	editor.showAssets = true;
 	editor.showInspector = true;
+	editor.showSpriteSheet = false;
 	editor.showProfiler = false;
 	editor.showDebugUI = false;
 	editor.showGrid = true;
@@ -2151,6 +2366,8 @@ void EditorInitialize(Engine &engine)
 
 	editor.cameraType = ProjectionOrthographic;
 	SetCamera(editor.camera[ProjectionOrthographic]);
+
+	editor.spriteSheet.textureH = InvalidHandle;
 
 	editor.iconAsset = EditorLoadIcon(engine, "editor/file_32x32.png", "file_32x32");
 	editor.iconWav = EditorLoadIcon(engine, "editor/wav_32x32.png", "wav_32x32");
@@ -2214,10 +2431,10 @@ void EditorUpdate(Engine &engine)
 		}
 	}
 
-	//if ( engine.game.state != GameStateStopped )
-	//{
-	//	return;
-	//}
+	if ( engine.game.state != GameStateStopped )
+	{
+		return;
+	}
 
 	EditorUpdateUI(engine);
 

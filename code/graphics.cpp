@@ -792,7 +792,7 @@ TextureH GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 		Handle handle = *it;
 		const TextureDesc &desc = GetTextureDesc(gfx, handle);
 		const FilePath imagePath2 = MakePath(AssetDir, desc.filename);
-		if ( !( desc.flags & AssetFlag_Builtin ) && StrEq(imagePath.str, imagePath2.str)) {
+		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(imagePath.str, imagePath2.str)) {
 			textureHandle = handle;
 			break;
 		}
@@ -967,7 +967,7 @@ MaterialH GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 	{
 		Handle handle = *it;
 		const MaterialDesc &materialDesc = GetMaterialDesc(gfx, handle);
-		if ( !( desc.flags & AssetFlag_Builtin ) && StrEq(desc.name, materialDesc.name)) {
+		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, materialDesc.name)) {
 			materialHandle = handle;
 			break;
 		}
@@ -1649,7 +1649,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.name = InternString("tex_default"),
 		.filename = InternString(""),
 		.mipmap = 0,
-		.flags = AssetFlag_Builtin,
+		.flags = AssetFlag_Ghost | AssetFlag_Builtin,
 	};
 	gfx.defaultTexture = CreateTexture(gfx, defaultTextureDesc, gfx.pinkImageH);
 
@@ -1658,7 +1658,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.name = InternString("tex_noise"),
 		.filename = InternString(""),
 		.mipmap = 0,
-		.flags = AssetFlag_Builtin,
+		.flags = AssetFlag_Ghost | AssetFlag_Builtin,
 	};
 	gfx.noiseTexture = CreateTexture(gfx, noiseTextureDesc, gfx.noiseImageH);
 
@@ -1668,7 +1668,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.textureName = InternString("tex_default"),
 		.pipelineName = InternString("pipeline_shading"),
 		.uvScale = 1.0,
-		.flags = AssetFlag_Builtin,
+		.flags = AssetFlag_Ghost | AssetFlag_Builtin,
 	};
 	gfx.defaultMaterial = CreateMaterial(gfx, materialDesc);
 

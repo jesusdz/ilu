@@ -8,8 +8,17 @@
 
 enum AssetFlags
 {
-	AssetFlag_Builtin = 1 << 0,
+	// Not serialized and hidden from the editor's asset lists. Transient previews are ghosts, and so
+	// are the builtins, which the engine recreates on its own.
+	AssetFlag_Ghost = 1 << 0,
+	// Owned by the engine, not by the scene, so CleanScene must leave it alone. These assets hold the
+	// shared images bound in the global bind group, which nothing recreates after initialization.
+	AssetFlag_Builtin = 1 << 1,
 };
+
+// The desc fields below are typed AssetFlags, but combining two enumerators yields an int that C++
+// will not convert back to the enum on its own, so give the type the operator it is used as if it had.
+inline AssetFlags operator|(AssetFlags a, AssetFlags b) { return (AssetFlags)((u32)a | (u32)b); }
 
 enum ShaderType
 {
@@ -94,7 +103,7 @@ struct TileDesc
 struct LayerDesc
 {
 	const char *name;
-	i32 order;
+	bool isBase;
 	bool visible;
 	bool isCollider;
 	uint2 size;
@@ -243,7 +252,7 @@ struct BinEntityDesc
 struct BinLayerDesc
 {
 	const char *name;
-	i32 order;
+	u8 isBase;
 	u8 visible;
 	u8 isCollider;
 	uint2 size;
@@ -258,7 +267,7 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-constexpr u32 BinAssetsVersion = 2;
+constexpr u32 BinAssetsVersion = 3; // 3: BinLayerDesc replaced i32 order with u8 isBase
 
 struct BinAssetsHeader
 {

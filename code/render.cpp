@@ -9,9 +9,6 @@ static constexpr float4 ColorOrange = { 1.0f, 0.5f, 0.0f, 1.0f };
 ////////////////////////////////////////////////////////////////////////
 // Immediate draw
 
-// Appends a new debug-draw batch for imageH, or extends the last one if it
-// already targets the same image, so consecutive same-texture draws are
-// submitted as a single draw call.
 static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 {
 	if ( gfx.debugDrawBatchCount > 0 )
@@ -538,8 +535,11 @@ bool RenderGraphics(Engine &engine)
 
 		// TODO: Skip room if not in camera
 
-		// Layer 0 is the room's base layer: it never scrolls, the rest parallax against it
-		const uint2 baseLayerSize = room.layers[0].size;
+		// We always need a base layer to render a room
+		const Layer *baseLayer = GetBaseLayer(room);
+		if (!baseLayer) continue;
+
+		const uint2 baseLayerSize = baseLayer->size;
 		const float2 roomPos = Float2(room.pos);
 		const float2 scrollRatio = GetRoomScrollRatio(camera.position.xy, roomPos, Float2(baseLayerSize), viewportSizeWorld);
 
@@ -561,7 +561,7 @@ bool RenderGraphics(Engine &engine)
 						if (IsValidHandle(scene.spriteHandles, spriteH) && tileCount < MAX_TILES)
 						{
 							tileDataPtr[tileCount].pos.xy = roomPos + Float2(int2{x, y}) + parallax;
-							tileDataPtr[tileCount].pos.z = layer.order;
+							tileDataPtr[tileCount].pos.z = -(float)i;
 							tileDataPtr[tileCount].spriteIndex = spriteH.idx;
 							tileSpriteHandles[tileCount] = spriteH;
 							tileCount++;

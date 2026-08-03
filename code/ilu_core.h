@@ -2640,6 +2640,13 @@ u32 AlignUp(u32 value, u32 alignment)
 	return alignedValue;
 }
 
+u32 AlignDown(u32 value, u32 alignment)
+{
+	ASSERT( IsPowerOfTwo(alignment) );
+	const u32 alignedValue = value & ~(alignment - 1);
+	return alignedValue;
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -343,7 +343,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 			WriteLine(ctx, "{");
 			PushIndent(ctx);
 			WriteLine(ctx, ".name = \"%s\",", layer.name);
-			WriteLine(ctx, ".order = %d,", layer.order);
+			WriteLine(ctx, ".isBase = %d,", layer.isBase);
 			WriteLine(ctx, ".visible = %d,", layer.visible);
 			WriteLine(ctx, ".isCollider = %d,", layer.isCollider);
 			WriteLine(ctx, ".size = {%u, %u},", layer.size.x, layer.size.y);
@@ -954,7 +954,7 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 			DParser_TryConsume(parser, TOKEN_EQUAL);
 
 			static const String sName = MakeString("name");
-			static const String sOrder = MakeString("order");
+			static const String sIsBase = MakeString("isBase");
 			static const String sVisible = MakeString("visible");
 			static const String sIsCollider = MakeString("isCollider");
 			static const String sSize = MakeString("size");
@@ -962,8 +962,8 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 
 			if ( StrEq( field, sName ) ) {
 				layerDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
-			} else if ( StrEq( field, sOrder ) ) {
-				layerDesc.order = DParser_ConsumeI32(parser);
+			} else if ( StrEq( field, sIsBase ) ) {
+				layerDesc.isBase = DParser_ConsumeU8(parser) != 0;
 			} else if ( StrEq( field, sVisible ) ) {
 				layerDesc.visible = DParser_ConsumeU8(parser) != 0;
 			} else if ( StrEq( field, sIsCollider ) ) {
@@ -1615,7 +1615,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 				BinLayerDesc &ld = d.layers[l];
 				ld.name         = DataInternString(stringPool, layer.name);
-				ld.order        = layer.order;
+				ld.isBase       = layer.isBase ? 1 : 0;
 				ld.visible      = layer.visible ? 1 : 0;
 				ld.isCollider   = layer.isCollider ? 1 : 0;
 				ld.size         = layer.size;

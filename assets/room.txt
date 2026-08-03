@@ -65,7 +65,7 @@ Room Room = {
  .layers = {
   {
    .name = "Main",
-   .order = 0,
+   .isBase = 1,
    .visible = 1,
    .isCollider = 0,
    .size = {40, 30},
@@ -95,7 +95,7 @@ Room Room = {
   },
   {
    .name = "Colliders",
-   .order = 0,
+   .isBase = 0,
    .visible = 1,
    .isCollider = 1,
    .size = {40, 30},
@@ -114,7 +114,7 @@ Room Room = {
   },
   {
    .name = "Background",
-   .order = -1,
+   .isBase = 0,
    .visible = 1,
    .isCollider = 0,
    .size = {30, 20},
@@ -136,7 +136,7 @@ Room Room = {
   },
   {
    .name = "Sky",
-   .order = -2,
+   .isBase = 0,
    .visible = 1,
    .isCollider = 0,
    .size = {20, 11},

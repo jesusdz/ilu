@@ -107,7 +107,7 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	u32 textureCount = 0;
 	for (HandleIter it = BeginIter(engine.gfx.textureHandles); it; it++) {
 		textureDescs[textureCount] = GetTextureDesc(engine.gfx, *it);
-		if ( !( textureDescs[textureCount].flags & AssetFlag_Builtin ) ) {
+		if ( !( textureDescs[textureCount].flags & AssetFlag_Ghost ) ) {
 			textureCount++;
 		}
 	}
@@ -125,7 +125,7 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	u32 materialCount = 0;
 	for (HandleIter it = BeginIter(engine.gfx.materialHandles); it; it++) {
 		materialDescs[materialCount] = GetMaterialDesc(engine.gfx, *it);
-		if ( !( materialDescs[materialCount].flags & AssetFlag_Builtin ) ) {
+		if ( !( materialDescs[materialCount].flags & AssetFlag_Ghost ) ) {
 			materialCount++;
 		}
 	}
@@ -151,7 +151,7 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 			}
 			LayerDesc &layerDesc = desc.layers[desc.layerCount++];
 			layerDesc.name = layer.name;
-			layerDesc.order = layer.order;
+			layerDesc.isBase = layer.isBase;
 			layerDesc.visible = layer.visible;
 			layerDesc.isCollider = layer.isCollider;
 			layerDesc.size = layer.size;

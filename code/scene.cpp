@@ -61,13 +61,26 @@ const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle)
 	return desc;
 }
 
-static SpriteH FindSpriteHandle(const Scene &scene, const char *name)
+SpriteH FindSpriteHandle(const Scene &scene, const char *name)
 {
 	if (!name) return InvalidHandle;
 	for (HandleIter it = BeginIter(scene.spriteHandles); it; it++)
 	{
 		Handle handle = *it;
 		if (StrEq(scene.sprites[handle.idx].name, name)) return handle;
+	}
+	return InvalidHandle;
+}
+
+SpriteH FindSpriteHandle(const Scene &scene, TextureH textureH, uint2 pos, uint2 size)
+{
+	for (HandleIter it = BeginIter(scene.spriteHandles); it; it++)
+	{
+		Handle handle = *it;
+		const Sprite &sprite = scene.sprites[handle.idx];
+		if (sprite.textureH == textureH &&
+			sprite.pos.x == pos.x && sprite.pos.y == pos.y &&
+			sprite.size.x == size.x && sprite.size.y == size.y) return handle;
 	}
 	return InvalidHandle;
 }
@@ -212,8 +225,7 @@ int2 GetGridTileCoord(const Engine &engine, const Camera &camera, int2 pixelCoor
 
 void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord)
 {
-	const bool coordValid = coord.x >= 0 && coord.x < layer.size.x &&
-			coord.y >= 0 && coord.y < layer.size.y;
+	const bool coordValid = coord.x >= 0 && coord.x < layer.size.x && coord.y >= 0 && coord.y < layer.size.y;
 	if (coordValid)
 	{
 		layer.cells[coord.x][coord.y].collider = collider;
@@ -222,8 +234,7 @@ void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord)
 
 void SetGridTileAtCoord(Engine &engine, Layer &layer, SpriteH spriteH, int2 coord)
 {
-	const bool coordValid = coord.x >= 0 && coord.x < layer.size.y &&
-			coord.y >= 0 && coord.y < layer.size.y;
+	const bool coordValid = coord.x >= 0 && coord.x < layer.size.x && coord.y >= 0 && coord.y < layer.size.y;
 	if (coordValid)
 	{
 		layer.cells[coord.x][coord.y].handle = spriteH;
@@ -343,7 +354,7 @@ u32 CreateLayer(Room &room, const LayerDesc &desc)
 				room.layerCount++;
 				layer.initialized = true;
 				layer.name = desc.name;
-				layer.order = desc.order;
+				layer.isBase = desc.isBase;
 				layer.visible = desc.visible;
 				layer.isCollider = desc.isCollider;
 				layer.size = desc.size;
@@ -358,15 +369,46 @@ u32 CreateLayer(Room &room, const LayerDesc &desc)
 
 void RemoveLayer(Room &room, u32 index)
 {
-	if ( room.layerCount > 1 && index < ARRAY_COUNT(room.layers) )
+	if ( index < ARRAY_COUNT(room.layers) )
 	{
 		Layer &layer = room.layers[index];
-		if (layer.initialized)
+		// The base layer sets the room size and the parallax reference, so it always stays.
+		if (layer.initialized && !layer.isBase)
 		{
 			layer = {};
 			room.layerCount--;
 		}
 	}
+}
+
+u32 MoveLayer(Room &room, u32 index, i32 delta)
+{
+	if ( delta == 0 || index >= ARRAY_COUNT(room.layers) ) return index;
+	if ( !room.layers[index].initialized ) return index;
+
+	const i32 slotCount = (i32)ARRAY_COUNT(room.layers);
+	for (i32 i = (i32)index + delta; i >= 0 && i < slotCount; i += delta)
+	{
+		Layer &neighbour = room.layers[i];
+		if (!neighbour.initialized) continue;
+
+		const Layer moved = room.layers[index];
+		room.layers[index] = neighbour;
+		neighbour = moved;
+		return (u32)i;
+	}
+
+	return index; // Already at the end it was asked to move towards
+}
+
+const Layer *GetBaseLayer(const Room &room)
+{
+	for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+	{
+		const Layer &layer = room.layers[i];
+		if (layer.initialized && layer.isBase) return &layer;
+	}
+	return nullptr;
 }
 
 float2 LayerSize(const Layer &layer)
@@ -377,7 +419,8 @@ float2 LayerSize(const Layer &layer)
 
 float2 RoomSize(const Room &room)
 {
-	const float2 res = LayerSize(room.layers[0]);
+	const Layer *baseLayer = GetBaseLayer(room);
+	const float2 res = baseLayer ? LayerSize(*baseLayer) : float2{0.0f, 0.0f};
 	return res;
 }
 
@@ -389,7 +432,7 @@ Handle CreateRoom(Engine &engine)
 	room.name = InternString("Room");
 	room.pos = {};
 
-	const LayerDesc desc1 = { .name = "Layer", .visible = true, .isCollider = false, .size {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} };
+	const LayerDesc desc1 = { .name = "Layer", .isBase = true, .visible = true, .isCollider = false, .size {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} };
 	CreateLayer(room, desc1);
 	const LayerDesc desc2 = { .name = "Colliders", .visible = true, .isCollider = true, .size {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} };
 	CreateLayer(room, desc2);
@@ -454,7 +497,7 @@ Handle CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteH
 		const BinLayerDesc &ld = bin.layers[l];
 		desc.layers[desc.layerCount++] = {
 			.name = ld.name,
-			.order = ld.order,
+			.isBase = ld.isBase != 0,
 			.visible = ld.visible != 0,
 			.isCollider = ld.isCollider != 0,
 			.size = ld.size,

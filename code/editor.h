@@ -114,6 +114,11 @@ struct EditorInspector
 	Handle tmpHandle;
 };
 
+struct EditorSpriteSheet
+{
+	TextureH textureH;
+};
+
 struct EditorContext
 {
 	FileNode *selectedFile;
@@ -131,6 +136,7 @@ struct Editor
 	bool showOutliner;
 	bool showAssets;
 	bool showInspector;
+	bool showSpriteSheet;
 	bool showProfiler;
 	bool showGrid;
 	bool showAbout;
@@ -159,6 +165,7 @@ struct Editor
 
 	EditorContext context;
 	EditorInspector inspector;
+	EditorSpriteSheet spriteSheet;
 
 	FileNode *root;
 	FileNode *freeNodes;

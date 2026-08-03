@@ -482,7 +482,7 @@ Handle GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
 	{
 		Handle handle = *it;
 		const AudioClipDesc &clipDesc = GetAudioClipDesc(engine.audio, handle);
-		if ( !( desc.flags & AssetFlag_Builtin ) && StrEq(desc.name, clipDesc.name)) {
+		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, clipDesc.name)) {
 			clipHandle = handle;
 			break;
 		}
@@ -929,7 +929,7 @@ Handle GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
 	{
 		Handle handle = *it;
 		const MusicFileDesc &musicDesc = GetMusicFileDesc(engine.audio, handle);
-		if ( !( desc.flags & AssetFlag_Builtin ) && StrEq(desc.name, musicDesc.name)) {
+		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, musicDesc.name)) {
 			musicHandle = handle;
 			break;
 		}

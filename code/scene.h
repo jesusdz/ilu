@@ -57,7 +57,7 @@ struct Layer
 {
 	bool initialized;
 	const char *name;
-	i32 order; // draw order within the room, lower values drawn first (further back)
+	bool isBase; // Room's reference layer
 	bool visible;
 	bool isCollider;
 	uint2 size;
@@ -104,6 +104,8 @@ SpriteH CreateSprite(Engine &engine, const SpriteDesc &desc);
 SpriteH CreateSprite(Engine &engine, const BinSpriteDesc &desc);
 Sprite &GetSprite(Scene &scene, SpriteH handle);
 const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle);
+SpriteH FindSpriteHandle(const Scene &scene, const char *name);
+SpriteH FindSpriteHandle(const Scene &scene, TextureH textureH, uint2 pos, uint2 size);
 SpriteH GetOrCreateSprite(Engine &engine, const SpriteDesc &desc);
 void RemoveSprite(Scene &scene, SpriteH handle);
 
@@ -137,6 +139,8 @@ bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 Room &GetRoom(Scene &scene, Handle handle);
 u32 CreateLayer(Room &room, const LayerDesc &desc);
 void RemoveLayer(Room &room, u32 index);
+u32 MoveLayer(Room &room, u32 index, i32 delta); // delta -1 moves towards the front, +1 towards the back
+const Layer *GetBaseLayer(const Room &room);
 float2 LayerSize(const Layer &layer);
 float2 RoomSize(const Room &room);
 Handle CreateRoom(Engine &engine);
