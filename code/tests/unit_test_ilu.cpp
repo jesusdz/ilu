@@ -6,6 +6,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define TOOLS_IMAGE_PIXELS
 #include "../ilu_core.h"
+#include "../handle_pool.h"
 
 // ANSI color codes
 #ifdef _WIN32
@@ -1433,6 +1434,223 @@ void TestSizedTypes()
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Handle pool tests
+
+struct TestPayload
+{
+    u32 elements[8];
+    u16 moveCount;
+    u16 moveDst[8];
+    u16 moveSrc[8];
+};
+
+static MOVE_ELEMENT(TestMoveElement)
+{
+    TestPayload &payload = *(TestPayload*)data;
+    payload.elements[dstIndex] = payload.elements[srcIndex];
+    if (payload.moveCount < ARRAY_COUNT(payload.moveDst)) {
+        payload.moveDst[payload.moveCount] = dstIndex;
+        payload.moveSrc[payload.moveCount] = srcIndex;
+        payload.moveCount++;
+    }
+}
+
+void TestHandlePool()
+{
+    TEST_SECTION("HandlePool");
+
+    const u32 arenaSize = MB(1);
+    byte *memory = (byte*)AllocateVirtualMemory(arenaSize);
+
+    // Initialize
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+        TEST("Initialize count == 0", pool.count == 0);
+        TEST("Initialize HandleCount == 0", HandleCount(pool) == 0);
+        TEST("Initialize is not full", !IsFull(pool));
+        TEST("InvalidHandle is not valid", !IsValidHandle(pool, InvalidHandle));
+    }
+
+    // NewHandle hands out consecutive element indices
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+
+        const Handle a = NewHandle(pool);
+        const Handle b = NewHandle(pool);
+        const Handle c = NewHandle(pool);
+
+        TEST("NewHandle returns a valid handle", IsValidHandle(pool, a));
+        TEST("NewHandle indices are consecutive",
+             GetHandleIndex(pool, a) == 0 && GetHandleIndex(pool, b) == 1 && GetHandleIndex(pool, c) == 2);
+        TEST("NewHandle handles are distinct", a != b && b != c);
+        TEST("NewHandle advances HandleCount", HandleCount(pool) == 3);
+        TEST("GetHandleAt matches the issued handle", GetHandleAt(pool, 1) == b);
+    }
+
+    // FreeHandle only marks, the element lives out the frame
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+
+        const Handle a = NewHandle(pool);
+        const Handle b = NewHandle(pool);
+        FreeHandle(pool, b);
+
+        TEST("FreeHandle keeps the handle valid", IsValidHandle(pool, b));
+        TEST("FreeHandle marks the handle", IsPendingRemoval(pool, b));
+        TEST("FreeHandle leaves other handles unmarked", !IsPendingRemoval(pool, a));
+        TEST("FreeHandle keeps the element addressable", GetHandleIndex(pool, b) == 1);
+        TEST("FreeHandle keeps the array whole", HandleCount(pool) == 2);
+        TEST("FreeHandle does not move the survivors", GetHandleIndex(pool, a) == 0);
+    }
+
+    // Freeing twice in the same frame removes one element
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+
+        const Handle a = NewHandle(pool);
+        const Handle b = NewHandle(pool);
+        FreeHandle(pool, a);
+        FreeHandle(pool, a);
+
+        TEST("Double free removes one element", CompactPool(pool, nullptr, nullptr, nullptr) == 1);
+        TEST("Double free leaves the rest alone", HandleCount(pool) == 1 && IsValidHandle(pool, b));
+    }
+
+    // CompactPool closes the holes and reports the moves
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+
+        TestPayload payload = {};
+        Handle handles[4];
+        for (u16 i = 0; i < 4; ++i) {
+            handles[i] = NewHandle(pool);
+            payload.elements[GetHandleIndex(pool, handles[i])] = 10 * (i + 1);
+        }
+
+        FreeHandle(pool, handles[1]);
+        const u16 removed = CompactPool(pool, TestMoveElement, nullptr, &payload);
+
+        TEST("CompactPool returns the removed count", removed == 1);
+        TEST("CompactPool shrinks the array", HandleCount(pool) == 3);
+        TEST("CompactPool invalidates the removed handle", !IsValidHandle(pool, handles[1]));
+        TEST("CompactPool moves every element after the hole", payload.moveCount == 2);
+        TEST("CompactPool moves towards the front",
+             payload.moveDst[0] == 1 && payload.moveSrc[0] == 2 &&
+             payload.moveDst[1] == 2 && payload.moveSrc[1] == 3);
+        TEST("CompactPool keeps the payload compact",
+             payload.elements[0] == 10 && payload.elements[1] == 30 && payload.elements[2] == 40);
+        TEST("CompactPool preserves the relative order",
+             GetHandleIndex(pool, handles[0]) == 0 &&
+             GetHandleIndex(pool, handles[2]) == 1 &&
+             GetHandleIndex(pool, handles[3]) == 2);
+
+        // Nothing to do the second time around
+        payload.moveCount = 0;
+        TEST("CompactPool is a no-op without holes", CompactPool(pool, TestMoveElement, nullptr, &payload) == 0);
+        TEST("CompactPool moves nothing without holes", payload.moveCount == 0);
+    }
+
+    // A recycled slot never answers to the old handle
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+
+        const Handle a = NewHandle(pool);
+        FreeHandle(pool, a);
+        CompactPool(pool, nullptr, nullptr, nullptr);
+
+        const Handle b = NewHandle(pool);
+        TEST("Freed slot is recycled", b.slot == a.slot);
+        TEST("Recycled slot bumps the generation", b.gen != a.gen);
+        TEST("Recycled slot rejects the stale handle", !IsValidHandle(pool, a));
+        TEST("Recycled slot accepts the new handle", IsValidHandle(pool, b));
+    }
+
+    // A slot freed this frame is not reusable until the compaction
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+
+        const Handle a = NewHandle(pool);
+        FreeHandle(pool, a);
+        const Handle b = NewHandle(pool);
+
+        TEST("Pending removal does not hand the slot back", b.slot != a.slot);
+        TEST("Pending removal does not share the element", GetHandleIndex(pool, b) != GetHandleIndex(pool, a));
+    }
+
+    // A plain loop stays a valid traversal across a removal
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+
+        Handle handles[3];
+        for (u16 i = 0; i < 3; ++i) {
+            handles[i] = NewHandle(pool);
+        }
+
+        // Removing from inside the loop must not disturb it
+        u16 visited = 0;
+        bool allResolve = true;
+        for (u16 i = 0; i < HandleCount(pool); ++i) {
+            const Handle handle = GetHandleAt(pool, i);
+            allResolve = allResolve && IsValidHandle(pool, handle) && GetHandleIndex(pool, handle) == i;
+            if (i == 0) {
+                FreeHandle(pool, handles[0]);
+            }
+            visited++;
+        }
+        TEST("Removing mid-loop visits every element", visited == 3);
+        TEST("Removing mid-loop keeps every element addressable", allResolve);
+
+        CompactPool(pool, nullptr, nullptr, nullptr);
+        TEST("The removal lands on the next compaction",
+             HandleCount(pool) == 2 && !IsValidHandle(pool, handles[0]));
+        TEST("Compaction moves the survivors up",
+             GetHandleAt(pool, 0) == handles[1] && GetHandleAt(pool, 1) == handles[2]);
+    }
+
+    // An empty pool iterates zero times
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 8);
+
+        u16 visited = 0;
+        for (u16 i = 0; i < HandleCount(pool); ++i) {
+            visited++;
+        }
+        TEST("Empty pool iterates zero times", visited == 0);
+    }
+
+    // Filling the pool
+    {
+        Arena arena = MakeArena(memory, arenaSize, "test");
+        HandlePool pool = {};
+        Initialize(pool, arena, 4);
+
+        for (u16 i = 0; i < 4; ++i) {
+            NewHandle(pool);
+        }
+        TEST("Pool reports full at the limit", IsFull(pool));
+        TEST("Full pool counts every element", HandleCount(pool) == 4);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main
 
 int main()
@@ -1463,6 +1681,7 @@ int main()
     TestAlignment();
     TestTicks();
     TestClock();
+    TestHandlePool();
 
     LOG(Info, "\n" ANSI_BOLD "====================================\n" ANSI_RESET);
     if (gTestsFailed == 0) {

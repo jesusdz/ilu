@@ -48,7 +48,7 @@ struct ImagePixels
 #include "shaders/types.hlsl"
 #include "shaders/bindings.hlsl"
 
-#include "handle_manager.h"
+#include "handle_pool.h"
 #include "data.h"
 #include "audio.h"
 #include "graphics.h"
@@ -105,26 +105,23 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 {
 	static TextureDesc textureDescs[MAX_TEXTURES];
 	u32 textureCount = 0;
-	for (HandleIter it = BeginIter(engine.gfx.textureHandles); it; it++) {
-		textureDescs[textureCount] = GetTextureDesc(engine.gfx, *it);
+	for (u16 i = 0; i < HandleCount(engine.gfx.textureHandles); ++i) {
+		textureDescs[textureCount] = engine.gfx.textureDescs[i];
 		if ( !( textureDescs[textureCount].flags & AssetFlag_Ghost ) ) {
 			textureCount++;
 		}
 	}
 
 	static SpriteDesc spriteDescs[MAX_SPRITES];
-	static u16 spriteIndexByHandleIdx[MAX_SPRITES];
 	u32 spriteCount = 0;
-	for (HandleIter it = BeginIter(engine.scene.spriteHandles); it; it++) {
-		const SpriteH handle = *it;
-		spriteIndexByHandleIdx[handle.idx] = (u16)spriteCount;
-		spriteDescs[spriteCount++] = GetSpriteDesc(engine.scene, handle);
+	for (u16 i = 0; i < HandleCount(engine.scene.spriteHandles); ++i) {
+		spriteDescs[spriteCount++] = GetSpriteDesc(engine.scene, GetHandleAt(engine.scene.spriteHandles, i));
 	}
 
 	static MaterialDesc materialDescs[MAX_MATERIALS];
 	u32 materialCount = 0;
-	for (HandleIter it = BeginIter(engine.gfx.materialHandles); it; it++) {
-		materialDescs[materialCount] = GetMaterialDesc(engine.gfx, *it);
+	for (u16 i = 0; i < HandleCount(engine.gfx.materialHandles); ++i) {
+		materialDescs[materialCount] = engine.gfx.materialDescs[i];
 		if ( !( materialDescs[materialCount].flags & AssetFlag_Ghost ) ) {
 			materialCount++;
 		}
@@ -132,14 +129,14 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static EntityDesc entityDescs[MAX_ENTITIES];
 	u32 entityCount = 0;
-	for (HandleIter it = BeginIter(engine.scene.entityHandles); it; it++) {
-		entityDescs[entityCount++] = GetEntityDesc(engine.scene, *it);
+	for (u16 i = 0; i < HandleCount(engine.scene.entityHandles); ++i) {
+		entityDescs[entityCount++] = GetEntityDesc(engine.scene, GetHandleAt(engine.scene.entityHandles, i));
 	}
 
 	static RoomDesc roomDescs[MAX_ROOMS];
 	u32 roomCount = 0;
-	for (HandleIter it = BeginIter(engine.scene.roomHandles); it; it++) {
-		const Room &room = GetRoom(engine.scene, *it);
+	for (u16 roomIndex = 0; roomIndex < HandleCount(engine.scene.roomHandles); ++roomIndex) {
+		const Room &room = engine.scene.rooms[roomIndex];
 		RoomDesc &desc = roomDescs[roomCount++];
 		desc = {};
 		desc.name = room.name;
@@ -182,7 +179,7 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 						TileDesc &tile = *PushStruct(arena, TileDesc);
 						tile.x = (u16)x;
 						tile.y = (u16)y;
-						tile.spriteIndex = spriteIndexByHandleIdx[spriteH.idx];
+						tile.spriteIndex = GetSpriteIndex(engine.scene, spriteH);
 						layerDesc.tileCount++;
 					}
 				}
@@ -192,8 +189,8 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static AudioClipDesc audioClipDescs[MAX_AUDIO_CLIPS];
 	u32 audioClipCount = 0;
-	for (HandleIter it = BeginIter(engine.audio.clipHandles); it; it++) {
-		audioClipDescs[audioClipCount] = GetAudioClipDesc(engine.audio, *it);
+	for (u16 i = 0; i < HandleCount(engine.audio.clipHandles); ++i) {
+		audioClipDescs[audioClipCount] = engine.audio.clipDescs[i];
 	}
 
 	const AssetDescriptors assetDescs = {
@@ -817,6 +814,13 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 #if USE_UI
 	UIEndFrameRecording(engine);
 #endif
+
+	// The audio pools are missing on purpose, CompactAudio runs on the mixing thread.
+	CompactRooms(engine.scene);
+	CompactEntities(engine.scene);
+	CompactSprites(engine.scene);
+	CompactMaterials(engine.gfx);
+	CompactTextures(engine.gfx);
 }
 
 ENGINE_API void OnPlatformRenderGraphics(Plat &platform)
@@ -922,32 +926,42 @@ void SetCamera(const Camera &camera)
 	engine->gfx.camera = camera;
 }
 
-Room *GetRoom(const char *name)
+Handle FindRoom(const char *name)
 {
-	static Room nullRoom = {};
-	Room *roomPtr = &nullRoom;
-	for ( HandleIter it = BeginIter(engine->scene.roomHandles); it; it++)
+	for (u16 i = 0; i < HandleCount(engine->scene.roomHandles); ++i)
 	{
-		Room &room = GetRoom(engine->scene, *it);
-		if ( StrEq(room.name, name) ) {
-			roomPtr = &room;
-			break;
+		if ( StrEq(engine->scene.rooms[i].name, name) ) {
+			return GetHandleAt(engine->scene.roomHandles, i);
 		}
+	}
+	return InvalidHandle;
+}
+
+Room *GetRoom(Handle handle)
+{
+	Room *roomPtr = nullptr;
+	if ( IsValidHandle(engine->scene.roomHandles, handle) ) {
+		roomPtr = &GetRoom(engine->scene, handle);
 	}
 	return roomPtr;
 }
 
-Entity *GetEntity(const char *name)
+Handle FindEntity(const char *name)
 {
-	static Entity nullEntity = {};
-	Entity *ent = &nullEntity;
-	for ( HandleIter it = BeginIter(engine->scene.entityHandles); it; it++)
+	for (u16 i = 0; i < HandleCount(engine->scene.entityHandles); ++i)
 	{
-		Entity &entity = GetEntity(engine->scene, *it);
-		if ( StrEq(entity.name, name) ) {
-			ent = &entity;
-			break;
+		if ( StrEq(engine->scene.entities[i].name, name) ) {
+			return GetHandleAt(engine->scene.entityHandles, i);
 		}
+	}
+	return InvalidHandle;
+}
+
+Entity *GetEntity(Handle handle)
+{
+	Entity *ent = nullptr;
+	if ( IsValidHandle(engine->scene.entityHandles, handle) ) {
+		ent = &GetEntity(engine->scene, handle);
 	}
 	return ent;
 }
@@ -955,11 +969,11 @@ Entity *GetEntity(const char *name)
 AudioClipH GetAudioClip(const char *name)
 {
 	Handle handle = InvalidHandle;
-	for ( HandleIter it = BeginIter(engine->audio.clipHandles); it; it++)
+	for (u16 i = 0; i < HandleCount(engine->audio.clipHandles); ++i)
 	{
-		AudioClipDesc &desc = GetAudioClipDesc(engine->audio, *it);
+		const AudioClipDesc &desc = engine->audio.clipDescs[i];
 		if ( StrEq(desc.name, name) ) {
-			handle = *it;
+			handle = GetHandleAt(engine->audio.clipHandles, i);
 			break;
 		}
 	}
@@ -975,11 +989,11 @@ u32 PlayAudioClip(Handle handle)
 Handle GetMusic(const char *name)
 {
 	Handle handle = InvalidHandle;
-	for ( HandleIter it = BeginIter(engine->audio.musicHandles); it; it++)
+	for (u16 i = 0; i < HandleCount(engine->audio.musicHandles); ++i)
 	{
-		MusicFileDesc &desc = GetMusicFileDesc(engine->audio, *it);
+		const MusicFileDesc &desc = engine->audio.musicFileDescs[i];
 		if ( StrEq(desc.name, name) ) {
-			handle = *it;
+			handle = GetHandleAt(engine->audio.musicHandles, i);
 			break;
 		}
 	}

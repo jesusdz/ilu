@@ -19,8 +19,10 @@ void GameStart(Game &game)
 	game.accel2 = 50;
 	game.playerState = OnAir;
 
-	game.ent = GetEntity("player");
-	game.ent->position.xy = float2{1, 1};
+	game.entH = FindEntity("player");
+	if ( Entity *player = GetEntity(game.entH) ) {
+		player->position.xy = float2{1, 1};
+	}
 	game.sndJump = GetAudioClip("snd_bell_wav");
 	game.modEquinox = GetMusic("mod_equinox_mod");
 	game.playingMusic = false;
@@ -34,7 +36,7 @@ void GameStart(Game &game)
 		.height = 90.0f / PIXELS_PER_METER,
 	};
 
-	game.room = GetRoom("Room");
+	game.roomH = FindRoom("Room");
 }
 
 // Translate platform input to game input controls
@@ -72,7 +74,12 @@ void GameSimulate(Game &game)
 	const f32 deltaSeconds = game.deltaSeconds;
 	constexpr f32 gravity = -15.8f;
 
-	const Room &room = *game.room;
+	const Room *roomPtr = GetRoom(game.roomH);
+	Entity *player = GetEntity(game.entH);
+	if ( !roomPtr || !player ) {
+		return;
+	}
+	const Room &room = *roomPtr;
 
 	{
 		float2 &pos = game.box1.pos;
@@ -90,8 +97,8 @@ void GameSimulate(Game &game)
 	}
 
 	{
-		float2 playerPos = game.ent->position.xy;
-		const float2 playerSize = { game.ent->scale, game.ent->scale };
+		float2 playerPos = player->position.xy;
+		const float2 playerSize = { player->scale, player->scale };
 
 		f32 direction = game.input.move.x;
 
@@ -213,7 +220,7 @@ void GameSimulate(Game &game)
 		game.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
 		game.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
-		EntitySetPosition(*game.ent, Float3(playerPos, game.ent->position.z));
+		EntitySetPosition(*player, Float3(playerPos, player->position.z));
 	}
 }
 
@@ -221,7 +228,8 @@ void GameUpdate(Game &game)
 {
 	SetCamera(game.camera);
 
-	//DrawBoxOutline(Float2(game.room->pos), LayerSize(game.room->layers[0]), ColorOrange);
+	//const Room *roomPtr = GetRoom(game.roomH);
+	//DrawBoxOutline(Float2(roomPtr->pos), LayerSize(roomPtr->layers[0]), ColorOrange);
 	DrawBox(game.box1.pos, game.box1.size, game.box1.color);
 }
 

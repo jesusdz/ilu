@@ -64,7 +64,7 @@ struct Game
 	float accel2;
 	PlayerState playerState;
 
-	Entity *ent;
+	Handle entH;
 
 	Handle sndJump;
 	Handle modEquinox;
@@ -73,7 +73,7 @@ struct Game
 
 	Camera camera;
 
-	Room *room;
+	Handle roomH;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -90,7 +90,10 @@ void GameStop(Game &game);
 // Game -> Engine interface
 ////////////////////////////////////////////////////////////////////////
 
-Entity *GetEntity(const char *name);
+Handle FindEntity(const char *name);
+Entity *GetEntity(Handle handle);
+Handle FindRoom(const char *name);
+Room *GetRoom(Handle handle);
 void EntitySetPosition(Entity &entity, float3 position);
 void DrawBox(float2 pos, float2 size, float4 color);
 bool IsColliderAtWorldPos(float2 worldPos);

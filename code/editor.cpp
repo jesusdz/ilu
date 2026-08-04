@@ -25,6 +25,28 @@ static const char *MakeName(const char *format, ...)
 	return outName;
 }
 
+// Both null once the selection is gone, and only good for this frame
+static Room *EditorGetContextRoom(Engine &engine)
+{
+	const Handle roomH = engine.editor.context.roomH;
+	Room *room = nullptr;
+	if ( IsValidHandle(engine.scene.roomHandles, roomH) ) {
+		room = &GetRoom(engine.scene, roomH);
+	}
+	return room;
+}
+
+static Layer *EditorGetContextLayer(Engine &engine)
+{
+	const u32 layerIndex = engine.editor.context.layerIndex;
+	Room *room = EditorGetContextRoom(engine);
+	Layer *layer = nullptr;
+	if ( room && layerIndex < ARRAY_COUNT(room->layers) && room->layers[layerIndex].initialized ) {
+		layer = &room->layers[layerIndex];
+	}
+	return layer;
+}
+
 static bool EditorMode3D(Editor &editor)
 {
 	return editor.cameraType == ProjectionPerspective;
@@ -238,17 +260,19 @@ static void EditorUpdateUI_ToolBar(Engine &engine)
 
 		UI_Separator(ui);
 
-		if (context.room)
+		const Room *contextRoom = EditorGetContextRoom(engine);
+		const Layer *contextLayer = EditorGetContextLayer(engine);
+		if (contextRoom)
 		{
-			UI_Label(ui, "%s", context.room->name);
+			UI_Label(ui, "%s", contextRoom->name);
 
-			if (context.layer)
+			if (contextLayer)
 			{
-				UI_Label(ui, "> %s", context.layer->name);
+				UI_Label(ui, "> %s", contextLayer->name);
 
 				UI_Separator(ui);
 
-				if (context.layer->isCollider)
+				if (contextLayer->isCollider)
 				{
 					static EditorTool tool = EditorTool_Draw;
 					if (UI_Radio(ui, "Solid", context.tool == EditorTool_ColliderSolid)) {
@@ -283,31 +307,33 @@ static void EditorSelectScene(Editor &editor, Scene &scene)
 	editor.inspector.nextSelected.type = EditorSelectedType_Scene;
 }
 
-static void EditorSelectRoom(Editor &editor, Room &room)
+static void EditorSelectRoom(Editor &editor, Handle roomH)
 {
-	editor.context.room = &room;
-	editor.context.layer = nullptr;
+	editor.context.roomH = roomH;
+	editor.context.layerIndex = EditorNoLayer;
 	editor.inspector.nextSelected.type = EditorSelectedType_Room;
 }
 
-static void EditorUnselectRoom(Editor &editor, Room &room)
+static void EditorUnselectRoom(Editor &editor, Handle roomH)
 {
-	if (editor.context.room == &room) {
-		editor.context.room = nullptr;
+	if (editor.context.roomH == roomH) {
+		editor.context.roomH = InvalidHandle;
+		editor.context.layerIndex = EditorNoLayer;
 		editor.inspector.nextSelected.type = EditorSelectedType_None;
 	}
 }
 
-static void EditorSelectLayer(Editor &editor, Room &room, Layer &layer)
+static void EditorSelectLayer(Editor &editor, Handle roomH, u32 layerIndex)
 {
-	editor.context.room = &room;
-	editor.context.layer = &layer;
+	editor.context.roomH = roomH;
+	editor.context.layerIndex = layerIndex;
 	editor.inspector.nextSelected.type = EditorSelectedType_Layer;
 }
-static void EditorUnselectLayer(Editor &editor, Layer &layer)
+
+static void EditorUnselectLayer(Editor &editor, Handle roomH, u32 layerIndex)
 {
-	if (editor.context.layer == &layer) {
-		editor.context.layer = nullptr;
+	if (editor.context.roomH == roomH && editor.context.layerIndex == layerIndex) {
+		editor.context.layerIndex = EditorNoLayer;
 		editor.inspector.nextSelected.type = EditorSelectedType_None;
 	}
 }
@@ -389,6 +415,8 @@ static void EditorSelectFileUnknown(Editor &editor, FileNode *node)
 static void EditorUnselectAll(Editor &editor)
 {
 	editor.context.selectedFile = nullptr;
+	editor.context.roomH = InvalidHandle;
+	editor.context.layerIndex = EditorNoLayer;
 	editor.inspector.nextSelected.value = 0;
 	editor.inspector.nextSelected.type = EditorSelectedType_None;
 }
@@ -446,15 +474,15 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			UI_Indent(ui);
 
 			UIID roomIndex = 0;
-			for (HandleIter it = BeginIter(scene.roomHandles); it; it++)
+			for (u16 roomIdx = 0; roomIdx < HandleCount(scene.roomHandles); ++roomIdx)
 			{
-				Room &room = GetRoom(scene, *it);
+				Room &room = scene.rooms[roomIdx];
 
 				UI_BeginLayout(ui, UILayout_Horizontal);
 				bool roomIsOpen;
 				if (UI_TreeNode(ui, room.name, &room, &roomIsOpen))
 				{
-					EditorSelectRoom(editor, room);
+					EditorSelectRoom(editor, GetHandleAt(scene.roomHandles, roomIdx));
 				}
 				UI_PushID(ui, roomIndex++);
 				if (UI_BeginContextMenu(ui, "RoomContext"))
@@ -477,8 +505,8 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 				if (removeRoom)
 				{
-					EditorUnselectRoom(editor, room);
-					RemoveRoom(engine, *it);
+					EditorUnselectRoom(editor, GetHandleAt(scene.roomHandles, roomIdx));
+					RemoveRoom(engine, GetHandleAt(scene.roomHandles, roomIdx));
 					break;
 				}
 
@@ -501,7 +529,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 						// the room's own node.
 						if  (UI_TreeNode(ui, layer.name, &room.layers, &layerIsOpen))
 						{
-							EditorSelectLayer(editor, room, layer);
+							EditorSelectLayer(editor, GetHandleAt(scene.roomHandles, roomIdx), layerIndex);
 						}
 						const bool moveDown = UI_Button(ui, "v"); // Towards the back
 						const bool moveUp = UI_Button(ui, "^"); // Towards the front
@@ -509,21 +537,24 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 						UI_EndLayout(ui);
 
+						const Handle roomH = GetHandleAt(scene.roomHandles, roomIdx);
+
 						if (moveDown || moveUp)
 						{
-							// The layer changes slot, so the selection, which holds a pointer into
+							// The layer changes slot, so the selection, which holds its index in
 							// the array, has to follow it to where it landed.
-							const bool wasSelected = editor.context.layer == &layer;
+							const bool wasSelected = editor.context.roomH == roomH &&
+								editor.context.layerIndex == layerIndex;
 							const u32 movedIndex = MoveLayer(room, layerIndex, moveDown ? 1 : -1);
 							if (wasSelected) {
-								EditorSelectLayer(editor, room, room.layers[movedIndex]);
+								EditorSelectLayer(editor, roomH, movedIndex);
 							}
 							break;
 						}
 
 						if (removeLayer)
 						{
-							EditorUnselectLayer(editor, layer);
+							EditorUnselectLayer(editor, roomH, layerIndex);
 							RemoveLayer(room, layerIndex);
 							break;
 						}
@@ -535,13 +566,12 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			UI_Unindent(ui);
 		}
 
-		for (HandleIter it = BeginIter(scene.entityHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
 		{
-			Handle handle = *it;
-			const Entity &entity = GetEntity(scene, handle);
+			const Entity &entity = scene.entities[i];
 
 			if ( UI_Button(ui, entity.name) ) {
-				EditorSelectEntity(editor, handle);
+				EditorSelectEntity(editor, GetHandleAt(scene.entityHandles, i));
 			}
 		}
 	}
@@ -550,16 +580,13 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 	{
 		static Handle selectedHandle = InvalidHandle;
 
-		// Removing a sprite mid-loop would invalidate the handle iterator
-		Handle removeHandle = InvalidHandle;
-
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
 
 		UIID id = 0;
-		for (HandleIter it = BeginIter(scene.spriteHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
 		{
-			Handle handle = *it;
-			const Sprite &sprite = GetSprite(scene, handle);
+			Handle handle = GetHandleAt(scene.spriteHandles, i);
+			const Sprite &sprite = scene.sprites[i];
 			const Texture &texture = GetTexture(engine.gfx, sprite.textureH);
 			const UIWidgetFlags flags = selectedHandle == handle ? UIWidgetFlag_Outline : UIWidgetFlag_None;
 			const float2 uvPos = Float2(sprite.pos)/Float2(texture.size);
@@ -576,7 +603,13 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			{
 				if (UI_MenuItem(ui, "Delete"))
 				{
-					removeHandle = handle;
+					// Removal only takes effect at the end of the frame, so deleting
+					// from inside the loop leaves the array alone
+					EditorUnselectSprite(editor, handle);
+					RemoveSprite(scene, handle);
+					if (selectedHandle == handle) {
+						selectedHandle = InvalidHandle;
+					}
 				}
 				UI_EndContextMenu(ui);
 			}
@@ -584,27 +617,16 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 		}
 
 		UI_EndLayout(ui);
-
-		if (removeHandle != InvalidHandle)
-		{
-			EditorUnselectSprite(editor, removeHandle);
-			RemoveSprite(scene, removeHandle);
-			if (selectedHandle == removeHandle) {
-				selectedHandle = InvalidHandle;
-			}
-			removeHandle = InvalidHandle;
-		}
 	}
 
 	if ( UI_Section(ui, "Materials") )
 	{
-		for (HandleIter it = BeginIter(gfx.materialHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i)
 		{
-			Handle handle = *it;
-			const Material &material = GetMaterial(gfx, handle);
+			const Material &material = gfx.materials[i];
 
 			if ( UI_Button(ui, material.name) ) {
-				EditorSelectMaterial(editor, handle);
+				EditorSelectMaterial(editor, GetHandleAt(gfx.materialHandles, i));
 			}
 		}
 	}
@@ -613,11 +635,11 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 	{
 		static TextureH selectedHandle = {};
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
-		for (HandleIter it = BeginIter(gfx.textureHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
 		{
-			Handle handle = *it;
-			const Texture &texture = GetTexture(gfx, handle);
-			const TextureDesc &desc = GetTextureDesc(gfx, handle);
+			const Handle handle = GetHandleAt(gfx.textureHandles, i);
+			const Texture &texture = gfx.textures[i];
+			const TextureDesc &desc = gfx.textureDescs[i];
 
 			if ( (desc.flags & AssetFlag_Ghost) && !(desc.flags & AssetFlag_Builtin) ) { continue; }
 
@@ -634,26 +656,24 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "AudioClips") )
 	{
-		for (HandleIter it = BeginIter(audio.clipHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(audio.clipHandles); ++i)
 		{
-			Handle handle = *it;
-			const AudioClipDesc &desc = GetAudioClipDesc(audio, handle);
+			const AudioClipDesc &desc = audio.clipDescs[i];
 
 			if ( UI_Button(ui, desc.name) ) {
-				EditorSelectAudioClip(editor, handle);
+				EditorSelectAudioClip(editor, GetHandleAt(audio.clipHandles, i));
 			}
 		}
 	}
 
 	if ( UI_Section(ui, "MusicFiles") )
 	{
-		for (HandleIter it = BeginIter(audio.musicHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(audio.musicHandles); ++i)
 		{
-			Handle handle = *it;
-			const MusicFileDesc &desc = GetMusicFileDesc(audio, handle);
+			const MusicFileDesc &desc = audio.musicFileDescs[i];
 
 			if ( UI_Button(ui, desc.name) ) {
-				EditorSelectMusic(editor, handle);
+				EditorSelectMusic(editor, GetHandleAt(audio.musicHandles, i));
 			}
 		}
 	}
@@ -794,11 +814,11 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 	UI_SeparatorLabel(ui, "Texture");
 	{
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
-		for (HandleIter it = BeginIter(gfx.textureHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
 		{
-			const Handle handle = *it;
-			const Texture &texture = GetTexture(gfx, handle);
-			const TextureDesc &desc = GetTextureDesc(gfx, handle);
+			const Handle handle = GetHandleAt(gfx.textureHandles, i);
+			const Texture &texture = gfx.textures[i];
+			const TextureDesc &desc = gfx.textureDescs[i];
 			if ( desc.flags & AssetFlag_Ghost ) {
 				continue;
 			}
@@ -825,8 +845,8 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 		UI_SeparatorLabel(ui, "Sprite sheet");
 		{
 			u32 sheetSpriteCount = 0;
-			for (HandleIter it = BeginIter(scene.spriteHandles); it; it++) {
-				if ( GetSprite(scene, *it).textureH == sheet.textureH ) {
+			for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i) {
+				if ( scene.sprites[i].textureH == sheet.textureH ) {
 					sheetSpriteCount++;
 				}
 			}
@@ -902,9 +922,9 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 					{
 						LOG(Warning, "A sprite already covers that region of %s.\n", texture.name);
 					}
-					else if ( scene.spriteHandles.handleCount >= scene.spriteHandles.handleLimit )
+					else if ( IsFull(scene.spriteHandles) )
 					{
-						LOG(Warning, "Sprite limit reached (%u).\n", scene.spriteHandles.handleLimit);
+						LOG(Warning, "Sprite limit reached (%u).\n", scene.spriteHandles.limit);
 					}
 					else
 					{
@@ -931,9 +951,9 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 static void EditorUpdateUI_InspectorScene(Engine &engine, Scene &scene)
 {
 	UI &ui = engine.ui;
-	UI_Text(ui, "Rooms", "%u", scene.roomHandles.handleCount);
-	UI_Text(ui, "Entities", "%u", scene.entityHandles.handleCount);
-	UI_Text(ui, "Sprites", "%u", scene.spriteHandles.handleCount);
+	UI_Text(ui, "Rooms", "%u", HandleCount(scene.roomHandles));
+	UI_Text(ui, "Entities", "%u", HandleCount(scene.entityHandles));
+	UI_Text(ui, "Sprites", "%u", HandleCount(scene.spriteHandles));
 }
 
 static void EditorUpdateUI_InspectorRoom(Engine &engine, Room &room)
@@ -1123,13 +1143,19 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		else if (inspector.selected.type == EditorSelectedType_Room)
 		{
 			EditorUpdateUI_InspectorScene(engine, engine.scene);
-			EditorUpdateUI_InspectorRoom(engine, *context.room);
+			if ( Room *room = EditorGetContextRoom(engine) ) {
+				EditorUpdateUI_InspectorRoom(engine, *room);
+			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_Layer)
 		{
 			EditorUpdateUI_InspectorScene(engine, engine.scene);
-			EditorUpdateUI_InspectorRoom(engine, *context.room);
-			EditorUpdateUI_InspectorLayer(engine, *context.layer);
+			Room *room = EditorGetContextRoom(engine);
+			Layer *layer = EditorGetContextLayer(engine);
+			if ( room && layer ) {
+				EditorUpdateUI_InspectorRoom(engine, *room);
+				EditorUpdateUI_InspectorLayer(engine, *layer);
+			}
 		}
 		else if(inspector.selected.type == EditorSelectedType_Entity)
 		{
@@ -2120,7 +2146,7 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 	if ( handleInput )
 	{
 		// While the Tilesets panel is open, left click paints/erases tiles instead of selecting entities
-		const bool tileEditMode = EditorMode2D(editor) && editor.context.layer != nullptr;
+		const bool tileEditMode = EditorMode2D(editor) && EditorGetContextLayer(engine) != nullptr;
 
 		if (!tileEditMode && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) && !editor.isTranslating)
 		{
@@ -2131,7 +2157,10 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 			editor.selectEntity = false;
 
 			WaitDeviceIdle(engine.gfx.device);
-			Handle entityHandle = *(Handle*)GetBufferPtr(engine.gfx.device, engine.gfx.selectionBufferH);
+			// What the id pass wrote is a draw id, not a handle: it carries the entity's
+			// position in the array, which is only meaningful together with the generation
+			const u32 drawId = *(u32*)GetBufferPtr(engine.gfx.device, engine.gfx.selectionBufferH);
+			const Handle entityHandle = EntityHandleFromDrawId(engine.scene, drawId);
 
 			if (entityHandle != InvalidHandle)
 			{
@@ -2145,14 +2174,15 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 
 		if (tileEditMode && MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT))
 		{
-			if (editor.context.layer)
+			Layer *contextLayer = EditorGetContextLayer(engine);
+			if (contextLayer)
 			{
 				const Camera &camera = editor.camera[ProjectionOrthographic];
-				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos) - editor.context.room->pos;
+				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos) - EditorGetContextRoom(engine)->pos;
 
-				Layer &layer = *editor.context.layer;
+				Layer &layer = *contextLayer;
 
-				if ( editor.context.layer->isCollider )
+				if ( layer.isCollider )
 				{
 					const u32 collider =
 						editor.context.tool == EditorTool_ColliderSolid ? 1
@@ -2175,10 +2205,13 @@ void EditorDebugDraw(Engine &engine)
 {
 	Editor &editor = engine.editor;
 
-	if (editor.context.layer != nullptr)
+	Room *contextRoom = EditorGetContextRoom(engine);
+	Layer *contextLayer = EditorGetContextLayer(engine);
+
+	if (contextLayer != nullptr)
 	{
-		Room &room = *editor.context.room;
-		Layer &layer = *editor.context.layer;
+		Room &room = *contextRoom;
+		Layer &layer = *contextLayer;
 		const float2 pos = Float2(room.pos);
 		const float2 size = LayerSize(layer);
 		DrawBoxOutline(pos, size, ColorOrange);
@@ -2220,7 +2253,7 @@ void EditorDebugDraw(Engine &engine)
 			}
 		}
 	}
-	else if (editor.context.room != nullptr)
+	else if (contextRoom != nullptr)
 	{
 	}
 }
@@ -2345,6 +2378,10 @@ void EditorInitialize(Engine &engine)
 	editor.showAbout = false;
 	editor.showSettings = false;
 	editor.showQuit = false;
+
+	// Zero is a valid layer index, so "nothing selected" has to be set explicitly
+	editor.context.roomH = InvalidHandle;
+	editor.context.layerIndex = EditorNoLayer;
 
 	// projectionType is derived from the array index so it can never drift out of sync with it
 	for (u32 i = 0; i < ProjectionTypeCount; ++i)
@@ -2499,10 +2536,9 @@ void EditorRender(Engine &engine, CommandList &commandList)
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
 
-			for (HandleIter it = BeginIter(scene.entityHandles); it; it++)
+			for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
 			{
-				Handle handle = *it;
-				const Entity &entity = GetEntity(scene, handle);
+				const Entity &entity = scene.entities[i];
 
 				if ( !entity.visible || entity.culled ) continue;
 				if ( entity.materialH == InvalidHandle ) continue;
@@ -2511,7 +2547,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 				const uint32_t indexCount = entity.indices.size/2; // div 2 (2 bytes per index)
 				const uint32_t firstIndex = entity.indices.offset/2; // div 2 (2 bytes per index)
 				const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, handle.num);
+				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
 			}
 
 			{ // Sprite entities
@@ -2521,15 +2557,14 @@ void EditorRender(Engine &engine, CommandList &commandList)
 
 				SetPipeline(commandList, gfx.spriteIdPipelineH);
 
-				for (HandleIter it = BeginIter(scene.entityHandles); it; it++)
+				for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
 				{
-					Handle handle = *it;
-					const Entity &entity = GetEntity(scene, handle);
+					const Entity &entity = scene.entities[i];
 
 					if ( !entity.visible || entity.culled ) continue;
 					if ( !IsValidHandle(scene.spriteHandles, entity.spriteH) ) continue;
 
-					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, handle.num);
+					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
 				}
 			}
 

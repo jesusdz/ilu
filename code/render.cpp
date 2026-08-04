@@ -404,9 +404,9 @@ bool RenderGraphics(Engine &engine)
 		// CPU Frustum culling
 		const float3 cameraForward = ForwardDirectionFromAngles(camera.orientation);
 		const FrustumPlanes frustumPlanes = FrustumPlanesFromCamera(camera.position, cameraForward, znear, zfar, fovy, ar);
-		for (HandleIter it = BeginIter(scene.entityHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
 		{
-			Entity &entity = GetEntity(scene, *it);
+			Entity &entity = scene.entities[i];
 			entity.culled = !EntityIsInFrustum3D(scene, entity, frustumPlanes);
 		}
 	}
@@ -426,9 +426,9 @@ bool RenderGraphics(Engine &engine)
 		frustumBottomRight = Float4( Float3(height*ar, -height, 0), 0.0f );
 
 		// CPU Frustum culling
-		for (HandleIter it = BeginIter(scene.entityHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
 		{
-			Entity &entity = GetEntity(scene, *it);
+			Entity &entity = scene.entities[i];
 			entity.culled = !EntityIsInFrustum2D(scene, entity, cameraMinMaxRect.xy, cameraMinMaxRect.zw);
 		}
 	}
@@ -455,7 +455,9 @@ bool RenderGraphics(Engine &engine)
 	const f32 f = 1.0f;
 	const float4x4 camera2dProjection = Orthogonal(l, r, b, t, n, f);
 
-	Handle selectedEntity = EditorGetSelectedEntity(editor);
+	const Handle selectedEntity = EditorGetSelectedEntity(editor);
+	const u32 selectedEntityDrawId = IsValidHandle(scene.entityHandles, selectedEntity)
+		? EntityDrawId(scene, selectedEntity) : 0xFFFFFFFF;
 
 	// Update globals struct
 	const Globals globals = {
@@ -475,7 +477,7 @@ bool RenderGraphics(Engine &engine)
 		.sceneResolution = GetFramebufferSize(gfx.renderTargets.sceneFramebuffer),
 		.mousePosition = window.mouse.pos,
 #if USE_EDITOR
-		.selectedEntity = selectedEntity.num,
+		.selectedEntity = selectedEntityDrawId,
 #endif
 	};
 
@@ -484,12 +486,11 @@ bool RenderGraphics(Engine &engine)
 	*globalsBufferPtr = globals;
 
 	// Advance animation states for animated sprites (frameCount > 1)
-	for (u32 i = 0; i < scene.spriteHandles.handleCount; ++i)
+	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
 	{
-		const Handle handle = GetHandleAt(scene.spriteHandles, i);
-		const Sprite &sprite = scene.sprites[handle.idx];
+		const Sprite &sprite = scene.sprites[i];
 		if (sprite.frameCount <= 1) continue;
-		SpriteAnimState &state = scene.spriteAnimStates[handle.idx];
+		SpriteAnimState &state = scene.spriteAnimStates[i];
 		state.elapsedTime += gfx.deltaSeconds;
 		const f32 totalDuration = (f32)sprite.frameCount / (f32)sprite.fps;
 		if (sprite.loop && state.elapsedTime >= totalDuration)
@@ -501,20 +502,19 @@ bool RenderGraphics(Engine &engine)
 
 	// Update sprite data buffer (UV per sprite)
 	SSpriteData *spriteDataPtr = (SSpriteData*)GetBufferPtr(gfx.device, gfx.spriteDataBuffer[frameIndex]);
-	for (u32 i = 0; i < scene.spriteHandles.handleCount; ++i)
+	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
 	{
-		const Handle handle = GetHandleAt(scene.spriteHandles, i);
-		const Sprite &sprite = scene.sprites[handle.idx];
+		const Sprite &sprite = scene.sprites[i];
 		const Texture &texture = GetTexture(gfx, sprite.textureH);
 		{
 			const float2 frameUvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
 			const float2 frameUvSize = { (f32)sprite.size.x / texture.size.x, (f32)sprite.size.y / texture.size.y };
 			const float frameOffsetU = sprite.frameCount > 1
-				? scene.spriteAnimStates[handle.idx].currentFrame * frameUvSize.x
+				? scene.spriteAnimStates[i].currentFrame * frameUvSize.x
 				: 0.0f;
-			spriteDataPtr[handle.idx].uvOffset  = {frameUvPos.x + frameOffsetU, frameUvPos.y};
-			spriteDataPtr[handle.idx].uvSize    = frameUvSize;
-			spriteDataPtr[handle.idx].worldSize = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
+			spriteDataPtr[i].uvOffset  = {frameUvPos.x + frameOffsetU, frameUvPos.y};
+			spriteDataPtr[i].uvSize    = frameUvSize;
+			spriteDataPtr[i].worldSize = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
 		}
 	}
 
@@ -529,9 +529,9 @@ bool RenderGraphics(Engine &engine)
 	const bool parallaxEnabled = engine.game.state == GameStateRunning; // The editor shows all layers unshifted
 
 	u32 tileCount = 0;
-	for (HandleIter it = BeginIter(scene.roomHandles); it; it++)
+	for (u16 roomIndex = 0; roomIndex < HandleCount(scene.roomHandles); ++roomIndex)
 	{
-		const Room &room = GetRoom(scene, *it);
+		const Room &room = scene.rooms[roomIndex];
 
 		// TODO: Skip room if not in camera
 
@@ -562,7 +562,7 @@ bool RenderGraphics(Engine &engine)
 						{
 							tileDataPtr[tileCount].pos.xy = roomPos + Float2(int2{x, y}) + parallax;
 							tileDataPtr[tileCount].pos.z = -(float)i;
-							tileDataPtr[tileCount].spriteIndex = spriteH.idx;
+							tileDataPtr[tileCount].spriteIndex = GetSpriteIndex(scene, spriteH);
 							tileSpriteHandles[tileCount] = spriteH;
 							tileCount++;
 						}
@@ -577,10 +577,9 @@ bool RenderGraphics(Engine &engine)
 
 	// Update entity data
 	SEntity *entities = (SEntity*)GetBufferPtr(gfx.device, gfx.entityBuffer[frameIndex]);
-	for (u32 i = 0; i < scene.entityHandles.handleCount; ++i)
+	for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
 	{
-		const Handle handle = GetHandleAt(scene.entityHandles, i);
-		const Entity &entity = GetEntity(scene, handle);
+		const Entity &entity = scene.entities[i];
 		float3 entityScale = Float3(entity.scale);
 		float3 entityPosition = entity.position;
 		if (snapToPixelGrid)
@@ -589,10 +588,10 @@ bool RenderGraphics(Engine &engine)
 			entityPosition.y = Round(entityPosition.y / pixelSize) * pixelSize;
 		}
 		const float4x4 worldMatrix = Mul(Translate(entityPosition), Scale(entityScale)); // TODO: Apply also rotation
-		entities[handle.idx].world = worldMatrix;
+		entities[i].world = worldMatrix;
 
-		const u32 spriteIndex = IsValidHandle(scene.spriteHandles, entity.spriteH) ? entity.spriteH.idx : 0;
-		entities[handle.idx].spriteIndex = spriteIndex;
+		const u32 spriteIndex = IsValidHandle(scene.spriteHandles, entity.spriteH) ? GetSpriteIndex(scene, entity.spriteH) : 0;
+		entities[i].spriteIndex = spriteIndex;
 	}
 
 	// Update materials
@@ -669,10 +668,9 @@ bool RenderGraphics(Engine &engine)
 
 		SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
-		for (u32 entityIndex = 0; entityIndex < scene.entityHandles.handleCount; ++entityIndex)
+		for (u16 entityIndex = 0; entityIndex < HandleCount(scene.entityHandles); ++entityIndex)
 		{
-			const Handle handle = GetHandleAt(scene.entityHandles, entityIndex);
-			const Entity &entity = GetEntity(scene, handle);
+			const Entity &entity = scene.entities[entityIndex];
 
 			if ( !entity.visible ) continue;
 
@@ -684,7 +682,7 @@ bool RenderGraphics(Engine &engine)
 			const uint32_t indexCount = entity.indices.size/sizeof(Index);
 			const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
 			const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, handle.num);
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, entityIndex)));
 		}
 
 		EndRenderPass(commandList);
@@ -713,10 +711,9 @@ bool RenderGraphics(Engine &engine)
 		SetViewportAndScissor(commandList, displaySize);
 
 		// Entities
-		for (HandleIter it = BeginIter(scene.entityHandles); it; it++)
+		for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
 		{
-			const Handle handle = *it;
-			const Entity &entity = GetEntity(scene, handle);
+			const Entity &entity = scene.entities[i];
 
 			if ( !entity.visible || entity.culled ) continue;
 			if ( entity.materialH == InvalidHandle ) continue;
@@ -731,7 +728,7 @@ bool RenderGraphics(Engine &engine)
 
 			// Bind groups
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-			SetBindGroup(commandList, 1, gfx.materialBindGroups[materialH.idx]);
+			SetBindGroup(commandList, 1, gfx.materialBindGroups[GetMaterialIndex(gfx, materialH)]);
 
 			// Geometry
 			SetVertexBuffer(commandList, vertexBuffer);
@@ -741,7 +738,7 @@ bool RenderGraphics(Engine &engine)
 			const uint32_t indexCount = entity.indices.size/sizeof(Index);
 			const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
 			const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, handle.num);
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
 
 			EndDebugGroup(commandList);
 		}
@@ -795,10 +792,9 @@ bool RenderGraphics(Engine &engine)
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
 
-			for (HandleIter it = BeginIter(scene.entityHandles); it; it++)
+			for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
 			{
-				const Handle handle = *it;
-				const Entity &entity = GetEntity(scene, handle);
+				const Entity &entity = scene.entities[i];
 
 				if (!entity.visible || entity.culled) continue;
 
@@ -819,7 +815,7 @@ bool RenderGraphics(Engine &engine)
 
 				BeginDebugGroup(commandList, entity.name ? entity.name : "sprite", ColorBlack);
 				SetBindGroup(commandList, 2, textureBindGroup);
-				DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, handle.num);
+				DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
 				EndDebugGroup(commandList);
 			}
 		}

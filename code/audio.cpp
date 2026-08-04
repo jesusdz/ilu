@@ -404,14 +404,20 @@ u32 LoadSamplesFromModFile(struct replay *replay, void *samples, u32 sampleCount
 AudioClip &GetAudioClip(Audio &audio, Handle handle)
 {
 	ASSERT( IsValidHandle(audio.clipHandles, handle) );
-	AudioClip &audioClip = audio.clips[handle.idx];
+	AudioClip &audioClip = audio.clips[GetHandleIndex(audio.clipHandles, handle)];
 	return audioClip;
+}
+
+u16 GetAudioClipIndex(const Audio &audio, AudioClipH handle)
+{
+	ASSERT( IsValidHandle(audio.clipHandles, handle) );
+	return GetHandleIndex(audio.clipHandles, handle);
 }
 
 AudioClipDesc &GetAudioClipDesc(Audio &audio, Handle handle)
 {
 	ASSERT( IsValidHandle(audio.clipHandles, handle) );
-	AudioClipDesc &audioClipDesc = audio.clipDescs[handle.idx];
+	AudioClipDesc &audioClipDesc = audio.clipDescs[GetHandleIndex(audio.clipHandles, handle)];
 	return audioClipDesc;
 }
 
@@ -424,6 +430,7 @@ Handle CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
 	if ( IsValidHandle(audio.clipHandles, handle) )
 	{
 		AudioClip &audioClip = GetAudioClip(audio, handle);
+		audioClip = {}; // The element held another clip before
 
 		const BinAudioClipDesc &desc = *binAudioClip.desc;
 		audioClip.sampleSize = desc.sampleSize;
@@ -450,9 +457,10 @@ Handle CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
 
 	if ( IsValidHandle(audio.clipHandles, handle) )
 	{
-		audio.clipDescs[handle.idx] = audioClipDesc;
+		GetAudioClipDesc(audio, handle) = audioClipDesc;
 
 		AudioClip &audioClip = GetAudioClip(audio, handle);
+		audioClip = {}; // The element held another clip before
 		//ASSERT(!audioClip.samples);
 
 		if ( LoadAudioClipFromWAVFile(audioClipDesc.filename, audioClip) )
@@ -477,16 +485,13 @@ Handle CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
 Handle GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
 {
 	Handle clipHandle = InvalidHandle;
-	HandleIter it = BeginIter(engine.audio.clipHandles);
-	while (it)
+	for (u16 i = 0; i < HandleCount(engine.audio.clipHandles); ++i)
 	{
-		Handle handle = *it;
-		const AudioClipDesc &clipDesc = GetAudioClipDesc(engine.audio, handle);
+		const AudioClipDesc &clipDesc = engine.audio.clipDescs[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, clipDesc.name)) {
-			clipHandle = handle;
+			clipHandle = GetHandleAt(engine.audio.clipHandles, i);
 			break;
 		}
-		it++;
 	}
 
 	if ( clipHandle == InvalidHandle )
@@ -498,10 +503,35 @@ Handle GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
 
 void RemoveAudioClip(Engine &engine, AudioClipH handle)
 {
-	AudioClip &clip = GetAudioClip(engine.audio, handle);
-	clip = {};
-
 	FreeHandle(engine.audio.clipHandles, handle);
+}
+
+static MOVE_ELEMENT(MoveAudioClip)
+{
+	Audio &audio = *(Audio*)data;
+	audio.clips[dstIndex] = audio.clips[srcIndex];
+	audio.clipDescs[dstIndex] = audio.clipDescs[srcIndex];
+}
+
+static MOVE_ELEMENT(MoveMusicFile)
+{
+	Audio &audio = *(Audio*)data;
+	audio.musicFiles[dstIndex] = audio.musicFiles[srcIndex];
+	audio.musicFileDescs[dstIndex] = audio.musicFileDescs[srcIndex];
+}
+
+// Closing the gaps moves clip storage, and RenderAudio reads that storage by index,
+// so this must run on the thread that mixes rather than from the frame loop.
+// PreRenderAudio calls it, right before the mixer would next look anything up.
+//
+// TODO(jesus): that holds where USE_AUDIO_THREAD is 1 (win32, linux), where
+// PreRenderAudio and RenderAudio are both driven by AudioThread. On Android
+// USE_AUDIO_THREAD is 0 and AAudio calls RenderAudio from its own thread while
+// PreRenderAudio runs on the main one, so the two can overlap there.
+void CompactAudio(Audio &audio)
+{
+	CompactPool(audio.clipHandles, MoveAudioClip, nullptr, &audio);
+	CompactPool(audio.musicHandles, MoveMusicFile, nullptr, &audio);
 }
 
 #define INVALID_AUDIO_CLIP U32_MAX
@@ -615,6 +645,8 @@ void StopAudioSource(Engine &engine, u32 audioSourceIndex)
 void PreRenderAudio(Engine &engine)
 {
 	Audio &audio = engine.audio;
+
+	CompactAudio(audio);
 
 	Clock beginClock = GetClock();
 
@@ -862,14 +894,14 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 MusicFile &GetMusicFile(Audio &audio, Handle handle)
 {
 	ASSERT( IsValidHandle(audio.musicHandles, handle) );
-	MusicFile &musicFile = audio.musicFiles[handle.idx];
+	MusicFile &musicFile = audio.musicFiles[GetHandleIndex(audio.musicHandles, handle)];
 	return musicFile;
 }
 
 MusicFileDesc &GetMusicFileDesc(Audio &audio, Handle handle)
 {
 	ASSERT( IsValidHandle(audio.musicHandles, handle) );
-	MusicFileDesc &musicFileDesc = audio.musicFileDescs[handle.idx];
+	MusicFileDesc &musicFileDesc = audio.musicFileDescs[GetHandleIndex(audio.musicHandles, handle)];
 	return musicFileDesc;
 }
 
@@ -882,6 +914,7 @@ Handle CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
 	if ( IsValidHandle(audio.musicHandles, handle) )
 	{
 		MusicFile &musicFile = GetMusicFile(audio, handle);
+		musicFile = {}; // The element held another music file before
 
 		const BinMusicFileDesc &desc = *binMusicFile.desc;
 		musicFile.loadSource = LOAD_SOURCE_ASSET_FILE;
@@ -907,9 +940,10 @@ Handle CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
 
 	if ( IsValidHandle(audio.musicHandles, handle) )
 	{
-		audio.musicFileDescs[handle.idx] = musicFileDesc;
+		GetMusicFileDesc(audio, handle) = musicFileDesc;
 
 		MusicFile &musicFile = GetMusicFile(audio, handle);
+		musicFile = {}; // The element held another music file before
 		musicFile.loadSource = LOAD_SOURCE_MOD_FILE;
 		musicFile.filename = musicFileDesc.filename;
 	}
@@ -924,16 +958,13 @@ Handle CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
 Handle GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
 {
 	Handle musicHandle = InvalidHandle;
-	HandleIter it = BeginIter(engine.audio.musicHandles);
-	while (it)
+	for (u16 i = 0; i < HandleCount(engine.audio.musicHandles); ++i)
 	{
-		Handle handle = *it;
-		const MusicFileDesc &musicDesc = GetMusicFileDesc(engine.audio, handle);
+		const MusicFileDesc &musicDesc = engine.audio.musicFileDescs[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, musicDesc.name)) {
-			musicHandle = handle;
+			musicHandle = GetHandleAt(engine.audio.musicHandles, i);
 			break;
 		}
-		it++;
 	}
 
 	if ( musicHandle == InvalidHandle )
@@ -950,11 +981,7 @@ void DestroyMusicFile(Engine &engine, Handle handle)
 
 	if ( IsValidHandle(audio.musicHandles, handle) )
 	{
-		MusicFile &musicFile = GetMusicFile(audio, handle);
-		musicFile = {};
-
-		audio.musicFileDescs[handle.idx] = {};
-
+		// Marks only, see RemoveAudioClip
 		FreeHandle(audio.musicHandles, handle);
 	}
 }

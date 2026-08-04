@@ -20,7 +20,12 @@ SpriteH CreateSprite(Engine &engine, const SpriteDesc &desc)
 	}
 
 	SpriteH handle = NewHandle(scene.spriteHandles);
-	scene.sprites[handle.idx] = sprite;
+	if (handle != InvalidHandle)
+	{
+		const u16 index = GetHandleIndex(scene.spriteHandles, handle);
+		scene.sprites[index] = sprite;
+		scene.spriteAnimStates[index] = {}; // The slot held another sprite's animation before
+	}
 	return handle;
 }
 
@@ -41,7 +46,13 @@ SpriteH CreateSprite(Engine &engine, const BinSpriteDesc &desc)
 Sprite &GetSprite(Scene &scene, SpriteH handle)
 {
 	ASSERT( IsValidHandle(scene.spriteHandles, handle) );
-	return scene.sprites[handle.idx];
+	return scene.sprites[GetHandleIndex(scene.spriteHandles, handle)];
+}
+
+u16 GetSpriteIndex(const Scene &scene, SpriteH handle)
+{
+	ASSERT( IsValidHandle(scene.spriteHandles, handle) );
+	return GetHandleIndex(scene.spriteHandles, handle);
 }
 
 const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle)
@@ -64,23 +75,21 @@ const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle)
 SpriteH FindSpriteHandle(const Scene &scene, const char *name)
 {
 	if (!name) return InvalidHandle;
-	for (HandleIter it = BeginIter(scene.spriteHandles); it; it++)
+	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
 	{
-		Handle handle = *it;
-		if (StrEq(scene.sprites[handle.idx].name, name)) return handle;
+		if (StrEq(scene.sprites[i].name, name)) return GetHandleAt(scene.spriteHandles, i);
 	}
 	return InvalidHandle;
 }
 
 SpriteH FindSpriteHandle(const Scene &scene, TextureH textureH, uint2 pos, uint2 size)
 {
-	for (HandleIter it = BeginIter(scene.spriteHandles); it; it++)
+	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
 	{
-		Handle handle = *it;
-		const Sprite &sprite = scene.sprites[handle.idx];
+		const Sprite &sprite = scene.sprites[i];
 		if (sprite.textureH == textureH &&
 			sprite.pos.x == pos.x && sprite.pos.y == pos.y &&
-			sprite.size.x == size.x && sprite.size.y == size.y) return handle;
+			sprite.size.x == size.x && sprite.size.y == size.y) return GetHandleAt(scene.spriteHandles, i);
 	}
 	return InvalidHandle;
 }
@@ -95,8 +104,19 @@ SpriteH GetOrCreateSprite(Engine &engine, const SpriteDesc &desc)
 
 void RemoveSprite(Scene &scene, SpriteH handle)
 {
-	scene.sprites[handle.idx] = {};
 	FreeHandle(scene.spriteHandles, handle);
+}
+
+static MOVE_ELEMENT(MoveSprite)
+{
+	Scene &scene = *(Scene*)data;
+	scene.sprites[dstIndex] = scene.sprites[srcIndex];
+	scene.spriteAnimStates[dstIndex] = scene.spriteAnimStates[srcIndex];
+}
+
+void CompactSprites(Scene &scene)
+{
+	CompactPool(scene.spriteHandles, MoveSprite, nullptr, &scene);
 }
 
 
@@ -106,8 +126,25 @@ void RemoveSprite(Scene &scene, SpriteH handle)
 Room &GetRoom(Scene &scene, Handle handle)
 {
 	ASSERT( IsValidHandle(scene.roomHandles, handle) );
-	Room &room = scene.rooms[handle.idx];
+	Room &room = scene.rooms[GetHandleIndex(scene.roomHandles, handle)];
 	return room;
+}
+
+u16 GetRoomIndex(const Scene &scene, Handle handle)
+{
+	ASSERT( IsValidHandle(scene.roomHandles, handle) );
+	return GetHandleIndex(scene.roomHandles, handle);
+}
+
+static MOVE_ELEMENT(MoveRoom)
+{
+	Scene &scene = *(Scene*)data;
+	scene.rooms[dstIndex] = scene.rooms[srcIndex];
+}
+
+void CompactRooms(Scene &scene)
+{
+	CompactPool(scene.roomHandles, MoveRoom, nullptr, &scene);
 }
 
 
@@ -117,8 +154,49 @@ Room &GetRoom(Scene &scene, Handle handle)
 Entity &GetEntity(Scene &scene, Handle handle)
 {
 	ASSERT( IsValidHandle(scene.entityHandles, handle) );
-	Entity &entity = scene.entities[handle.idx];
+	Entity &entity = scene.entities[GetHandleIndex(scene.entityHandles, handle)];
 	return entity;
+}
+
+u16 GetEntityIndex(const Scene &scene, Handle handle)
+{
+	ASSERT( IsValidHandle(scene.entityHandles, handle) );
+	return GetHandleIndex(scene.entityHandles, handle);
+}
+
+u32 EntityDrawId(const Scene &scene, Handle handle)
+{
+	const u32 index = GetEntityIndex(scene, handle);
+	const u32 drawId = (index << 16) | handle.gen;
+	return drawId;
+}
+
+Handle EntityHandleFromDrawId(const Scene &scene, u32 drawId)
+{
+	const u16 index = (u16)(drawId >> 16);
+	const u16 gen = (u16)(drawId & 0xFFFF);
+
+	Handle handle = InvalidHandle;
+	if ( index < HandleCount(scene.entityHandles) )
+	{
+		const Handle candidate = GetHandleAt(scene.entityHandles, index);
+		// The readback is a frame behind, so the element may belong to someone else now
+		if ( candidate.gen == gen ) {
+			handle = candidate;
+		}
+	}
+	return handle;
+}
+
+static MOVE_ELEMENT(MoveEntity)
+{
+	Scene &scene = *(Scene*)data;
+	scene.entities[dstIndex] = scene.entities[srcIndex];
+}
+
+void CompactEntities(Scene &scene)
+{
+	CompactPool(scene.entityHandles, MoveEntity, nullptr, &scene);
 }
 
 void EntitySetPosition(Entity &entity, float3 position)
@@ -155,6 +233,7 @@ Handle CreateEntity(Engine &engine, const EntityDesc &desc)
 
 	Handle handle = NewHandle(scene.entityHandles);
 	Entity &entity = GetEntity(scene, handle);
+	entity = {}; // The element held another entity before
 	entity.name = desc.name;
 	entity.visible = true;
 	EntitySetPosition(entity, desc.pos);
@@ -185,9 +264,6 @@ Handle CreateEntity(Engine &engine, const BinEntityDesc &desc)
 
 void RemoveEntity(Engine &engine, Handle handle)
 {
-	Entity &entity = GetEntity(engine.scene, handle);
-	entity = {};
-
 	FreeHandle(engine.scene.entityHandles, handle);
 }
 
@@ -249,9 +325,9 @@ static int2 WorldPosToGridCoord(float2 worldPos)
 
 static u32 GetColliderAtGridCoord(Scene &scene, int2 coord)
 {
-	for (HandleIter it = BeginIter(scene.roomHandles); it; it++)
+	for (u16 roomIndex = 0; roomIndex < HandleCount(scene.roomHandles); ++roomIndex)
 	{
-		const Room &room = GetRoom(scene, *it);
+		const Room &room = scene.rooms[roomIndex];
 		const int2 localCoord = coord - room.pos;
 
 		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
@@ -296,49 +372,6 @@ bool IsColliderInBox(float2 pos, float2 size, u32 collider)
 }
 
 
-static void CleanRoom(Handle handle, void *data)
-{
-	Engine &engine = *(Engine*)data;
-	RemoveRoom(engine, handle);
-}
-
-
-void CleanTexture(Handle handle, void* data)
-{
-	Engine &engine = *(Engine*)data;
-	const TextureDesc &desc = GetTextureDesc( engine.gfx, handle);
-	if ( !(desc.flags & AssetFlag_Builtin) ) {
-		RemoveTexture(engine.gfx, handle);
-	}
-}
-
-void CleanMaterial(Handle handle, void* data)
-{
-	Engine &engine = *(Engine*)data;
-	const MaterialDesc &desc = GetMaterialDesc( engine.gfx, handle);
-	if ( !(desc.flags & AssetFlag_Builtin) ) {
-		RemoveMaterial(engine.gfx, handle);
-	}
-}
-
-void CleanEntity(Handle handle, void* data)
-{
-	Engine &engine = *(Engine*)data;
-	RemoveEntity(engine, handle);
-}
-
-void CleanSprite(Handle handle, void* data)
-{
-	Engine &engine = *(Engine*)data;
-	RemoveSprite(engine.scene, handle);
-}
-
-
-void CleanAudioClip(Handle handle, void* data)
-{
-	Engine &engine = *(Engine*)data;
-	RemoveAudioClip(engine, handle);
-}
 
 u32 CreateLayer(Room &room, const LayerDesc &desc)
 {
@@ -427,7 +460,8 @@ float2 RoomSize(const Room &room)
 Handle CreateRoom(Engine &engine)
 {
 	Handle roomH = NewHandle(engine.scene.roomHandles);
-	Room &room = engine.scene.rooms[roomH.idx];
+	Room &room = GetRoom(engine.scene, roomH);
+	room = {}; // The element held another room before
 
 	room.name = InternString("Room");
 	room.pos = {};
@@ -443,7 +477,7 @@ Handle CreateRoom(Engine &engine)
 Handle CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHandles, u32 spriteHandleCount)
 {
 	Handle roomH = NewHandle(engine.scene.roomHandles);
-	Room &room = engine.scene.rooms[roomH.idx];
+	Room &room = GetRoom(engine.scene, roomH);
 	room = {};
 
 	room.name = InternString(desc.name);
@@ -511,8 +545,7 @@ Handle CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteH
 
 void RemoveRoom(Engine &engine, Handle handle)
 {
-	Room &room = GetRoom(engine.scene, handle);
-	room = {};
+	// Marks only, see RemoveEntity
 	FreeHandle(engine.scene.roomHandles, handle);
 }
 
@@ -529,12 +562,42 @@ void CleanScene(Engine &engine)
 	{
 	}
 
-	ForAllHandles(engine.gfx.textureHandles, CleanTexture, &engine);
-	ForAllHandles(engine.gfx.materialHandles, CleanMaterial, &engine);
-	ForAllHandles(engine.scene.roomHandles, CleanRoom, &engine);
-	ForAllHandles(engine.scene.entityHandles, CleanEntity, &engine);
-	ForAllHandles(engine.scene.spriteHandles, CleanSprite, &engine);
-	ForAllHandles(engine.audio.clipHandles, CleanAudioClip, &engine);
+	Graphics &gfx = engine.gfx;
+	Scene &scene = engine.scene;
+	Audio &audio = engine.audio;
+
+	// Mark everything the scene owns
+	for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i) {
+		if ( !(gfx.textureDescs[i].flags & AssetFlag_Builtin) ) {
+			RemoveTexture(gfx, GetHandleAt(gfx.textureHandles, i));
+		}
+	}
+	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i) {
+		if ( !(gfx.materialDescs[i].flags & AssetFlag_Builtin) ) {
+			RemoveMaterial(gfx, GetHandleAt(gfx.materialHandles, i));
+		}
+	}
+	for (u16 i = 0; i < HandleCount(scene.roomHandles); ++i) {
+		RemoveRoom(engine, GetHandleAt(scene.roomHandles, i));
+	}
+	for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i) {
+		RemoveEntity(engine, GetHandleAt(scene.entityHandles, i));
+	}
+	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i) {
+		RemoveSprite(scene, GetHandleAt(scene.spriteHandles, i));
+	}
+	for (u16 i = 0; i < HandleCount(audio.clipHandles); ++i) {
+		RemoveAudioClip(engine, GetHandleAt(audio.clipHandles, i));
+	}
+
+	// Compaction after removal
+	CompactRooms(engine.scene);
+	CompactEntities(engine.scene);
+	CompactSprites(engine.scene);
+	CompactMaterials(engine.gfx);
+	CompactTextures(engine.gfx);
+	// The audio pools are not compacted here: only the mixing thread may move that
+
 	CloseAssets(engine.assets);
 
 	engine.gfx.shouldUpdateMaterials = true;

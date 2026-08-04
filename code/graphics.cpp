@@ -722,28 +722,40 @@ ImageH EngineCreateImage(Graphics &gfx, const ImagePixels &img, const char *name
 Texture &GetTexture(Graphics &gfx, TextureH handle)
 {
 	ASSERT( IsValidHandle(gfx.textureHandles, handle) );
-	Texture &texture = gfx.textures[handle.idx];
+	Texture &texture = gfx.textures[GetHandleIndex(gfx.textureHandles, handle)];
 	return texture;
+}
+
+u16 GetTextureIndex(const Graphics &gfx, TextureH handle)
+{
+	ASSERT( IsValidHandle(gfx.textureHandles, handle) );
+	return GetHandleIndex(gfx.textureHandles, handle);
 }
 
 TextureDesc &GetTextureDesc(Graphics &gfx, TextureH handle)
 {
 	ASSERT( IsValidHandle(gfx.textureHandles, handle) );
-	TextureDesc &textureDesc = gfx.textureDescs[handle.idx];
+	TextureDesc &textureDesc = gfx.textureDescs[GetHandleIndex(gfx.textureHandles, handle)];
 	return textureDesc;
 }
 
 Texture &GetTextureAt(Graphics &gfx, u32 index)
 {
-	const u16 handleIndex = gfx.textureHandles.indices[index];
-	const TextureH handle = gfx.textureHandles.handles[handleIndex];
-	Texture &texture = GetTexture(gfx, handle);
+	ASSERT( index < HandleCount(gfx.textureHandles) );
+	Texture &texture = gfx.textures[index];
 	return texture;
 }
 
 TextureH CreateTexture(Graphics &gfx)
 {
 	const TextureH textureHandle = NewHandle(gfx.textureHandles);
+	if ( textureHandle != InvalidHandle )
+	{
+		// The element held another texture before
+		const u16 index = GetTextureIndex(gfx, textureHandle);
+		gfx.textures[index] = {};
+		gfx.textureDescs[index] = {};
+	}
 	return textureHandle;
 }
 
@@ -751,7 +763,7 @@ TextureH CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH)
 {
 	TextureH textureHandle = CreateTexture(gfx);
 
-	gfx.textureDescs[textureHandle.idx] = desc;
+	GetTextureDesc(gfx, textureHandle) = desc;
 
 	Texture &texture = GetTexture(gfx, textureHandle);
 	texture.name = desc.name;
@@ -788,17 +800,14 @@ TextureH GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 	const FilePath imagePath = MakePath(AssetDir, desc.filename);
 
 	TextureH textureHandle = InvalidHandle;
-	HandleIter it = BeginIter(gfx.textureHandles);
-	while (it)
+	for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
 	{
-		Handle handle = *it;
-		const TextureDesc &desc = GetTextureDesc(gfx, handle);
+		const TextureDesc &desc = gfx.textureDescs[i];
 		const FilePath imagePath2 = MakePath(AssetDir, desc.filename);
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(imagePath.str, imagePath2.str)) {
-			textureHandle = handle;
+			textureHandle = GetHandleAt(gfx.textureHandles, i);
 			break;
 		}
-		it++;
 	}
 
 	if ( textureHandle == InvalidHandle )
@@ -822,8 +831,6 @@ TextureH CreateTexture(Graphics &gfx, const BinImage &binImage)
 
 	const TextureH textureHandle = CreateTexture(gfx);
 
-	ZeroStruct( &gfx.textureDescs[textureHandle.idx] );
-
 	Texture &texture = GetTexture(gfx, textureHandle);
 	texture.name = desc.name;
 	texture.image = imageHandle;
@@ -843,49 +850,63 @@ ImageH GetTextureImage(Graphics &gfx, TextureH textureH, ImageH imageH)
 	return res;
 }
 
-static bool IsTextureName( Handle handle, const char *name, void *data )
-{
-	Graphics &gfx = *(Graphics*)data;
-	Texture &texture = GetTexture(gfx, handle);
-	const bool equals = StrEq(texture.name, name);
-	return equals;
-}
-
 TextureH FindTextureHandle(Graphics &gfx, const char *name)
 {
 	if (!name) return InvalidHandle;
-	const HandleFinder finder = {
-		.checkHandle = IsTextureName,
-		.name = name,
-		.data = &gfx,
-	};
-	const TextureH handle = FindHandle(gfx.textureHandles, finder);
-	return handle;
+	for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
+	{
+		if ( StrEq(gfx.textures[i].name, name) ) {
+			return GetHandleAt(gfx.textureHandles, i);
+		}
+	}
+	LOG(Warning, "Could not find texture <%s>.\n", name);
+	return InvalidHandle;
 }
 
 void RemoveTexture(Graphics &gfx, TextureH textureH)
 {
 	if (IsValidHandle(gfx.textureHandles, textureH))
 	{
-		Texture &texture = GetTexture(gfx, textureH);
-
-		DestroyImageH(gfx.device, texture.image);
-		texture = {};
-
+		// Marks only. The texture keeps its image until CompactTextures, so anything
+		// still drawing with it this frame has something valid to sample.
 		FreeHandle(gfx.textureHandles, textureH);
 
 		gfx.shouldUpdateMaterialBindGroups = true;
 	}
 }
 
-static void RecreateTextureIfModifed(Handle handle, void* data)
+static MOVE_ELEMENT(MoveTexture)
 {
-	Engine &engine = *(Engine*)data;
-	Graphics &gfx = engine.gfx;
+	Graphics &gfx = *(Graphics*)data;
+	gfx.textures[dstIndex] = gfx.textures[srcIndex];
+	gfx.textureDescs[dstIndex] = gfx.textureDescs[srcIndex];
+}
 
-	Texture &texture = GetTexture(gfx, handle);
-	const TextureDesc &desc = GetTextureDesc(gfx, handle);
+static REMOVE_ELEMENT(DestroyTexture)
+{
+	Graphics &gfx = *(Graphics*)data;
+	DestroyImageH(gfx.device, gfx.textures[index].image);
+}
 
+void CompactTextures(Graphics &gfx)
+{
+	if ( gfx.textureHandles.pendingRemovalCount == 0 ) {
+		return;
+	}
+
+	// DestroyTexture releases images the in-flight frames may still be sampling, and
+	// removing a texture is rare enough that stalling here costs nothing
+	WaitDeviceIdle(gfx.device);
+
+	if ( CompactPool(gfx.textureHandles, MoveTexture, DestroyTexture, &gfx) > 0 )
+	{
+		// Bind groups point at images by texture, and the textures moved
+		gfx.shouldUpdateMaterialBindGroups = true;
+	}
+}
+
+static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture, const TextureDesc &desc)
+{
 	// TODO(jesus): Textures loaded from bin data file do not have descriptor...
 	if ( StrEq(desc.filename, "") ) { return; };
 
@@ -918,7 +939,11 @@ static void RecreateTextureIfModifed(Handle handle, void* data)
 
 void RecreateModifiedTextures(Engine &engine)
 {
-	ForAllHandles(engine.gfx.textureHandles, RecreateTextureIfModifed, &engine);
+	Graphics &gfx = engine.gfx;
+	for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
+	{
+		RecreateTextureIfModifed(gfx, gfx.textures[i], gfx.textureDescs[i]);
+	}
 }
 
 
@@ -928,15 +953,27 @@ void RecreateModifiedTextures(Engine &engine)
 Material &GetMaterial(Graphics &gfx, MaterialH handle)
 {
 	ASSERT( IsValidHandle(gfx.materialHandles, handle) );
-	Material &material = gfx.materials[handle.idx];
+	Material &material = gfx.materials[GetHandleIndex(gfx.materialHandles, handle)];
 	return material;
+}
+
+u16 GetMaterialIndex(const Graphics &gfx, MaterialH handle)
+{
+	ASSERT( IsValidHandle(gfx.materialHandles, handle) );
+	return GetHandleIndex(gfx.materialHandles, handle);
 }
 
 MaterialDesc &GetMaterialDesc(Graphics &gfx, MaterialH handle)
 {
 	ASSERT( IsValidHandle(gfx.materialHandles, handle) );
-	MaterialDesc &materialDesc = gfx.materialDescs[handle.idx];
+	MaterialDesc &materialDesc = gfx.materialDescs[GetHandleIndex(gfx.materialHandles, handle)];
 	return materialDesc;
+}
+
+static u32 MaterialBufferOffset(const Graphics &gfx, u16 index)
+{
+	const u32 offset = index * AlignUp(sizeof(SMaterial), gfx.device.alignment.uniformBufferOffset);
+	return offset;
 }
 
 MaterialH CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
@@ -945,15 +982,18 @@ MaterialH CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 	PipelineH pipelineHandle = FindPipelineHandle(gfx, desc.pipelineName);
 
 	MaterialH materialHandle = NewHandle(gfx.materialHandles);
+	const u16 materialIndex = GetMaterialIndex(gfx, materialHandle);
+
 	Material& material = GetMaterial(gfx, materialHandle);
+	material = {}; // The element held another material before
 	material.name = desc.name;
 	material.pipelineName = desc.pipelineName;
 	material.pipelineH = pipelineHandle;
 	material.albedoTexture = textureHandle;
 	material.uvScale = desc.uvScale;
-	material.bufferOffset = materialHandle.idx * AlignUp(sizeof(SMaterial), gfx.device.alignment.uniformBufferOffset);
+	material.bufferOffset = MaterialBufferOffset(gfx, materialIndex);
 
-	gfx.materialDescs[materialHandle.idx] = desc;
+	gfx.materialDescs[materialIndex] = desc;
 	gfx.shouldUpdateMaterials = true;
 
 	CreateMaterialBindGroup(gfx, materialHandle);
@@ -964,16 +1004,13 @@ MaterialH CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 MaterialH GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 {
 	MaterialH materialHandle = InvalidHandle;
-	HandleIter it = BeginIter(gfx.materialHandles);
-	while (it)
+	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i)
 	{
-		Handle handle = *it;
-		const MaterialDesc &materialDesc = GetMaterialDesc(gfx, handle);
+		const MaterialDesc &materialDesc = gfx.materialDescs[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, materialDesc.name)) {
-			materialHandle = handle;
+			materialHandle = GetHandleAt(gfx.materialHandles, i);
 			break;
 		}
-		it++;
 	}
 
 	if ( materialHandle == InvalidHandle )
@@ -995,38 +1032,41 @@ MaterialH CreateMaterial( Graphics &gfx, const BinMaterialDesc &desc)
 	return materialHandle;
 }
 
-static bool IsMaterialName( Handle handle, const char *name, void *data )
-{
-	Graphics &gfx = *(Graphics*)data;
-	Material &material = GetMaterial(gfx, handle);
-	const bool equals = StrEq(material.name, name);
-	return equals;
-}
-
 MaterialH FindMaterialHandle(Graphics &gfx, const char *name)
 {
 	if (!name) return InvalidHandle;
-	const HandleFinder finder = {
-		.checkHandle = IsMaterialName,
-		.name = name,
-		.data = &gfx,
-	};
-	const MaterialH handle = FindHandle(gfx.materialHandles, finder);
-	return handle;
+	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i)
+	{
+		if ( StrEq(gfx.materials[i].name, name) ) {
+			return GetHandleAt(gfx.materialHandles, i);
+		}
+	}
+	LOG(Warning, "Could not find material <%s>.\n", name);
+	return InvalidHandle;
 }
 
 
 void RemoveMaterial(Graphics &gfx, MaterialH materialH)
 {
-	Material &material = GetMaterial(gfx, materialH);
-	const MaterialDesc &desc = GetMaterialDesc(gfx, materialH);
-
-	material = {};
-
 	FreeHandle(gfx.materialHandles, materialH);
+}
 
-	// TODO: Do we need this here? I think we don't as we are removing, not modifying
-	//gfx.shouldUpdateMaterialBindGroups = true;
+static MOVE_ELEMENT(MoveMaterial)
+{
+	Graphics &gfx = *(Graphics*)data;
+	gfx.materials[dstIndex] = gfx.materials[srcIndex];
+	gfx.materialDescs[dstIndex] = gfx.materialDescs[srcIndex];
+	gfx.materialBindGroups[dstIndex] = gfx.materialBindGroups[srcIndex];
+	gfx.materials[dstIndex].bufferOffset = MaterialBufferOffset(gfx, dstIndex);
+}
+
+void CompactMaterials(Graphics &gfx)
+{
+	if ( CompactPool(gfx.materialHandles, MoveMaterial, nullptr, &gfx) > 0 )
+	{
+		gfx.shouldUpdateMaterials = true;          // re-upload at the new offsets
+		gfx.shouldUpdateMaterialBindGroups = true; // re-point the bind groups at them
+	}
 }
 
 
@@ -1336,10 +1376,9 @@ void LinkHandles(Graphics &gfx)
 #endif // USE_COMPUTE_TEST
 	gfx.computeSelectH = FindPipelineHandle(gfx, "compute_select");
 
-	for (u32 i = 0; i < gfx.materialHandles.handleCount; ++i)
+	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i)
 	{
-		MaterialH handle = GetHandleAt(gfx.materialHandles, i);
-		Material &material = GetMaterial(gfx, handle);
+		Material &material = gfx.materials[i];
 		material.pipelineH = FindPipelineHandle(gfx, material.pipelineName);
 	}
 }
@@ -1783,12 +1822,11 @@ BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)
 
 void UpdateMaterialBindGroups(Graphics &gfx)
 {
-	for (u32 materialIndex = 0; materialIndex < gfx.materialHandles.handleCount; ++materialIndex)
+	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i)
 	{
-		const MaterialH handle = GetHandleAt(gfx.materialHandles, materialIndex);
-		const Material &material = GetMaterial(gfx, handle);
+		const Material &material = gfx.materials[i];
 		const BindGroupDesc materialBindGroupDesc = MaterialBindGroupDesc(gfx, material);
-		UpdateBindGroup(gfx.device, materialBindGroupDesc, gfx.materialBindGroups[handle.idx]);
+		UpdateBindGroup(gfx.device, materialBindGroupDesc, gfx.materialBindGroups[i]);
 	}
 }
 
@@ -1797,10 +1835,9 @@ void UploadMaterialData(Graphics &gfx)
 	CommandList commandList = BeginUploadCommandList(gfx);
 
 	// Copy material info to buffer
-	for (u32 i = 0; i < gfx.materialHandles.handleCount; ++i)
+	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i)
 	{
-		MaterialH handle = GetHandleAt(gfx.materialHandles, i);
-		const Material &material = GetMaterial(gfx, handle);
+		const Material &material = gfx.materials[i];
 		SMaterial shaderMaterial = { material.uvScale };
 		StagedData staged = StageData(gfx, &shaderMaterial, sizeof(shaderMaterial));
 
@@ -1814,17 +1851,16 @@ void CreateMaterialBindGroup(Graphics &gfx, MaterialH handle)
 {
 	const Material &material = GetMaterial(gfx, handle);
 	const Pipeline &pipeline = GetPipeline(gfx.device, material.pipelineH);
-	gfx.materialBindGroups[handle.idx] = CreateBindGroup(gfx.device, pipeline.layout.bindGroupLayouts[1], gfx.materialBindGroupAllocator);
+	gfx.materialBindGroups[GetMaterialIndex(gfx, handle)] = CreateBindGroup(gfx.device, pipeline.layout.bindGroupLayouts[1], gfx.materialBindGroupAllocator);
 	gfx.shouldUpdateMaterialBindGroups = true;
 }
 
 void CreateMaterialBindGroups(Graphics &gfx)
 {
 	// BindGroups for materials
-	for (u32 i = 0; i < gfx.materialHandles.handleCount; ++i)
+	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i)
 	{
-		MaterialH handle = GetHandleAt(gfx.materialHandles, i);
-		CreateMaterialBindGroup(gfx, handle);
+		CreateMaterialBindGroup(gfx, GetHandleAt(gfx.materialHandles, i));
 	}
 }
 

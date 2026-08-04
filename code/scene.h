@@ -85,15 +85,14 @@ constexpr u32 SCENE_HEIGHT = 180;
 struct Scene
 {
 	Room rooms[MAX_ROOMS];
-	HandleManager roomHandles;
+	HandlePool roomHandles;
 
 	Entity entities[MAX_ENTITIES];
-	HandleManager entityHandles;
+	HandlePool entityHandles;
 
 	Sprite sprites[MAX_SPRITES];
-	HandleManager spriteHandles;
-
-	SpriteAnimState spriteAnimStates[MAX_SPRITES];
+	SpriteAnimState spriteAnimStates[MAX_SPRITES]; // Parallel to sprites
+	HandlePool spriteHandles;
 };
 
 
@@ -103,23 +102,30 @@ struct Scene
 SpriteH CreateSprite(Engine &engine, const SpriteDesc &desc);
 SpriteH CreateSprite(Engine &engine, const BinSpriteDesc &desc);
 Sprite &GetSprite(Scene &scene, SpriteH handle);
+u16 GetSpriteIndex(const Scene &scene, SpriteH handle);
 const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle);
 SpriteH FindSpriteHandle(const Scene &scene, const char *name);
 SpriteH FindSpriteHandle(const Scene &scene, TextureH textureH, uint2 pos, uint2 size);
 SpriteH GetOrCreateSprite(Engine &engine, const SpriteDesc &desc);
 void RemoveSprite(Scene &scene, SpriteH handle);
+void CompactSprites(Scene &scene);
 
 
 ////////////////////////////////////////////////////////////////////////
 // Entity management
 
 Entity &GetEntity(Scene &scene, Handle handle);
+u16 GetEntityIndex(const Scene &scene, Handle handle);
 void EntitySetPosition(Entity &entity, float3 position);
 EntityDesc GetEntityDesc(Scene &scene, Handle handle);
 Handle CreateEntity(Engine &engine, const EntityDesc &desc);
 Handle CreateEntity(Engine &engine, const BinEntityDesc &desc);
 void RemoveEntity(Engine &engine, Handle handle);
 Handle DuplicateEntity(Engine &engine, Handle entityHandle);
+void CompactEntities(Scene &scene);
+
+u32 EntityDrawId(const Scene &scene, Handle handle);
+Handle EntityHandleFromDrawId(const Scene &scene, u32 drawId);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -137,6 +143,8 @@ bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 // Room and layer management
 
 Room &GetRoom(Scene &scene, Handle handle);
+u16 GetRoomIndex(const Scene &scene, Handle handle);
+void CompactRooms(Scene &scene);
 u32 CreateLayer(Room &room, const LayerDesc &desc);
 void RemoveLayer(Room &room, u32 index);
 u32 MoveLayer(Room &room, u32 index, i32 delta); // delta -1 moves towards the front, +1 towards the back
@@ -151,14 +159,6 @@ void RemoveRoom(Engine &engine, Handle handle);
 
 ////////////////////////////////////////////////////////////////////////
 // Scene lifetime
-//
-// The Clean* callbacks are passed to ForAllHandles by CleanScene.
-
-void CleanTexture(Handle handle, void* data);
-void CleanMaterial(Handle handle, void* data);
-void CleanEntity(Handle handle, void* data);
-void CleanSprite(Handle handle, void* data);
-void CleanAudioClip(Handle handle, void* data);
 
 void CreateScene(Engine &engine);
 void CleanScene(Engine &engine);

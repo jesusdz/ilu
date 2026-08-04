@@ -78,9 +78,12 @@ struct MusicFile
 
 struct Audio
 {
+	// Compact, no holes, like the rest of the pools. Unlike the rest, these are read
+	// by the mixing thread, so CompactAudio is what closes the gaps and it runs from
+	// PreRenderAudio rather than from the frame loop. See CompactAudio.
 	AudioClip clips[MAX_AUDIO_CLIPS] = {};
-	AudioClipDesc clipDescs[MAX_AUDIO_CLIPS] = {};
-	HandleManager clipHandles;
+	AudioClipDesc clipDescs[MAX_AUDIO_CLIPS] = {}; // Parallel to clips
+	HandlePool clipHandles;
 
 	AudioSource sources[MAX_AUDIO_SOURCES] = {};
 
@@ -97,8 +100,8 @@ struct Audio
 	u32 musicBufferWriteSampleIndex;
 
 	MusicFile musicFiles[MAX_MUSIC_FILES] = {};
-	MusicFileDesc musicFileDescs[MAX_MUSIC_FILES] = {};
-	HandleManager musicHandles;
+	MusicFileDesc musicFileDescs[MAX_MUSIC_FILES] = {}; // Parallel to musicFiles
+	HandlePool musicHandles;
 
 	Handle musicFile; // Music file being played
 
@@ -127,7 +130,9 @@ AudioClipDesc &GetAudioClipDesc(Audio &audio, Handle handle);
 Handle CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip);
 Handle CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
 Handle GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
-void RemoveAudioClip(Engine &engine, AudioClipH handle);
+void RemoveAudioClip(Engine &engine, AudioClipH handle); // Deferred, takes effect on the next CompactAudio
+u16 GetAudioClipIndex(const Audio &audio, AudioClipH handle);
+void CompactAudio(Audio &audio);
 u32 PlayAudioClip(Engine &engine, AudioClipH handle);
 bool IsActiveAudioSource(Engine &engine, u32 audioSourceIndex);
 bool IsPausedAudioSource(Engine &engine, u32 audioSourceIndex);

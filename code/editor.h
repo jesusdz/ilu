@@ -119,11 +119,13 @@ struct EditorSpriteSheet
 	TextureH textureH;
 };
 
+constexpr u32 EditorNoLayer = U32_MAX;
+
 struct EditorContext
 {
 	FileNode *selectedFile;
-	Room *room;
-	Layer *layer;
+	Handle roomH;
+	u32 layerIndex;
 	Handle spriteH; // brush
 	EditorTool tool;
 };

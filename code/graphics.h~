@@ -161,6 +161,8 @@ struct Graphics
 	RenderPassH idRenderPassH;
 	RenderPassH displayRenderPassH;
 
+	// Compact, no holes: the valid range is [0, HandleCount(<pool>)) at any point in
+	// the frame. Index with GetTextureIndex / GetMaterialIndex, never with handle.slot.
 	Texture textures[MAX_TEXTURES];
 	TextureDesc textureDescs[MAX_TEXTURES]; // Parallel to textures
 	HandlePool textureHandles;
@@ -180,7 +182,9 @@ struct Graphics
 	BindGroup globalBindGroups[MAX_FRAMES_IN_FLIGHT];
 	bool shouldUpdateGlobalBindGroups;
 
-	BindGroup materialBindGroups[MAX_MATERIALS]; // Parallel to materials
+	// Updated once at the beginning for each material. Parallel to materials, moved
+	// by the same compaction
+	BindGroup materialBindGroups[MAX_MATERIALS];
 	bool shouldUpdateMaterialBindGroups;
 
 	BindGroupDesc dynamicBindGroupDescs[MAX_DYNAMIC_BIND_GROUPS];
@@ -270,7 +274,7 @@ ImageH EngineCreateImage(Graphics &gfx, const ImagePixels &img, const char *name
 // Texture management
 
 Texture &GetTexture(Graphics &gfx, TextureH handle);
-u16 GetTextureIndex(const Graphics &gfx, TextureH handle);
+u16 GetTextureIndex(const Graphics &gfx, TextureH handle); // Index into Graphics::textures, only valid until the next CompactTextures
 TextureDesc &GetTextureDesc(Graphics &gfx, TextureH handle);
 Texture &GetTextureAt(Graphics &gfx, u32 index);
 TextureH CreateTexture(Graphics &gfx);
@@ -280,7 +284,7 @@ TextureH GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc);
 TextureH CreateTexture(Graphics &gfx, const BinImage &binImage);
 ImageH GetTextureImage(Graphics &gfx, TextureH textureH, ImageH imageH);
 TextureH FindTextureHandle(Graphics &gfx, const char *name);
-void RemoveTexture(Graphics &gfx, TextureH textureH);
+void RemoveTexture(Graphics &gfx, TextureH textureH); // Deferred, the image is destroyed by the next CompactTextures
 void CompactTextures(Graphics &gfx);
 void RecreateModifiedTextures(Engine &engine);
 
@@ -289,13 +293,13 @@ void RecreateModifiedTextures(Engine &engine);
 // Material management
 
 Material &GetMaterial(Graphics &gfx, MaterialH handle);
-u16 GetMaterialIndex(const Graphics &gfx, MaterialH handle);
+u16 GetMaterialIndex(const Graphics &gfx, MaterialH handle); // Index into Graphics::materials, only valid until the next CompactMaterials
 MaterialDesc &GetMaterialDesc(Graphics &gfx, MaterialH handle);
 MaterialH CreateMaterial(Graphics &gfx, const MaterialDesc &desc);
 MaterialH GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc);
 MaterialH CreateMaterial(Graphics &gfx, const BinMaterialDesc &desc);
 MaterialH FindMaterialHandle(Graphics &gfx, const char *name);
-void RemoveMaterial(Graphics &gfx, MaterialH materialH);
+void RemoveMaterial(Graphics &gfx, MaterialH materialH); // Deferred, takes effect on the next CompactMaterials
 void CompactMaterials(Graphics &gfx);
 
 
