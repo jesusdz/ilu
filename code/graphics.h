@@ -36,7 +36,7 @@ struct Texture
 	u64 ts;
 };
 
-typedef Handle TextureH;
+DECLARE_HANDLE_TYPE(TextureH);
 
 struct Material
 {
@@ -48,7 +48,7 @@ struct Material
 	u32 bufferOffset;
 };
 
-typedef Handle MaterialH;
+DECLARE_HANDLE_TYPE(MaterialH);
 
 struct RenderTargets
 {

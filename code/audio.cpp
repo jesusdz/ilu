@@ -18,7 +18,7 @@ enum AudioCmdType : u32
 struct AudioCmd
 {
 	AudioCmdType type;
-	Handle handle; // Clip or Music handle
+	Handle handle; // Unused: the commands identify their target by sourceIndex
 	u32 sourceIndex; // For active audio sources
 };
 
@@ -401,7 +401,10 @@ u32 LoadSamplesFromModFile(struct replay *replay, void *samples, u32 sampleCount
 ////////////////////////////////////////////////////////////////////////
 // AudioClip and AudioSource management
 
-AudioClip &GetAudioClip(Audio &audio, Handle handle)
+AudioClipH::operator bool() const { return IsValidHandle(engine->audio.clipHandles, *this); }
+MusicH::operator bool()     const { return IsValidHandle(engine->audio.musicHandles, *this); }
+
+AudioClip &GetAudioClip(Audio &audio, AudioClipH handle)
 {
 	ASSERT( IsValidHandle(audio.clipHandles, handle) );
 	AudioClip &audioClip = audio.clips[GetHandleIndex(audio.clipHandles, handle)];
@@ -414,20 +417,20 @@ u16 GetAudioClipIndex(const Audio &audio, AudioClipH handle)
 	return GetHandleIndex(audio.clipHandles, handle);
 }
 
-AudioClipDesc &GetAudioClipDesc(Audio &audio, Handle handle)
+AudioClipDesc &GetAudioClipDesc(Audio &audio, AudioClipH handle)
 {
 	ASSERT( IsValidHandle(audio.clipHandles, handle) );
 	AudioClipDesc &audioClipDesc = audio.clipDescs[GetHandleIndex(audio.clipHandles, handle)];
 	return audioClipDesc;
 }
 
-Handle CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
+AudioClipH CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
 {
 	Audio &audio = engine.audio;
 
-	Handle handle = NewHandle(audio.clipHandles);
+	AudioClipH handle = NewHandle(audio.clipHandles);
 
-	if ( IsValidHandle(audio.clipHandles, handle) )
+	if ( handle )
 	{
 		AudioClip &audioClip = GetAudioClip(audio, handle);
 		audioClip = {}; // The element held another clip before
@@ -448,14 +451,14 @@ Handle CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
 	return handle;
 }
 
-Handle CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
+AudioClipH CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
 {
 	Audio &audio = engine.audio;
 	Arena &arena = DataArena;
 
-	Handle handle = NewHandle(audio.clipHandles);
+	AudioClipH handle = NewHandle(audio.clipHandles);
 
-	if ( IsValidHandle(audio.clipHandles, handle) )
+	if ( handle )
 	{
 		GetAudioClipDesc(audio, handle) = audioClipDesc;
 
@@ -482,9 +485,9 @@ Handle CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
 	return handle;
 }
 
-Handle GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
+AudioClipH GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
 {
-	Handle clipHandle = InvalidHandle;
+	AudioClipH clipHandle = InvalidHandle;
 	for (u16 i = 0; i < HandleCount(engine.audio.clipHandles); ++i)
 	{
 		const AudioClipDesc &clipDesc = engine.audio.clipDescs[i];
@@ -494,7 +497,7 @@ Handle GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
 		}
 	}
 
-	if ( clipHandle == InvalidHandle )
+	if ( !clipHandle )
 	{
 		clipHandle = CreateAudioClip(engine, desc);
 	}
@@ -757,7 +760,7 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 	{
 		AudioSource &audioSource = audio.sources[i];
 
-		bool audioSourceIsValid = IsValidHandle(audio.clipHandles, audioSource.clip);
+		bool audioSourceIsValid = (bool)audioSource.clip;
 
 		if ( audioSourceIsValid && audioSource.state == AUDIO_STATE_PLAYING )
 		{
@@ -891,27 +894,27 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 ////////////////////////////////////////////////////////////////////////
 // MOD music  tracks
 
-MusicFile &GetMusicFile(Audio &audio, Handle handle)
+MusicFile &GetMusicFile(Audio &audio, MusicH handle)
 {
 	ASSERT( IsValidHandle(audio.musicHandles, handle) );
 	MusicFile &musicFile = audio.musicFiles[GetHandleIndex(audio.musicHandles, handle)];
 	return musicFile;
 }
 
-MusicFileDesc &GetMusicFileDesc(Audio &audio, Handle handle)
+MusicFileDesc &GetMusicFileDesc(Audio &audio, MusicH handle)
 {
 	ASSERT( IsValidHandle(audio.musicHandles, handle) );
 	MusicFileDesc &musicFileDesc = audio.musicFileDescs[GetHandleIndex(audio.musicHandles, handle)];
 	return musicFileDesc;
 }
 
-Handle CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
+MusicH CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
 {
 	Audio &audio = engine.audio;
 
-	Handle handle = NewHandle(audio.musicHandles);
+	MusicH handle = NewHandle(audio.musicHandles);
 
-	if ( IsValidHandle(audio.musicHandles, handle) )
+	if ( handle )
 	{
 		MusicFile &musicFile = GetMusicFile(audio, handle);
 		musicFile = {}; // The element held another music file before
@@ -931,14 +934,14 @@ Handle CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
 	return handle;
 }
 
-Handle CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
+MusicH CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
 {
 	Audio &audio = engine.audio;
 	Arena &arena = DataArena;
 
-	Handle handle = NewHandle(audio.musicHandles);
+	MusicH handle = NewHandle(audio.musicHandles);
 
-	if ( IsValidHandle(audio.musicHandles, handle) )
+	if ( handle )
 	{
 		GetMusicFileDesc(audio, handle) = musicFileDesc;
 
@@ -955,9 +958,9 @@ Handle CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
 	return handle;
 }
 
-Handle GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
+MusicH GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
 {
-	Handle musicHandle = InvalidHandle;
+	MusicH musicHandle = InvalidHandle;
 	for (u16 i = 0; i < HandleCount(engine.audio.musicHandles); ++i)
 	{
 		const MusicFileDesc &musicDesc = engine.audio.musicFileDescs[i];
@@ -967,26 +970,26 @@ Handle GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
 		}
 	}
 
-	if ( musicHandle == InvalidHandle )
+	if ( !musicHandle )
 	{
 		musicHandle = CreateMusicFile(engine, desc);
 	}
 	return musicHandle;
 }
 
-void DestroyMusicFile(Engine &engine, Handle handle)
+void DestroyMusicFile(Engine &engine, MusicH handle)
 {
 	Audio &audio = engine.audio;
 	Arena &arena = DataArena;
 
-	if ( IsValidHandle(audio.musicHandles, handle) )
+	if ( handle )
 	{
 		// Marks only, see RemoveAudioClip
 		FreeHandle(audio.musicHandles, handle);
 	}
 }
 
-void MusicPlay(Engine &engine, Handle handle)
+void MusicPlay(Engine &engine, MusicH handle)
 {
 	Audio &audio = engine.audio;
 

@@ -174,8 +174,7 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 				for (u32 x = 0; x < layer.size.x; ++x) {
 					for (u32 y = 0; y < layer.size.y; ++y) {
 						const SpriteH spriteH = layer.cells[x][y].handle;
-						if (spriteH == InvalidHandle) continue;
-						if (!IsValidHandle(engine.scene.spriteHandles, spriteH)) continue;
+						if (!spriteH) continue;
 						TileDesc &tile = *PushStruct(arena, TileDesc);
 						tile.x = (u16)x;
 						tile.y = (u16)y;
@@ -926,7 +925,7 @@ void SetCamera(const Camera &camera)
 	engine->gfx.camera = camera;
 }
 
-Handle FindRoom(const char *name)
+RoomH FindRoom(const char *name)
 {
 	for (u16 i = 0; i < HandleCount(engine->scene.roomHandles); ++i)
 	{
@@ -937,16 +936,16 @@ Handle FindRoom(const char *name)
 	return InvalidHandle;
 }
 
-Room *GetRoom(Handle handle)
+Room *GetRoom(RoomH handle)
 {
 	Room *roomPtr = nullptr;
-	if ( IsValidHandle(engine->scene.roomHandles, handle) ) {
+	if ( handle ) {
 		roomPtr = &GetRoom(engine->scene, handle);
 	}
 	return roomPtr;
 }
 
-Handle FindEntity(const char *name)
+EntityH FindEntity(const char *name)
 {
 	for (u16 i = 0; i < HandleCount(engine->scene.entityHandles); ++i)
 	{
@@ -957,10 +956,10 @@ Handle FindEntity(const char *name)
 	return InvalidHandle;
 }
 
-Entity *GetEntity(Handle handle)
+Entity *GetEntity(EntityH handle)
 {
 	Entity *ent = nullptr;
-	if ( IsValidHandle(engine->scene.entityHandles, handle) ) {
+	if ( handle ) {
 		ent = &GetEntity(engine->scene, handle);
 	}
 	return ent;
@@ -968,7 +967,7 @@ Entity *GetEntity(Handle handle)
 
 AudioClipH GetAudioClip(const char *name)
 {
-	Handle handle = InvalidHandle;
+	AudioClipH handle = InvalidHandle;
 	for (u16 i = 0; i < HandleCount(engine->audio.clipHandles); ++i)
 	{
 		const AudioClipDesc &desc = engine->audio.clipDescs[i];
@@ -980,15 +979,15 @@ AudioClipH GetAudioClip(const char *name)
 	return handle;
 }
 
-u32 PlayAudioClip(Handle handle)
+u32 PlayAudioClip(AudioClipH handle)
 {
 	u32 ret = PlayAudioClip(*engine, handle);
 	return ret;
 }
 
-Handle GetMusic(const char *name)
+MusicH GetMusic(const char *name)
 {
-	Handle handle = InvalidHandle;
+	MusicH handle = InvalidHandle;
 	for (u16 i = 0; i < HandleCount(engine->audio.musicHandles); ++i)
 	{
 		const MusicFileDesc &desc = engine->audio.musicFileDescs[i];
@@ -1000,7 +999,7 @@ Handle GetMusic(const char *name)
 	return handle;
 }
 
-void PlayMusic(Handle handle)
+void PlayMusic(MusicH handle)
 {
 	MusicPlay(*engine, handle);
 }

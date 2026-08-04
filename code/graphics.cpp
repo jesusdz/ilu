@@ -719,6 +719,10 @@ ImageH EngineCreateImage(Graphics &gfx, const ImagePixels &img, const char *name
 ////////////////////////////////////////////////////////////////////////
 // Texture management
 
+// `if (textureH)` asks the pool whether the texture is still there, so it also
+// rejects a handle to one that has been removed
+TextureH::operator bool() const { return IsValidHandle(engine->gfx.textureHandles, *this); }
+
 Texture &GetTexture(Graphics &gfx, TextureH handle)
 {
 	ASSERT( IsValidHandle(gfx.textureHandles, handle) );
@@ -749,7 +753,7 @@ Texture &GetTextureAt(Graphics &gfx, u32 index)
 TextureH CreateTexture(Graphics &gfx)
 {
 	const TextureH textureHandle = NewHandle(gfx.textureHandles);
-	if ( textureHandle != InvalidHandle )
+	if ( textureHandle )
 	{
 		// The element held another texture before
 		const u16 index = GetTextureIndex(gfx, textureHandle);
@@ -777,7 +781,7 @@ TextureH CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH)
 
 TextureH CreateTexture(Graphics &gfx, const TextureDesc &desc)
 {
-	Handle textureHandle = InvalidHandle;
+	TextureH textureHandle = InvalidHandle;
 
 	Scratch scratch;
 	const FilePath imagePath = MakePath(AssetDir, desc.filename);
@@ -810,7 +814,7 @@ TextureH GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 		}
 	}
 
-	if ( textureHandle == InvalidHandle )
+	if ( !textureHandle )
 	{
 		textureHandle = CreateTexture(gfx, desc);
 	}
@@ -842,7 +846,7 @@ ImageH GetTextureImage(Graphics &gfx, TextureH textureH, ImageH imageH)
 {
 	ImageH res = imageH;
 
-	if ( IsValidHandle(gfx.textureHandles, textureH) ) {
+	if ( textureH ) {
 		const Texture &texture = GetTexture(gfx, textureH);
 		res = texture.image;
 	}
@@ -865,7 +869,7 @@ TextureH FindTextureHandle(Graphics &gfx, const char *name)
 
 void RemoveTexture(Graphics &gfx, TextureH textureH)
 {
-	if (IsValidHandle(gfx.textureHandles, textureH))
+	if (textureH)
 	{
 		// Marks only. The texture keeps its image until CompactTextures, so anything
 		// still drawing with it this frame has something valid to sample.
@@ -950,6 +954,8 @@ void RecreateModifiedTextures(Engine &engine)
 ////////////////////////////////////////////////////////////////////////
 // Material management
 
+MaterialH::operator bool() const { return IsValidHandle(engine->gfx.materialHandles, *this); }
+
 Material &GetMaterial(Graphics &gfx, MaterialH handle)
 {
 	ASSERT( IsValidHandle(gfx.materialHandles, handle) );
@@ -1013,7 +1019,7 @@ MaterialH GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 		}
 	}
 
-	if ( materialHandle == InvalidHandle )
+	if ( !materialHandle )
 	{
 		materialHandle = CreateMaterial(gfx, desc);
 	}
@@ -1653,7 +1659,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	};
 	gfx.globalBindGroupLayout = CreateBindGroupLayout(gfx.device, globalShaderBindings, ARRAY_COUNT(globalShaderBindings));
 
-	// Handle managers
+	// Handle pools
 	Initialize(gfx.textureHandles, globalArena, MAX_TEXTURES);
 	Initialize(gfx.materialHandles, globalArena, MAX_MATERIALS);
 

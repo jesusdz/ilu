@@ -49,6 +49,29 @@ inline bool operator!=(Handle a, Handle b)
 	return nequal;
 }
 
+// A distinct type per pool, so a SpriteH cannot stand in for an EntityH. Conversion
+// to and from the untyped Handle the pool trades in is implicit, which keeps the pool
+// API usable without casts everywhere; C++ allows only one user-defined conversion in
+// a sequence, so SpriteH -> Handle -> EntityH is still rejected and passing a handle
+// to the wrong accessor will not compile.
+//
+// `operator bool` is only declared here. Each type defines it next to the pool that
+// issued it, since that is what holds the generation to check against: unlike a raw
+// pointer, `if (handle)` asks whether the element is still alive, not just whether the
+// handle was ever filled in.
+#define DECLARE_HANDLE_TYPE(Name)                                                  \
+struct Name                                                                        \
+{                                                                                  \
+	u16 gen;                                                                       \
+	u16 slot;                                                                      \
+                                                                                   \
+	Name() = default;                                                              \
+	Name(Handle handle) : gen(handle.gen), slot(handle.slot) {}                    \
+	operator Handle() const { Handle h = {}; h.gen = gen; h.slot = slot; return h; } \
+                                                                                   \
+	explicit operator bool() const;                                                \
+}
+
 struct HandleSlot
 {
 	u16 gen;             // Odd while the slot is live, even while it is free

@@ -99,9 +99,18 @@ struct SnapshotNode
 struct EditorSelection
 {
 	EditorSelectedType type;
+	// Discriminated by `type`. Reading through the wrong member is the one thing the
+	// handle types cannot catch, so go through the matching EditorSelect* helper.
 	union
 	{
-		Handle handle;
+		Handle handle; // untyped view, only for clearing and comparing
+		RoomH roomH;
+		EntityH entityH;
+		MaterialH materialH;
+		TextureH textureH;
+		AudioClipH audioClipH;
+		MusicH musicH;
+		SpriteH spriteH;
 		FileNode *file;
 		u64 value;
 	};
@@ -111,7 +120,15 @@ struct EditorInspector
 {
 	EditorSelection selected;
 	EditorSelection nextSelected;
-	Handle tmpHandle;
+	// Preview asset built from the inspected file, discriminated by selected.type
+	// the same way EditorSelection is
+	union
+	{
+		Handle tmpHandle; // untyped view, only for clearing
+		TextureH tmpTextureH;
+		AudioClipH tmpAudioClipH;
+		MusicH tmpMusicH;
+	};
 };
 
 struct EditorSpriteSheet
@@ -124,9 +141,9 @@ constexpr u32 EditorNoLayer = U32_MAX;
 struct EditorContext
 {
 	FileNode *selectedFile;
-	Handle roomH;
+	RoomH roomH;
 	u32 layerIndex;
-	Handle spriteH; // brush
+	SpriteH spriteH; // brush
 	EditorTool tool;
 };
 
@@ -180,11 +197,11 @@ void EditorUpdate(Engine &engine);
 void EditorRender(Engine &engine, CommandList &commandList);
 void EditorPostRender(Engine &engine);
 
-inline Handle EditorGetSelectedEntity(const Editor &editor)
+inline EntityH EditorGetSelectedEntity(const Editor &editor)
 {
-	Handle handle = InvalidHandle;
+	EntityH handle = InvalidHandle;
 	if ( editor.inspector.selected.type == EditorSelectedType_Entity ) {
-		handle = editor.inspector.selected.handle;
+		handle = editor.inspector.selected.entityH;
 	}
 	return handle;
 }

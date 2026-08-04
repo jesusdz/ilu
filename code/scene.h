@@ -14,7 +14,9 @@ struct Sprite
 	bool loop;
 };
 
-typedef Handle SpriteH;
+DECLARE_HANDLE_TYPE(SpriteH);
+DECLARE_HANDLE_TYPE(EntityH);
+DECLARE_HANDLE_TYPE(RoomH);
 
 struct SpriteAnimState
 {
@@ -49,7 +51,7 @@ struct Entity
 
 union Cell
 {
-	Handle handle;
+	SpriteH handle;
 	u32 collider;
 };
 
@@ -114,18 +116,18 @@ void CompactSprites(Scene &scene);
 ////////////////////////////////////////////////////////////////////////
 // Entity management
 
-Entity &GetEntity(Scene &scene, Handle handle);
-u16 GetEntityIndex(const Scene &scene, Handle handle);
+Entity &GetEntity(Scene &scene, EntityH handle);
+u16 GetEntityIndex(const Scene &scene, EntityH handle);
 void EntitySetPosition(Entity &entity, float3 position);
-EntityDesc GetEntityDesc(Scene &scene, Handle handle);
-Handle CreateEntity(Engine &engine, const EntityDesc &desc);
-Handle CreateEntity(Engine &engine, const BinEntityDesc &desc);
-void RemoveEntity(Engine &engine, Handle handle);
-Handle DuplicateEntity(Engine &engine, Handle entityHandle);
+EntityDesc GetEntityDesc(Scene &scene, EntityH handle);
+EntityH CreateEntity(Engine &engine, const EntityDesc &desc);
+EntityH CreateEntity(Engine &engine, const BinEntityDesc &desc);
+void RemoveEntity(Engine &engine, EntityH handle);
+EntityH DuplicateEntity(Engine &engine, EntityH entityHandle);
 void CompactEntities(Scene &scene);
 
-u32 EntityDrawId(const Scene &scene, Handle handle);
-Handle EntityHandleFromDrawId(const Scene &scene, u32 drawId);
+u32 EntityDrawId(const Scene &scene, EntityH handle);
+EntityH EntityHandleFromDrawId(const Scene &scene, u32 drawId);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -142,8 +144,8 @@ bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 ////////////////////////////////////////////////////////////////////////
 // Room and layer management
 
-Room &GetRoom(Scene &scene, Handle handle);
-u16 GetRoomIndex(const Scene &scene, Handle handle);
+Room &GetRoom(Scene &scene, RoomH handle);
+u16 GetRoomIndex(const Scene &scene, RoomH handle);
 void CompactRooms(Scene &scene);
 u32 CreateLayer(Room &room, const LayerDesc &desc);
 void RemoveLayer(Room &room, u32 index);
@@ -151,10 +153,10 @@ u32 MoveLayer(Room &room, u32 index, i32 delta); // delta -1 moves towards the f
 const Layer *GetBaseLayer(const Room &room);
 float2 LayerSize(const Layer &layer);
 float2 RoomSize(const Room &room);
-Handle CreateRoom(Engine &engine);
-Handle CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHandles, u32 spriteHandleCount);
-Handle CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteHandles, u32 spriteHandleCount);
-void RemoveRoom(Engine &engine, Handle handle);
+RoomH CreateRoom(Engine &engine);
+RoomH CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHandles, u32 spriteHandleCount);
+RoomH CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteHandles, u32 spriteHandleCount);
+void RemoveRoom(Engine &engine, RoomH handle);
 
 
 ////////////////////////////////////////////////////////////////////////

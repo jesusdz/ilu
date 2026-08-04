@@ -28,7 +28,7 @@ static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 	batch.vertexCount = vertexCount;
 }
 
-void DrawSprite(Handle spriteH, float2 worldPos, float4 pcolor)
+void DrawSprite(SpriteH spriteH, float2 worldPos, float4 pcolor)
 {
 	Graphics &gfx = engine->gfx;
 
@@ -225,7 +225,7 @@ static bool EntityIsInFrustum3D(Scene &scene, const Entity &entity, const Frustu
 	float3 points[8] = {};
 	u32 pointCount = 0;
 
-	if (IsValidHandle(scene.spriteHandles, entity.spriteH))
+	if (entity.spriteH)
 	{
 		const Sprite &sprite = GetSprite(scene, entity.spriteH);
 		float2 sbounds[4] = {};
@@ -277,7 +277,7 @@ static bool EntityIsInFrustum2D(Scene &scene, const Entity &entity, float2 rectM
 {
 	float2 halfSize = { 0.5f * entity.scale, 0.5f * entity.scale };
 
-	if (IsValidHandle(scene.spriteHandles, entity.spriteH))
+	if (entity.spriteH)
 	{
 		const Sprite &sprite = GetSprite(scene, entity.spriteH);
 		halfSize = 0.5f * float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
@@ -455,8 +455,8 @@ bool RenderGraphics(Engine &engine)
 	const f32 f = 1.0f;
 	const float4x4 camera2dProjection = Orthogonal(l, r, b, t, n, f);
 
-	const Handle selectedEntity = EditorGetSelectedEntity(editor);
-	const u32 selectedEntityDrawId = IsValidHandle(scene.entityHandles, selectedEntity)
+	const EntityH selectedEntity = EditorGetSelectedEntity(editor);
+	const u32 selectedEntityDrawId = selectedEntity
 		? EntityDrawId(scene, selectedEntity) : 0xFFFFFFFF;
 
 	// Update globals struct
@@ -519,10 +519,10 @@ bool RenderGraphics(Engine &engine)
 	}
 
 	// Layer: Update tile data buffer
-	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(Handle));
+	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(SpriteH));
 	Scratch tileScratch(tileScratchSize);
 	STileData *tileDataPtr = PushArray(tileScratch.arena, STileData, MAX_TILES);
-	Handle *tileSpriteHandles = PushArray(tileScratch.arena, Handle, MAX_TILES);
+	SpriteH *tileSpriteHandles = PushArray(tileScratch.arena, SpriteH, MAX_TILES);
 
 
 	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / PIXELS_PER_METER;
@@ -557,8 +557,8 @@ bool RenderGraphics(Engine &engine)
 					{
 						// TODO: Skip cell if not in camera
 
-						const Handle spriteH = layer.cells[x][y].handle;
-						if (IsValidHandle(scene.spriteHandles, spriteH) && tileCount < MAX_TILES)
+						const SpriteH spriteH = layer.cells[x][y].handle;
+						if (spriteH && tileCount < MAX_TILES)
 						{
 							tileDataPtr[tileCount].pos.xy = roomPos + Float2(int2{x, y}) + parallax;
 							tileDataPtr[tileCount].pos.z = -(float)i;
@@ -590,7 +590,7 @@ bool RenderGraphics(Engine &engine)
 		const float4x4 worldMatrix = Mul(Translate(entityPosition), Scale(entityScale)); // TODO: Apply also rotation
 		entities[i].world = worldMatrix;
 
-		const u32 spriteIndex = IsValidHandle(scene.spriteHandles, entity.spriteH) ? GetSpriteIndex(scene, entity.spriteH) : 0;
+		const u32 spriteIndex = entity.spriteH ? GetSpriteIndex(scene, entity.spriteH) : 0;
 		entities[i].spriteIndex = spriteIndex;
 	}
 
@@ -716,7 +716,7 @@ bool RenderGraphics(Engine &engine)
 			const Entity &entity = scene.entities[i];
 
 			if ( !entity.visible || entity.culled ) continue;
-			if ( entity.materialH == InvalidHandle ) continue;
+			if ( !entity.materialH ) continue;
 
 			const MaterialH materialH = entity.materialH;
 			const Material &material = GetMaterial(gfx, materialH);
@@ -761,7 +761,7 @@ bool RenderGraphics(Engine &engine)
 
 			for (u32 i = 0; i < tileCount; ++i)
 			{
-				const Handle spriteH = tileSpriteHandles[i];
+				const SpriteH spriteH = tileSpriteHandles[i];
 				const Sprite &sprite = GetSprite(scene, spriteH);
 				const ImageH imageH = GetTextureImage(gfx, sprite.textureH, gfx.pinkImageH);
 				const BindGroupDesc textureBindGroupDesc = {
@@ -799,7 +799,7 @@ bool RenderGraphics(Engine &engine)
 				if (!entity.visible || entity.culled) continue;
 
 				TextureH textureH = InvalidHandle;
-				if (IsValidHandle(scene.spriteHandles, entity.spriteH))
+				if (entity.spriteH)
 					textureH = GetSprite(scene, entity.spriteH).textureH;
 				else
 					continue;

@@ -1,3 +1,9 @@
+// `if (spriteH)` asks the pool whether the sprite is still there, so it also rejects
+// a handle to one that has been removed
+SpriteH::operator bool() const { return IsValidHandle(engine->scene.spriteHandles, *this); }
+EntityH::operator bool() const { return IsValidHandle(engine->scene.entityHandles, *this); }
+RoomH::operator bool()   const { return IsValidHandle(engine->scene.roomHandles, *this); }
+
 SpriteH CreateSprite(Engine &engine, const SpriteDesc &desc)
 {
 	Scene &scene = engine.scene;
@@ -20,7 +26,7 @@ SpriteH CreateSprite(Engine &engine, const SpriteDesc &desc)
 	}
 
 	SpriteH handle = NewHandle(scene.spriteHandles);
-	if (handle != InvalidHandle)
+	if (handle)
 	{
 		const u16 index = GetHandleIndex(scene.spriteHandles, handle);
 		scene.sprites[index] = sprite;
@@ -97,7 +103,7 @@ SpriteH FindSpriteHandle(const Scene &scene, TextureH textureH, uint2 pos, uint2
 SpriteH GetOrCreateSprite(Engine &engine, const SpriteDesc &desc)
 {
 	SpriteH handle = FindSpriteHandle(engine.scene, desc.name);
-	if (handle == InvalidHandle)
+	if (!handle)
 		handle = CreateSprite(engine, desc);
 	return handle;
 }
@@ -123,14 +129,14 @@ void CompactSprites(Scene &scene)
 ////////////////////////////////////////////////////////////////////////
 // Room management
 
-Room &GetRoom(Scene &scene, Handle handle)
+Room &GetRoom(Scene &scene, RoomH handle)
 {
 	ASSERT( IsValidHandle(scene.roomHandles, handle) );
 	Room &room = scene.rooms[GetHandleIndex(scene.roomHandles, handle)];
 	return room;
 }
 
-u16 GetRoomIndex(const Scene &scene, Handle handle)
+u16 GetRoomIndex(const Scene &scene, RoomH handle)
 {
 	ASSERT( IsValidHandle(scene.roomHandles, handle) );
 	return GetHandleIndex(scene.roomHandles, handle);
@@ -151,35 +157,35 @@ void CompactRooms(Scene &scene)
 ////////////////////////////////////////////////////////////////////////
 // Entity management
 
-Entity &GetEntity(Scene &scene, Handle handle)
+Entity &GetEntity(Scene &scene, EntityH handle)
 {
 	ASSERT( IsValidHandle(scene.entityHandles, handle) );
 	Entity &entity = scene.entities[GetHandleIndex(scene.entityHandles, handle)];
 	return entity;
 }
 
-u16 GetEntityIndex(const Scene &scene, Handle handle)
+u16 GetEntityIndex(const Scene &scene, EntityH handle)
 {
 	ASSERT( IsValidHandle(scene.entityHandles, handle) );
 	return GetHandleIndex(scene.entityHandles, handle);
 }
 
-u32 EntityDrawId(const Scene &scene, Handle handle)
+u32 EntityDrawId(const Scene &scene, EntityH handle)
 {
 	const u32 index = GetEntityIndex(scene, handle);
 	const u32 drawId = (index << 16) | handle.gen;
 	return drawId;
 }
 
-Handle EntityHandleFromDrawId(const Scene &scene, u32 drawId)
+EntityH EntityHandleFromDrawId(const Scene &scene, u32 drawId)
 {
 	const u16 index = (u16)(drawId >> 16);
 	const u16 gen = (u16)(drawId & 0xFFFF);
 
-	Handle handle = InvalidHandle;
+	EntityH handle = InvalidHandle;
 	if ( index < HandleCount(scene.entityHandles) )
 	{
-		const Handle candidate = GetHandleAt(scene.entityHandles, index);
+		const EntityH candidate = GetHandleAt(scene.entityHandles, index);
 		// The readback is a frame behind, so the element may belong to someone else now
 		if ( candidate.gen == gen ) {
 			handle = candidate;
@@ -204,7 +210,7 @@ void EntitySetPosition(Entity &entity, float3 position)
 	entity.position = position;
 }
 
-EntityDesc GetEntityDesc(Scene &scene, Handle handle)
+EntityDesc GetEntityDesc(Scene &scene, EntityH handle)
 {
 	ASSERT( IsValidHandle(scene.entityHandles, handle) );
 	const Entity &entity = GetEntity(scene, handle);
@@ -214,7 +220,7 @@ EntityDesc GetEntityDesc(Scene &scene, Handle handle)
 		.pos   = entity.position,
 		.scale = entity.scale,
 	};
-	if (IsValidHandle(scene.spriteHandles, entity.spriteH)) {
+	if (entity.spriteH) {
 		entityDesc.spriteName = GetSprite(scene, entity.spriteH).name;
 	} else {
 		const Material &material = GetMaterial(engine->gfx, entity.materialH);
@@ -224,14 +230,14 @@ EntityDesc GetEntityDesc(Scene &scene, Handle handle)
 	return entityDesc;
 }
 
-Handle CreateEntity(Engine &engine, const EntityDesc &desc)
+EntityH CreateEntity(Engine &engine, const EntityDesc &desc)
 {
 	Scene &scene = engine.scene;
 
 	BufferChunk vertices = GetVerticesForGeometryType(engine.gfx, desc.geometryType);
 	BufferChunk indices = GetIndicesForGeometryType(engine.gfx, desc.geometryType);
 
-	Handle handle = NewHandle(scene.entityHandles);
+	EntityH handle = NewHandle(scene.entityHandles);
 	Entity &entity = GetEntity(scene, handle);
 	entity = {}; // The element held another entity before
 	entity.name = desc.name;
@@ -248,7 +254,7 @@ Handle CreateEntity(Engine &engine, const EntityDesc &desc)
 	return handle;
 }
 
-Handle CreateEntity(Engine &engine, const BinEntityDesc &desc)
+EntityH CreateEntity(Engine &engine, const BinEntityDesc &desc)
 {
 	const EntityDesc entityDesc = {
 		.name = desc.name,
@@ -262,12 +268,12 @@ Handle CreateEntity(Engine &engine, const BinEntityDesc &desc)
 	return CreateEntity(engine, entityDesc);
 }
 
-void RemoveEntity(Engine &engine, Handle handle)
+void RemoveEntity(Engine &engine, EntityH handle)
 {
 	FreeHandle(engine.scene.entityHandles, handle);
 }
 
-Handle DuplicateEntity(Engine &engine, Handle entityHandle)
+EntityH DuplicateEntity(Engine &engine, EntityH entityHandle)
 {
 	const EntityDesc &desc = GetEntityDesc(engine.scene, entityHandle);
 	return CreateEntity(engine, desc);
@@ -457,9 +463,9 @@ float2 RoomSize(const Room &room)
 	return res;
 }
 
-Handle CreateRoom(Engine &engine)
+RoomH CreateRoom(Engine &engine)
 {
-	Handle roomH = NewHandle(engine.scene.roomHandles);
+	RoomH roomH = NewHandle(engine.scene.roomHandles);
 	Room &room = GetRoom(engine.scene, roomH);
 	room = {}; // The element held another room before
 
@@ -474,9 +480,9 @@ Handle CreateRoom(Engine &engine)
 	return roomH;
 }
 
-Handle CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHandles, u32 spriteHandleCount)
+RoomH CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHandles, u32 spriteHandleCount)
 {
-	Handle roomH = NewHandle(engine.scene.roomHandles);
+	RoomH roomH = NewHandle(engine.scene.roomHandles);
 	Room &room = GetRoom(engine.scene, roomH);
 	room = {};
 
@@ -518,7 +524,7 @@ Handle CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHan
 	return roomH;
 }
 
-Handle CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteHandles, u32 spriteHandleCount)
+RoomH CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteHandles, u32 spriteHandleCount)
 {
 	const BinRoomDesc &bin = *binRoom.desc;
 
@@ -543,7 +549,7 @@ Handle CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteH
 	return CreateRoom(engine, desc, spriteHandles, spriteHandleCount);
 }
 
-void RemoveRoom(Engine &engine, Handle handle)
+void RemoveRoom(Engine &engine, RoomH handle)
 {
 	// Marks only, see RemoveEntity
 	FreeHandle(engine.scene.roomHandles, handle);

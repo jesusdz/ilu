@@ -28,9 +28,9 @@ static const char *MakeName(const char *format, ...)
 // Both null once the selection is gone, and only good for this frame
 static Room *EditorGetContextRoom(Engine &engine)
 {
-	const Handle roomH = engine.editor.context.roomH;
+	const RoomH roomH = engine.editor.context.roomH;
 	Room *room = nullptr;
-	if ( IsValidHandle(engine.scene.roomHandles, roomH) ) {
+	if ( roomH ) {
 		room = &GetRoom(engine.scene, roomH);
 	}
 	return room;
@@ -307,14 +307,14 @@ static void EditorSelectScene(Editor &editor, Scene &scene)
 	editor.inspector.nextSelected.type = EditorSelectedType_Scene;
 }
 
-static void EditorSelectRoom(Editor &editor, Handle roomH)
+static void EditorSelectRoom(Editor &editor, RoomH roomH)
 {
 	editor.context.roomH = roomH;
 	editor.context.layerIndex = EditorNoLayer;
 	editor.inspector.nextSelected.type = EditorSelectedType_Room;
 }
 
-static void EditorUnselectRoom(Editor &editor, Handle roomH)
+static void EditorUnselectRoom(Editor &editor, RoomH roomH)
 {
 	if (editor.context.roomH == roomH) {
 		editor.context.roomH = InvalidHandle;
@@ -323,14 +323,14 @@ static void EditorUnselectRoom(Editor &editor, Handle roomH)
 	}
 }
 
-static void EditorSelectLayer(Editor &editor, Handle roomH, u32 layerIndex)
+static void EditorSelectLayer(Editor &editor, RoomH roomH, u32 layerIndex)
 {
 	editor.context.roomH = roomH;
 	editor.context.layerIndex = layerIndex;
 	editor.inspector.nextSelected.type = EditorSelectedType_Layer;
 }
 
-static void EditorUnselectLayer(Editor &editor, Handle roomH, u32 layerIndex)
+static void EditorUnselectLayer(Editor &editor, RoomH roomH, u32 layerIndex)
 {
 	if (editor.context.roomH == roomH && editor.context.layerIndex == layerIndex) {
 		editor.context.layerIndex = EditorNoLayer;
@@ -338,44 +338,44 @@ static void EditorUnselectLayer(Editor &editor, Handle roomH, u32 layerIndex)
 	}
 }
 
-static void EditorSelectEntity(Editor &editor, Handle handle)
+static void EditorSelectEntity(Editor &editor, EntityH handle)
 {
-	editor.inspector.nextSelected.handle = handle;
+	editor.inspector.nextSelected.entityH = handle;
 	editor.inspector.nextSelected.type = EditorSelectedType_Entity;
 }
 
-static void EditorSelectMaterial(Editor &editor, Handle handle)
+static void EditorSelectMaterial(Editor &editor, MaterialH handle)
 {
-	editor.inspector.nextSelected.handle = handle;
+	editor.inspector.nextSelected.materialH = handle;
 	editor.inspector.nextSelected.type = EditorSelectedType_Material;
 }
 
-static void EditorSelectTexture(Editor &editor, Handle handle)
+static void EditorSelectTexture(Editor &editor, TextureH handle)
 {
-	editor.inspector.nextSelected.handle = handle;
+	editor.inspector.nextSelected.textureH = handle;
 	editor.inspector.nextSelected.type = EditorSelectedType_Texture;
 }
 
-static void EditorSelectAudioClip(Editor &editor, Handle handle)
+static void EditorSelectAudioClip(Editor &editor, AudioClipH handle)
 {
-	editor.inspector.nextSelected.handle = handle;
+	editor.inspector.nextSelected.audioClipH = handle;
 	editor.inspector.nextSelected.type = EditorSelectedType_Audio;
 }
 
-static void EditorSelectMusic(Editor &editor, Handle handle)
+static void EditorSelectMusic(Editor &editor, MusicH handle)
 {
-	editor.inspector.nextSelected.handle = handle;
+	editor.inspector.nextSelected.musicH = handle;
 	editor.inspector.nextSelected.type = EditorSelectedType_Music;
 }
 
-static void EditorSelectSprite(Editor &editor, Handle handle)
+static void EditorSelectSprite(Editor &editor, SpriteH handle)
 {
 	editor.context.spriteH = handle;
-	editor.inspector.nextSelected.handle = handle;
+	editor.inspector.nextSelected.spriteH = handle;
 	editor.inspector.nextSelected.type = EditorSelectedType_Sprite;
 }
 
-static void EditorUnselectSprite(Editor &editor, Handle handle)
+static void EditorUnselectSprite(Editor &editor, SpriteH handle)
 {
 	if (editor.context.spriteH == handle) {
 		editor.context.spriteH = InvalidHandle;
@@ -537,7 +537,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 						UI_EndLayout(ui);
 
-						const Handle roomH = GetHandleAt(scene.roomHandles, roomIdx);
+						const RoomH roomH = GetHandleAt(scene.roomHandles, roomIdx);
 
 						if (moveDown || moveUp)
 						{
@@ -578,14 +578,14 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "Sprites") )
 	{
-		static Handle selectedHandle = InvalidHandle;
+		static SpriteH selectedHandle = InvalidHandle;
 
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
 
 		UIID id = 0;
 		for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
 		{
-			Handle handle = GetHandleAt(scene.spriteHandles, i);
+			SpriteH handle = GetHandleAt(scene.spriteHandles, i);
 			const Sprite &sprite = scene.sprites[i];
 			const Texture &texture = GetTexture(engine.gfx, sprite.textureH);
 			const UIWidgetFlags flags = selectedHandle == handle ? UIWidgetFlag_Outline : UIWidgetFlag_None;
@@ -637,7 +637,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
 		for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
 		{
-			const Handle handle = GetHandleAt(gfx.textureHandles, i);
+			const TextureH handle = GetHandleAt(gfx.textureHandles, i);
 			const Texture &texture = gfx.textures[i];
 			const TextureDesc &desc = gfx.textureDescs[i];
 
@@ -790,7 +790,7 @@ static const char *EditorMakeSpriteName(const Scene &scene, const char *textureN
 	const char *base = StrEqN(textureName, "tex_", 4) ? textureName + 4 : textureName;
 
 	const char *name = MakeName("spr_%s", base);
-	for (u32 attempt = 1; FindSpriteHandle(scene, name) != InvalidHandle; ++attempt) {
+	for (u32 attempt = 1; FindSpriteHandle(scene, name); ++attempt) {
 		name = MakeName("spr_%s_%u", base, attempt);
 	}
 	return name;
@@ -816,7 +816,7 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
 		for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
 		{
-			const Handle handle = GetHandleAt(gfx.textureHandles, i);
+			const TextureH handle = GetHandleAt(gfx.textureHandles, i);
 			const Texture &texture = gfx.textures[i];
 			const TextureDesc &desc = gfx.textureDescs[i];
 			if ( desc.flags & AssetFlag_Ghost ) {
@@ -833,7 +833,7 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 		UI_EndLayout(ui);
 	}
 
-	if ( IsValidHandle(gfx.textureHandles, sheet.textureH) )
+	if ( sheet.textureH )
 	{
 		const Texture &texture = GetTexture(gfx, sheet.textureH);
 
@@ -918,7 +918,7 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 
 				if ( UI_Button(ui, "Create sprite") )
 				{
-					if ( FindSpriteHandle(scene, sheet.textureH, spriteRelPos, spriteSize) != InvalidHandle )
+					if ( FindSpriteHandle(scene, sheet.textureH, spriteRelPos, spriteSize) )
 					{
 						LOG(Warning, "A sprite already covers that region of %s.\n", texture.name);
 					}
@@ -1014,14 +1014,14 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 
 		if (inspector.selected.type == EditorSelectedType_FileImage) {
 			WaitDeviceIdle(engine.gfx.device);
-			RemoveTexture(engine.gfx, inspector.tmpHandle);
+			RemoveTexture(engine.gfx, inspector.tmpTextureH);
 		}
 		if (inspector.selected.type == EditorSelectedType_FileAudio) {
 			audioSourceIndex = U32_MAX;
-			RemoveAudioClip(engine, inspector.tmpHandle);
+			RemoveAudioClip(engine, inspector.tmpAudioClipH);
 		}
 		if (inspector.selected.type == EditorSelectedType_FileMusic) {
-			DestroyMusicFile(engine, inspector.tmpHandle);
+			DestroyMusicFile(engine, inspector.tmpMusicH);
 		}
 	}
 
@@ -1059,10 +1059,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.mipmap = true,
 					.flags = AssetFlag_Ghost,
 				};
-				inspector.tmpHandle = CreateTexture(engine.gfx, desc);
+				inspector.tmpTextureH = CreateTexture(engine.gfx, desc);
 			}
 
-			const ImageH imageH = GetTextureImage(engine.gfx, inspector.tmpHandle, engine.gfx.grayImageH);
+			const ImageH imageH = GetTextureImage(engine.gfx, inspector.tmpTextureH, engine.gfx.grayImageH);
 			UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
 
 			if ( UI_Button(ui, "Import texture") )
@@ -1091,13 +1091,13 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.filename = filename,
 					.flags = AssetFlag_Ghost,
 				};
-				inspector.tmpHandle = CreateAudioClip(engine, desc);
+				inspector.tmpAudioClipH = CreateAudioClip(engine, desc);
 			}
 
-			if (inspector.tmpHandle != InvalidHandle)
+			if (inspector.tmpAudioClipH)
 			{
 				if (UI_Button(ui, "Play")) {
-					audioSourceIndex = PlayAudioClip(engine, inspector.tmpHandle);
+					audioSourceIndex = PlayAudioClip(engine, inspector.tmpAudioClipH);
 				}
 				if (UI_Button(ui, "Stop")) {
 					StopAudioSource(engine, audioSourceIndex);
@@ -1116,13 +1116,13 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.filename = filename,
 					//.flags = AssetFlag_Ghost,
 				};
-				inspector.tmpHandle = CreateMusicFile(engine, desc);
+				inspector.tmpMusicH = CreateMusicFile(engine, desc);
 			}
 
-			if (inspector.tmpHandle != InvalidHandle)
+			if (inspector.tmpMusicH)
 			{
 				if (UI_Button(ui, "Play")) {
-					MusicPlay(engine, inspector.tmpHandle);
+					MusicPlay(engine, inspector.tmpMusicH);
 				}
 				if (UI_Button(ui, "Stop")) {
 					MusicStop(engine);
@@ -1159,7 +1159,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if(inspector.selected.type == EditorSelectedType_Entity)
 		{
-			Entity &entity = GetEntity(engine.scene, engine.editor.inspector.selected.handle);
+			Entity &entity = GetEntity(engine.scene, engine.editor.inspector.selected.entityH);
 
 			static char name[64];
 			StrCopy(name, entity.name);
@@ -1173,7 +1173,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 			UI_InputFloat(ui, "Scale", &entity.scale);
 			UI_Checkbox(ui, "Visible", &entity.visible);
 
-			if (IsValidHandle(engine.scene.spriteHandles, entity.spriteH))
+			if (entity.spriteH)
 			{
 				UI_SeparatorLabel(ui, "Sprite");
 
@@ -1191,20 +1191,20 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Texture)
 		{
-			if (IsValidHandle(engine.gfx.textureHandles, inspector.selected.handle))
+			if (inspector.selected.textureH)
 			{
-				const Texture &texture = GetTexture(engine.gfx, inspector.selected.handle);
+				const Texture &texture = GetTexture(engine.gfx, inspector.selected.textureH);
 				UI_Text(ui, "Name", "%s", texture.name);
 				UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
 
-				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.handle, engine.gfx.grayImageH);
+				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.textureH, engine.gfx.grayImageH);
 				UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
 
 				UI_SeparatorLabel(ui, "Sprite");
 				UI_BeginLayout(ui, UILayout_Horizontal);
 				if (UI_Button(ui, "Create"))
 				{
-					TextureH textureH = inspector.selected.handle;
+					TextureH textureH = inspector.selected.textureH;
 
 					const SpriteDesc spriteDesc = {
 						.name = "spr_new",
@@ -1214,7 +1214,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				}
 				if (UI_Button(ui, "Sprite sheet..."))
 				{
-					editor.spriteSheet.textureH = inspector.selected.handle;
+					editor.spriteSheet.textureH = inspector.selected.textureH;
 					editor.showSpriteSheet = true;
 				}
 				UI_EndLayout(ui);
@@ -1222,10 +1222,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Audio)
 		{
-			if (inspector.selected.handle != InvalidHandle)
+			if (inspector.selected.audioClipH)
 			{
 				if (UI_Button(ui, "Play")) {
-					audioSourceIndex = PlayAudioClip(engine, inspector.selected.handle);
+					audioSourceIndex = PlayAudioClip(engine, inspector.selected.audioClipH);
 				}
 				if (UI_Button(ui, "Stop")) {
 					StopAudioSource(engine, audioSourceIndex);
@@ -1235,10 +1235,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Music)
 		{
-			if (inspector.selected.handle != InvalidHandle)
+			if (inspector.selected.musicH)
 			{
 				if (UI_Button(ui, "Play")) {
-					MusicPlay(engine, inspector.selected.handle);
+					MusicPlay(engine, inspector.selected.musicH);
 				}
 				if (UI_Button(ui, "Stop")) {
 					MusicStop(engine);
@@ -1247,16 +1247,16 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Sprite)
 		{
-			if (inspector.selected.handle != InvalidHandle)
+			if (inspector.selected.spriteH)
 			{
-				Sprite &sprite = GetSprite(engine.scene, inspector.selected.handle);
+				Sprite &sprite = GetSprite(engine.scene, inspector.selected.spriteH);
 
 				static char name[64];
 				StrCopy(name, sprite.name);
 				UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
 				sprite.name = InternString(name);
 
-				if (IsValidHandle(engine.gfx.textureHandles, sprite.textureH))
+				if (sprite.textureH)
 				{
 					const Texture &texture = GetTexture(engine.gfx, sprite.textureH);
 					const float4 uvRect = {
@@ -1567,7 +1567,7 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 				.filename = node->filename,
 				//.flags = AssetFlag_Ghost,
 			};
-			Handle clipHandle = GetOrCreateAudioClip(engine, desc);
+			AudioClipH clipHandle = GetOrCreateAudioClip(engine, desc);
 		}
 		else if (node->type == FileNodeType_Music)
 		{
@@ -1581,7 +1581,7 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 				.filename = node->filename,
 				//.flags = AssetFlag_Ghost,
 			};
-			Handle clipHandle = GetOrCreateMusicFile(engine, desc);
+			MusicH clipHandle = GetOrCreateMusicFile(engine, desc);
 		}
 	}
 }
@@ -1983,10 +1983,10 @@ static void EditorUpdateInteraction2D(Engine &engine, const Window &window, cons
 	UI &ui = engine.ui;
 	const Mouse &mouse = window.mouse;
 
-	Handle selectedEntity = EditorGetSelectedEntity(editor);
+	EntityH selectedEntity = EditorGetSelectedEntity(editor);
 
 	// Object transformations
-	if ( handleInput && selectedEntity != InvalidHandle )
+	if ( handleInput && selectedEntity )
 	{
 		Entity &entity = GetEntity(engine.scene, selectedEntity);
 
@@ -2050,7 +2050,7 @@ static void EditorUpdateInteraction2D(Engine &engine, const Window &window, cons
 
 			if (KeyPress(window.keyboard, K_D))
 			{
-				const Handle newEntity = DuplicateEntity(engine, selectedEntity);
+				const EntityH newEntity = DuplicateEntity(engine, selectedEntity);
 				EditorSelectEntity(editor, newEntity);
 				editor.isTranslating = true;
 			}
@@ -2160,9 +2160,9 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 			// What the id pass wrote is a draw id, not a handle: it carries the entity's
 			// position in the array, which is only meaningful together with the generation
 			const u32 drawId = *(u32*)GetBufferPtr(engine.gfx.device, engine.gfx.selectionBufferH);
-			const Handle entityHandle = EntityHandleFromDrawId(engine.scene, drawId);
+			const EntityH entityHandle = EntityHandleFromDrawId(engine.scene, drawId);
 
-			if (entityHandle != InvalidHandle)
+			if (entityHandle)
 			{
 				EditorSelectEntity(editor, entityHandle);
 			}
@@ -2193,7 +2193,7 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 				else
 				{
 					const SpriteH spriteH = editor.context.tool == EditorTool_Draw
-						? editor.context.spriteH : InvalidHandle;
+						? editor.context.spriteH : SpriteH{};
 					SetGridTileAtCoord(engine, layer, spriteH, gridCoord);
 				}
 			}
@@ -2244,8 +2244,8 @@ void EditorDebugDraw(Engine &engine)
 			}
 			else
 			{
-				Handle spriteH = editor.context.spriteH;
-				if ( spriteH != InvalidHandle )
+				SpriteH spriteH = editor.context.spriteH;
+				if ( spriteH )
 				{
 					const float4 color = {1, 1, 1, 0.3};
 					DrawSprite(spriteH, worldPos, color);
@@ -2541,7 +2541,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 				const Entity &entity = scene.entities[i];
 
 				if ( !entity.visible || entity.culled ) continue;
-				if ( entity.materialH == InvalidHandle ) continue;
+				if ( !entity.materialH ) continue;
 
 				// Draw!!!
 				const uint32_t indexCount = entity.indices.size/2; // div 2 (2 bytes per index)
@@ -2562,7 +2562,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 					const Entity &entity = scene.entities[i];
 
 					if ( !entity.visible || entity.culled ) continue;
-					if ( !IsValidHandle(scene.spriteHandles, entity.spriteH) ) continue;
+					if ( !entity.spriteH ) continue;
 
 					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
 				}
