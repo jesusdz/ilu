@@ -1044,6 +1044,7 @@ void ResetArena(Arena &arena)
 }
 
 #define ZeroStruct( pointer ) MemSet(pointer, sizeof(*pointer), 0)
+#define ZeroArray( array ) MemSet(array, sizeof(array), 0)
 #define PushStruct( arena, struct_type ) (struct_type*)PushSize(arena, sizeof(struct_type))
 #define PushArray( arena, type, count ) (type*)PushSize(arena, sizeof(type) * (count))
 #define PushZeroStruct( arena, struct_type ) (struct_type*)PushZeroSize(arena, sizeof(struct_type))

@@ -9,17 +9,22 @@ SpriteH CreateSprite(Engine &engine, const SpriteDesc &desc)
 	Scene &scene = engine.scene;
 	Graphics &gfx = engine.gfx;
 
-	const TextureH textureH = FindTextureHandle(gfx, desc.textureName);
-
 	Sprite sprite = {};
 	sprite.name       = desc.name;
-	sprite.textureH   = textureH;
+	sprite.textureId  = desc.textureId;
 	sprite.frameCount = desc.frameCount > 0 ? desc.frameCount : 1;
 	sprite.fps        = desc.fps;
 	sprite.loop       = desc.loop != 0;
 
 	{
-		const Texture &tex = GetTexture(gfx, textureH);
+		if ( !Valid(sprite.textureId) )
+		{
+			LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n",
+					desc.name, desc.textureId.slot);
+			sprite.textureId = gfx.defaultTexture;
+		}
+
+		const Texture &tex = GetTexture(sprite.textureId);
 		const uint2 size = (desc.size.x > 0 || desc.size.y > 0) ? desc.size : tex.size;
 		sprite.pos  = desc.pos;
 		sprite.size = size;
@@ -39,7 +44,7 @@ SpriteH CreateSprite(Engine &engine, const BinSpriteDesc &desc)
 {
 	const SpriteDesc txtDesc = {
 		.name        = desc.name,
-		.textureName = desc.textureName,
+		.textureId   = desc.textureId,
 		.pos         = desc.pos,
 		.size        = desc.size,
 		.frameCount  = desc.frameCount,
@@ -64,11 +69,11 @@ u16 GetSpriteIndex(const Scene &scene, SpriteH handle)
 const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle)
 {
 	const Sprite &sprite = GetSprite(scene, handle);
-	const Texture &tex = GetTexture(engine->gfx, sprite.textureH);
+	const Texture &tex = GetTexture(sprite.textureId);
 
 	const SpriteDesc desc = {
 		.name = sprite.name,
-		.textureName = tex.name,
+		.textureId = tex.desc.id,
 		.pos = sprite.pos,
 		.size = sprite.size,
 		.frameCount = sprite.frameCount,
@@ -88,12 +93,12 @@ SpriteH FindSpriteHandle(const Scene &scene, const char *name)
 	return InvalidHandle;
 }
 
-SpriteH FindSpriteHandle(const Scene &scene, TextureH textureH, uint2 pos, uint2 size)
+SpriteH FindSpriteHandle(const Scene &scene, ID textureId, uint2 pos, uint2 size)
 {
 	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
 	{
 		const Sprite &sprite = scene.sprites[i];
-		if (sprite.textureH == textureH &&
+		if (sprite.textureId == textureId &&
 			sprite.pos.x == pos.x && sprite.pos.y == pos.y &&
 			sprite.size.x == size.x && sprite.size.y == size.y) return GetHandleAt(scene.spriteHandles, i);
 	}
@@ -573,9 +578,9 @@ void CleanScene(Engine &engine)
 	Audio &audio = engine.audio;
 
 	// Mark everything the scene owns
-	for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i) {
-		if ( !(gfx.textureDescs[i].flags & AssetFlag_Builtin) ) {
-			RemoveTexture(gfx, GetHandleAt(gfx.textureHandles, i));
+	for (u16 i = 0; i < gfx.textureCount; ++i) {
+		if ( !(gfx.textures[i].desc.flags & AssetFlag_Builtin) ) {
+			RemoveTexture(gfx, gfx.textures[i].desc.id);
 		}
 	}
 	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i) {

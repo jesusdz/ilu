@@ -6,7 +6,7 @@ struct Engine;
 struct Sprite
 {
 	const char *name;
-	TextureH textureH;
+	ID textureId;
 	uint2 pos;
 	uint2 size;
 	u32 frameCount;
@@ -107,7 +107,7 @@ Sprite &GetSprite(Scene &scene, SpriteH handle);
 u16 GetSpriteIndex(const Scene &scene, SpriteH handle);
 const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle);
 SpriteH FindSpriteHandle(const Scene &scene, const char *name);
-SpriteH FindSpriteHandle(const Scene &scene, TextureH textureH, uint2 pos, uint2 size);
+SpriteH FindSpriteHandle(const Scene &scene, ID textureH, uint2 pos, uint2 size);
 SpriteH GetOrCreateSprite(Engine &engine, const SpriteDesc &desc);
 void RemoveSprite(Scene &scene, SpriteH handle);
 void CompactSprites(Scene &scene);

@@ -2,21 +2,25 @@
 // Textures ////////////////////////////////////////////////////////////
 
 Texture tex_diamond = {
+ .id = 1000,
  .filename = "diamond.png",
  .mipmap = 1,
 };
 
 Texture tex_dirt = {
+ .id = 1001,
  .filename = "dirt.jpg",
  .mipmap = 1,
 };
 
 Texture tex_grass = {
+ .id = 1002,
  .filename = "grass.jpg",
  .mipmap = 1,
 };
 
 Texture tex_sky = {
+ .id = 1003,
  .filename = "sky01.png",
  .mipmap = 0,
 };
@@ -25,19 +29,19 @@ Texture tex_sky = {
 // Materials ///////////////////////////////////////////////////////////
 
 Material mat_diamond = {
- .textureName = "tex_diamond",
+ .textureId = 1000,
  .pipelineName = "pipeline_shading",
  .uvScale = 1.000000,
 };
 
 Material mat_dirt = {
- .textureName = "tex_dirt",
+ .textureId = 1001,
  .pipelineName = "pipeline_shading",
  .uvScale = 1.000000,
 };
 
 Material mat_grass = {
- .textureName = "tex_grass",
+ .textureId = 1002,
  .pipelineName = "pipeline_shading",
  .uvScale = 11.000000,
 };

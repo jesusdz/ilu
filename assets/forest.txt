@@ -2,16 +2,19 @@
 // Textures ////////////////////////////////////////////////////////////
 
 Texture tex_tilesheet_png = {
+ .id = 1000,
  .filename = "tilesheet.png",
  .mipmap = 1,
 };
 
 Texture tex_diamond_png = {
+ .id = 1001,
  .filename = "diamond.png",
  .mipmap = 1,
 };
 
 Texture tex_sky03_png = {
+ .id = 1002,
  .filename = "sky03.png",
  .mipmap = 1,
 };
@@ -20,42 +23,42 @@ Texture tex_sky03_png = {
 // Sprites /////////////////////////////////////////////////////////////
 
 Sprite spr_tilesheet_png = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .size = {16, 16},
 };
 
 Sprite spr_tilesheet_png_1 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {16, 0},
  .size = {16, 16},
 };
 
 Sprite spr_tilesheet_png_2 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {32, 0},
  .size = {16, 16},
 };
 
 Sprite spr_tilesheet_png_3 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {0, 16},
  .size = {16, 16},
 };
 
 Sprite spr_tilesheet_png_4 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {16, 16},
  .size = {16, 16},
 };
 
 Sprite spr_tilesheet_png_5 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {32, 16},
  .size = {16, 16},
 };
 
 Sprite spr_tilesheet_png_6 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {0, 48},
  .size = {32, 16},
  .frameCount = 4,
@@ -64,48 +67,48 @@ Sprite spr_tilesheet_png_6 = {
 };
 
 Sprite spr_tilesheet_png_7 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {128, 16},
  .size = {32, 48},
 };
 
 Sprite spr_tilesheet_png_8 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {160, 16},
  .size = {32, 48},
 };
 
 Sprite spr_tilesheet_png_9 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {48, 0},
  .size = {16, 16},
 };
 
 Sprite spr_tilesheet_png_10 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {64, 0},
  .size = {16, 16},
 };
 
 Sprite spr_tilesheet_png_12 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {192, 32},
  .size = {48, 32},
 };
 
 Sprite spr_tilesheet_png_11 = {
- .textureName = "tex_tilesheet_png",
+ .textureId = 1000,
  .pos = {192, 0},
  .size = {32, 32},
 };
 
 Sprite spr_diamond_png = {
- .textureName = "tex_diamond_png",
+ .textureId = 1001,
  .size = {16, 16},
 };
 
 Sprite spr_new = {
- .textureName = "tex_sky03_png",
+ .textureId = 1002,
  .size = {320, 180},
 };
 

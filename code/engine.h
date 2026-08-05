@@ -8,6 +8,8 @@ struct Settings
 
 struct Engine
 {
+	IDPool idPool;
+
 	Graphics gfx;
 	Audio audio;
 	Scene scene;

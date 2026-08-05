@@ -245,6 +245,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Texture %s = {", desc.name);
 
 		PushIndent(ctx);
+		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		WriteLine(ctx, ".filename = \"%s\",", desc.filename);
 		WriteLine(ctx, ".mipmap = %d,", desc.mipmap);
 		PopIndent(ctx);
@@ -262,7 +263,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Sprite %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".textureName = \"%s\",", desc.textureName);
+		WriteLine(ctx, ".textureId = %u,", desc.textureId.slot);
 		if (desc.pos.x || desc.pos.y)
 			WriteLine(ctx, ".pos = {%u, %u},", desc.pos.x, desc.pos.y);
 		if (desc.size.x || desc.size.y)
@@ -288,7 +289,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Material %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".textureName = \"%s\",", desc.textureName);
+		WriteLine(ctx, ".textureId = %u,", desc.textureId.slot);
 		WriteLine(ctx, ".pipelineName = \"%s\",", desc.pipelineName);
 		WriteLine(ctx, ".uvScale = %f,", desc.uvScale);
 		PopIndent(ctx);
@@ -854,6 +855,32 @@ static i32 DParser_ConsumeI32( DParser &parser )
 	return neg ? -res : res;
 }
 
+static u32 DParser_ConsumeU32( DParser &parser )
+{
+	const DToken &token = DParser_Consume(parser);
+	const u32 res = StrToUnsignedInt(token.lexeme);
+	return res;
+}
+
+static void DParser_SkipFieldValue( DParser &parser )
+{
+	u32 depth = 0;
+
+	while ( !DParser_HasFinished( parser ) )
+	{
+		const DTokenId next = DParser_GetNextToken(parser).id;
+
+		if ( depth == 0 && ( next == TOKEN_COMMA || next == TOKEN_RIGHT_BRACE ) ) {
+			break;
+		}
+
+		if ( next == TOKEN_LEFT_BRACE ) { depth++; }
+		else if ( next == TOKEN_RIGHT_BRACE ) { depth--; }
+
+		DParser_Consume(parser);
+	}
+}
+
 static uint2 DParser_ConsumeUint2( DParser &parser )
 {
 	uint2 res = {};
@@ -1036,12 +1063,18 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
+					static const String sId = MakeString("id");
 					static const String sFilename = MakeString("filename");
 					static const String sMipmap = MakeString("mipmap");
-					if ( StrEq( field, sFilename ) ) {
+					if ( StrEq( field, sId ) ) {
+						desc.id = { DParser_ConsumeU32(parser) };
+					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser));
 					} else if ( StrEq( field, sMipmap ) ) {
 						desc.mipmap = DParser_ConsumeU8(parser);
+					} else {
+						LOG(Warning, "Unknown Texture field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
 
 					DParser_TryConsume( parser, TOKEN_COMMA );
@@ -1066,16 +1099,19 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
-					static const String sTextureName = MakeString("textureName");
+					static const String sTextureId = MakeString("textureId");
 					static const String sPipelineName = MakeString("pipelineName");
 					static const String sUvScale = MakeString("uvScale");
 
-					if ( StrEq( field, sTextureName ) ) {
-						desc.textureName = PushString(*parser.arena, DParser_ConsumeString(parser));
+					if ( StrEq( field, sTextureId ) ) {
+						desc.textureId = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sPipelineName ) ) {
 						desc.pipelineName = PushString(*parser.arena, DParser_ConsumeString(parser));
 					} else if ( StrEq( field, sUvScale ) ) {
 						desc.uvScale = DParser_ConsumeF32(parser);
+					} else {
+						LOG(Warning, "Unknown Material field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
 
 					DParser_TryConsume( parser, TOKEN_COMMA );
@@ -1100,15 +1136,15 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
-					static const String sTextureName = MakeString("textureName");
+					static const String sTextureId = MakeString("textureId");
 					static const String sPos        = MakeString("pos");
 					static const String sSize       = MakeString("size");
 					static const String sFrameCount = MakeString("frameCount");
 					static const String sFps        = MakeString("fps");
 					static const String sLoop       = MakeString("loop");
 
-					if ( StrEq( field, sTextureName ) ) {
-						desc.textureName = PushString(*parser.arena, DParser_ConsumeString(parser));
+					if ( StrEq( field, sTextureId ) ) {
+						desc.textureId = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sPos ) ) {
 						desc.pos = DParser_ConsumeUint2(parser);
 					} else if ( StrEq( field, sSize ) ) {
@@ -1119,6 +1155,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						desc.fps = (u32)StrToInt(DParser_ConsumeLexeme(parser));
 					} else if ( StrEq( field, sLoop ) ) {
 						desc.loop = DParser_ConsumeU8(parser);
+					} else {
+						LOG(Warning, "Unknown Sprite field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
 
 					DParser_TryConsume( parser, TOKEN_COMMA );
@@ -1486,6 +1525,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			const u64 payloadSize = texWidth * texHeight * texChannels;
 
 			BinImageDesc &d = binImageDescs[i];
+			d.id       = desc.id;
 			d.name     = DataInternString(stringPool, desc.name);
 			d.width    = I32ToU16(texWidth);
 			d.height   = I32ToU16(texHeight);
@@ -1561,7 +1601,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 			BinMaterialDesc &d = binMaterialDescs[i];
 			d.name         = DataInternString(stringPool, desc.name);
-			d.textureName  = DataInternString(stringPool, desc.textureName);
+			d.textureId    = desc.textureId;
 			d.pipelineName = DataInternString(stringPool, desc.pipelineName);
 			d.uvScale = desc.uvScale;
 		}
@@ -1573,7 +1613,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 			BinSpriteDesc &d = binSpriteDescs[i];
 			d.name        = DataInternString(stringPool, desc.name);
-			d.textureName = DataInternString(stringPool, desc.textureName);
+			d.textureId   = desc.textureId;
 			d.pos  = desc.pos;
 			d.size = desc.size;
 			d.frameCount = desc.frameCount;
@@ -1776,7 +1816,6 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	{
 		BinMaterialDesc &d = materialDescs[i];
 		d.name         = DataGetString( stringPool, d.name );
-		d.textureName  = DataGetString( stringPool, d.textureName );
 		d.pipelineName = DataGetString( stringPool, d.pipelineName );
 		assets.materials[i].desc = &d;
 	}
@@ -1790,7 +1829,6 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 		{
 			BinSpriteDesc &d = spriteDescs[i];
 			d.name        = DataGetString(stringPool, d.name);
-			d.textureName = DataGetString(stringPool, d.textureName);
 			assets.sprites[i].desc = &d;
 		}
 	}

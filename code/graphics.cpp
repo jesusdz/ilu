@@ -1,5 +1,15 @@
 #define INVALID_HANDLE -1
 
+// Saved data refers to these by value, so never renumber one that already exists in a
+// scene file: append instead.
+enum BuiltinID
+{
+	BuiltinID_DefaultTexture = 1, // 0 is reserved for invalid ID
+	BuiltinID_NoiseTexture,
+	BuiltinID_Count,
+};
+CT_ASSERT(BuiltinID_Count <= ILU_ID_FIRST_DYNAMIC_SLOT);
+
 static const Vertex cubeVertices[] = {
 	// front
 	{{-0.5f, -0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
@@ -719,69 +729,59 @@ ImageH EngineCreateImage(Graphics &gfx, const ImagePixels &img, const char *name
 ////////////////////////////////////////////////////////////////////////
 // Texture management
 
-// `if (textureH)` asks the pool whether the texture is still there, so it also
-// rejects a handle to one that has been removed
-TextureH::operator bool() const { return IsValidHandle(engine->gfx.textureHandles, *this); }
-
-Texture &GetTexture(Graphics &gfx, TextureH handle)
+Texture &GetTexture(ID id)
 {
-	ASSERT( IsValidHandle(gfx.textureHandles, handle) );
-	Texture &texture = gfx.textures[GetHandleIndex(gfx.textureHandles, handle)];
+	ASSERT( Valid(id) );
+	Texture &texture = *((Texture*)GetObject(id));
 	return texture;
 }
 
-u16 GetTextureIndex(const Graphics &gfx, TextureH handle)
+ID CreateTexture(Graphics &gfx, ID existingId)
 {
-	ASSERT( IsValidHandle(gfx.textureHandles, handle) );
-	return GetHandleIndex(gfx.textureHandles, handle);
-}
-
-TextureDesc &GetTextureDesc(Graphics &gfx, TextureH handle)
-{
-	ASSERT( IsValidHandle(gfx.textureHandles, handle) );
-	TextureDesc &textureDesc = gfx.textureDescs[GetHandleIndex(gfx.textureHandles, handle)];
-	return textureDesc;
-}
-
-Texture &GetTextureAt(Graphics &gfx, u32 index)
-{
-	ASSERT( index < HandleCount(gfx.textureHandles) );
-	Texture &texture = gfx.textures[index];
-	return texture;
-}
-
-TextureH CreateTexture(Graphics &gfx)
-{
-	const TextureH textureHandle = NewHandle(gfx.textureHandles);
-	if ( textureHandle )
+	if ( gfx.textureCount == MAX_TEXTURES )
 	{
-		// The element held another texture before
-		const u16 index = GetTextureIndex(gfx, textureHandle);
-		gfx.textures[index] = {};
-		gfx.textureDescs[index] = {};
+		LOG(Warning, "Could not create texture, the texture array is full.\n");
+		return {};
 	}
-	return textureHandle;
+
+	ID id = existingId;
+	if ( id.slot == 0 ) {
+		id = NewID();
+	} else {
+		ReserveID(id);
+	}
+
+	Texture &texture = gfx.textures[gfx.textureCount++];
+	texture = {};
+	texture.desc.id = id;
+
+	SetObject(id, &texture);
+
+	return id;
 }
 
-TextureH CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH)
+ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH)
 {
-	TextureH textureHandle = CreateTexture(gfx);
+	ID id = CreateTexture(gfx, desc.id);
+	if ( !id ) {
+		return id;
+	}
 
-	GetTextureDesc(gfx, textureHandle) = desc;
-
-	Texture &texture = GetTexture(gfx, textureHandle);
-	texture.name = desc.name;
+	Texture &texture = GetTexture(id);
+	texture.desc = desc;
+	texture.desc.id = id;
 	texture.image = imageH;
+	texture.ownsImage = false;
 
 	const Image &image = GetImageConst(gfx.device, imageH);
 	texture.size = { image.width, image.height };
 
-	return textureHandle;
+	return id;
 }
 
-TextureH CreateTexture(Graphics &gfx, const TextureDesc &desc)
+ID CreateTexture(Graphics &gfx, const TextureDesc &desc)
 {
-	TextureH textureHandle = InvalidHandle;
+	ID id = {};
 
 	Scratch scratch;
 	const FilePath imagePath = MakePath(AssetDir, desc.filename);
@@ -790,38 +790,47 @@ TextureH CreateTexture(Graphics &gfx, const TextureDesc &desc)
 	{
 		const ImageH imageHandle = EngineCreateImage(gfx, img, desc.name, desc.mipmap);
 
-		textureHandle = CreateTexture(gfx, desc, imageHandle);
+		id = CreateTexture(gfx, desc, imageHandle);
 
-		Texture &texture = GetTexture(gfx, textureHandle);
-		GetFileLastWriteTimestamp(imagePath.str, texture.ts);
+		if ( id )
+		{
+			Texture &texture = GetTexture(id);
+			texture.ownsImage = true;
+			GetFileLastWriteTimestamp(imagePath.str, texture.ts);
+		}
+		else
+		{
+			DestroyImageH(gfx.device, imageHandle);
+		}
 	}
 
-	return textureHandle;
+	return id;
 }
 
-TextureH GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
+ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 {
 	const FilePath imagePath = MakePath(AssetDir, desc.filename);
 
-	TextureH textureHandle = InvalidHandle;
-	for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
+	ID id = {};
+	for (u16 i = 0; i < gfx.textureCount; ++i)
 	{
-		const TextureDesc &desc = gfx.textureDescs[i];
+		const Texture &texture = gfx.textures[i];
+		const TextureDesc &desc = texture.desc;
 		const FilePath imagePath2 = MakePath(AssetDir, desc.filename);
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(imagePath.str, imagePath2.str)) {
-			textureHandle = GetHandleAt(gfx.textureHandles, i);
+			id = desc.id;
 			break;
 		}
 	}
 
-	if ( !textureHandle )
+	if ( !id )
 	{
-		textureHandle = CreateTexture(gfx, desc);
+		id = CreateTexture(gfx, desc);
 	}
-	return textureHandle;
+	return id;
 }
 
-TextureH CreateTexture(Graphics &gfx, const BinImage &binImage)
+ID CreateTexture(Graphics &gfx, const BinImage &binImage)
 {
 	const BinImageDesc &desc = *binImage.desc;
 	const char *name = desc.name;
@@ -833,84 +842,102 @@ TextureH CreateTexture(Graphics &gfx, const BinImage &binImage)
 
 	const ImageH imageHandle = EngineCreateImage(gfx, name, width, height, channels, mipmap, pixels);
 
-	const TextureH textureHandle = CreateTexture(gfx);
+	const ID id = CreateTexture(gfx, desc.id);
+	if ( !id ) {
+		DestroyImageH(gfx.device, imageHandle);
+		return id;
+	}
 
-	Texture &texture = GetTexture(gfx, textureHandle);
-	texture.name = desc.name;
+	Texture &texture = GetTexture(id);
+	texture.desc.name = desc.name;
 	texture.image = imageHandle;
+	texture.ownsImage = true;
 
-	return textureHandle;
+	return id;
 }
 
-ImageH GetTextureImage(Graphics &gfx, TextureH textureH, ImageH imageH)
+ImageH GetTextureImage(Graphics &gfx, ID id, ImageH imageH)
 {
 	ImageH res = imageH;
 
-	if ( textureH ) {
-		const Texture &texture = GetTexture(gfx, textureH);
+	if ( id ) {
+		const Texture &texture = GetTexture(id);
 		res = texture.image;
 	}
 
 	return res;
 }
 
-TextureH FindTextureHandle(Graphics &gfx, const char *name)
+void RemoveTexture(Graphics &gfx, ID id)
 {
-	if (!name) return InvalidHandle;
-	for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
+	if ( IsBuiltin(id) )
 	{
-		if ( StrEq(gfx.textures[i].name, name) ) {
-			return GetHandleAt(gfx.textureHandles, i);
-		}
+		LOG(Warning, "Ignoring an attempt to remove builtin texture <%s>.\n", GetTexture(id).desc.name);
+		return;
 	}
-	LOG(Warning, "Could not find texture <%s>.\n", name);
-	return InvalidHandle;
-}
 
-void RemoveTexture(Graphics &gfx, TextureH textureH)
-{
-	if (textureH)
+	if (id)
 	{
 		// Marks only. The texture keeps its image until CompactTextures, so anything
 		// still drawing with it this frame has something valid to sample.
-		FreeHandle(gfx.textureHandles, textureH);
+		GetTexture(id).desc.id = {};
+		Invalidate(id);
 
 		gfx.shouldUpdateMaterialBindGroups = true;
 	}
-}
-
-static MOVE_ELEMENT(MoveTexture)
-{
-	Graphics &gfx = *(Graphics*)data;
-	gfx.textures[dstIndex] = gfx.textures[srcIndex];
-	gfx.textureDescs[dstIndex] = gfx.textureDescs[srcIndex];
-}
-
-static REMOVE_ELEMENT(DestroyTexture)
-{
-	Graphics &gfx = *(Graphics*)data;
-	DestroyImageH(gfx.device, gfx.textures[index].image);
 }
 
 void CompactTextures(Graphics &gfx)
 {
-	if ( gfx.textureHandles.pendingRemovalCount == 0 ) {
+	u32 storeIndex = U32_MAX;
+	for (u32 i = 0; i < gfx.textureCount; ++i)
+	{
+		if ( !gfx.textures[i].desc.id ) {
+			storeIndex = i;
+			break;
+		}
+	}
+
+	if ( storeIndex == U32_MAX ) {
 		return;
 	}
 
-	// DestroyTexture releases images the in-flight frames may still be sampling, and
-	// removing a texture is rare enough that stalling here costs nothing
+	// Releases images the in-flight frames may still be sampling, and removing a
+	// texture is rare enough that stalling here costs nothing
 	WaitDeviceIdle(gfx.device);
 
-	if ( CompactPool(gfx.textureHandles, MoveTexture, DestroyTexture, &gfx) > 0 )
+	for (u32 readIndex = storeIndex; readIndex < gfx.textureCount; ++readIndex)
 	{
-		// Bind groups point at images by texture, and the textures moved
-		gfx.shouldUpdateMaterialBindGroups = true;
+		Texture &readTexture = gfx.textures[readIndex];
+
+		if ( !readTexture.desc.id )
+		{
+			if ( readTexture.ownsImage && IsValid(readTexture.image) ) {
+				DestroyImageH(gfx.device, readTexture.image);
+			}
+			readTexture = {};
+			continue;
+		}
+
+		Texture &writeTexture = gfx.textures[storeIndex++];
+		writeTexture = readTexture;
+		readTexture = {};
+
+		SetObject(writeTexture.desc.id, &writeTexture);
 	}
+
+	gfx.textureCount = storeIndex;
+
+	// Bind groups point at images by texture, and the textures moved
+	gfx.shouldUpdateMaterialBindGroups = true;
 }
 
-static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture, const TextureDesc &desc)
+static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
 {
+	const TextureDesc &desc = texture.desc;
+
+	if ( !desc.id ) { return; }
+
 	// TODO(jesus): Textures loaded from bin data file do not have descriptor...
 	if ( StrEq(desc.filename, "") ) { return; };
 
@@ -930,9 +957,12 @@ static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture, const Text
 
 			texture.ts = ts;
 
-			DestroyImageH(gfx.device, texture.image);
+			if ( texture.ownsImage ) {
+				DestroyImageH(gfx.device, texture.image);
+			}
 
 			texture.image = EngineCreateImage(gfx, img, desc.name, desc.mipmap);
+			texture.ownsImage = true;
 
 			GetFileLastWriteTimestamp(imagePath.str, texture.ts);
 
@@ -944,9 +974,9 @@ static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture, const Text
 void RecreateModifiedTextures(Engine &engine)
 {
 	Graphics &gfx = engine.gfx;
-	for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
+	for (u16 i = 0; i < gfx.textureCount; ++i)
 	{
-		RecreateTextureIfModifed(gfx, gfx.textures[i], gfx.textureDescs[i]);
+		RecreateTextureIfModifed(gfx, gfx.textures[i]);
 	}
 }
 
@@ -984,7 +1014,7 @@ static u32 MaterialBufferOffset(const Graphics &gfx, u16 index)
 
 MaterialH CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 {
-	TextureH textureHandle = FindTextureHandle(gfx, desc.textureName);
+	ID textureId = desc.textureId;
 	PipelineH pipelineHandle = FindPipelineHandle(gfx, desc.pipelineName);
 
 	MaterialH materialHandle = NewHandle(gfx.materialHandles);
@@ -995,7 +1025,7 @@ MaterialH CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 	material.name = desc.name;
 	material.pipelineName = desc.pipelineName;
 	material.pipelineH = pipelineHandle;
-	material.albedoTexture = textureHandle;
+	material.albedoTexture = textureId;
 	material.uvScale = desc.uvScale;
 	material.bufferOffset = MaterialBufferOffset(gfx, materialIndex);
 
@@ -1030,7 +1060,7 @@ MaterialH CreateMaterial( Graphics &gfx, const BinMaterialDesc &desc)
 {
 	const MaterialDesc materialDesc = {
 		.name = desc.name,
-		.textureName = desc.textureName,
+		.textureId = desc.textureId,
 		.pipelineName = desc.pipelineName,
 		.uvScale = desc.uvScale,
 	};
@@ -1354,11 +1384,6 @@ void CompileComputePipeline(Engine &engine, Arena scratch, u32 pipelineIndex)
 
 void LinkHandles(Graphics &gfx)
 {
-	// Textures
-	gfx.skyTextureH = FindTextureHandle(gfx, "tex_sky");
-	gfx.defaultTexture = FindTextureHandle(gfx, "tex_default");
-	gfx.noiseTexture = FindTextureHandle(gfx, "tex_noise");
-
 	// Graphics pipelines
 	gfx.shadowmapPipelineH = FindPipelineHandle(gfx, "pipeline_shadowmap");
 	gfx.skyPipelineH = FindPipelineHandle(gfx, "pipeline_sky");
@@ -1660,7 +1685,6 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.globalBindGroupLayout = CreateBindGroupLayout(gfx.device, globalShaderBindings, ARRAY_COUNT(globalShaderBindings));
 
 	// Handle pools
-	Initialize(gfx.textureHandles, globalArena, MAX_TEXTURES);
 	Initialize(gfx.materialHandles, globalArena, MAX_MATERIALS);
 
 	// Graphics pipelines
@@ -1693,6 +1717,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 	// Builtin texture
 	const TextureDesc defaultTextureDesc = {
+		.id = { BuiltinID_DefaultTexture },
 		.name = InternString("tex_default"),
 		.filename = InternString(""),
 		.mipmap = 0,
@@ -1702,6 +1727,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 	// Builtin noise texture
 	const TextureDesc noiseTextureDesc = {
+		.id = { BuiltinID_NoiseTexture },
 		.name = InternString("tex_noise"),
 		.filename = InternString(""),
 		.mipmap = 0,
@@ -1712,7 +1738,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	// Builtin material
 	const MaterialDesc materialDesc = {
 		.name = InternString("mat_default"),
-		.textureName = InternString("tex_default"),
+		.textureId = gfx.defaultTexture,
 		.pipelineName = InternString("pipeline_shading"),
 		.uvScale = 1.0,
 		.flags = AssetFlag_Ghost | AssetFlag_Builtin,

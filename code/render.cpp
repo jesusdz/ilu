@@ -35,7 +35,7 @@ void DrawSprite(SpriteH spriteH, float2 worldPos, float4 pcolor)
 	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
 
 	const Sprite &sprite = GetSprite(engine->scene, spriteH);
-	const Texture &texture = GetTexture(gfx, sprite.textureH);
+	const Texture &texture = GetTexture(sprite.textureId);
 
 	const float2 uvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
 	const float2 uvSize = { (f32)sprite.size.x / texture.size.x, (f32)sprite.size.y / texture.size.y };
@@ -51,7 +51,7 @@ void DrawSprite(SpriteH spriteH, float2 worldPos, float4 pcolor)
 	v[5] = DebugDrawVertex{ worldPos + float2{worldSize.x, worldSize.y}, uvPos + float2{uvSize.x, 0}, color };
 	gfx.debugDrawVertexCount += 6;
 
-	const ImageH imageH = GetTextureImage(gfx, sprite.textureH, gfx.pinkImageH);
+	const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
 	DebugDrawAppendBatch(gfx, imageH, 6);
 }
 
@@ -505,7 +505,7 @@ bool RenderGraphics(Engine &engine)
 	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
 	{
 		const Sprite &sprite = scene.sprites[i];
-		const Texture &texture = GetTexture(gfx, sprite.textureH);
+		const Texture &texture = GetTexture(sprite.textureId);
 		{
 			const float2 frameUvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
 			const float2 frameUvSize = { (f32)sprite.size.x / texture.size.x, (f32)sprite.size.y / texture.size.y };
@@ -763,7 +763,7 @@ bool RenderGraphics(Engine &engine)
 			{
 				const SpriteH spriteH = tileSpriteHandles[i];
 				const Sprite &sprite = GetSprite(scene, spriteH);
-				const ImageH imageH = GetTextureImage(gfx, sprite.textureH, gfx.pinkImageH);
+				const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
 				const BindGroupDesc textureBindGroupDesc = {
 					.layout = tilePipeline.layout.bindGroupLayouts[2],
 					.bindings = {
@@ -798,13 +798,13 @@ bool RenderGraphics(Engine &engine)
 
 				if (!entity.visible || entity.culled) continue;
 
-				TextureH textureH = InvalidHandle;
+				ID textureId = {};
 				if (entity.spriteH)
-					textureH = GetSprite(scene, entity.spriteH).textureH;
+					textureId = GetSprite(scene, entity.spriteH).textureId;
 				else
 					continue;
 
-				const ImageH imageH = GetTextureImage(gfx, textureH, gfx.pinkImageH);
+				const ImageH imageH = GetTextureImage(gfx, textureId, gfx.pinkImageH);
 				const BindGroupDesc textureBindGroupDesc = {
 					.layout = spritePipeline.layout.bindGroupLayouts[2],
 					.bindings = {

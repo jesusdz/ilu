@@ -19,7 +19,7 @@ struct EditorCommand
 	union
 	{
 		u32 pipelineIndex;
-		TextureH textureH;
+		ID textureId;
 		const char *filepath;
 	};
 };
@@ -107,7 +107,7 @@ struct EditorSelection
 		RoomH roomH;
 		EntityH entityH;
 		MaterialH materialH;
-		TextureH textureH;
+		ID textureId;
 		AudioClipH audioClipH;
 		MusicH musicH;
 		SpriteH spriteH;
@@ -125,7 +125,7 @@ struct EditorInspector
 	union
 	{
 		Handle tmpHandle; // untyped view, only for clearing
-		TextureH tmpTextureH;
+		ID tmpTextureH;
 		AudioClipH tmpAudioClipH;
 		MusicH tmpMusicH;
 	};
@@ -133,7 +133,7 @@ struct EditorInspector
 
 struct EditorSpriteSheet
 {
-	TextureH textureH;
+	ID textureId;
 };
 
 constexpr u32 EditorNoLayer = U32_MAX;

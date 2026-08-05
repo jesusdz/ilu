@@ -43,6 +43,8 @@ struct ImagePixels
 #define ILU_PROFILE_GPU
 #include "ilu_profile.h"
 
+#include "ilu_id.h"
+
 
 // C/HLSL shared types and bindings
 #include "shaders/types.hlsl"
@@ -105,8 +107,10 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 {
 	static TextureDesc textureDescs[MAX_TEXTURES];
 	u32 textureCount = 0;
-	for (u16 i = 0; i < HandleCount(engine.gfx.textureHandles); ++i) {
-		textureDescs[textureCount] = engine.gfx.textureDescs[i];
+	for (u16 i = 0; i < engine.gfx.textureCount; ++i) {
+		const Texture &texture = engine.gfx.textures[i];
+		if ( !texture.desc.id ) { continue; }
+		textureDescs[textureCount] = texture.desc;
 		if ( !( textureDescs[textureCount].flags & AssetFlag_Ghost ) ) {
 			textureCount++;
 		}
@@ -637,6 +641,8 @@ ENGINE_API bool OnPlatformPreInit(Plat &platform)
 	::engine = PushZeroStruct(GlobalArena, Engine);
 	platform.engine = ::engine;
 
+	InitializeIDPool();
+
 	Engine &engine = *::engine;
 
 #if USE_DATA_BUILD
@@ -1027,6 +1033,10 @@ void PlayMusic(MusicH handle)
 #include "libs/ibxm/ibxm.c"
 
 #include "game.cpp"
+
+#define ILU_ID_POOL ::engine->idPool
+#define ILU_ID_IMPLEMENTATION
+#include "ilu_id.h"
 
 // TODO:
 // - [ ] Instead of binding descriptors per entity, group entities by material and perform a multi draw call for each material group.

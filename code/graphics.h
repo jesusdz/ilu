@@ -30,20 +30,19 @@ struct DebugDrawBatch
 
 struct Texture
 {
-	const char *name;
+	TextureDesc desc;
 	ImageH image;
+	bool ownsImage;
 	uint2 size;
 	u64 ts;
 };
-
-DECLARE_HANDLE_TYPE(TextureH);
 
 struct Material
 {
 	const char *name;
 	const char *pipelineName;
 	PipelineH pipelineH;
-	TextureH albedoTexture;
+	ID albedoTexture;
 	f32 uvScale;
 	u32 bufferOffset;
 };
@@ -161,9 +160,8 @@ struct Graphics
 	RenderPassH idRenderPassH;
 	RenderPassH displayRenderPassH;
 
+	u32 textureCount;
 	Texture textures[MAX_TEXTURES];
-	TextureDesc textureDescs[MAX_TEXTURES]; // Parallel to textures
-	HandlePool textureHandles;
 
 	Material materials[MAX_MATERIALS];
 	MaterialDesc materialDescs[MAX_MATERIALS]; // Parallel to materials
@@ -193,9 +191,9 @@ struct Graphics
 	ImageH blackImageH;
 	ImageH noiseImageH;
 
-	TextureH skyTextureH;
-	TextureH defaultTexture;
-	TextureH noiseTexture;
+	ID skyTextureH;
+	ID defaultTexture;
+	ID noiseTexture;
 
 	MaterialH defaultMaterial;
 
@@ -269,18 +267,15 @@ ImageH EngineCreateImage(Graphics &gfx, const ImagePixels &img, const char *name
 ////////////////////////////////////////////////////////////////////////
 // Texture management
 
-Texture &GetTexture(Graphics &gfx, TextureH handle);
-u16 GetTextureIndex(const Graphics &gfx, TextureH handle);
-TextureDesc &GetTextureDesc(Graphics &gfx, TextureH handle);
+Texture &GetTexture(ID id);
 Texture &GetTextureAt(Graphics &gfx, u32 index);
-TextureH CreateTexture(Graphics &gfx);
-TextureH CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH);
-TextureH CreateTexture(Graphics &gfx, const TextureDesc &desc);
-TextureH GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc);
-TextureH CreateTexture(Graphics &gfx, const BinImage &binImage);
-ImageH GetTextureImage(Graphics &gfx, TextureH textureH, ImageH imageH);
-TextureH FindTextureHandle(Graphics &gfx, const char *name);
-void RemoveTexture(Graphics &gfx, TextureH textureH);
+ID CreateTexture(Graphics &gfx, ID existingId);
+ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH);
+ID CreateTexture(Graphics &gfx, const TextureDesc &desc);
+ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc);
+ID CreateTexture(Graphics &gfx, const BinImage &binImage);
+ImageH GetTextureImage(Graphics &gfx, ID textureId, ImageH imageH);
+void RemoveTexture(Graphics &gfx, ID textureId);
 void CompactTextures(Graphics &gfx);
 void RecreateModifiedTextures(Engine &engine);
 

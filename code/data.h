@@ -38,6 +38,7 @@ struct ShaderSourceDesc
 
 struct TextureDesc
 {
+	ID id;
 	const char *name;
 	const char *filename;
 	u8 mipmap;
@@ -47,7 +48,7 @@ struct TextureDesc
 struct MaterialDesc
 {
 	const char *name;
-	const char *textureName;
+	ID textureId;
 	const char *pipelineName;
 	float uvScale;
 	AssetFlags flags;
@@ -56,7 +57,7 @@ struct MaterialDesc
 struct SpriteDesc
 {
 	const char *name;
-	const char *textureName;
+	ID textureId;
 	uint2 pos;
 	uint2 size;
 	u32 frameCount;
@@ -194,6 +195,7 @@ struct BinShaderDesc
 
 struct BinImageDesc
 {
+	ID id;
 	const char *name;
 	u16 width;
 	u16 height;
@@ -221,7 +223,7 @@ struct BinMusicFileDesc
 struct BinMaterialDesc
 {
 	const char *name;
-	const char *textureName;
+	ID textureId;
 	const char *pipelineName;
 	float uvScale;
 };
@@ -229,7 +231,7 @@ struct BinMaterialDesc
 struct BinSpriteDesc
 {
 	const char *name;
-	const char *textureName;
+	ID textureId;
 	uint2 pos;
 	uint2 size;
 	u32 frameCount;
@@ -267,7 +269,7 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-constexpr u32 BinAssetsVersion = 3; // 3: BinLayerDesc replaced i32 order with u8 isBase
+constexpr u32 BinAssetsVersion = 4; // 3: BinLayerDesc replaced i32 order with u8 isBase
 
 struct BinAssetsHeader
 {

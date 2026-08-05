@@ -350,9 +350,9 @@ static void EditorSelectMaterial(Editor &editor, MaterialH handle)
 	editor.inspector.nextSelected.type = EditorSelectedType_Material;
 }
 
-static void EditorSelectTexture(Editor &editor, TextureH handle)
+static void EditorSelectTexture(Editor &editor, ID handle)
 {
-	editor.inspector.nextSelected.textureH = handle;
+	editor.inspector.nextSelected.textureId = handle;
 	editor.inspector.nextSelected.type = EditorSelectedType_Texture;
 }
 
@@ -587,7 +587,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 		{
 			SpriteH handle = GetHandleAt(scene.spriteHandles, i);
 			const Sprite &sprite = scene.sprites[i];
-			const Texture &texture = GetTexture(engine.gfx, sprite.textureH);
+			const Texture &texture = GetTexture(sprite.textureId);
 			const UIWidgetFlags flags = selectedHandle == handle ? UIWidgetFlag_Outline : UIWidgetFlag_None;
 			const float2 uvPos = Float2(sprite.pos)/Float2(texture.size);
 			const float2 uvSize = Float2(sprite.size)/Float2(texture.size);
@@ -633,16 +633,16 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "Textures") )
 	{
-		static TextureH selectedHandle = {};
+		static ID selectedHandle = {};
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
-		for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
+		for (u16 i = 0; i < gfx.textureCount; ++i)
 		{
-			const TextureH handle = GetHandleAt(gfx.textureHandles, i);
 			const Texture &texture = gfx.textures[i];
-			const TextureDesc &desc = gfx.textureDescs[i];
+			const TextureDesc &desc = texture.desc;
 
 			if ( (desc.flags & AssetFlag_Ghost) && !(desc.flags & AssetFlag_Builtin) ) { continue; }
 
+			const ID handle = desc.id;
 			const UIWidgetFlags flags = selectedHandle == handle ? UIWidgetFlag_Outline : UIWidgetFlag_None;
 
 			if (UI_Image(ui, texture.image, float2{32, 32}, flags))
@@ -814,39 +814,39 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 	UI_SeparatorLabel(ui, "Texture");
 	{
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
-		for (u16 i = 0; i < HandleCount(gfx.textureHandles); ++i)
+		for (u16 i = 0; i < gfx.textureCount; ++i)
 		{
-			const TextureH handle = GetHandleAt(gfx.textureHandles, i);
 			const Texture &texture = gfx.textures[i];
-			const TextureDesc &desc = gfx.textureDescs[i];
+			const TextureDesc &desc = texture.desc;
+			const ID handle = desc.id;
 			if ( desc.flags & AssetFlag_Ghost ) {
 				continue;
 			}
 
-			const UIWidgetFlags flags = handle == sheet.textureH ? UIWidgetFlag_Outline : UIWidgetFlag_None;
+			const UIWidgetFlags flags = handle == sheet.textureId ? UIWidgetFlag_Outline : UIWidgetFlag_None;
 
 			if ( UI_Image(ui, texture.image, float2{32, 32}, flags) )
 			{
-				sheet.textureH = handle;
+				sheet.textureId = handle;
 			}
 		}
 		UI_EndLayout(ui);
 	}
 
-	if ( sheet.textureH )
+	if ( sheet.textureId )
 	{
-		const Texture &texture = GetTexture(gfx, sheet.textureH);
+		const Texture &texture = GetTexture(sheet.textureId);
 
 		UI_SeparatorLabel(ui, "Texture");
 
-		UI_Text(ui, "Name", "%s", texture.name);
+		UI_Text(ui, "Name", "%s", texture.desc.name);
 		UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
 
 		UI_SeparatorLabel(ui, "Sprite sheet");
 		{
 			u32 sheetSpriteCount = 0;
 			for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i) {
-				if ( scene.sprites[i].textureH == sheet.textureH ) {
+				if ( scene.sprites[i].textureId == sheet.textureId ) {
 					sheetSpriteCount++;
 				}
 			}
@@ -918,9 +918,9 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 
 				if ( UI_Button(ui, "Create sprite") )
 				{
-					if ( FindSpriteHandle(scene, sheet.textureH, spriteRelPos, spriteSize) )
+					if ( FindSpriteHandle(scene, sheet.textureId, spriteRelPos, spriteSize) )
 					{
-						LOG(Warning, "A sprite already covers that region of %s.\n", texture.name);
+						LOG(Warning, "A sprite already covers that region of %s.\n", texture.desc.name);
 					}
 					else if ( IsFull(scene.spriteHandles) )
 					{
@@ -929,8 +929,8 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 					else
 					{
 						const SpriteDesc desc = {
-							.name = EditorMakeSpriteName(scene, texture.name),
-							.textureName = texture.name,
+							.name = EditorMakeSpriteName(scene, texture.desc.name),
+							.textureId = texture.desc.id,
 							.pos = spriteRelPos,
 							.size = spriteSize,
 						};
@@ -1075,9 +1075,9 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.filename = filename,
 					.mipmap = true,
 				};
-				TextureH textureH = GetOrCreateTexture(engine.gfx, textureDesc);
+				ID textureId = GetOrCreateTexture(engine.gfx, textureDesc);
 
-				EditorSelectTexture(editor, textureH);
+				EditorSelectTexture(editor, textureId);
 			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_FileAudio)
@@ -1191,30 +1191,30 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Texture)
 		{
-			if (inspector.selected.textureH)
+			if (inspector.selected.textureId)
 			{
-				const Texture &texture = GetTexture(engine.gfx, inspector.selected.textureH);
-				UI_Text(ui, "Name", "%s", texture.name);
+				const Texture &texture = GetTexture(inspector.selected.textureId);
+				UI_Text(ui, "Name", "%s", texture.desc.name);
 				UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
 
-				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.textureH, engine.gfx.grayImageH);
+				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.textureId, engine.gfx.grayImageH);
 				UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
 
 				UI_SeparatorLabel(ui, "Sprite");
 				UI_BeginLayout(ui, UILayout_Horizontal);
 				if (UI_Button(ui, "Create"))
 				{
-					TextureH textureH = inspector.selected.textureH;
+					ID textureId = inspector.selected.textureId;
 
 					const SpriteDesc spriteDesc = {
 						.name = "spr_new",
-						.textureName = texture.name,
+						.textureId = texture.desc.id,
 					};
 					SpriteH spriteH = GetOrCreateSprite(engine, spriteDesc);
 				}
 				if (UI_Button(ui, "Sprite sheet..."))
 				{
-					editor.spriteSheet.textureH = inspector.selected.textureH;
+					editor.spriteSheet.textureId = inspector.selected.textureId;
 					editor.showSpriteSheet = true;
 				}
 				UI_EndLayout(ui);
@@ -1256,14 +1256,14 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
 				sprite.name = InternString(name);
 
-				if (sprite.textureH)
+				if (sprite.textureId)
 				{
-					const Texture &texture = GetTexture(engine.gfx, sprite.textureH);
+					const Texture &texture = GetTexture(sprite.textureId);
 					const float4 uvRect = {
 						.xy = Float2(sprite.pos)/Float2(texture.size),
 						.zw = Float2(sprite.size)/Float2(texture.size),
 					};
-					UI_Text(ui, "Texture", texture.name);
+					UI_Text(ui, "Texture", texture.desc.name);
 					UI_Image(ui, texture.image, float2{0, 0}, UIWidgetFlag_Expand, uvRect);
 				}
 
@@ -1530,15 +1530,15 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 					.filename = node->filename,
 					.mipmap = true,
 				};
-				TextureH textureH = GetOrCreateTexture(engine.gfx, textureDesc);
+				ID textureId = GetOrCreateTexture(engine.gfx, textureDesc);
 
 				const SpriteDesc spriteDesc = {
 					.name = spriteName,
-					.textureName = texname,
+					.textureId = textureId,
 				};
 				SpriteH spriteH = GetOrCreateSprite(engine, spriteDesc);
 
-				const Texture &texture = GetTexture(engine.gfx, textureH);
+				const Texture &texture = GetTexture(textureId);
 				constexpr f32 pixelsPerGridTile = 32;
 
 				const EntityDesc entityDesc = {
@@ -2286,7 +2286,7 @@ static void EditorProcessCommands(Engine &engine, Arena scratch)
 				}
 				case EditorCommandRemoveTexture:
 				{
-					RemoveTexture(engine.gfx, command.textureH);
+					RemoveTexture(engine.gfx, command.textureId);
 					break;
 				}
 				case EditorCommandNew:
@@ -2404,7 +2404,7 @@ void EditorInitialize(Engine &engine)
 	editor.cameraType = ProjectionOrthographic;
 	SetCamera(editor.camera[ProjectionOrthographic]);
 
-	editor.spriteSheet.textureH = InvalidHandle;
+	editor.spriteSheet.textureId = {};
 
 	editor.iconAsset = EditorLoadIcon(engine, "editor/file_32x32.png", "file_32x32");
 	editor.iconWav = EditorLoadIcon(engine, "editor/wav_32x32.png", "wav_32x32");
