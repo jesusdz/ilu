@@ -316,7 +316,6 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 		}
 
 		UploadMaterialData(engine.gfx);
-		LinkHandles(engine.gfx);
 	}
 }
 
@@ -388,7 +387,6 @@ void LoadSceneFromBin(Engine &engine)
 		}
 
 		UploadMaterialData(engine.gfx);
-		LinkHandles(engine.gfx);
 	}
 }
 

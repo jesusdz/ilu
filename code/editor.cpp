@@ -2280,17 +2280,6 @@ static void EditorProcessCommands(Engine &engine, Arena scratch)
 
 			switch (command.type)
 			{
-				case EditorCommandReloadGraphicsPipeline:
-				{
-					const u32 pipelineIndex = command.pipelineIndex;
-					const ShaderAndPipelineDesc &desc = pipelineDescs[pipelineIndex];
-					const u32 vertexShaderIndex = FindShaderSourceDescIndex(desc.vsName);
-					const u32 fragmentShaderIndex = FindShaderSourceDescIndex(desc.fsName);
-					CompileShader(vertexShaderIndex);
-					CompileShader(fragmentShaderIndex);
-					CompileGraphicsPipeline(engine, scratch, pipelineIndex);
-					break;
-				}
 				case EditorCommandRemoveTexture:
 				{
 					RemoveTexture(engine.gfx, command.textureId);
@@ -2333,8 +2322,6 @@ static void EditorProcessCommands(Engine &engine, Arena scratch)
 		}
 
 		editor.commandCount = 0;
-
-		LinkHandles(gfx);
 	}
 }
 

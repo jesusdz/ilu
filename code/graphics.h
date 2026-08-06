@@ -40,7 +40,8 @@ struct Texture
 struct Material
 {
 	MaterialDesc desc;
-	PipelineH pipelineH; // Resolved from desc.pipelineName
+	ID pipelineId;
+	PipelineH pipelineH;
 	u32 bufferOffset;    // Derived from the element index, so it moves with compaction
 };
 
@@ -86,12 +87,18 @@ struct ShaderAndPipelineDesc
 	const char *vsName;
 	const char *fsName;
 	const char *renderPass;
+	ID builtinId; // Fixed slot, so saved data can name this pipeline
+	ID *id;
+	PipelineH *handle;
 	PipelineDesc desc;
 };
 
 struct ShaderAndComputeDesc
 {
 	const char *csName;
+	ID builtinId; // Fixed slot, so saved data can name this pipeline
+	ID *id;
+	PipelineH *handle;
 	ComputeDesc desc;
 };
 
@@ -191,27 +198,38 @@ struct Graphics
 
 	ID defaultMaterial;
 
+	ID pipelineShadingId;
+	ID shadowmapPipelineId;
+	ID skyPipelineId;
+	ID spritePipelineId;
+	ID tilePipelineId;
+	ID blitPipelineId;
+	ID guiPipelineId;
+	ID debugDrawPipelineId;
+	ID fogPipelineId;
+	ID computeSelectId;
+#if USE_EDITOR
+	ID grid2dPipelineId;
+	ID grid3dPipelineId;
+	ID modelIdPipelineId;
+	ID spriteIdPipelineId;
+#endif
+	PipelineH pipelineShadingH;
 	PipelineH shadowmapPipelineH;
 	PipelineH skyPipelineH;
 	PipelineH spritePipelineH;
 	PipelineH tilePipelineH;
 	PipelineH blitPipelineH;
 	PipelineH guiPipelineH;
+	PipelineH debugDrawPipelineH;
+	PipelineH fogPipelineH;
+	PipelineH computeSelectH;
 #if USE_EDITOR
 	PipelineH grid2dPipelineH;
 	PipelineH grid3dPipelineH;
 	PipelineH modelIdPipelineH;
 	PipelineH spriteIdPipelineH;
 #endif
-	PipelineH debugDrawPipelineH;
-	PipelineH fogPipelineH;
-
-#define USE_COMPUTE_TEST 0
-#if USE_COMPUTE_TEST
-	PipelineH computeClearH;
-	PipelineH computeUpdateH;
-#endif
-	PipelineH computeSelectH;
 
 	bool deviceInitialized;
 
@@ -236,7 +254,6 @@ u32 GetShaderSourceDescCount();
 
 const u32 FindShaderSourceDescIndex(const char *name);
 RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name);
-PipelineH FindPipelineHandle(const Graphics &gfx, const char *name);
 
 
 ////////////////////////////////////////////////////////////////////////

@@ -31,21 +31,21 @@ Texture tex_sky = {
 Material mat_diamond = {
  .id = 1004,
  .textureId = 1000,
- .pipelineName = "pipeline_shading",
+ .pipelineId = 4,
  .uvScale = 1.000000,
 };
 
 Material mat_dirt = {
  .id = 1005,
  .textureId = 1001,
- .pipelineName = "pipeline_shading",
+ .pipelineId = 4,
  .uvScale = 1.000000,
 };
 
 Material mat_grass = {
  .id = 1006,
  .textureId = 1002,
- .pipelineName = "pipeline_shading",
+ .pipelineId = 4,
  .uvScale = 11.000000,
 };
 

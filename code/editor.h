@@ -3,7 +3,6 @@
 
 enum EditorCommandType
 {
-	EditorCommandReloadGraphicsPipeline,
 	EditorCommandRemoveTexture,
 	EditorCommandNew,
 	EditorCommandLoadTxt,
@@ -18,7 +17,6 @@ struct EditorCommand
 	EditorCommandType type;
 	union
 	{
-		u32 pipelineIndex;
 		ID textureId;
 		const char *filepath;
 	};
