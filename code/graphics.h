@@ -39,15 +39,10 @@ struct Texture
 
 struct Material
 {
-	const char *name;
-	const char *pipelineName;
-	PipelineH pipelineH;
-	ID albedoTexture;
-	f32 uvScale;
-	u32 bufferOffset;
+	MaterialDesc desc;
+	PipelineH pipelineH; // Resolved from desc.pipelineName
+	u32 bufferOffset;    // Derived from the element index, so it moves with compaction
 };
-
-DECLARE_HANDLE_TYPE(MaterialH);
 
 struct RenderTargets
 {
@@ -163,9 +158,8 @@ struct Graphics
 	u32 textureCount;
 	Texture textures[MAX_TEXTURES];
 
+	u32 materialCount;
 	Material materials[MAX_MATERIALS];
-	MaterialDesc materialDescs[MAX_MATERIALS]; // Parallel to materials
-	HandlePool materialHandles;
 	bool shouldUpdateMaterials;
 
 	BindGroupAllocator globalBindGroupAllocator;
@@ -195,7 +189,7 @@ struct Graphics
 	ID defaultTexture;
 	ID noiseTexture;
 
-	MaterialH defaultMaterial;
+	ID defaultMaterial;
 
 	PipelineH shadowmapPipelineH;
 	PipelineH skyPipelineH;
@@ -283,14 +277,13 @@ void RecreateModifiedTextures(Engine &engine);
 ////////////////////////////////////////////////////////////////////////
 // Material management
 
-Material &GetMaterial(Graphics &gfx, MaterialH handle);
-u16 GetMaterialIndex(const Graphics &gfx, MaterialH handle);
-MaterialDesc &GetMaterialDesc(Graphics &gfx, MaterialH handle);
-MaterialH CreateMaterial(Graphics &gfx, const MaterialDesc &desc);
-MaterialH GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc);
-MaterialH CreateMaterial(Graphics &gfx, const BinMaterialDesc &desc);
-MaterialH FindMaterialHandle(Graphics &gfx, const char *name);
-void RemoveMaterial(Graphics &gfx, MaterialH materialH);
+Material &GetMaterial(ID id);
+u16 GetMaterialIndex(const Graphics &gfx, ID materialId);
+ID CreateMaterial(Graphics &gfx, ID existingId);
+ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc);
+ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc);
+ID CreateMaterial(Graphics &gfx, const BinMaterialDesc &desc);
+void RemoveMaterial(Graphics &gfx, ID materialId);
 void CompactMaterials(Graphics &gfx);
 
 
@@ -333,7 +326,7 @@ void UpdateGlobalBindGroups(Graphics &gfx);
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material);
 void UpdateMaterialBindGroups(Graphics &gfx);
 void UploadMaterialData(Graphics &gfx);
-void CreateMaterialBindGroup(Graphics &gfx, MaterialH handle);
+void CreateMaterialBindGroup(Graphics &gfx, ID materialId);
 void CreateMaterialBindGroups(Graphics &gfx);
 void EngineWaitDeviceIdle(Graphics &gfx);
 void CleanupGraphics(Graphics &gfx);

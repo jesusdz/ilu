@@ -228,8 +228,7 @@ EntityDesc GetEntityDesc(Scene &scene, EntityH handle)
 	if (entity.spriteH) {
 		entityDesc.spriteName = GetSprite(scene, entity.spriteH).name;
 	} else {
-		const Material &material = GetMaterial(engine->gfx, entity.materialH);
-		entityDesc.materialName = material.name;
+		entityDesc.materialId = entity.materialId;
 		entityDesc.geometryType = entity.geometryType;
 	}
 	return entityDesc;
@@ -253,8 +252,17 @@ EntityH CreateEntity(Engine &engine, const EntityDesc &desc)
 	entity.geometryType = desc.geometryType;
 	entity.vertices = vertices;
 	entity.indices = indices;
-	entity.materialH = FindMaterialHandle(engine.gfx, desc.materialName);
+	entity.materialId = desc.materialId;
 	entity.spriteH = FindSpriteHandle(scene, desc.spriteName);
+
+	// A sprite entity legitimately has no material, so only an ID that was set and
+	// then failed to resolve is worth complaining about
+	if ( desc.materialId.slot != 0 && !Valid(desc.materialId) )
+	{
+		LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n",
+				desc.name, desc.materialId.slot);
+		entity.materialId = engine.gfx.defaultMaterial;
+	}
 
 	return handle;
 }
@@ -263,7 +271,7 @@ EntityH CreateEntity(Engine &engine, const BinEntityDesc &desc)
 {
 	const EntityDesc entityDesc = {
 		.name = desc.name,
-		.materialName = desc.materialName,
+		.materialId = desc.materialId,
 		.geometryType = desc.geometryType,
 		.spriteName = desc.spriteName,
 		.layer = desc.layer,
@@ -583,9 +591,9 @@ void CleanScene(Engine &engine)
 			RemoveTexture(gfx, gfx.textures[i].desc.id);
 		}
 	}
-	for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i) {
-		if ( !(gfx.materialDescs[i].flags & AssetFlag_Builtin) ) {
-			RemoveMaterial(gfx, GetHandleAt(gfx.materialHandles, i));
+	for (u16 i = 0; i < gfx.materialCount; ++i) {
+		if ( !(gfx.materials[i].desc.flags & AssetFlag_Builtin) ) {
+			RemoveMaterial(gfx, gfx.materials[i].desc.id);
 		}
 	}
 	for (u16 i = 0; i < HandleCount(scene.roomHandles); ++i) {

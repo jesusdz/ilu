@@ -289,6 +289,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Material %s = {", desc.name);
 
 		PushIndent(ctx);
+		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		WriteLine(ctx, ".textureId = %u,", desc.textureId.slot);
 		WriteLine(ctx, ".pipelineName = \"%s\",", desc.pipelineName);
 		WriteLine(ctx, ".uvScale = %f,", desc.uvScale);
@@ -309,8 +310,8 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		PushIndent(ctx);
 		if (desc.spriteName) {
 			WriteLine(ctx, ".spriteName = \"%s\",", desc.spriteName);
-		} else if (desc.materialName) {
-			WriteLine(ctx, ".materialName = \"%s\",", desc.materialName);
+		} else if (desc.materialId.slot != 0) {
+			WriteLine(ctx, ".materialId = %u,", desc.materialId.slot);
 			WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(desc.geometryType));
 		}
 		WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
@@ -1099,11 +1100,14 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
+					static const String sId = MakeString("id");
 					static const String sTextureId = MakeString("textureId");
 					static const String sPipelineName = MakeString("pipelineName");
 					static const String sUvScale = MakeString("uvScale");
 
-					if ( StrEq( field, sTextureId ) ) {
+					if ( StrEq( field, sId ) ) {
+						desc.id = { DParser_ConsumeU32(parser) };
+					} else if ( StrEq( field, sTextureId ) ) {
 						desc.textureId = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sPipelineName ) ) {
 						desc.pipelineName = PushString(*parser.arena, DParser_ConsumeString(parser));
@@ -1182,15 +1186,15 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
-					static const String sMaterialName = MakeString("materialName");
+					static const String sMaterialId = MakeString("materialId");
 					static const String sSpriteName = MakeString("spriteName");
 					static const String sPos = MakeString("pos");
 					static const String sScale = MakeString("scale");
 					static const String sLayer = MakeString("layer");
 					static const String sGeometryType = MakeString("geometryType");
 
-					if ( StrEq( field, sMaterialName ) ) {
-						desc.materialName = PushString(*parser.arena, DParser_ConsumeString(parser));
+					if ( StrEq( field, sMaterialId ) ) {
+						desc.materialId = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sSpriteName ) ) {
 						desc.spriteName = PushString(*parser.arena, DParser_ConsumeString(parser));
 					} else if ( StrEq( field, sPos ) ) {
@@ -1600,6 +1604,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			const MaterialDesc &desc = descriptors.materialDescs[i];
 
 			BinMaterialDesc &d = binMaterialDescs[i];
+			d.id           = desc.id;
 			d.name         = DataInternString(stringPool, desc.name);
 			d.textureId    = desc.textureId;
 			d.pipelineName = DataInternString(stringPool, desc.pipelineName);
@@ -1629,7 +1634,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 			BinEntityDesc &d = binEntityDescs[i];
 			d.name         = DataInternString(stringPool, desc.name);
-			d.materialName = DataInternString(stringPool, desc.materialName);
+			d.materialId   = desc.materialId;
 			d.spriteName   = DataInternString(stringPool, desc.spriteName);
 			d.pos          = desc.pos;
 			d.scale        = desc.scale;
@@ -1840,7 +1845,6 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	{
 		BinEntityDesc &d = entityDescs[i];
 		d.name         = DataGetString(stringPool, d.name);
-		d.materialName = DataGetString(stringPool, d.materialName);
 		d.spriteName   = DataGetString(stringPool, d.spriteName);
 		assets.entities[i].desc = &d;
 	}

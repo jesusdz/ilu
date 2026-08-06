@@ -106,7 +106,7 @@ struct EditorSelection
 		Handle handle; // untyped view, only for clearing and comparing
 		RoomH roomH;
 		EntityH entityH;
-		MaterialH materialH;
+		ID materialId;
 		ID textureId;
 		AudioClipH audioClipH;
 		MusicH musicH;

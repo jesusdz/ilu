@@ -47,6 +47,7 @@ struct TextureDesc
 
 struct MaterialDesc
 {
+	ID id;
 	const char *name;
 	ID textureId;
 	const char *pipelineName;
@@ -78,7 +79,7 @@ struct EntityDesc
 {
 	const char *name;
 	// 3D entity
-	const char *materialName;
+	ID materialId;
 	GeometryType geometryType;
 	// Sprite entity
 	const char *spriteName;
@@ -222,6 +223,7 @@ struct BinMusicFileDesc
 
 struct BinMaterialDesc
 {
+	ID id;
 	const char *name;
 	ID textureId;
 	const char *pipelineName;
@@ -243,7 +245,7 @@ struct BinSpriteDesc
 struct BinEntityDesc
 {
 	const char *name;
-	const char *materialName;
+	ID materialId;
 	const char *spriteName;
 	float3 pos;
 	float scale;
@@ -269,7 +271,7 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-constexpr u32 BinAssetsVersion = 4; // 3: BinLayerDesc replaced i32 order with u8 isBase
+constexpr u32 BinAssetsVersion = 5; // 5: materials carry an ID, entities refer to one by ID
 
 struct BinAssetsHeader
 {

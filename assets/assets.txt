@@ -29,18 +29,21 @@ Texture tex_sky = {
 // Materials ///////////////////////////////////////////////////////////
 
 Material mat_diamond = {
+ .id = 1004,
  .textureId = 1000,
  .pipelineName = "pipeline_shading",
  .uvScale = 1.000000,
 };
 
 Material mat_dirt = {
+ .id = 1005,
  .textureId = 1001,
  .pipelineName = "pipeline_shading",
  .uvScale = 1.000000,
 };
 
 Material mat_grass = {
+ .id = 1006,
  .textureId = 1002,
  .pipelineName = "pipeline_shading",
  .uvScale = 11.000000,
@@ -50,35 +53,35 @@ Material mat_grass = {
 // Entities ////////////////////////////////////////////////////////////
 
 Entity ent_cube0 = {
- .materialName = "mat_diamond",
+ .materialId = 1004,
  .pos = {1.000000, 0.000000, 1.000000},
  .scale = 1.000000,
  .geometryType = GeometryTypeCube,
 };
 
 Entity ent_cube1 = {
- .materialName = "mat_diamond",
+ .materialId = 1004,
  .pos = {1.000000, 0.000000, -1.000000},
  .scale = 1.000000,
  .geometryType = GeometryTypeCube,
 };
 
 Entity ent_cube2 = {
- .materialName = "mat_dirt",
+ .materialId = 1005,
  .pos = {-1.000000, 0.000000, 1.000000},
  .scale = 1.000000,
  .geometryType = GeometryTypeCube,
 };
 
 Entity ent_cube3 = {
- .materialName = "mat_dirt",
+ .materialId = 1005,
  .pos = {-1.000000, 0.000000, -1.000000},
  .scale = 1.000000,
  .geometryType = GeometryTypeCube,
 };
 
 Entity ent_plane = {
- .materialName = "mat_grass",
+ .materialId = 1006,
  .pos = {0.000000, -0.500000, 0.000000},
  .scale = 11.000000,
  .geometryType = GeometryTypePlane,

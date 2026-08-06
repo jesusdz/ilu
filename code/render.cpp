@@ -716,19 +716,19 @@ bool RenderGraphics(Engine &engine)
 			const Entity &entity = scene.entities[i];
 
 			if ( !entity.visible || entity.culled ) continue;
-			if ( !entity.materialH ) continue;
+			if ( !entity.materialId ) continue;
 
-			const MaterialH materialH = entity.materialH;
-			const Material &material = GetMaterial(gfx, materialH);
+			const ID materialId = entity.materialId;
+			const Material &material = GetMaterial(materialId);
 
-			BeginDebugGroup(commandList, material.name, ColorBlack);
+			BeginDebugGroup(commandList, material.desc.name, ColorBlack);
 
 			// Pipeline
 			SetPipeline(commandList, material.pipelineH);
 
 			// Bind groups
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-			SetBindGroup(commandList, 1, gfx.materialBindGroups[GetMaterialIndex(gfx, materialH)]);
+			SetBindGroup(commandList, 1, gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)]);
 
 			// Geometry
 			SetVertexBuffer(commandList, vertexBuffer);

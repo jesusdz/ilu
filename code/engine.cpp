@@ -124,8 +124,10 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static MaterialDesc materialDescs[MAX_MATERIALS];
 	u32 materialCount = 0;
-	for (u16 i = 0; i < HandleCount(engine.gfx.materialHandles); ++i) {
-		materialDescs[materialCount] = engine.gfx.materialDescs[i];
+	for (u16 i = 0; i < engine.gfx.materialCount; ++i) {
+		const Material &material = engine.gfx.materials[i];
+		if ( !material.desc.id ) { continue; }
+		materialDescs[materialCount] = material.desc;
 		if ( !( materialDescs[materialCount].flags & AssetFlag_Ghost ) ) {
 			materialCount++;
 		}

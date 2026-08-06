@@ -344,9 +344,9 @@ static void EditorSelectEntity(Editor &editor, EntityH handle)
 	editor.inspector.nextSelected.type = EditorSelectedType_Entity;
 }
 
-static void EditorSelectMaterial(Editor &editor, MaterialH handle)
+static void EditorSelectMaterial(Editor &editor, ID materialId)
 {
-	editor.inspector.nextSelected.materialH = handle;
+	editor.inspector.nextSelected.materialId = materialId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Material;
 }
 
@@ -621,12 +621,12 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "Materials") )
 	{
-		for (u16 i = 0; i < HandleCount(gfx.materialHandles); ++i)
+		for (u32 i = 0; i < gfx.materialCount; ++i)
 		{
-			const Material &material = gfx.materials[i];
+			const MaterialDesc &desc = gfx.materials[i].desc;
 
-			if ( UI_Button(ui, material.name) ) {
-				EditorSelectMaterial(editor, GetHandleAt(gfx.materialHandles, i));
+			if ( UI_Button(ui, desc.name) ) {
+				EditorSelectMaterial(editor, desc.id);
 			}
 		}
 	}
@@ -2541,7 +2541,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 				const Entity &entity = scene.entities[i];
 
 				if ( !entity.visible || entity.culled ) continue;
-				if ( !entity.materialH ) continue;
+				if ( !entity.materialId ) continue;
 
 				// Draw!!!
 				const uint32_t indexCount = entity.indices.size/2; // div 2 (2 bytes per index)

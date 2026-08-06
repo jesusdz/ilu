@@ -35,7 +35,7 @@ struct Entity
 	GeometryType geometryType;
 	BufferChunk vertices;
 	BufferChunk indices;
-	MaterialH materialH;
+	ID materialId;
 	// Sprite entity
 	SpriteH spriteH;
 	i32 layer;
