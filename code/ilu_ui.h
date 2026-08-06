@@ -17,7 +17,7 @@
 
 // Fixed capacities. All of them are hard limits guarded by ASSERTs at their
 // push sites, so raising a ceiling is a matter of bumping the value here.
-#define UI_MAX_WINDOWS 32
+#define UI_MAX_WINDOWS 64
 #define UI_MAX_WINDOW_SECTIONS 16
 #define UI_MAX_WINDOW_CAPTION 64
 #define UI_MAX_WIDGET_INFOS 1024
