@@ -53,6 +53,7 @@ Material mat_grass = {
 // Entities ////////////////////////////////////////////////////////////
 
 Entity ent_cube0 = {
+ .id = 1007,
  .materialId = 1004,
  .pos = {1.000000, 0.000000, 1.000000},
  .scale = 1.000000,
@@ -60,6 +61,7 @@ Entity ent_cube0 = {
 };
 
 Entity ent_cube1 = {
+ .id = 1008,
  .materialId = 1004,
  .pos = {1.000000, 0.000000, -1.000000},
  .scale = 1.000000,
@@ -67,6 +69,7 @@ Entity ent_cube1 = {
 };
 
 Entity ent_cube2 = {
+ .id = 1009,
  .materialId = 1005,
  .pos = {-1.000000, 0.000000, 1.000000},
  .scale = 1.000000,
@@ -74,6 +77,7 @@ Entity ent_cube2 = {
 };
 
 Entity ent_cube3 = {
+ .id = 1010,
  .materialId = 1005,
  .pos = {-1.000000, 0.000000, -1.000000},
  .scale = 1.000000,
@@ -81,6 +85,7 @@ Entity ent_cube3 = {
 };
 
 Entity ent_plane = {
+ .id = 1011,
  .materialId = 1006,
  .pos = {0.000000, -0.500000, 0.000000},
  .scale = 11.000000,

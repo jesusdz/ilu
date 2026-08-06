@@ -404,7 +404,7 @@ bool RenderGraphics(Engine &engine)
 		// CPU Frustum culling
 		const float3 cameraForward = ForwardDirectionFromAngles(camera.orientation);
 		const FrustumPlanes frustumPlanes = FrustumPlanesFromCamera(camera.position, cameraForward, znear, zfar, fovy, ar);
-		for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
+		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			Entity &entity = scene.entities[i];
 			entity.culled = !EntityIsInFrustum3D(scene, entity, frustumPlanes);
@@ -426,7 +426,7 @@ bool RenderGraphics(Engine &engine)
 		frustumBottomRight = Float4( Float3(height*ar, -height, 0), 0.0f );
 
 		// CPU Frustum culling
-		for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
+		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			Entity &entity = scene.entities[i];
 			entity.culled = !EntityIsInFrustum2D(scene, entity, cameraMinMaxRect.xy, cameraMinMaxRect.zw);
@@ -455,7 +455,7 @@ bool RenderGraphics(Engine &engine)
 	const f32 f = 1.0f;
 	const float4x4 camera2dProjection = Orthogonal(l, r, b, t, n, f);
 
-	const EntityH selectedEntity = EditorGetSelectedEntity(editor);
+	const ID selectedEntity = EditorGetSelectedEntity(editor);
 	const u32 selectedEntityDrawId = selectedEntity
 		? EntityDrawId(scene, selectedEntity) : 0xFFFFFFFF;
 
@@ -529,7 +529,7 @@ bool RenderGraphics(Engine &engine)
 	const bool parallaxEnabled = engine.game.state == GameStateRunning; // The editor shows all layers unshifted
 
 	u32 tileCount = 0;
-	for (u16 roomIndex = 0; roomIndex < HandleCount(scene.roomHandles); ++roomIndex)
+	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
 		const Room &room = scene.rooms[roomIndex];
 
@@ -577,7 +577,7 @@ bool RenderGraphics(Engine &engine)
 
 	// Update entity data
 	SEntity *entities = (SEntity*)GetBufferPtr(gfx.device, gfx.entityBuffer[frameIndex]);
-	for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
+	for (u32 i = 0; i < scene.entityCount; ++i)
 	{
 		const Entity &entity = scene.entities[i];
 		float3 entityScale = Float3(entity.scale);
@@ -668,7 +668,7 @@ bool RenderGraphics(Engine &engine)
 
 		SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
-		for (u16 entityIndex = 0; entityIndex < HandleCount(scene.entityHandles); ++entityIndex)
+		for (u32 entityIndex = 0; entityIndex < scene.entityCount; ++entityIndex)
 		{
 			const Entity &entity = scene.entities[entityIndex];
 
@@ -682,7 +682,7 @@ bool RenderGraphics(Engine &engine)
 			const uint32_t indexCount = entity.indices.size/sizeof(Index);
 			const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
 			const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, entityIndex)));
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[entityIndex].id));
 		}
 
 		EndRenderPass(commandList);
@@ -711,7 +711,7 @@ bool RenderGraphics(Engine &engine)
 		SetViewportAndScissor(commandList, displaySize);
 
 		// Entities
-		for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
+		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			const Entity &entity = scene.entities[i];
 
@@ -738,7 +738,7 @@ bool RenderGraphics(Engine &engine)
 			const uint32_t indexCount = entity.indices.size/sizeof(Index);
 			const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
 			const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, entity.id));
 
 			EndDebugGroup(commandList);
 		}
@@ -792,7 +792,7 @@ bool RenderGraphics(Engine &engine)
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
 
-			for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
+			for (u32 i = 0; i < scene.entityCount; ++i)
 			{
 				const Entity &entity = scene.entities[i];
 
@@ -815,7 +815,7 @@ bool RenderGraphics(Engine &engine)
 
 				BeginDebugGroup(commandList, entity.name ? entity.name : "sprite", ColorBlack);
 				SetBindGroup(commandList, 2, textureBindGroup);
-				DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
+				DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, entity.id));
 				EndDebugGroup(commandList);
 			}
 		}

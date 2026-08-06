@@ -309,6 +309,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Entity %s = {", desc.name);
 
 		PushIndent(ctx);
+		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		if (desc.spriteId.slot != 0) {
 			WriteLine(ctx, ".spriteId = %u,", desc.spriteId.slot);
 		} else if (desc.materialId.slot != 0) {
@@ -335,6 +336,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Room %s = {", desc.name);
 
 		PushIndent(ctx);
+		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		WriteLine(ctx, ".pos = {%d, %d},", desc.pos.x, desc.pos.y);
 		WriteLine(ctx, ".layers = {");
 		PushIndent(ctx);
@@ -1191,6 +1193,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
+					static const String sId = MakeString("id");
 					static const String sMaterialId = MakeString("materialId");
 					static const String sSpriteId = MakeString("spriteId");
 					static const String sPos = MakeString("pos");
@@ -1198,7 +1201,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sLayer = MakeString("layer");
 					static const String sGeometryType = MakeString("geometryType");
 
-					if ( StrEq( field, sMaterialId ) ) {
+					if ( StrEq( field, sId ) ) {
+						desc.id = { DParser_ConsumeU32(parser) };
+					} else if ( StrEq( field, sMaterialId ) ) {
 						desc.materialId = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sSpriteId ) ) {
 						desc.spriteId = { DParser_ConsumeU32(parser) };
@@ -1234,10 +1239,13 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
+					static const String sId = MakeString("id");
 					static const String sPos = MakeString("pos");
 					static const String sLayers = MakeString("layers");
 
-					if ( StrEq( field, sPos ) ) {
+					if ( StrEq( field, sId ) ) {
+						desc.id = { DParser_ConsumeU32(parser) };
+					} else if ( StrEq( field, sPos ) ) {
 						desc.pos = DParser_ConsumeInt2(parser);
 					} else if ( StrEq( field, sLayers ) ) {
 						DParser_ConsumeRoomLayers(parser, desc);
@@ -1639,6 +1647,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			const EntityDesc &desc = descriptors.entityDescs[i];
 
 			BinEntityDesc &d = binEntityDescs[i];
+			d.id           = desc.id;
 			d.name         = DataInternString(stringPool, desc.name);
 			d.materialId   = desc.materialId;
 			d.spriteId     = desc.spriteId;
@@ -1655,6 +1664,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 			BinRoomDesc &d = binRoomDescs[i];
 			d = {};
+			d.id         = desc.id;
 			d.name       = DataInternString(stringPool, desc.name);
 			d.pos        = desc.pos;
 			d.layerCount = desc.layerCount;

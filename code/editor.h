@@ -104,8 +104,8 @@ struct EditorSelection
 	union
 	{
 		Handle handle; // untyped view, only for clearing and comparing
-		RoomH roomH;
-		EntityH entityH;
+		ID roomId;
+		ID entityId;
 		ID materialId;
 		ID textureId;
 		AudioClipH audioClipH;
@@ -141,7 +141,7 @@ constexpr u32 EditorNoLayer = U32_MAX;
 struct EditorContext
 {
 	FileNode *selectedFile;
-	RoomH roomH;
+	ID roomId;
 	u32 layerIndex;
 	ID spriteId; // brush
 	EditorTool tool;
@@ -197,13 +197,13 @@ void EditorUpdate(Engine &engine);
 void EditorRender(Engine &engine, CommandList &commandList);
 void EditorPostRender(Engine &engine);
 
-inline EntityH EditorGetSelectedEntity(const Editor &editor)
+inline ID EditorGetSelectedEntity(const Editor &editor)
 {
-	EntityH handle = InvalidHandle;
+	ID entityId = {};
 	if ( editor.inspector.selected.type == EditorSelectedType_Entity ) {
-		handle = editor.inspector.selected.entityH;
+		entityId = editor.inspector.selected.entityId;
 	}
-	return handle;
+	return entityId;
 }
 
 #endif // #ifndef EDITOR_H

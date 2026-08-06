@@ -28,10 +28,10 @@ static const char *MakeName(const char *format, ...)
 // Both null once the selection is gone, and only good for this frame
 static Room *EditorGetContextRoom(Engine &engine)
 {
-	const RoomH roomH = engine.editor.context.roomH;
+	const ID roomId = engine.editor.context.roomId;
 	Room *room = nullptr;
-	if ( roomH ) {
-		room = &GetRoom(engine.scene, roomH);
+	if ( roomId ) {
+		room = &GetRoom(roomId);
 	}
 	return room;
 }
@@ -307,40 +307,40 @@ static void EditorSelectScene(Editor &editor, Scene &scene)
 	editor.inspector.nextSelected.type = EditorSelectedType_Scene;
 }
 
-static void EditorSelectRoom(Editor &editor, RoomH roomH)
+static void EditorSelectRoom(Editor &editor, ID roomId)
 {
-	editor.context.roomH = roomH;
+	editor.context.roomId = roomId;
 	editor.context.layerIndex = EditorNoLayer;
 	editor.inspector.nextSelected.type = EditorSelectedType_Room;
 }
 
-static void EditorUnselectRoom(Editor &editor, RoomH roomH)
+static void EditorUnselectRoom(Editor &editor, ID roomId)
 {
-	if (editor.context.roomH == roomH) {
-		editor.context.roomH = InvalidHandle;
+	if (editor.context.roomId == roomId) {
+		editor.context.roomId = {};
 		editor.context.layerIndex = EditorNoLayer;
 		editor.inspector.nextSelected.type = EditorSelectedType_None;
 	}
 }
 
-static void EditorSelectLayer(Editor &editor, RoomH roomH, u32 layerIndex)
+static void EditorSelectLayer(Editor &editor, ID roomId, u32 layerIndex)
 {
-	editor.context.roomH = roomH;
+	editor.context.roomId = roomId;
 	editor.context.layerIndex = layerIndex;
 	editor.inspector.nextSelected.type = EditorSelectedType_Layer;
 }
 
-static void EditorUnselectLayer(Editor &editor, RoomH roomH, u32 layerIndex)
+static void EditorUnselectLayer(Editor &editor, ID roomId, u32 layerIndex)
 {
-	if (editor.context.roomH == roomH && editor.context.layerIndex == layerIndex) {
+	if (editor.context.roomId == roomId && editor.context.layerIndex == layerIndex) {
 		editor.context.layerIndex = EditorNoLayer;
 		editor.inspector.nextSelected.type = EditorSelectedType_None;
 	}
 }
 
-static void EditorSelectEntity(Editor &editor, EntityH handle)
+static void EditorSelectEntity(Editor &editor, ID entityId)
 {
-	editor.inspector.nextSelected.entityH = handle;
+	editor.inspector.nextSelected.entityId = entityId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Entity;
 }
 
@@ -415,7 +415,7 @@ static void EditorSelectFileUnknown(Editor &editor, FileNode *node)
 static void EditorUnselectAll(Editor &editor)
 {
 	editor.context.selectedFile = nullptr;
-	editor.context.roomH = InvalidHandle;
+	editor.context.roomId = {};
 	editor.context.layerIndex = EditorNoLayer;
 	editor.inspector.nextSelected.value = 0;
 	editor.inspector.nextSelected.type = EditorSelectedType_None;
@@ -474,7 +474,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			UI_Indent(ui);
 
 			UIID roomIndex = 0;
-			for (u16 roomIdx = 0; roomIdx < HandleCount(scene.roomHandles); ++roomIdx)
+			for (u32 roomIdx = 0; roomIdx < scene.roomCount; ++roomIdx)
 			{
 				Room &room = scene.rooms[roomIdx];
 
@@ -482,7 +482,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 				bool roomIsOpen;
 				if (UI_TreeNode(ui, room.name, &room, &roomIsOpen))
 				{
-					EditorSelectRoom(editor, GetHandleAt(scene.roomHandles, roomIdx));
+					EditorSelectRoom(editor, scene.rooms[roomIdx].id);
 				}
 				UI_PushID(ui, roomIndex++);
 				if (UI_BeginContextMenu(ui, "RoomContext"))
@@ -505,8 +505,8 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 				if (removeRoom)
 				{
-					EditorUnselectRoom(editor, GetHandleAt(scene.roomHandles, roomIdx));
-					RemoveRoom(engine, GetHandleAt(scene.roomHandles, roomIdx));
+					EditorUnselectRoom(editor, scene.rooms[roomIdx].id);
+					RemoveRoom(engine, scene.rooms[roomIdx].id);
 					break;
 				}
 
@@ -529,7 +529,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 						// the room's own node.
 						if  (UI_TreeNode(ui, layer.name, &room.layers, &layerIsOpen))
 						{
-							EditorSelectLayer(editor, GetHandleAt(scene.roomHandles, roomIdx), layerIndex);
+							EditorSelectLayer(editor, scene.rooms[roomIdx].id, layerIndex);
 						}
 						const bool moveDown = UI_Button(ui, "v"); // Towards the back
 						const bool moveUp = UI_Button(ui, "^"); // Towards the front
@@ -537,24 +537,24 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 						UI_EndLayout(ui);
 
-						const RoomH roomH = GetHandleAt(scene.roomHandles, roomIdx);
+						const ID roomId = scene.rooms[roomIdx].id;
 
 						if (moveDown || moveUp)
 						{
 							// The layer changes slot, so the selection, which holds its index in
 							// the array, has to follow it to where it landed.
-							const bool wasSelected = editor.context.roomH == roomH &&
+							const bool wasSelected = editor.context.roomId == roomId &&
 								editor.context.layerIndex == layerIndex;
 							const u32 movedIndex = MoveLayer(room, layerIndex, moveDown ? 1 : -1);
 							if (wasSelected) {
-								EditorSelectLayer(editor, roomH, movedIndex);
+								EditorSelectLayer(editor, roomId, movedIndex);
 							}
 							break;
 						}
 
 						if (removeLayer)
 						{
-							EditorUnselectLayer(editor, roomH, layerIndex);
+							EditorUnselectLayer(editor, roomId, layerIndex);
 							RemoveLayer(room, layerIndex);
 							break;
 						}
@@ -566,12 +566,12 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			UI_Unindent(ui);
 		}
 
-		for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
+		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			const Entity &entity = scene.entities[i];
 
 			if ( UI_Button(ui, entity.name) ) {
-				EditorSelectEntity(editor, GetHandleAt(scene.entityHandles, i));
+				EditorSelectEntity(editor, scene.entities[i].id);
 			}
 		}
 	}
@@ -951,8 +951,8 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 static void EditorUpdateUI_InspectorScene(Engine &engine, Scene &scene)
 {
 	UI &ui = engine.ui;
-	UI_Text(ui, "Rooms", "%u", HandleCount(scene.roomHandles));
-	UI_Text(ui, "Entities", "%u", HandleCount(scene.entityHandles));
+	UI_Text(ui, "Rooms", "%u", scene.roomCount);
+	UI_Text(ui, "Entities", "%u", scene.entityCount);
 	UI_Text(ui, "Sprites", "%u", scene.spriteCount);
 }
 
@@ -1159,30 +1159,35 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if(inspector.selected.type == EditorSelectedType_Entity)
 		{
-			Entity &entity = GetEntity(engine.scene, engine.editor.inspector.selected.entityH);
-
-			static char name[64];
-			StrCopy(name, entity.name);
-			UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
-			entity.name = InternString(name);
-
-			float3 entityPos = entity.position;
-			if (UI_InputFloat3(ui, "Pos", &entityPos)) {
-				EntitySetPosition(entity, entityPos);
-			}
-			UI_InputFloat(ui, "Scale", &entity.scale);
-			UI_Checkbox(ui, "Visible", &entity.visible);
-
-			if (entity.spriteId)
+			// The ID goes invalid the moment the entity is removed, so this can be a
+			// stale selection even though the element survives until CompactEntities
+			if (inspector.selected.entityId)
 			{
-				UI_SeparatorLabel(ui, "Sprite");
+				Entity &entity = GetEntity(inspector.selected.entityId);
 
-				const SpriteDesc &sprite = GetSprite(entity.spriteId).desc;
-				UI_Text(ui, "Name", sprite.name);
+				static char name[64];
+				StrCopy(name, entity.name);
+				UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
+				entity.name = InternString(name);
 
-				if (UI_Button(ui, "Go to sprite"))
+				float3 entityPos = entity.position;
+				if (UI_InputFloat3(ui, "Pos", &entityPos)) {
+					EntitySetPosition(entity, entityPos);
+				}
+				UI_InputFloat(ui, "Scale", &entity.scale);
+				UI_Checkbox(ui, "Visible", &entity.visible);
+
+				if (entity.spriteId)
 				{
-					EditorSelectSprite(editor, entity.spriteId);
+					UI_SeparatorLabel(ui, "Sprite");
+
+					const SpriteDesc &sprite = GetSprite(entity.spriteId).desc;
+					UI_Text(ui, "Name", sprite.name);
+
+					if (UI_Button(ui, "Go to sprite"))
+					{
+						EditorSelectSprite(editor, entity.spriteId);
+					}
 				}
 			}
 		}
@@ -1985,12 +1990,12 @@ static void EditorUpdateInteraction2D(Engine &engine, const Window &window, cons
 	UI &ui = engine.ui;
 	const Mouse &mouse = window.mouse;
 
-	EntityH selectedEntity = EditorGetSelectedEntity(editor);
+	const ID selectedEntity = EditorGetSelectedEntity(editor);
 
 	// Object transformations
 	if ( handleInput && selectedEntity )
 	{
-		Entity &entity = GetEntity(engine.scene, selectedEntity);
+		Entity &entity = GetEntity(selectedEntity);
 
 		const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
 
@@ -2052,7 +2057,7 @@ static void EditorUpdateInteraction2D(Engine &engine, const Window &window, cons
 
 			if (KeyPress(window.keyboard, K_D))
 			{
-				const EntityH newEntity = DuplicateEntity(engine, selectedEntity);
+				const ID newEntity = DuplicateEntity(engine, selectedEntity);
 				EditorSelectEntity(editor, newEntity);
 				editor.isTranslating = true;
 			}
@@ -2159,14 +2164,14 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 			editor.selectEntity = false;
 
 			WaitDeviceIdle(engine.gfx.device);
-			// What the id pass wrote is a draw id, not a handle: it carries the entity's
-			// position in the array, which is only meaningful together with the generation
+			// What the id pass wrote is a draw id, not an ID: its low half is the entity's
+			// ID slot, the high half its position in the array at the time it was drawn
 			const u32 drawId = *(u32*)GetBufferPtr(engine.gfx.device, engine.gfx.selectionBufferH);
-			const EntityH entityHandle = EntityHandleFromDrawId(engine.scene, drawId);
+			const ID entityId = EntityFromDrawId(drawId);
 
-			if (entityHandle)
+			if (entityId)
 			{
-				EditorSelectEntity(editor, entityHandle);
+				EditorSelectEntity(editor, entityId);
 			}
 			else
 			{
@@ -2382,7 +2387,7 @@ void EditorInitialize(Engine &engine)
 	editor.showQuit = false;
 
 	// Zero is a valid layer index, so "nothing selected" has to be set explicitly
-	editor.context.roomH = InvalidHandle;
+	editor.context.roomId = {};
 	editor.context.layerIndex = EditorNoLayer;
 
 	// projectionType is derived from the array index so it can never drift out of sync with it
@@ -2525,7 +2530,8 @@ void EditorRender(Engine &engine, CommandList &commandList)
 		BeginDebugGroup(commandList, "Entity selection", ColorBlack);
 
 		{ // Draw entity IDs
-			SetClearColorU32(commandList, 0, InvalidHandle.num);
+			// Draw id 0 is the background: no live entity ever has ID slot 0
+			SetClearColorU32(commandList, 0, 0);
 
 			BeginRenderPass(commandList, gfx.renderTargets.idFramebuffer );
 
@@ -2538,7 +2544,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
 
-			for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
+			for (u32 i = 0; i < scene.entityCount; ++i)
 			{
 				const Entity &entity = scene.entities[i];
 
@@ -2549,7 +2555,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 				const uint32_t indexCount = entity.indices.size/2; // div 2 (2 bytes per index)
 				const uint32_t firstIndex = entity.indices.offset/2; // div 2 (2 bytes per index)
 				const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
+				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[i].id));
 			}
 
 			{ // Sprite entities
@@ -2559,14 +2565,14 @@ void EditorRender(Engine &engine, CommandList &commandList)
 
 				SetPipeline(commandList, gfx.spriteIdPipelineH);
 
-				for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i)
+				for (u32 i = 0; i < scene.entityCount; ++i)
 				{
 					const Entity &entity = scene.entities[i];
 
 					if ( !entity.visible || entity.culled ) continue;
 					if ( !entity.spriteId ) continue;
 
-					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
+					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, scene.entities[i].id));
 				}
 			}
 

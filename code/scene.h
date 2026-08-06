@@ -10,9 +10,6 @@ struct Sprite
 	SpriteDesc desc;
 };
 
-DECLARE_HANDLE_TYPE(EntityH);
-DECLARE_HANDLE_TYPE(RoomH);
-
 struct SpriteAnimState
 {
 	f32 elapsedTime;
@@ -21,6 +18,7 @@ struct SpriteAnimState
 
 struct Entity
 {
+	ID id;
 	const char *name;
 	float3 position;
 	float scale;
@@ -35,8 +33,10 @@ struct Entity
 	ID spriteId;
 	i32 layer;
 
-	Entity *next; // Pointer to sibling in the hierarchy
-	Entity *child; // Pointer to children in the hierarchy
+	// Hierarchy links. IDs rather than pointers: the element array compacts, so a
+	// pointer into it would dangle at the next CompactEntities.
+	ID next;  // Sibling
+	ID child; // First child
 };
 
 #define PIXELS_PER_METER 16
@@ -65,6 +65,7 @@ struct Layer
 
 struct Room
 {
+	ID id;
 	const char *name;
 	int2 pos;
 	Layer layers[MAX_LAYERS];
@@ -81,11 +82,11 @@ constexpr u32 SCENE_HEIGHT = 180;
 
 struct Scene
 {
+	u32 roomCount;
 	Room rooms[MAX_ROOMS];
-	HandlePool roomHandles;
 
+	u32 entityCount;
 	Entity entities[MAX_ENTITIES];
-	HandlePool entityHandles;
 
 	u32 spriteCount;
 	Sprite sprites[MAX_SPRITES];
@@ -111,18 +112,19 @@ void CompactSprites(Scene &scene);
 ////////////////////////////////////////////////////////////////////////
 // Entity management
 
-Entity &GetEntity(Scene &scene, EntityH handle);
-u16 GetEntityIndex(const Scene &scene, EntityH handle);
+Entity &GetEntity(ID entityId);
+u16 GetEntityIndex(const Scene &scene, ID entityId);
 void EntitySetPosition(Entity &entity, float3 position);
-EntityDesc GetEntityDesc(Scene &scene, EntityH handle);
-EntityH CreateEntity(Engine &engine, const EntityDesc &desc);
-EntityH CreateEntity(Engine &engine, const BinEntityDesc &desc);
-void RemoveEntity(Engine &engine, EntityH handle);
-EntityH DuplicateEntity(Engine &engine, EntityH entityHandle);
+EntityDesc GetEntityDesc(ID entityId);
+ID CreateEntity(Engine &engine, ID existingId);
+ID CreateEntity(Engine &engine, const EntityDesc &desc);
+ID CreateEntity(Engine &engine, const BinEntityDesc &desc);
+void RemoveEntity(Engine &engine, ID entityId);
+ID DuplicateEntity(Engine &engine, ID entityId);
 void CompactEntities(Scene &scene);
 
-u32 EntityDrawId(const Scene &scene, EntityH handle);
-EntityH EntityHandleFromDrawId(const Scene &scene, u32 drawId);
+u32 EntityDrawId(const Scene &scene, ID entityId);
+ID EntityFromDrawId(u32 drawId);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -139,8 +141,8 @@ bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 ////////////////////////////////////////////////////////////////////////
 // Room and layer management
 
-Room &GetRoom(Scene &scene, RoomH handle);
-u16 GetRoomIndex(const Scene &scene, RoomH handle);
+Room &GetRoom(ID roomId);
+u16 GetRoomIndex(const Scene &scene, ID roomId);
 void CompactRooms(Scene &scene);
 u32 CreateLayer(Room &room, const LayerDesc &desc);
 void RemoveLayer(Room &room, u32 index);
@@ -148,10 +150,11 @@ u32 MoveLayer(Room &room, u32 index, i32 delta); // delta -1 moves towards the f
 const Layer *GetBaseLayer(const Room &room);
 float2 LayerSize(const Layer &layer);
 float2 RoomSize(const Room &room);
-RoomH CreateRoom(Engine &engine);
-RoomH CreateRoom(Engine &engine, const RoomDesc &desc);
-RoomH CreateRoom(Engine &engine, const BinRoom &binRoom);
-void RemoveRoom(Engine &engine, RoomH handle);
+ID CreateRoom(Engine &engine);
+ID CreateRoom(Engine &engine, ID existingId);
+ID CreateRoom(Engine &engine, const RoomDesc &desc);
+ID CreateRoom(Engine &engine, const BinRoom &binRoom);
+void RemoveRoom(Engine &engine, ID roomId);
 
 
 ////////////////////////////////////////////////////////////////////////

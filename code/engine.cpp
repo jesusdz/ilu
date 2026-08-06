@@ -137,16 +137,20 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static EntityDesc entityDescs[MAX_ENTITIES];
 	u32 entityCount = 0;
-	for (u16 i = 0; i < HandleCount(engine.scene.entityHandles); ++i) {
-		entityDescs[entityCount++] = GetEntityDesc(engine.scene, GetHandleAt(engine.scene.entityHandles, i));
+	for (u16 i = 0; i < engine.scene.entityCount; ++i) {
+		const Entity &entity = engine.scene.entities[i];
+		if ( !entity.id ) { continue; }
+		entityDescs[entityCount++] = GetEntityDesc(entity.id);
 	}
 
 	static RoomDesc roomDescs[MAX_ROOMS];
 	u32 roomCount = 0;
-	for (u16 roomIndex = 0; roomIndex < HandleCount(engine.scene.roomHandles); ++roomIndex) {
+	for (u16 roomIndex = 0; roomIndex < engine.scene.roomCount; ++roomIndex) {
 		const Room &room = engine.scene.rooms[roomIndex];
+		if ( !room.id ) { continue; }
 		RoomDesc &desc = roomDescs[roomCount++];
 		desc = {};
+		desc.id = room.id;
 		desc.name = room.name;
 		desc.pos = room.pos;
 		for (u32 l = 0; l < ARRAY_COUNT(room.layers); ++l) {
@@ -748,8 +752,6 @@ ENGINE_API bool OnPlatformWindowInit(Plat &platform)
 			.height = 8.0f,
 		};
 
-		Initialize(engine.scene.roomHandles, GlobalArena, MAX_ROOMS);
-		Initialize(engine.scene.entityHandles, GlobalArena, MAX_ENTITIES);
 
 #if USE_EDITOR
 		EditorInitialize(engine);
@@ -936,42 +938,47 @@ void SetCamera(const Camera &camera)
 	engine->gfx.camera = camera;
 }
 
-RoomH FindRoom(const char *name)
+ID FindRoom(const char *name)
 {
-	for (u16 i = 0; i < HandleCount(engine->scene.roomHandles); ++i)
+	for (u32 i = 0; i < engine->scene.roomCount; ++i)
 	{
-		if ( StrEq(engine->scene.rooms[i].name, name) ) {
-			return GetHandleAt(engine->scene.roomHandles, i);
+		const Room &room = engine->scene.rooms[i];
+		if ( room.id && StrEq(room.name, name) ) {
+			return room.id;
 		}
 	}
-	return InvalidHandle;
+	return {};
 }
 
-Room *GetRoom(RoomH handle)
+// Nullable counterpart to GetRoom, which asserts. Game code holds an ID across frames
+// and has to cope with the room going away.
+Room *TryGetRoom(ID roomId)
 {
 	Room *roomPtr = nullptr;
-	if ( handle ) {
-		roomPtr = &GetRoom(engine->scene, handle);
+	if ( roomId ) {
+		roomPtr = &GetRoom(roomId);
 	}
 	return roomPtr;
 }
 
-EntityH FindEntity(const char *name)
+ID FindEntity(const char *name)
 {
-	for (u16 i = 0; i < HandleCount(engine->scene.entityHandles); ++i)
+	for (u32 i = 0; i < engine->scene.entityCount; ++i)
 	{
-		if ( StrEq(engine->scene.entities[i].name, name) ) {
-			return GetHandleAt(engine->scene.entityHandles, i);
+		const Entity &entity = engine->scene.entities[i];
+		if ( entity.id && StrEq(entity.name, name) ) {
+			return entity.id;
 		}
 	}
-	return InvalidHandle;
+	return {};
 }
 
-Entity *GetEntity(EntityH handle)
+// See TryGetRoom
+Entity *TryGetEntity(ID entityId)
 {
 	Entity *ent = nullptr;
-	if ( handle ) {
-		ent = &GetEntity(engine->scene, handle);
+	if ( entityId ) {
+		ent = &GetEntity(entityId);
 	}
 	return ent;
 }

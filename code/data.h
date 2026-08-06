@@ -78,6 +78,7 @@ enum GeometryType
 
 struct EntityDesc
 {
+	ID id;
 	const char *name;
 	// 3D entity
 	ID materialId;
@@ -118,6 +119,7 @@ struct LayerDesc
 
 struct RoomDesc
 {
+	ID id;
 	const char *name;
 	int2 pos;
 	LayerDesc layers[MAX_LAYERS];
@@ -248,6 +250,7 @@ struct BinSpriteDesc
 
 struct BinEntityDesc
 {
+	ID id;
 	const char *name;
 	ID materialId;
 	ID spriteId;
@@ -269,13 +272,14 @@ struct BinLayerDesc
 
 struct BinRoomDesc
 {
+	ID id;
 	const char *name;
 	int2 pos;
 	u32 layerCount;
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-constexpr u32 BinAssetsVersion = 6; // 6: sprites carry an ID; entities and tiles refer to one by ID
+constexpr u32 BinAssetsVersion = 7; // 7: entities and rooms carry an ID
 
 struct BinAssetsHeader
 {

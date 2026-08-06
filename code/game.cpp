@@ -19,8 +19,8 @@ void GameStart(Game &game)
 	game.accel2 = 50;
 	game.playerState = OnAir;
 
-	game.entH = FindEntity("player");
-	if ( Entity *player = GetEntity(game.entH) ) {
+	game.entId = FindEntity("player");
+	if ( Entity *player = TryGetEntity(game.entId) ) {
 		player->position.xy = float2{1, 1};
 	}
 	game.sndJump = GetAudioClip("snd_bell_wav");
@@ -36,7 +36,7 @@ void GameStart(Game &game)
 		.height = 90.0f / PIXELS_PER_METER,
 	};
 
-	game.roomH = FindRoom("Room");
+	game.roomId = FindRoom("Room");
 }
 
 // Translate platform input to game input controls
@@ -74,8 +74,8 @@ void GameSimulate(Game &game)
 	const f32 deltaSeconds = game.deltaSeconds;
 	constexpr f32 gravity = -15.8f;
 
-	const Room *roomPtr = GetRoom(game.roomH);
-	Entity *player = GetEntity(game.entH);
+	const Room *roomPtr = TryGetRoom(game.roomId);
+	Entity *player = TryGetEntity(game.entId);
 	if ( !roomPtr || !player ) {
 		return;
 	}
@@ -228,7 +228,7 @@ void GameUpdate(Game &game)
 {
 	SetCamera(game.camera);
 
-	//const Room *roomPtr = GetRoom(game.roomH);
+	//const Room *roomPtr = TryGetRoom(game.roomId);
 	//DrawBoxOutline(Float2(roomPtr->pos), LayerSize(roomPtr->layers[0]), ColorOrange);
 	DrawBox(game.box1.pos, game.box1.size, game.box1.color);
 }

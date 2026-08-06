@@ -49,10 +49,10 @@ inline bool operator!=(Handle a, Handle b)
 	return nequal;
 }
 
-// A distinct type per pool, so a RoomH cannot stand in for an EntityH. Conversion
+// A distinct type per pool, so a MusicH cannot stand in for an AudioClipH. Conversion
 // to and from the untyped Handle the pool trades in is implicit, which keeps the pool
 // API usable without casts everywhere; C++ allows only one user-defined conversion in
-// a sequence, so RoomH -> Handle -> EntityH is still rejected and passing a handle
+// a sequence, so MusicH -> Handle -> AudioClipH is still rejected and passing a handle
 // to the wrong accessor will not compile.
 //
 // `operator bool` is only declared here. Each type defines it next to the pool that

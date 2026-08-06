@@ -1,6 +1,3 @@
-EntityH::operator bool() const { return IsValidHandle(engine->scene.entityHandles, *this); }
-RoomH::operator bool()   const { return IsValidHandle(engine->scene.roomHandles, *this); }
-
 Sprite &GetSprite(ID id)
 {
 	ASSERT( Valid(id) );
@@ -179,80 +176,130 @@ void CompactSprites(Scene &scene)
 ////////////////////////////////////////////////////////////////////////
 // Room management
 
-Room &GetRoom(Scene &scene, RoomH handle)
+Room &GetRoom(ID id)
 {
-	ASSERT( IsValidHandle(scene.roomHandles, handle) );
-	Room &room = scene.rooms[GetHandleIndex(scene.roomHandles, handle)];
+	ASSERT( Valid(id) );
+	Room &room = *((Room*)GetObject(id));
 	return room;
 }
 
-u16 GetRoomIndex(const Scene &scene, RoomH handle)
+u16 GetRoomIndex(const Scene &scene, ID id)
 {
-	ASSERT( IsValidHandle(scene.roomHandles, handle) );
-	return GetHandleIndex(scene.roomHandles, handle);
-}
-
-static MOVE_ELEMENT(MoveRoom)
-{
-	Scene &scene = *(Scene*)data;
-	scene.rooms[dstIndex] = scene.rooms[srcIndex];
+	const Room &room = GetRoom(id);
+	const u16 index = (u16)(&room - scene.rooms);
+	ASSERT( index < scene.roomCount );
+	return index;
 }
 
 void CompactRooms(Scene &scene)
 {
-	CompactPool(scene.roomHandles, MoveRoom, nullptr, &scene);
+	u32 storeIndex = U32_MAX;
+	for (u32 i = 0; i < scene.roomCount; ++i)
+	{
+		if ( !scene.rooms[i].id ) {
+			storeIndex = i;
+			break;
+		}
+	}
+
+	if ( storeIndex == U32_MAX ) {
+		return;
+	}
+
+	for (u32 readIndex = storeIndex; readIndex < scene.roomCount; ++readIndex)
+	{
+		Room &readRoom = scene.rooms[readIndex];
+
+		if ( !readRoom.id )
+		{
+			readRoom = {};
+			continue;
+		}
+
+		Room &writeRoom = scene.rooms[storeIndex++];
+		writeRoom = readRoom;
+		readRoom = {};
+
+		SetObject(writeRoom.id, &writeRoom);
+	}
+
+	scene.roomCount = storeIndex;
 }
 
 
 ////////////////////////////////////////////////////////////////////////
 // Entity management
 
-Entity &GetEntity(Scene &scene, EntityH handle)
+Entity &GetEntity(ID id)
 {
-	ASSERT( IsValidHandle(scene.entityHandles, handle) );
-	Entity &entity = scene.entities[GetHandleIndex(scene.entityHandles, handle)];
+	ASSERT( Valid(id) );
+	Entity &entity = *((Entity*)GetObject(id));
 	return entity;
 }
 
-u16 GetEntityIndex(const Scene &scene, EntityH handle)
+// Entities keep a dense index, unlike textures: the GPU entity buffer is addressed by it.
+u16 GetEntityIndex(const Scene &scene, ID id)
 {
-	ASSERT( IsValidHandle(scene.entityHandles, handle) );
-	return GetHandleIndex(scene.entityHandles, handle);
+	const Entity &entity = GetEntity(id);
+	const u16 index = (u16)(&entity - scene.entities);
+	ASSERT( index < scene.entityCount );
+	return index;
 }
 
-u32 EntityDrawId(const Scene &scene, EntityH handle)
+// The high half indexes the GPU entity buffer, the low half is the entity's ID slot.
+// The shaders pull the index back out with a >>16 and compare the whole value against
+// globals.selectedEntity, so both halves have to stay where they are.
+CT_ASSERT(ILU_ID_MAX_SLOTS <= U16_MAX);
+
+u32 EntityDrawId(const Scene &scene, ID id)
 {
-	const u32 index = GetEntityIndex(scene, handle);
-	const u32 drawId = (index << 16) | handle.gen;
+	const u32 index = GetEntityIndex(scene, id);
+	const u32 drawId = (index << 16) | id.slot;
 	return drawId;
 }
 
-EntityH EntityHandleFromDrawId(const Scene &scene, u32 drawId)
+ID EntityFromDrawId(u32 drawId)
 {
-	const u16 index = (u16)(drawId >> 16);
-	const u16 gen = (u16)(drawId & 0xFFFF);
-
-	EntityH handle = InvalidHandle;
-	if ( index < HandleCount(scene.entityHandles) )
-	{
-		const EntityH candidate = GetHandleAt(scene.entityHandles, index);
-		// The readback is a frame behind, so the element may belong to someone else now
-		if ( candidate.gen == gen ) {
-			handle = candidate;
-		}
-	}
-	return handle;
-}
-
-static MOVE_ELEMENT(MoveEntity)
-{
-	Scene &scene = *(Scene*)data;
-	scene.entities[dstIndex] = scene.entities[srcIndex];
+	// The readback is a frame behind, but slots are never recycled, so a stale one
+	// either still names the same entity or has gone invalid for good. Slot 0 is the
+	// background, and never resolves.
+	const ID id = { .slot = drawId & 0xFFFF };
+	return Valid(id) ? id : ID{};
 }
 
 void CompactEntities(Scene &scene)
 {
-	CompactPool(scene.entityHandles, MoveEntity, nullptr, &scene);
+	u32 storeIndex = U32_MAX;
+	for (u32 i = 0; i < scene.entityCount; ++i)
+	{
+		if ( !scene.entities[i].id ) {
+			storeIndex = i;
+			break;
+		}
+	}
+
+	if ( storeIndex == U32_MAX ) {
+		return;
+	}
+
+	for (u32 readIndex = storeIndex; readIndex < scene.entityCount; ++readIndex)
+	{
+		Entity &readEntity = scene.entities[readIndex];
+
+		if ( !readEntity.id )
+		{
+			readEntity = {};
+			continue;
+		}
+
+		Entity &writeEntity = scene.entities[storeIndex++];
+		writeEntity = readEntity;
+		readEntity = {};
+
+		SetObject(writeEntity.id, &writeEntity);
+	}
+
+	scene.entityCount = storeIndex;
 }
 
 void EntitySetPosition(Entity &entity, float3 position)
@@ -260,11 +307,11 @@ void EntitySetPosition(Entity &entity, float3 position)
 	entity.position = position;
 }
 
-EntityDesc GetEntityDesc(Scene &scene, EntityH handle)
+EntityDesc GetEntityDesc(ID id)
 {
-	ASSERT( IsValidHandle(scene.entityHandles, handle) );
-	const Entity &entity = GetEntity(scene, handle);
+	const Entity &entity = GetEntity(id);
 	EntityDesc entityDesc = {
+		.id    = entity.id,
 		.name  = entity.name,
 		.layer = entity.layer,
 		.pos   = entity.position,
@@ -279,16 +326,43 @@ EntityDesc GetEntityDesc(Scene &scene, EntityH handle)
 	return entityDesc;
 }
 
-EntityH CreateEntity(Engine &engine, const EntityDesc &desc)
+ID CreateEntity(Engine &engine, ID existingId)
 {
 	Scene &scene = engine.scene;
 
+	if ( scene.entityCount == MAX_ENTITIES )
+	{
+		LOG(Warning, "Could not create entity, the entity array is full.\n");
+		return {};
+	}
+
+	ID id = existingId;
+	if ( id.slot == 0 ) {
+		id = NewID();
+	} else {
+		ReserveID(id);
+	}
+
+	Entity &entity = scene.entities[scene.entityCount++];
+	entity = {};
+	entity.id = id;
+
+	SetObject(id, &entity);
+
+	return id;
+}
+
+ID CreateEntity(Engine &engine, const EntityDesc &desc)
+{
 	BufferChunk vertices = GetVerticesForGeometryType(engine.gfx, desc.geometryType);
 	BufferChunk indices = GetIndicesForGeometryType(engine.gfx, desc.geometryType);
 
-	EntityH handle = NewHandle(scene.entityHandles);
-	Entity &entity = GetEntity(scene, handle);
-	entity = {}; // The element held another entity before
+	const ID id = CreateEntity(engine, desc.id);
+	if ( !id ) {
+		return id;
+	}
+
+	Entity &entity = GetEntity(id);
 	entity.name = desc.name;
 	entity.visible = true;
 	EntitySetPosition(entity, desc.pos);
@@ -315,12 +389,13 @@ EntityH CreateEntity(Engine &engine, const EntityDesc &desc)
 		entity.spriteId = {};
 	}
 
-	return handle;
+	return id;
 }
 
-EntityH CreateEntity(Engine &engine, const BinEntityDesc &desc)
+ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 {
 	const EntityDesc entityDesc = {
+		.id = desc.id,
 		.name = desc.name,
 		.materialId = desc.materialId,
 		.geometryType = desc.geometryType,
@@ -332,14 +407,21 @@ EntityH CreateEntity(Engine &engine, const BinEntityDesc &desc)
 	return CreateEntity(engine, entityDesc);
 }
 
-void RemoveEntity(Engine &engine, EntityH handle)
+void RemoveEntity(Engine &engine, ID id)
 {
-	FreeHandle(engine.scene.entityHandles, handle);
+	if (id)
+	{
+		// Marks only. The entity keeps its element until CompactEntities, so anything
+		// still drawing it this frame has something valid to read.
+		GetEntity(id).id = {};
+		Invalidate(id);
+	}
 }
 
-EntityH DuplicateEntity(Engine &engine, EntityH entityHandle)
+ID DuplicateEntity(Engine &engine, ID entityId)
 {
-	const EntityDesc &desc = GetEntityDesc(engine.scene, entityHandle);
+	EntityDesc desc = GetEntityDesc(entityId);
+	desc.id = {}; // The copy is a new entity, so let the pool hand it its own ID
 	return CreateEntity(engine, desc);
 }
 
@@ -395,7 +477,7 @@ static int2 WorldPosToGridCoord(float2 worldPos)
 
 static u32 GetColliderAtGridCoord(Scene &scene, int2 coord)
 {
-	for (u16 roomIndex = 0; roomIndex < HandleCount(scene.roomHandles); ++roomIndex)
+	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
 		const Room &room = scene.rooms[roomIndex];
 		const int2 localCoord = coord - room.pos;
@@ -527,12 +609,40 @@ float2 RoomSize(const Room &room)
 	return res;
 }
 
-RoomH CreateRoom(Engine &engine)
+ID CreateRoom(Engine &engine, ID existingId)
 {
-	RoomH roomH = NewHandle(engine.scene.roomHandles);
-	Room &room = GetRoom(engine.scene, roomH);
-	room = {}; // The element held another room before
+	Scene &scene = engine.scene;
 
+	if ( scene.roomCount == MAX_ROOMS )
+	{
+		LOG(Warning, "Could not create room, the room array is full.\n");
+		return {};
+	}
+
+	ID id = existingId;
+	if ( id.slot == 0 ) {
+		id = NewID();
+	} else {
+		ReserveID(id);
+	}
+
+	Room &room = scene.rooms[scene.roomCount++];
+	room = {};
+	room.id = id;
+
+	SetObject(id, &room);
+
+	return id;
+}
+
+ID CreateRoom(Engine &engine)
+{
+	const ID id = CreateRoom(engine, ID{});
+	if ( !id ) {
+		return id;
+	}
+
+	Room &room = GetRoom(id);
 	room.name = InternString("Room");
 	room.pos = {};
 
@@ -541,15 +651,17 @@ RoomH CreateRoom(Engine &engine)
 	const LayerDesc desc2 = { .name = "Colliders", .visible = true, .isCollider = true, .size {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} };
 	CreateLayer(room, desc2);
 
-	return roomH;
+	return id;
 }
 
-RoomH CreateRoom(Engine &engine, const RoomDesc &desc)
+ID CreateRoom(Engine &engine, const RoomDesc &desc)
 {
-	RoomH roomH = NewHandle(engine.scene.roomHandles);
-	Room &room = GetRoom(engine.scene, roomH);
-	room = {};
+	const ID id = CreateRoom(engine, desc.id);
+	if ( !id ) {
+		return id;
+	}
 
+	Room &room = GetRoom(id);
 	room.name = InternString(desc.name);
 	room.pos = desc.pos;
 
@@ -588,14 +700,15 @@ RoomH CreateRoom(Engine &engine, const RoomDesc &desc)
 		}
 	}
 
-	return roomH;
+	return id;
 }
 
-RoomH CreateRoom(Engine &engine, const BinRoom &binRoom)
+ID CreateRoom(Engine &engine, const BinRoom &binRoom)
 {
 	const BinRoomDesc &bin = *binRoom.desc;
 
 	RoomDesc desc = {};
+	desc.id = bin.id;
 	desc.name = bin.name;
 	desc.pos = bin.pos;
 
@@ -616,10 +729,14 @@ RoomH CreateRoom(Engine &engine, const BinRoom &binRoom)
 	return CreateRoom(engine, desc);
 }
 
-void RemoveRoom(Engine &engine, RoomH handle)
+void RemoveRoom(Engine &engine, ID id)
 {
 	// Marks only, see RemoveEntity
-	FreeHandle(engine.scene.roomHandles, handle);
+	if (id)
+	{
+		GetRoom(id).id = {};
+		Invalidate(id);
+	}
 }
 
 void CreateScene(Engine &engine)
@@ -650,11 +767,11 @@ void CleanScene(Engine &engine)
 			RemoveMaterial(gfx, gfx.materials[i].desc.id);
 		}
 	}
-	for (u16 i = 0; i < HandleCount(scene.roomHandles); ++i) {
-		RemoveRoom(engine, GetHandleAt(scene.roomHandles, i));
+	for (u16 i = 0; i < scene.roomCount; ++i) {
+		RemoveRoom(engine, scene.rooms[i].id);
 	}
-	for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i) {
-		RemoveEntity(engine, GetHandleAt(scene.entityHandles, i));
+	for (u16 i = 0; i < scene.entityCount; ++i) {
+		RemoveEntity(engine, scene.entities[i].id);
 	}
 	for (u16 i = 0; i < scene.spriteCount; ++i) {
 		RemoveSprite(scene, scene.sprites[i].desc.id);

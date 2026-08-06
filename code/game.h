@@ -64,7 +64,7 @@ struct Game
 	float accel2;
 	PlayerState playerState;
 
-	EntityH entH;
+	ID entId;
 
 	AudioClipH sndJump;
 	MusicH modEquinox;
@@ -73,7 +73,7 @@ struct Game
 
 	Camera camera;
 
-	RoomH roomH;
+	ID roomId;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -90,10 +90,10 @@ void GameStop(Game &game);
 // Game -> Engine interface
 ////////////////////////////////////////////////////////////////////////
 
-EntityH FindEntity(const char *name);
-Entity *GetEntity(EntityH handle);
-RoomH FindRoom(const char *name);
-Room *GetRoom(RoomH handle);
+ID FindEntity(const char *name);
+Entity *TryGetEntity(ID entityId); // Null once the entity is gone
+ID FindRoom(const char *name);
+Room *TryGetRoom(ID roomId);       // Null once the room is gone
 void EntitySetPosition(Entity &entity, float3 position);
 void DrawBox(float2 pos, float2 size, float4 color);
 bool IsColliderAtWorldPos(float2 worldPos);
