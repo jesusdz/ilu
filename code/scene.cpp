@@ -1,48 +1,84 @@
-// `if (spriteH)` asks the pool whether the sprite is still there, so it also rejects
-// a handle to one that has been removed
-SpriteH::operator bool() const { return IsValidHandle(engine->scene.spriteHandles, *this); }
 EntityH::operator bool() const { return IsValidHandle(engine->scene.entityHandles, *this); }
 RoomH::operator bool()   const { return IsValidHandle(engine->scene.roomHandles, *this); }
 
-SpriteH CreateSprite(Engine &engine, const SpriteDesc &desc)
+Sprite &GetSprite(ID id)
 {
-	Scene &scene = engine.scene;
-	Graphics &gfx = engine.gfx;
-
-	Sprite sprite = {};
-	sprite.name       = desc.name;
-	sprite.textureId  = desc.textureId;
-	sprite.frameCount = desc.frameCount > 0 ? desc.frameCount : 1;
-	sprite.fps        = desc.fps;
-	sprite.loop       = desc.loop != 0;
-
-	{
-		if ( !Valid(sprite.textureId) )
-		{
-			LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n",
-					desc.name, desc.textureId.slot);
-			sprite.textureId = gfx.defaultTexture;
-		}
-
-		const Texture &tex = GetTexture(sprite.textureId);
-		const uint2 size = (desc.size.x > 0 || desc.size.y > 0) ? desc.size : tex.size;
-		sprite.pos  = desc.pos;
-		sprite.size = size;
-	}
-
-	SpriteH handle = NewHandle(scene.spriteHandles);
-	if (handle)
-	{
-		const u16 index = GetHandleIndex(scene.spriteHandles, handle);
-		scene.sprites[index] = sprite;
-		scene.spriteAnimStates[index] = {}; // The slot held another sprite's animation before
-	}
-	return handle;
+	ASSERT( Valid(id) );
+	Sprite &sprite = *((Sprite*)GetObject(id));
+	return sprite;
 }
 
-SpriteH CreateSprite(Engine &engine, const BinSpriteDesc &desc)
+// Sprites keep a dense index, unlike textures: the GPU sprite data buffer and the
+// parallel animation state array are both addressed by it.
+u16 GetSpriteIndex(const Scene &scene, ID id)
+{
+	const Sprite &sprite = GetSprite(id);
+	const u16 index = (u16)(&sprite - scene.sprites);
+	ASSERT( index < scene.spriteCount );
+	return index;
+}
+
+ID CreateSprite(Engine &engine, ID existingId)
+{
+	Scene &scene = engine.scene;
+
+	if ( scene.spriteCount == MAX_SPRITES )
+	{
+		LOG(Warning, "Could not create sprite, the sprite array is full.\n");
+		return {};
+	}
+
+	ID id = existingId;
+	if ( id.slot == 0 ) {
+		id = NewID();
+	} else {
+		ReserveID(id);
+	}
+
+	const u16 index = (u16)scene.spriteCount++;
+	Sprite &sprite = scene.sprites[index];
+	sprite = {};
+	sprite.desc.id = id;
+	scene.spriteAnimStates[index] = {}; // The element held another sprite's animation before
+
+	SetObject(id, &sprite);
+
+	return id;
+}
+
+ID CreateSprite(Engine &engine, const SpriteDesc &desc)
+{
+	Graphics &gfx = engine.gfx;
+
+	const ID id = CreateSprite(engine, desc.id);
+	if ( !id ) {
+		return id;
+	}
+
+	Sprite &sprite = GetSprite(id);
+	sprite.desc = desc;
+	sprite.desc.id = id;
+	sprite.desc.frameCount = desc.frameCount > 0 ? desc.frameCount : 1;
+
+	if ( !Valid(sprite.desc.textureId) )
+	{
+		LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n",
+				desc.name, desc.textureId.slot);
+		sprite.desc.textureId = gfx.defaultTexture;
+	}
+
+	const Texture &tex = GetTexture(sprite.desc.textureId);
+	if ( desc.size.x == 0 && desc.size.y == 0 ) {
+		sprite.desc.size = tex.size;
+	}
+
+	return id;
+}
+
+ID CreateSprite(Engine &engine, const BinSpriteDesc &desc)
 {
 	const SpriteDesc txtDesc = {
+		.id          = desc.id,
 		.name        = desc.name,
 		.textureId   = desc.textureId,
 		.pos         = desc.pos,
@@ -54,80 +90,89 @@ SpriteH CreateSprite(Engine &engine, const BinSpriteDesc &desc)
 	return CreateSprite(engine, txtDesc);
 };
 
-Sprite &GetSprite(Scene &scene, SpriteH handle)
+ID FindSprite(const Scene &scene, const char *name)
 {
-	ASSERT( IsValidHandle(scene.spriteHandles, handle) );
-	return scene.sprites[GetHandleIndex(scene.spriteHandles, handle)];
-}
-
-u16 GetSpriteIndex(const Scene &scene, SpriteH handle)
-{
-	ASSERT( IsValidHandle(scene.spriteHandles, handle) );
-	return GetHandleIndex(scene.spriteHandles, handle);
-}
-
-const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle)
-{
-	const Sprite &sprite = GetSprite(scene, handle);
-	const Texture &tex = GetTexture(sprite.textureId);
-
-	const SpriteDesc desc = {
-		.name = sprite.name,
-		.textureId = tex.desc.id,
-		.pos = sprite.pos,
-		.size = sprite.size,
-		.frameCount = sprite.frameCount,
-		.fps = sprite.fps,
-		.loop = sprite.loop,
-	};
-	return desc;
-}
-
-SpriteH FindSpriteHandle(const Scene &scene, const char *name)
-{
-	if (!name) return InvalidHandle;
-	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
+	if (!name) return {};
+	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		if (StrEq(scene.sprites[i].name, name)) return GetHandleAt(scene.spriteHandles, i);
+		const SpriteDesc &desc = scene.sprites[i].desc;
+		if (StrEq(desc.name, name)) return desc.id;
 	}
-	return InvalidHandle;
+	return {};
 }
 
-SpriteH FindSpriteHandle(const Scene &scene, ID textureId, uint2 pos, uint2 size)
+ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size)
 {
-	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
+	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		const Sprite &sprite = scene.sprites[i];
-		if (sprite.textureId == textureId &&
-			sprite.pos.x == pos.x && sprite.pos.y == pos.y &&
-			sprite.size.x == size.x && sprite.size.y == size.y) return GetHandleAt(scene.spriteHandles, i);
+		const SpriteDesc &desc = scene.sprites[i].desc;
+		if (desc.textureId == textureId &&
+			desc.pos.x == pos.x && desc.pos.y == pos.y &&
+			desc.size.x == size.x && desc.size.y == size.y) return desc.id;
 	}
-	return InvalidHandle;
+	return {};
 }
 
-SpriteH GetOrCreateSprite(Engine &engine, const SpriteDesc &desc)
+ID GetOrCreateSprite(Engine &engine, const SpriteDesc &desc)
 {
-	SpriteH handle = FindSpriteHandle(engine.scene, desc.name);
-	if (!handle)
-		handle = CreateSprite(engine, desc);
-	return handle;
+	ID id = FindSprite(engine.scene, desc.name);
+	if (!id)
+		id = CreateSprite(engine, desc);
+	return id;
 }
 
-void RemoveSprite(Scene &scene, SpriteH handle)
+void RemoveSprite(Scene &scene, ID id)
 {
-	FreeHandle(scene.spriteHandles, handle);
-}
+	if ( IsBuiltin(id) )
+	{
+		LOG(Warning, "Ignoring an attempt to remove builtin sprite <%s>.\n", GetSprite(id).desc.name);
+		return;
+	}
 
-static MOVE_ELEMENT(MoveSprite)
-{
-	Scene &scene = *(Scene*)data;
-	scene.sprites[dstIndex] = scene.sprites[srcIndex];
-	scene.spriteAnimStates[dstIndex] = scene.spriteAnimStates[srcIndex];
+	if (id)
+	{
+		// Marks only. The sprite keeps its element until CompactSprites, so the tiles
+		// and entities still drawing it this frame have something valid to read.
+		GetSprite(id).desc.id = {};
+		Invalidate(id);
+	}
 }
 
 void CompactSprites(Scene &scene)
 {
-	CompactPool(scene.spriteHandles, MoveSprite, nullptr, &scene);
+	u32 storeIndex = U32_MAX;
+	for (u32 i = 0; i < scene.spriteCount; ++i)
+	{
+		if ( !scene.sprites[i].desc.id ) {
+			storeIndex = i;
+			break;
+		}
+	}
+
+	if ( storeIndex == U32_MAX ) {
+		return;
+	}
+
+	for (u32 readIndex = storeIndex; readIndex < scene.spriteCount; ++readIndex)
+	{
+		Sprite &readSprite = scene.sprites[readIndex];
+
+		if ( !readSprite.desc.id )
+		{
+			readSprite = {};
+			continue;
+		}
+
+		const u32 writeIndex = storeIndex++;
+		Sprite &writeSprite = scene.sprites[writeIndex];
+		writeSprite = readSprite;
+		scene.spriteAnimStates[writeIndex] = scene.spriteAnimStates[readIndex];
+		readSprite = {};
+
+		SetObject(writeSprite.desc.id, &writeSprite);
+	}
+
+	scene.spriteCount = storeIndex;
 }
 
 
@@ -225,8 +270,8 @@ EntityDesc GetEntityDesc(Scene &scene, EntityH handle)
 		.pos   = entity.position,
 		.scale = entity.scale,
 	};
-	if (entity.spriteH) {
-		entityDesc.spriteName = GetSprite(scene, entity.spriteH).name;
+	if (entity.spriteId) {
+		entityDesc.spriteId = entity.spriteId;
 	} else {
 		entityDesc.materialId = entity.materialId;
 		entityDesc.geometryType = entity.geometryType;
@@ -253,15 +298,21 @@ EntityH CreateEntity(Engine &engine, const EntityDesc &desc)
 	entity.vertices = vertices;
 	entity.indices = indices;
 	entity.materialId = desc.materialId;
-	entity.spriteH = FindSpriteHandle(scene, desc.spriteName);
+	entity.spriteId = desc.spriteId;
 
-	// A sprite entity legitimately has no material, so only an ID that was set and
+	// An entity carries either a material or a sprite, so only an ID that was set and
 	// then failed to resolve is worth complaining about
 	if ( desc.materialId.slot != 0 && !Valid(desc.materialId) )
 	{
 		LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n",
 				desc.name, desc.materialId.slot);
 		entity.materialId = engine.gfx.defaultMaterial;
+	}
+	if ( desc.spriteId.slot != 0 && !Valid(desc.spriteId) )
+	{
+		LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
+				desc.name, desc.spriteId.slot);
+		entity.spriteId = {};
 	}
 
 	return handle;
@@ -273,7 +324,7 @@ EntityH CreateEntity(Engine &engine, const BinEntityDesc &desc)
 		.name = desc.name,
 		.materialId = desc.materialId,
 		.geometryType = desc.geometryType,
-		.spriteName = desc.spriteName,
+		.spriteId = desc.spriteId,
 		.layer = desc.layer,
 		.pos = desc.pos,
 		.scale = desc.scale,
@@ -327,12 +378,12 @@ void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord)
 	}
 }
 
-void SetGridTileAtCoord(Engine &engine, Layer &layer, SpriteH spriteH, int2 coord)
+void SetGridTileAtCoord(Engine &engine, Layer &layer, ID spriteId, int2 coord)
 {
 	const bool coordValid = coord.x >= 0 && coord.x < layer.size.x && coord.y >= 0 && coord.y < layer.size.y;
 	if (coordValid)
 	{
-		layer.cells[coord.x][coord.y].handle = spriteH;
+		layer.cells[coord.x][coord.y].spriteId = spriteId;
 	}
 }
 
@@ -493,7 +544,7 @@ RoomH CreateRoom(Engine &engine)
 	return roomH;
 }
 
-RoomH CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHandles, u32 spriteHandleCount)
+RoomH CreateRoom(Engine &engine, const RoomDesc &desc)
 {
 	RoomH roomH = NewHandle(engine.scene.roomHandles);
 	Room &room = GetRoom(engine.scene, roomH);
@@ -526,9 +577,12 @@ RoomH CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHand
 			for (u32 t = 0; t < layerDesc.tileCount; ++t) {
 				const TileDesc &tile = layerDesc.tiles[t];
 				if (tile.x < layer.size.x && tile.y < layer.size.y) {
-					if (tile.spriteIndex < spriteHandleCount) {
-						layer.cells[tile.x][tile.y].handle = spriteHandles[tile.spriteIndex];
+					if ( tile.spriteId.slot != 0 && !Valid(tile.spriteId) ) {
+						LOG(Warning, "Layer <%s> has a tile at (%u, %u) referring to sprite ID %u, which does not exist.\n",
+								layerDesc.name, tile.x, tile.y, tile.spriteId.slot);
+						continue;
 					}
+					layer.cells[tile.x][tile.y].spriteId = tile.spriteId;
 				}
 			}
 		}
@@ -537,7 +591,7 @@ RoomH CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHand
 	return roomH;
 }
 
-RoomH CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteHandles, u32 spriteHandleCount)
+RoomH CreateRoom(Engine &engine, const BinRoom &binRoom)
 {
 	const BinRoomDesc &bin = *binRoom.desc;
 
@@ -559,7 +613,7 @@ RoomH CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteHa
 		};
 	}
 
-	return CreateRoom(engine, desc, spriteHandles, spriteHandleCount);
+	return CreateRoom(engine, desc);
 }
 
 void RemoveRoom(Engine &engine, RoomH handle)
@@ -602,8 +656,8 @@ void CleanScene(Engine &engine)
 	for (u16 i = 0; i < HandleCount(scene.entityHandles); ++i) {
 		RemoveEntity(engine, GetHandleAt(scene.entityHandles, i));
 	}
-	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i) {
-		RemoveSprite(scene, GetHandleAt(scene.spriteHandles, i));
+	for (u16 i = 0; i < scene.spriteCount; ++i) {
+		RemoveSprite(scene, scene.sprites[i].desc.id);
 	}
 	for (u16 i = 0; i < HandleCount(audio.clipHandles); ++i) {
 		RemoveAudioClip(engine, GetHandleAt(audio.clipHandles, i));

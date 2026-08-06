@@ -368,17 +368,17 @@ static void EditorSelectMusic(Editor &editor, MusicH handle)
 	editor.inspector.nextSelected.type = EditorSelectedType_Music;
 }
 
-static void EditorSelectSprite(Editor &editor, SpriteH handle)
+static void EditorSelectSprite(Editor &editor, ID spriteId)
 {
-	editor.context.spriteH = handle;
-	editor.inspector.nextSelected.spriteH = handle;
+	editor.context.spriteId = spriteId;
+	editor.inspector.nextSelected.spriteId = spriteId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Sprite;
 }
 
-static void EditorUnselectSprite(Editor &editor, SpriteH handle)
+static void EditorUnselectSprite(Editor &editor, ID spriteId)
 {
-	if (editor.context.spriteH == handle) {
-		editor.context.spriteH = InvalidHandle;
+	if (editor.context.spriteId == spriteId) {
+		editor.context.spriteId = {};
 		editor.inspector.nextSelected.type = EditorSelectedType_None;
 	}
 }
@@ -578,25 +578,25 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "Sprites") )
 	{
-		static SpriteH selectedHandle = InvalidHandle;
+		static ID selectedSprite = {};
 
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
 
 		UIID id = 0;
-		for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
+		for (u32 i = 0; i < scene.spriteCount; ++i)
 		{
-			SpriteH handle = GetHandleAt(scene.spriteHandles, i);
-			const Sprite &sprite = scene.sprites[i];
+			const SpriteDesc &sprite = scene.sprites[i].desc;
+			const ID spriteId = sprite.id;
 			const Texture &texture = GetTexture(sprite.textureId);
-			const UIWidgetFlags flags = selectedHandle == handle ? UIWidgetFlag_Outline : UIWidgetFlag_None;
+			const UIWidgetFlags flags = selectedSprite == spriteId ? UIWidgetFlag_Outline : UIWidgetFlag_None;
 			const float2 uvPos = Float2(sprite.pos)/Float2(texture.size);
 			const float2 uvSize = Float2(sprite.size)/Float2(texture.size);
 			const float4 uvRect = Float4(uvPos, uvSize);
 
 			if (UI_Image(ui, texture.image, float2{32, 32}, flags, uvRect))
 			{
-				EditorSelectSprite(editor, handle);
-				selectedHandle = handle;
+				EditorSelectSprite(editor, spriteId);
+				selectedSprite = spriteId;
 			}
 			UI_PushID(ui, id++);
 			if (UI_BeginContextMenu(ui, "SpriteContext"))
@@ -605,10 +605,10 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 				{
 					// Removal only takes effect at the end of the frame, so deleting
 					// from inside the loop leaves the array alone
-					EditorUnselectSprite(editor, handle);
-					RemoveSprite(scene, handle);
-					if (selectedHandle == handle) {
-						selectedHandle = InvalidHandle;
+					EditorUnselectSprite(editor, spriteId);
+					RemoveSprite(scene, spriteId);
+					if (selectedSprite == spriteId) {
+						selectedSprite = {};
 					}
 				}
 				UI_EndContextMenu(ui);
@@ -790,7 +790,7 @@ static const char *EditorMakeSpriteName(const Scene &scene, const char *textureN
 	const char *base = StrEqN(textureName, "tex_", 4) ? textureName + 4 : textureName;
 
 	const char *name = MakeName("spr_%s", base);
-	for (u32 attempt = 1; FindSpriteHandle(scene, name); ++attempt) {
+	for (u32 attempt = 1; FindSprite(scene, name); ++attempt) {
 		name = MakeName("spr_%s_%u", base, attempt);
 	}
 	return name;
@@ -845,8 +845,8 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 		UI_SeparatorLabel(ui, "Sprite sheet");
 		{
 			u32 sheetSpriteCount = 0;
-			for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i) {
-				if ( scene.sprites[i].textureId == sheet.textureId ) {
+			for (u32 i = 0; i < scene.spriteCount; ++i) {
+				if ( scene.sprites[i].desc.textureId == sheet.textureId ) {
 					sheetSpriteCount++;
 				}
 			}
@@ -918,13 +918,13 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 
 				if ( UI_Button(ui, "Create sprite") )
 				{
-					if ( FindSpriteHandle(scene, sheet.textureId, spriteRelPos, spriteSize) )
+					if ( FindSprite(scene, sheet.textureId, spriteRelPos, spriteSize) )
 					{
 						LOG(Warning, "A sprite already covers that region of %s.\n", texture.desc.name);
 					}
-					else if ( IsFull(scene.spriteHandles) )
+					else if ( scene.spriteCount >= MAX_SPRITES )
 					{
-						LOG(Warning, "Sprite limit reached (%u).\n", scene.spriteHandles.limit);
+						LOG(Warning, "Sprite limit reached (%u).\n", MAX_SPRITES);
 					}
 					else
 					{
@@ -953,7 +953,7 @@ static void EditorUpdateUI_InspectorScene(Engine &engine, Scene &scene)
 	UI &ui = engine.ui;
 	UI_Text(ui, "Rooms", "%u", HandleCount(scene.roomHandles));
 	UI_Text(ui, "Entities", "%u", HandleCount(scene.entityHandles));
-	UI_Text(ui, "Sprites", "%u", HandleCount(scene.spriteHandles));
+	UI_Text(ui, "Sprites", "%u", scene.spriteCount);
 }
 
 static void EditorUpdateUI_InspectorRoom(Engine &engine, Room &room)
@@ -1173,16 +1173,16 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 			UI_InputFloat(ui, "Scale", &entity.scale);
 			UI_Checkbox(ui, "Visible", &entity.visible);
 
-			if (entity.spriteH)
+			if (entity.spriteId)
 			{
 				UI_SeparatorLabel(ui, "Sprite");
 
-				const Sprite &sprite = GetSprite(engine.scene, entity.spriteH);
+				const SpriteDesc &sprite = GetSprite(entity.spriteId).desc;
 				UI_Text(ui, "Name", sprite.name);
 
 				if (UI_Button(ui, "Go to sprite"))
 				{
-					EditorSelectSprite(editor, entity.spriteH);
+					EditorSelectSprite(editor, entity.spriteId);
 				}
 			}
 		}
@@ -1210,7 +1210,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 						.name = "spr_new",
 						.textureId = texture.desc.id,
 					};
-					SpriteH spriteH = GetOrCreateSprite(engine, spriteDesc);
+					GetOrCreateSprite(engine, spriteDesc);
 				}
 				if (UI_Button(ui, "Sprite sheet..."))
 				{
@@ -1247,9 +1247,9 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Sprite)
 		{
-			if (inspector.selected.spriteH)
+			if (inspector.selected.spriteId)
 			{
-				Sprite &sprite = GetSprite(engine.scene, inspector.selected.spriteH);
+				SpriteDesc &sprite = GetSprite(inspector.selected.spriteId).desc;
 
 				static char name[64];
 				StrCopy(name, sprite.name);
@@ -1271,6 +1271,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				int2 size = { (i32)sprite.size.x, (i32)sprite.size.y };
 				i32 frameCount = (i32)sprite.frameCount;
 				i32 fps        = (i32)sprite.fps;
+				bool loop      = sprite.loop != 0;
 
 				const uint2 oldPos  = sprite.pos;
 				const uint2 oldSize = sprite.size;
@@ -1281,12 +1282,13 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				UI_InputInt2(ui, "Size", &size);
 				UI_InputInt(ui, "Frame Count", &frameCount);
 				UI_InputInt(ui, "FPS",         &fps);
-				UI_Checkbox(ui, "Loop",        &sprite.loop);
+				UI_Checkbox(ui, "Loop",        &loop);
 
 				sprite.pos  = { (u32)Max(0, pos.x),  (u32)Max(0, pos.y)  };
 				sprite.size = { (u32)Max(0, size.x), (u32)Max(0, size.y) };
 				sprite.frameCount     = (u32)Max(0, frameCount);
 				sprite.fps            = (u32)Max(0, fps);
+				sprite.loop           = loop ? 1 : 0;
 			}
 		}
 	}
@@ -1536,14 +1538,14 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 					.name = spriteName,
 					.textureId = textureId,
 				};
-				SpriteH spriteH = GetOrCreateSprite(engine, spriteDesc);
+				const ID spriteId = GetOrCreateSprite(engine, spriteDesc);
 
 				const Texture &texture = GetTexture(textureId);
 				constexpr f32 pixelsPerGridTile = 32;
 
 				const EntityDesc entityDesc = {
 					.name = InternString("entity"),
-					.spriteName = spriteName,
+					.spriteId = spriteId,
 					.pos = Float3(worldPos, 0.0),
 					.scale = 1.0f,
 				};
@@ -2192,9 +2194,9 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 				}
 				else
 				{
-					const SpriteH spriteH = editor.context.tool == EditorTool_Draw
-						? editor.context.spriteH : SpriteH{};
-					SetGridTileAtCoord(engine, layer, spriteH, gridCoord);
+					const ID spriteId = editor.context.tool == EditorTool_Draw
+						? editor.context.spriteId : ID{};
+					SetGridTileAtCoord(engine, layer, spriteId, gridCoord);
 				}
 			}
 		}
@@ -2244,11 +2246,11 @@ void EditorDebugDraw(Engine &engine)
 			}
 			else
 			{
-				SpriteH spriteH = editor.context.spriteH;
-				if ( spriteH )
+				const ID spriteId = editor.context.spriteId;
+				if ( spriteId )
 				{
 					const float4 color = {1, 1, 1, 0.3};
-					DrawSprite(spriteH, worldPos, color);
+					DrawSprite(spriteId, worldPos, color);
 				}
 			}
 		}
@@ -2562,7 +2564,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 					const Entity &entity = scene.entities[i];
 
 					if ( !entity.visible || entity.culled ) continue;
-					if ( !entity.spriteH ) continue;
+					if ( !entity.spriteId ) continue;
 
 					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, GetHandleAt(scene.entityHandles, i)));
 				}

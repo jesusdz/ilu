@@ -118,8 +118,10 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static SpriteDesc spriteDescs[MAX_SPRITES];
 	u32 spriteCount = 0;
-	for (u16 i = 0; i < HandleCount(engine.scene.spriteHandles); ++i) {
-		spriteDescs[spriteCount++] = GetSpriteDesc(engine.scene, GetHandleAt(engine.scene.spriteHandles, i));
+	for (u16 i = 0; i < engine.scene.spriteCount; ++i) {
+		const Sprite &sprite = engine.scene.sprites[i];
+		if ( !sprite.desc.id ) { continue; }
+		spriteDescs[spriteCount++] = sprite.desc;
 	}
 
 	static MaterialDesc materialDescs[MAX_MATERIALS];
@@ -164,7 +166,7 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 			{
 				for (u32 x = 0; x < layer.size.x; ++x) {
 					for (u32 y = 0; y < layer.size.y; ++y) {
-						const u16 collider = (u16)layer.cells[x][y].collider;
+						const u32 collider = layer.cells[x][y].collider;
 						if (collider == 0) continue;
 						TileDesc &tile = *PushStruct(arena, TileDesc);
 						tile.x = (u16)x;
@@ -179,12 +181,12 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 				// Sprites
 				for (u32 x = 0; x < layer.size.x; ++x) {
 					for (u32 y = 0; y < layer.size.y; ++y) {
-						const SpriteH spriteH = layer.cells[x][y].handle;
-						if (!spriteH) continue;
+						const ID spriteId = layer.cells[x][y].spriteId;
+						if (!spriteId) continue;
 						TileDesc &tile = *PushStruct(arena, TileDesc);
 						tile.x = (u16)x;
 						tile.y = (u16)y;
-						tile.spriteIndex = GetSpriteIndex(engine.scene, spriteH);
+						tile.spriteId = spriteId;
 						layerDesc.tileCount++;
 					}
 				}
@@ -259,11 +261,10 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 			CreateMaterial(engine.gfx, assetDescriptors.materialDescs[i]);
 		}
 
-		// Sprites (must be before entities and rooms)
-		static SpriteH spriteHandles[MAX_SPRITES];
+		// Sprites (must be before entities and rooms, which refer to them by ID)
 		for (u32 i = 0; i < assetDescriptors.spriteDescCount; ++i)
 		{
-			spriteHandles[i] = CreateSprite(engine, assetDescriptors.spriteDescs[i]);
+			CreateSprite(engine, assetDescriptors.spriteDescs[i]);
 		}
 
 		// Entities
@@ -272,12 +273,12 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 			CreateEntity(engine, assetDescriptors.entityDescs[i]);
 		}
 
-		// Rooms (layer cells reference sprites by index into the sprite list)
+		// Rooms
 		if (assetDescriptors.roomDescCount > 0)
 		{
 			for (u32 i = 0; i < assetDescriptors.roomDescCount; ++i)
 			{
-				CreateRoom(engine, assetDescriptors.roomDescs[i], spriteHandles, assetDescriptors.spriteDescCount);
+				CreateRoom(engine, assetDescriptors.roomDescs[i]);
 			}
 		}
 
@@ -332,11 +333,10 @@ void LoadSceneFromBin(Engine &engine)
 			CreateMaterial(engine.gfx, *engine.assets.materials[i].desc);
 		}
 
-		// Sprites (must be before entities and rooms)
-		static SpriteH spriteHandles[MAX_SPRITES];
+		// Sprites (must be before entities and rooms, which refer to them by ID)
 		for (u32 i = 0; i < engine.assets.header.spriteCount; ++i)
 		{
-			spriteHandles[i] = CreateSprite(engine, *engine.assets.sprites[i].desc);
+			CreateSprite(engine, *engine.assets.sprites[i].desc);
 		}
 
 		// Entities
@@ -345,12 +345,12 @@ void LoadSceneFromBin(Engine &engine)
 			CreateEntity(engine, *engine.assets.entities[i].desc);
 		}
 
-		// Rooms (layer cells reference sprites by index into the sprite list)
+		// Rooms
 		if (engine.assets.header.roomCount > 0)
 		{
 			for (u32 i = 0; i < engine.assets.header.roomCount; ++i)
 			{
-				CreateRoom(engine, engine.assets.rooms[i], spriteHandles, engine.assets.header.spriteCount);
+				CreateRoom(engine, engine.assets.rooms[i]);
 			}
 		}
 
@@ -750,7 +750,6 @@ ENGINE_API bool OnPlatformWindowInit(Plat &platform)
 
 		Initialize(engine.scene.roomHandles, GlobalArena, MAX_ROOMS);
 		Initialize(engine.scene.entityHandles, GlobalArena, MAX_ENTITIES);
-		Initialize(engine.scene.spriteHandles, GlobalArena, MAX_SPRITES);
 
 #if USE_EDITOR
 		EditorInitialize(engine);

@@ -28,13 +28,13 @@ static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 	batch.vertexCount = vertexCount;
 }
 
-void DrawSprite(SpriteH spriteH, float2 worldPos, float4 pcolor)
+void DrawSprite(ID spriteId, float2 worldPos, float4 pcolor)
 {
 	Graphics &gfx = engine->gfx;
 
 	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
 
-	const Sprite &sprite = GetSprite(engine->scene, spriteH);
+	const SpriteDesc &sprite = GetSprite(spriteId).desc;
 	const Texture &texture = GetTexture(sprite.textureId);
 
 	const float2 uvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
@@ -209,7 +209,7 @@ static bool PointsAreInFrustum(const float3 *points, u32 pointCount, const Frust
 	return !entityIsBehindPlane;
 }
 
-static void GetSpriteBounds(const Sprite &sprite, float2 bounds[4])
+static void GetSpriteBounds(const SpriteDesc &sprite, float2 bounds[4])
 {
 	const float2 size = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
 	bounds[0] = { 0, 0 };
@@ -225,9 +225,9 @@ static bool EntityIsInFrustum3D(Scene &scene, const Entity &entity, const Frustu
 	float3 points[8] = {};
 	u32 pointCount = 0;
 
-	if (entity.spriteH)
+	if (entity.spriteId)
 	{
-		const Sprite &sprite = GetSprite(scene, entity.spriteH);
+		const SpriteDesc &sprite = GetSprite(entity.spriteId).desc;
 		float2 sbounds[4] = {};
 		GetSpriteBounds(sprite, sbounds);
 
@@ -277,9 +277,9 @@ static bool EntityIsInFrustum2D(Scene &scene, const Entity &entity, float2 rectM
 {
 	float2 halfSize = { 0.5f * entity.scale, 0.5f * entity.scale };
 
-	if (entity.spriteH)
+	if (entity.spriteId)
 	{
-		const Sprite &sprite = GetSprite(scene, entity.spriteH);
+		const SpriteDesc &sprite = GetSprite(entity.spriteId).desc;
 		halfSize = 0.5f * float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
 	}
 
@@ -486,9 +486,9 @@ bool RenderGraphics(Engine &engine)
 	*globalsBufferPtr = globals;
 
 	// Advance animation states for animated sprites (frameCount > 1)
-	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
+	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		const Sprite &sprite = scene.sprites[i];
+		const SpriteDesc &sprite = scene.sprites[i].desc;
 		if (sprite.frameCount <= 1) continue;
 		SpriteAnimState &state = scene.spriteAnimStates[i];
 		state.elapsedTime += gfx.deltaSeconds;
@@ -502,9 +502,9 @@ bool RenderGraphics(Engine &engine)
 
 	// Update sprite data buffer (UV per sprite)
 	SSpriteData *spriteDataPtr = (SSpriteData*)GetBufferPtr(gfx.device, gfx.spriteDataBuffer[frameIndex]);
-	for (u16 i = 0; i < HandleCount(scene.spriteHandles); ++i)
+	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		const Sprite &sprite = scene.sprites[i];
+		const SpriteDesc &sprite = scene.sprites[i].desc;
 		const Texture &texture = GetTexture(sprite.textureId);
 		{
 			const float2 frameUvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
@@ -519,10 +519,10 @@ bool RenderGraphics(Engine &engine)
 	}
 
 	// Layer: Update tile data buffer
-	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(SpriteH));
+	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(ID));
 	Scratch tileScratch(tileScratchSize);
 	STileData *tileDataPtr = PushArray(tileScratch.arena, STileData, MAX_TILES);
-	SpriteH *tileSpriteHandles = PushArray(tileScratch.arena, SpriteH, MAX_TILES);
+	ID *tileSpriteIds = PushArray(tileScratch.arena, ID, MAX_TILES);
 
 
 	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / PIXELS_PER_METER;
@@ -557,13 +557,13 @@ bool RenderGraphics(Engine &engine)
 					{
 						// TODO: Skip cell if not in camera
 
-						const SpriteH spriteH = layer.cells[x][y].handle;
-						if (spriteH && tileCount < MAX_TILES)
+						const ID spriteId = layer.cells[x][y].spriteId;
+						if (spriteId && tileCount < MAX_TILES)
 						{
 							tileDataPtr[tileCount].pos.xy = roomPos + Float2(int2{x, y}) + parallax;
 							tileDataPtr[tileCount].pos.z = -(float)i;
-							tileDataPtr[tileCount].spriteIndex = GetSpriteIndex(scene, spriteH);
-							tileSpriteHandles[tileCount] = spriteH;
+							tileDataPtr[tileCount].spriteIndex = GetSpriteIndex(scene, spriteId);
+							tileSpriteIds[tileCount] = spriteId;
 							tileCount++;
 						}
 					}
@@ -590,7 +590,7 @@ bool RenderGraphics(Engine &engine)
 		const float4x4 worldMatrix = Mul(Translate(entityPosition), Scale(entityScale)); // TODO: Apply also rotation
 		entities[i].world = worldMatrix;
 
-		const u32 spriteIndex = entity.spriteH ? GetSpriteIndex(scene, entity.spriteH) : 0;
+		const u32 spriteIndex = entity.spriteId ? GetSpriteIndex(scene, entity.spriteId) : 0;
 		entities[i].spriteIndex = spriteIndex;
 	}
 
@@ -761,8 +761,8 @@ bool RenderGraphics(Engine &engine)
 
 			for (u32 i = 0; i < tileCount; ++i)
 			{
-				const SpriteH spriteH = tileSpriteHandles[i];
-				const Sprite &sprite = GetSprite(scene, spriteH);
+				const ID spriteId = tileSpriteIds[i];
+				const SpriteDesc &sprite = GetSprite(spriteId).desc;
 				const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
 				const BindGroupDesc textureBindGroupDesc = {
 					.layout = tilePipeline.layout.bindGroupLayouts[2],
@@ -799,8 +799,8 @@ bool RenderGraphics(Engine &engine)
 				if (!entity.visible || entity.culled) continue;
 
 				ID textureId = {};
-				if (entity.spriteH)
-					textureId = GetSprite(scene, entity.spriteH).textureId;
+				if (entity.spriteId)
+					textureId = GetSprite(entity.spriteId).desc.textureId;
 				else
 					continue;
 

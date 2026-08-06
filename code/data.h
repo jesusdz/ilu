@@ -57,6 +57,7 @@ struct MaterialDesc
 
 struct SpriteDesc
 {
+	ID id;
 	const char *name;
 	ID textureId;
 	uint2 pos;
@@ -82,7 +83,7 @@ struct EntityDesc
 	ID materialId;
 	GeometryType geometryType;
 	// Sprite entity
-	const char *spriteName;
+	ID spriteId;
 	i32 layer;
 	// Common
 	float3 pos;
@@ -95,10 +96,12 @@ struct TileDesc
 {
 	u16 x;
 	u16 y;
+	// Which member applies is decided by the owning LayerDesc::isCollider. Both are
+	// four bytes wide, so the raw u32 doubles as the serialized view of either.
 	union
 	{
-		u16 spriteIndex; // index into AssetDescriptors::spriteDescs
-		u16 collider;
+		ID spriteId;
+		u32 collider;
 	};
 };
 
@@ -232,6 +235,7 @@ struct BinMaterialDesc
 
 struct BinSpriteDesc
 {
+	ID id;
 	const char *name;
 	ID textureId;
 	uint2 pos;
@@ -246,7 +250,7 @@ struct BinEntityDesc
 {
 	const char *name;
 	ID materialId;
-	const char *spriteName;
+	ID spriteId;
 	float3 pos;
 	float scale;
 	i32 layer;
@@ -271,7 +275,7 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-constexpr u32 BinAssetsVersion = 5; // 5: materials carry an ID, entities refer to one by ID
+constexpr u32 BinAssetsVersion = 6; // 6: sprites carry an ID; entities and tiles refer to one by ID
 
 struct BinAssetsHeader
 {

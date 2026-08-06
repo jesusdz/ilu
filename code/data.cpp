@@ -263,6 +263,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Sprite %s = {", desc.name);
 
 		PushIndent(ctx);
+		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		WriteLine(ctx, ".textureId = %u,", desc.textureId.slot);
 		if (desc.pos.x || desc.pos.y)
 			WriteLine(ctx, ".pos = {%u, %u},", desc.pos.x, desc.pos.y);
@@ -308,15 +309,15 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Entity %s = {", desc.name);
 
 		PushIndent(ctx);
-		if (desc.spriteName) {
-			WriteLine(ctx, ".spriteName = \"%s\",", desc.spriteName);
+		if (desc.spriteId.slot != 0) {
+			WriteLine(ctx, ".spriteId = %u,", desc.spriteId.slot);
 		} else if (desc.materialId.slot != 0) {
 			WriteLine(ctx, ".materialId = %u,", desc.materialId.slot);
 			WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(desc.geometryType));
 		}
 		WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
 		WriteLine(ctx, ".scale = %f,", desc.scale);
-		if (desc.spriteName) {
+		if (desc.spriteId.slot != 0) {
 			WriteLine(ctx, ".layer = %d,", desc.layer);
 		}
 		PopIndent(ctx);
@@ -361,7 +362,8 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 				for (u32 t = 0; t < layer.tileCount; ++t)
 				{
 					const TileDesc &tile = layer.tiles[t];
-					tileLineLen += SPrintf(tileLine + tileLineLen, "{%u, %u, %u}, ", tile.x, tile.y, tile.spriteIndex);
+					// Both union members are u32, so one raw view serializes either
+					tileLineLen += SPrintf(tileLine + tileLineLen, "{%u, %u, %u}, ", tile.x, tile.y, tile.collider);
 					if (++tilesInLine == 8 || t + 1 == layer.tileCount)
 					{
 						WriteLine(ctx, "%s", tileLine);
@@ -956,7 +958,7 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 		DParser_TryConsume(parser, TOKEN_COMMA);
 		tile.y = I32ToU16(DParser_ConsumeI32(parser));
 		DParser_TryConsume(parser, TOKEN_COMMA);
-		tile.spriteIndex = I32ToU16(DParser_ConsumeI32(parser));
+		tile.collider = DParser_ConsumeU32(parser); // Raw view; a sprite layer reads it back as spriteId
 		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 		DParser_TryConsume(parser, TOKEN_COMMA);
 		layer.tileCount++;
@@ -1140,6 +1142,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
+					static const String sId         = MakeString("id");
 					static const String sTextureId = MakeString("textureId");
 					static const String sPos        = MakeString("pos");
 					static const String sSize       = MakeString("size");
@@ -1147,7 +1150,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sFps        = MakeString("fps");
 					static const String sLoop       = MakeString("loop");
 
-					if ( StrEq( field, sTextureId ) ) {
+					if ( StrEq( field, sId ) ) {
+						desc.id = { DParser_ConsumeU32(parser) };
+					} else if ( StrEq( field, sTextureId ) ) {
 						desc.textureId = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sPos ) ) {
 						desc.pos = DParser_ConsumeUint2(parser);
@@ -1187,7 +1192,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
 					static const String sMaterialId = MakeString("materialId");
-					static const String sSpriteName = MakeString("spriteName");
+					static const String sSpriteId = MakeString("spriteId");
 					static const String sPos = MakeString("pos");
 					static const String sScale = MakeString("scale");
 					static const String sLayer = MakeString("layer");
@@ -1195,8 +1200,8 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					if ( StrEq( field, sMaterialId ) ) {
 						desc.materialId = { DParser_ConsumeU32(parser) };
-					} else if ( StrEq( field, sSpriteName ) ) {
-						desc.spriteName = PushString(*parser.arena, DParser_ConsumeString(parser));
+					} else if ( StrEq( field, sSpriteId ) ) {
+						desc.spriteId = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sPos ) ) {
 						desc.pos = DParser_ConsumeFloat3(parser);
 					} else if ( StrEq( field, sScale ) ) {
@@ -1617,6 +1622,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			const SpriteDesc &desc = descriptors.spriteDescs[i];
 
 			BinSpriteDesc &d = binSpriteDescs[i];
+			d.id          = desc.id;
 			d.name        = DataInternString(stringPool, desc.name);
 			d.textureId   = desc.textureId;
 			d.pos  = desc.pos;
@@ -1635,7 +1641,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			BinEntityDesc &d = binEntityDescs[i];
 			d.name         = DataInternString(stringPool, desc.name);
 			d.materialId   = desc.materialId;
-			d.spriteName   = DataInternString(stringPool, desc.spriteName);
+			d.spriteId     = desc.spriteId;
 			d.pos          = desc.pos;
 			d.scale        = desc.scale;
 			d.layer        = desc.layer;
@@ -1845,7 +1851,6 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	{
 		BinEntityDesc &d = entityDescs[i];
 		d.name         = DataGetString(stringPool, d.name);
-		d.spriteName   = DataGetString(stringPool, d.spriteName);
 		assets.entities[i].desc = &d;
 	}
 

@@ -110,7 +110,7 @@ struct EditorSelection
 		ID textureId;
 		AudioClipH audioClipH;
 		MusicH musicH;
-		SpriteH spriteH;
+		ID spriteId;
 		FileNode *file;
 		u64 value;
 	};
@@ -143,7 +143,7 @@ struct EditorContext
 	FileNode *selectedFile;
 	RoomH roomH;
 	u32 layerIndex;
-	SpriteH spriteH; // brush
+	ID spriteId; // brush
 	EditorTool tool;
 };
 

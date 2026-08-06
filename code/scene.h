@@ -3,18 +3,13 @@
 
 struct Engine;
 
+// Resolved form of the descriptor: size filled in from the texture when the desc left
+// it at zero, frameCount forced to at least one, textureId guaranteed to resolve.
 struct Sprite
 {
-	const char *name;
-	ID textureId;
-	uint2 pos;
-	uint2 size;
-	u32 frameCount;
-	u32 fps;
-	bool loop;
+	SpriteDesc desc;
 };
 
-DECLARE_HANDLE_TYPE(SpriteH);
 DECLARE_HANDLE_TYPE(EntityH);
 DECLARE_HANDLE_TYPE(RoomH);
 
@@ -37,7 +32,7 @@ struct Entity
 	BufferChunk indices;
 	ID materialId;
 	// Sprite entity
-	SpriteH spriteH;
+	ID spriteId;
 	i32 layer;
 
 	Entity *next; // Pointer to sibling in the hierarchy
@@ -51,7 +46,7 @@ struct Entity
 
 union Cell
 {
-	SpriteH handle;
+	ID spriteId;
 	u32 collider;
 };
 
@@ -63,7 +58,7 @@ struct Layer
 	bool visible;
 	bool isCollider;
 	uint2 size;
-	Cell cells[TILE_GRID_SIZE_X][TILE_GRID_SIZE_Y]; // sprite per cell, InvalidHandle if empty
+	Cell cells[TILE_GRID_SIZE_X][TILE_GRID_SIZE_Y]; // sprite per cell, an invalid ID if empty
 };
 
 // MAX_LAYERS is defined in data.h (RoomDesc needs it)
@@ -92,24 +87,24 @@ struct Scene
 	Entity entities[MAX_ENTITIES];
 	HandlePool entityHandles;
 
+	u32 spriteCount;
 	Sprite sprites[MAX_SPRITES];
 	SpriteAnimState spriteAnimStates[MAX_SPRITES]; // Parallel to sprites
-	HandlePool spriteHandles;
 };
 
 
 ////////////////////////////////////////////////////////////////////////
 // Sprite management
 
-SpriteH CreateSprite(Engine &engine, const SpriteDesc &desc);
-SpriteH CreateSprite(Engine &engine, const BinSpriteDesc &desc);
-Sprite &GetSprite(Scene &scene, SpriteH handle);
-u16 GetSpriteIndex(const Scene &scene, SpriteH handle);
-const SpriteDesc GetSpriteDesc(Scene &scene, SpriteH handle);
-SpriteH FindSpriteHandle(const Scene &scene, const char *name);
-SpriteH FindSpriteHandle(const Scene &scene, ID textureH, uint2 pos, uint2 size);
-SpriteH GetOrCreateSprite(Engine &engine, const SpriteDesc &desc);
-void RemoveSprite(Scene &scene, SpriteH handle);
+Sprite &GetSprite(ID spriteId);
+u16 GetSpriteIndex(const Scene &scene, ID spriteId);
+ID CreateSprite(Engine &engine, ID existingId);
+ID CreateSprite(Engine &engine, const SpriteDesc &desc);
+ID CreateSprite(Engine &engine, const BinSpriteDesc &desc);
+ID FindSprite(const Scene &scene, const char *name);
+ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size);
+ID GetOrCreateSprite(Engine &engine, const SpriteDesc &desc);
+void RemoveSprite(Scene &scene, ID spriteId);
 void CompactSprites(Scene &scene);
 
 
@@ -136,7 +131,7 @@ EntityH EntityHandleFromDrawId(const Scene &scene, u32 drawId);
 float2 GetWorld2DCoord(const Engine &engine, const Camera &camera, int2 pixelCoord);
 int2 GetGridTileCoord(const Engine &engine, const Camera &camera, int2 pixelCoord);
 void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord);
-void SetGridTileAtCoord(Engine &engine, Layer &layer, SpriteH spriteH, int2 coord);
+void SetGridTileAtCoord(Engine &engine, Layer &layer, ID spriteId, int2 coord);
 u32 GetColliderAtWorldPos(float2 worldPos);
 bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 
@@ -154,8 +149,8 @@ const Layer *GetBaseLayer(const Room &room);
 float2 LayerSize(const Layer &layer);
 float2 RoomSize(const Room &room);
 RoomH CreateRoom(Engine &engine);
-RoomH CreateRoom(Engine &engine, const RoomDesc &desc, const SpriteH *spriteHandles, u32 spriteHandleCount);
-RoomH CreateRoom(Engine &engine, const BinRoom &binRoom, const SpriteH *spriteHandles, u32 spriteHandleCount);
+RoomH CreateRoom(Engine &engine, const RoomDesc &desc);
+RoomH CreateRoom(Engine &engine, const BinRoom &binRoom);
 void RemoveRoom(Engine &engine, RoomH handle);
 
 
