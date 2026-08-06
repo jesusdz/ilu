@@ -632,8 +632,12 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 ENGINE_API void OnPlatformUnloadEngine(Plat &platform)
 {
 	Graphics &gfx = platform.engine->gfx;
-	WaitDeviceIdle(gfx.device);
-	PROFILE_GPU_CLEANUP(gfx.device);
+
+	if ( IsValidGraphicsDevice(gfx.device) )
+	{
+		WaitDeviceIdle(gfx.device);
+		PROFILE_GPU_CLEANUP(gfx.device);
+	}
 }
 
 ENGINE_API bool OnPlatformPreInit(Plat &platform)
