@@ -96,6 +96,7 @@ Entity ent_plane = {
 // Audio clips /////////////////////////////////////////////////////////
 
 AudioClip aclip_bell = {
+ .id = 1012,
  .filename = "bell.wav",
 };
 
@@ -104,6 +105,7 @@ AudioClip aclip_bell = {
 //};
 
 MusicFile music_aurora = {
+ .id = 1013,
  .filename = "aurora.mod",
 };
 

@@ -128,6 +128,7 @@ struct RoomDesc
 
 struct AudioClipDesc
 {
+	ID id;
 	const char *name;
 	const char *filename;
 	AssetFlags flags;
@@ -135,6 +136,7 @@ struct AudioClipDesc
 
 struct MusicFileDesc
 {
+	ID id;
 	const char *name;
 	const char *filename;
 	AssetFlags flags;
@@ -213,6 +215,7 @@ struct BinImageDesc
 
 struct BinAudioClipDesc
 {
+	ID id;
 	u32 sampleCount;
 	u32 samplingRate;
 	u16 sampleSize;
@@ -222,6 +225,7 @@ struct BinAudioClipDesc
 
 struct BinMusicFileDesc
 {
+	ID id;
 	const char *name;
 	BinLocation location;
 };
@@ -279,7 +283,7 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-constexpr u32 BinAssetsVersion = 7; // 7: entities and rooms carry an ID
+constexpr u32 BinAssetsVersion = 8; // 8: audio clips and music files carry an ID
 
 struct BinAssetsHeader
 {

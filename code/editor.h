@@ -99,17 +99,16 @@ struct SnapshotNode
 struct EditorSelection
 {
 	EditorSelectedType type;
-	// Discriminated by `type`. Reading through the wrong member is the one thing the
-	// handle types cannot catch, so go through the matching EditorSelect* helper.
+	// Discriminated by `type`. Every asset is an ID now, so nothing but `type` says
+	// which kind this one is: go through the matching EditorSelect* helper.
 	union
 	{
-		Handle handle; // untyped view, only for clearing and comparing
 		ID roomId;
 		ID entityId;
 		ID materialId;
 		ID textureId;
-		AudioClipH audioClipH;
-		MusicH musicH;
+		ID audioClipId;
+		ID musicId;
 		ID spriteId;
 		FileNode *file;
 		u64 value;
@@ -124,10 +123,9 @@ struct EditorInspector
 	// the same way EditorSelection is
 	union
 	{
-		Handle tmpHandle; // untyped view, only for clearing
-		ID tmpTextureH;
-		AudioClipH tmpAudioClipH;
-		MusicH tmpMusicH;
+		ID tmpTextureId;
+		ID tmpAudioClipId;
+		ID tmpMusicId;
 	};
 };
 

@@ -23,6 +23,7 @@ enum AudioClipLoadSource
 
 struct AudioClip
 {
+	AudioClipDesc desc;
 	u32 sampleCount;
 	u32 samplingRate;
 	u16 sampleSize;
@@ -42,19 +43,16 @@ enum AudioState
 	AUDIO_STATE_PAUSED,
 };
 
-DECLARE_HANDLE_TYPE(AudioClipH);
-DECLARE_HANDLE_TYPE(MusicH);
-
 struct AudioSource
 {
-	AudioClipH clip;
+	ID clip;
 	u32 lastWriteSampleIndex = 0;
 	AudioState state;
 };
 
 struct AudioChunk
 {
-	AudioClipH clipH;
+	ID clipId;
 	u32 index;
 	i16 samples[AUDIO_CHUNK_SAMPLE_COUNT];
 	AudioChunk *prev;
@@ -69,6 +67,7 @@ enum LoadSource
 
 struct MusicFile
 {
+	MusicFileDesc desc;
 	LoadSource loadSource;
 	union
 	{
@@ -82,9 +81,8 @@ struct Audio
 	// Compact, no holes, like the rest of the pools. Unlike the rest, these are read
 	// by the mixing thread, so CompactAudio is what closes the gaps and it runs from
 	// PreRenderAudio rather than from the frame loop. See CompactAudio.
+	u32 clipCount;
 	AudioClip clips[MAX_AUDIO_CLIPS] = {};
-	AudioClipDesc clipDescs[MAX_AUDIO_CLIPS] = {}; // Parallel to clips
-	HandlePool clipHandles;
 
 	AudioSource sources[MAX_AUDIO_SOURCES] = {};
 
@@ -100,11 +98,10 @@ struct Audio
 	u32 musicBufferReadSampleIndex;
 	u32 musicBufferWriteSampleIndex;
 
+	u32 musicFileCount;
 	MusicFile musicFiles[MAX_MUSIC_FILES] = {};
-	MusicFileDesc musicFileDescs[MAX_MUSIC_FILES] = {}; // Parallel to musicFiles
-	HandlePool musicHandles;
 
-	MusicH musicFile; // Music file being played
+	ID musicFile; // Music file being played
 
 	// MOD tracks
 	Arena moduleArena;
@@ -126,15 +123,14 @@ bool InitializeAudio(Audio &audio, Arena &globalArena);
 bool LoadAudioClipFromWAVFile(const char *filename, Arena &arena, AudioClip &audioClip, void **outSamples);
 bool LoadSamplesFromWAVFile(const char *filename, void *samples, u32 firstSampleIndex, u32 sampleCount);
 
-AudioClip &GetAudioClip(Audio &audio, AudioClipH handle);
-AudioClipDesc &GetAudioClipDesc(Audio &audio, AudioClipH handle);
-AudioClipH CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip);
-AudioClipH CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
-AudioClipH GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
-void RemoveAudioClip(Engine &engine, AudioClipH handle); // Deferred, takes effect on the next CompactAudio
-u16 GetAudioClipIndex(const Audio &audio, AudioClipH handle);
+AudioClip &GetAudioClip(ID clipId);
+ID CreateAudioClip(Engine &engine, ID existingId);
+ID CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip);
+ID CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
+ID GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
+void RemoveAudioClip(Engine &engine, ID clipId); // Deferred, takes effect on the next CompactAudio
 void CompactAudio(Audio &audio);
-u32 PlayAudioClip(Engine &engine, AudioClipH handle);
+u32 PlayAudioClip(Engine &engine, ID clipId);
 bool IsActiveAudioSource(Engine &engine, u32 audioSourceIndex);
 bool IsPausedAudioSource(Engine &engine, u32 audioSourceIndex);
 void PauseAudioSource(Engine &engine, u32 audioSourceIndex);
@@ -144,13 +140,13 @@ void StopAudioSource(Engine &engine, u32 audioSourceIndex);
 void PreRenderAudio(Engine &engine);
 void RenderAudio(Engine &engine, SoundBuffer &soundBuffer);
 
-MusicFile &GetMusicFile(Audio &audio, MusicH handle);
-MusicFileDesc &GetMusicFileDesc(Audio &audio, MusicH handle);
-MusicH CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile);
-MusicH CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc);
-MusicH GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc);
-void DestroyMusicFile(Engine &engine, MusicH musicH);
-void MusicPlay(Engine &engine, MusicH handle);
+MusicFile &GetMusicFile(ID musicId);
+ID CreateMusicFile(Engine &engine, ID existingId);
+ID CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile);
+ID CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc);
+ID GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc);
+void DestroyMusicFile(Engine &engine, ID musicId);
+void MusicPlay(Engine &engine, ID musicId);
 void MusicPause(Engine &engine);
 void MusicStop(Engine &engine);
 bool MusicIsPlaying(Engine &engine);

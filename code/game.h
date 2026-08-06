@@ -66,8 +66,8 @@ struct Game
 
 	ID entId;
 
-	AudioClipH sndJump;
-	MusicH modEquinox;
+	ID sndJump;
+	ID modEquinox;
 
 	bool playingMusic;
 

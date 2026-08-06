@@ -18,7 +18,6 @@ enum AudioCmdType : u32
 struct AudioCmd
 {
 	AudioCmdType type;
-	Handle handle; // Unused: the commands identify their target by sourceIndex
 	u32 sourceIndex; // For active audio sources
 };
 
@@ -127,11 +126,6 @@ bool InitializeAudio(Audio &audio, Arena &globalArena)
 	audio.audioChunkSentinel.next = first;
 	audio.audioChunkSentinel.prev = last;
 
-	// Handles
-
-	Initialize(audio.clipHandles, globalArena, MAX_AUDIO_SOURCES);
-	Initialize(audio.musicHandles, globalArena, MAX_MUSIC_FILES);
-
 	// Allocate music buffer
 
 	const u32 musicMonoSampleCount = AUDIO_MUSIC_MEMORY / sizeof(i16);
@@ -145,7 +139,7 @@ bool InitializeAudio(Audio &audio, Arena &globalArena)
 
 	audio.moduleArena = PushSubArena(globalArena, AUDIO_MODULE_MEMORY, "MOD arena");
 
-	audio.musicFile = InvalidHandle;
+	audio.musicFile = {};
 
 	// Initialized!
 
@@ -401,126 +395,113 @@ u32 LoadSamplesFromModFile(struct replay *replay, void *samples, u32 sampleCount
 ////////////////////////////////////////////////////////////////////////
 // AudioClip and AudioSource management
 
-AudioClipH::operator bool() const { return IsValidHandle(engine->audio.clipHandles, *this); }
-MusicH::operator bool()     const { return IsValidHandle(engine->audio.musicHandles, *this); }
-
-AudioClip &GetAudioClip(Audio &audio, AudioClipH handle)
+AudioClip &GetAudioClip(ID id)
 {
-	ASSERT( IsValidHandle(audio.clipHandles, handle) );
-	AudioClip &audioClip = audio.clips[GetHandleIndex(audio.clipHandles, handle)];
+	ASSERT( Valid(id) );
+	AudioClip &audioClip = *((AudioClip*)GetObject(id));
 	return audioClip;
 }
 
-u16 GetAudioClipIndex(const Audio &audio, AudioClipH handle)
-{
-	ASSERT( IsValidHandle(audio.clipHandles, handle) );
-	return GetHandleIndex(audio.clipHandles, handle);
-}
-
-AudioClipDesc &GetAudioClipDesc(Audio &audio, AudioClipH handle)
-{
-	ASSERT( IsValidHandle(audio.clipHandles, handle) );
-	AudioClipDesc &audioClipDesc = audio.clipDescs[GetHandleIndex(audio.clipHandles, handle)];
-	return audioClipDesc;
-}
-
-AudioClipH CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
+ID CreateAudioClip(Engine &engine, ID existingId)
 {
 	Audio &audio = engine.audio;
 
-	AudioClipH handle = NewHandle(audio.clipHandles);
-
-	if ( handle )
+	if ( audio.clipCount == MAX_AUDIO_CLIPS )
 	{
-		AudioClip &audioClip = GetAudioClip(audio, handle);
-		audioClip = {}; // The element held another clip before
-
-		const BinAudioClipDesc &desc = *binAudioClip.desc;
-		audioClip.sampleSize = desc.sampleSize;
-		audioClip.samplingRate = desc.samplingRate;
-		audioClip.channelCount = desc.channelCount;
-		audioClip.sampleCount = desc.sampleCount;
-		audioClip.loadSource = AUDIO_CLIP_LOAD_SOURCE_ASSETS;
-		audioClip.location = desc.location;
-	}
-	else
-	{
-		LOG(Warning, "Could not load audio clip %s (no more space left for audio clips)\n", "<audio-clip>");
+		LOG(Warning, "Could not create audio clip, the audio clip array is full.\n");
+		return {};
 	}
 
-	return handle;
+	ID id = existingId;
+	if ( id.slot == 0 ) {
+		id = NewID();
+	} else {
+		ReserveID(id);
+	}
+
+	AudioClip &audioClip = audio.clips[audio.clipCount++];
+	audioClip = {};
+	audioClip.desc.id = id;
+
+	SetObject(id, &audioClip);
+
+	return id;
 }
 
-AudioClipH CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
+ID CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
 {
-	Audio &audio = engine.audio;
-	Arena &arena = DataArena;
+	const BinAudioClipDesc &desc = *binAudioClip.desc;
 
-	AudioClipH handle = NewHandle(audio.clipHandles);
-
-	if ( handle )
-	{
-		GetAudioClipDesc(audio, handle) = audioClipDesc;
-
-		AudioClip &audioClip = GetAudioClip(audio, handle);
-		audioClip = {}; // The element held another clip before
-		//ASSERT(!audioClip.samples);
-
-		if ( LoadAudioClipFromWAVFile(audioClipDesc.filename, audioClip) )
-		{
-			audioClip.loadSource = AUDIO_CLIP_LOAD_SOURCE_WAV;
-		}
-		else
-		{
-			LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
-			FreeHandle(audio.clipHandles, handle);
-			handle = InvalidHandle;
-		}
+	const ID id = CreateAudioClip(engine, desc.id);
+	if ( !id ) {
+		return id;
 	}
-	else
-	{
+
+	AudioClip &audioClip = GetAudioClip(id);
+	audioClip.sampleSize = desc.sampleSize;
+	audioClip.samplingRate = desc.samplingRate;
+	audioClip.channelCount = desc.channelCount;
+	audioClip.sampleCount = desc.sampleCount;
+	audioClip.loadSource = AUDIO_CLIP_LOAD_SOURCE_ASSETS;
+	audioClip.location = desc.location;
+
+	return id;
+}
+
+ID CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
+{
+	const ID id = CreateAudioClip(engine, audioClipDesc.id);
+	if ( !id ) {
 		LOG(Warning, "Could not load audio clip %s (no more space left for audio clips)\n", audioClipDesc.filename);
+		return id;
 	}
 
-	return handle;
+	AudioClip &audioClip = GetAudioClip(id);
+	audioClip.desc = audioClipDesc;
+	audioClip.desc.id = id;
+
+	if ( LoadAudioClipFromWAVFile(audioClipDesc.filename, audioClip) )
+	{
+		audioClip.loadSource = AUDIO_CLIP_LOAD_SOURCE_WAV;
+	}
+	else
+	{
+		LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
+		RemoveAudioClip(engine, id);
+		return {};
+	}
+
+	return id;
 }
 
-AudioClipH GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
+ID GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
 {
-	AudioClipH clipHandle = InvalidHandle;
-	for (u16 i = 0; i < HandleCount(engine.audio.clipHandles); ++i)
+	ID id = {};
+	for (u32 i = 0; i < engine.audio.clipCount; ++i)
 	{
-		const AudioClipDesc &clipDesc = engine.audio.clipDescs[i];
+		const AudioClipDesc &clipDesc = engine.audio.clips[i].desc;
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, clipDesc.name)) {
-			clipHandle = GetHandleAt(engine.audio.clipHandles, i);
+			id = clipDesc.id;
 			break;
 		}
 	}
 
-	if ( !clipHandle )
+	if ( !id )
 	{
-		clipHandle = CreateAudioClip(engine, desc);
+		id = CreateAudioClip(engine, desc);
 	}
-	return clipHandle;
+	return id;
 }
 
-void RemoveAudioClip(Engine &engine, AudioClipH handle)
+void RemoveAudioClip(Engine &engine, ID id)
 {
-	FreeHandle(engine.audio.clipHandles, handle);
-}
-
-static MOVE_ELEMENT(MoveAudioClip)
-{
-	Audio &audio = *(Audio*)data;
-	audio.clips[dstIndex] = audio.clips[srcIndex];
-	audio.clipDescs[dstIndex] = audio.clipDescs[srcIndex];
-}
-
-static MOVE_ELEMENT(MoveMusicFile)
-{
-	Audio &audio = *(Audio*)data;
-	audio.musicFiles[dstIndex] = audio.musicFiles[srcIndex];
-	audio.musicFileDescs[dstIndex] = audio.musicFileDescs[srcIndex];
+	if (id)
+	{
+		// Marks only. The clip keeps its samples until CompactAudio, which runs on the
+		// mixing thread, so anything mid-playback still has something valid to read.
+		GetAudioClip(id).desc.id = {};
+		Invalidate(id);
+	}
 }
 
 // Closing the gaps moves clip storage, and RenderAudio reads that storage by index,
@@ -533,8 +514,47 @@ static MOVE_ELEMENT(MoveMusicFile)
 // PreRenderAudio runs on the main one, so the two can overlap there.
 void CompactAudio(Audio &audio)
 {
-	CompactPool(audio.clipHandles, MoveAudioClip, nullptr, &audio);
-	CompactPool(audio.musicHandles, MoveMusicFile, nullptr, &audio);
+	u32 storeIndex = U32_MAX;
+	for (u32 i = 0; i < audio.clipCount; ++i)
+	{
+		if ( !audio.clips[i].desc.id ) { storeIndex = i; break; }
+	}
+	if ( storeIndex != U32_MAX )
+	{
+		for (u32 readIndex = storeIndex; readIndex < audio.clipCount; ++readIndex)
+		{
+			AudioClip &readClip = audio.clips[readIndex];
+			if ( !readClip.desc.id ) { readClip = {}; continue; }
+
+			AudioClip &writeClip = audio.clips[storeIndex++];
+			writeClip = readClip;
+			readClip = {};
+
+			SetObject(writeClip.desc.id, &writeClip);
+		}
+		audio.clipCount = storeIndex;
+	}
+
+	storeIndex = U32_MAX;
+	for (u32 i = 0; i < audio.musicFileCount; ++i)
+	{
+		if ( !audio.musicFiles[i].desc.id ) { storeIndex = i; break; }
+	}
+	if ( storeIndex != U32_MAX )
+	{
+		for (u32 readIndex = storeIndex; readIndex < audio.musicFileCount; ++readIndex)
+		{
+			MusicFile &readFile = audio.musicFiles[readIndex];
+			if ( !readFile.desc.id ) { readFile = {}; continue; }
+
+			MusicFile &writeFile = audio.musicFiles[storeIndex++];
+			writeFile = readFile;
+			readFile = {};
+
+			SetObject(writeFile.desc.id, &writeFile);
+		}
+		audio.musicFileCount = storeIndex;
+	}
 }
 
 #define INVALID_AUDIO_CLIP U32_MAX
@@ -570,7 +590,7 @@ u32 FindFreeAudioSource(Engine &engine)
 	return INVALID_AUDIO_SOURCE;
 }
 
-u32 PlayAudioClip(Engine &engine, AudioClipH handle)
+u32 PlayAudioClip(Engine &engine, ID clipId)
 {
 	Audio &audio = engine.audio;
 
@@ -583,7 +603,7 @@ u32 PlayAudioClip(Engine &engine, AudioClipH handle)
 	else
 	{
 		AudioSource &audioSource = audio.sources[audioSourceIndex];
-		audioSource.clip = handle;
+		audioSource.clip = clipId;
 		audioSource.lastWriteSampleIndex = 0;
 
 
@@ -764,7 +784,7 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 
 		if ( audioSourceIsValid && audioSource.state == AUDIO_STATE_PLAYING )
 		{
-			AudioClip &audioClip = GetAudioClip(audio, audioSource.clip);
+			AudioClip &audioClip = GetAudioClip(audioSource.clip);
 
 			const u32 chunkCount = (audioClip.sampleCount - 1) / AUDIO_CHUNK_SAMPLE_COUNT + 1;
 			const u32 currChunkIndex = audioSource.lastWriteSampleIndex / AUDIO_CHUNK_SAMPLE_COUNT;
@@ -789,7 +809,7 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 				AudioChunk *end = &audio.audioChunkSentinel;
 				while (chunk != end)
 				{
-					if ( audioSource.clip == chunk->clipH && chunkIndex == chunk->index ) {
+					if ( audioSource.clip == chunk->clipId && chunkIndex == chunk->index ) {
 						break;
 					}
 					chunk = chunk->next;
@@ -799,7 +819,7 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 				if ( chunk == end )
 				{
 					chunk = audio.audioChunkSentinel.prev;
-					chunk->clipH = audioSource.clip;
+					chunk->clipId = audioSource.clip;
 					chunk->index = chunkIndex;
 
 					const u32 chunkSampleCount = (chunkIndex == chunkCount - 1) ? audioClip.sampleCount % AUDIO_CHUNK_SAMPLE_COUNT : AUDIO_CHUNK_SAMPLE_COUNT;
@@ -894,110 +914,115 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 ////////////////////////////////////////////////////////////////////////
 // MOD music  tracks
 
-MusicFile &GetMusicFile(Audio &audio, MusicH handle)
+MusicFile &GetMusicFile(ID id)
 {
-	ASSERT( IsValidHandle(audio.musicHandles, handle) );
-	MusicFile &musicFile = audio.musicFiles[GetHandleIndex(audio.musicHandles, handle)];
+	ASSERT( Valid(id) );
+	MusicFile &musicFile = *((MusicFile*)GetObject(id));
 	return musicFile;
 }
 
-MusicFileDesc &GetMusicFileDesc(Audio &audio, MusicH handle)
-{
-	ASSERT( IsValidHandle(audio.musicHandles, handle) );
-	MusicFileDesc &musicFileDesc = audio.musicFileDescs[GetHandleIndex(audio.musicHandles, handle)];
-	return musicFileDesc;
-}
-
-MusicH CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
+ID CreateMusicFile(Engine &engine, ID existingId)
 {
 	Audio &audio = engine.audio;
 
-	MusicH handle = NewHandle(audio.musicHandles);
-
-	if ( handle )
+	if ( audio.musicFileCount == MAX_MUSIC_FILES )
 	{
-		MusicFile &musicFile = GetMusicFile(audio, handle);
-		musicFile = {}; // The element held another music file before
-
-		const BinMusicFileDesc &desc = *binMusicFile.desc;
-		musicFile.loadSource = LOAD_SOURCE_ASSET_FILE;
-		musicFile.location = desc.location;
-
-		//MusicFileDesc &musicFileDesc = GetMusicFileDesc(audio, handle);
-		// TODO
-	}
-	else
-	{
-		LOG(Warning, "Could not load music file %s (no more space left for handles)\n", "<music-file>");
+		LOG(Warning, "Could not create music file, the music file array is full.\n");
+		return {};
 	}
 
-	return handle;
+	ID id = existingId;
+	if ( id.slot == 0 ) {
+		id = NewID();
+	} else {
+		ReserveID(id);
+	}
+
+	MusicFile &musicFile = audio.musicFiles[audio.musicFileCount++];
+	musicFile = {};
+	musicFile.desc.id = id;
+
+	SetObject(id, &musicFile);
+
+	return id;
 }
 
-MusicH CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
+ID CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
 {
-	Audio &audio = engine.audio;
-	Arena &arena = DataArena;
+	const BinMusicFileDesc &desc = *binMusicFile.desc;
 
-	MusicH handle = NewHandle(audio.musicHandles);
-
-	if ( handle )
-	{
-		GetMusicFileDesc(audio, handle) = musicFileDesc;
-
-		MusicFile &musicFile = GetMusicFile(audio, handle);
-		musicFile = {}; // The element held another music file before
-		musicFile.loadSource = LOAD_SOURCE_MOD_FILE;
-		musicFile.filename = musicFileDesc.filename;
-	}
-	else
-	{
-		LOG(Warning, "Could not load music file %s (no more space left for handles)\n", musicFileDesc.filename);
+	const ID id = CreateMusicFile(engine, desc.id);
+	if ( !id ) {
+		return id;
 	}
 
-	return handle;
+	MusicFile &musicFile = GetMusicFile(id);
+	musicFile.desc.name = desc.name;
+	musicFile.loadSource = LOAD_SOURCE_ASSET_FILE;
+	musicFile.location = desc.location;
+
+	return id;
 }
 
-MusicH GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
+ID CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
 {
-	MusicH musicHandle = InvalidHandle;
-	for (u16 i = 0; i < HandleCount(engine.audio.musicHandles); ++i)
+	const ID id = CreateMusicFile(engine, musicFileDesc.id);
+	if ( !id ) {
+		LOG(Warning, "Could not load music file %s (no more space left for music files)\n", musicFileDesc.filename);
+		return id;
+	}
+
+	MusicFile &musicFile = GetMusicFile(id);
+	musicFile.desc = musicFileDesc;
+	musicFile.desc.id = id;
+	musicFile.loadSource = LOAD_SOURCE_MOD_FILE;
+	musicFile.filename = musicFileDesc.filename;
+
+	return id;
+}
+
+ID GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
+{
+	ID id = {};
+	for (u32 i = 0; i < engine.audio.musicFileCount; ++i)
 	{
-		const MusicFileDesc &musicDesc = engine.audio.musicFileDescs[i];
+		const MusicFileDesc &musicDesc = engine.audio.musicFiles[i].desc;
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, musicDesc.name)) {
-			musicHandle = GetHandleAt(engine.audio.musicHandles, i);
+			id = musicDesc.id;
 			break;
 		}
 	}
 
-	if ( !musicHandle )
+	if ( !id )
 	{
-		musicHandle = CreateMusicFile(engine, desc);
+		id = CreateMusicFile(engine, desc);
 	}
-	return musicHandle;
+	return id;
 }
 
-void DestroyMusicFile(Engine &engine, MusicH handle)
+void DestroyMusicFile(Engine &engine, ID id)
 {
-	Audio &audio = engine.audio;
-	Arena &arena = DataArena;
-
-	if ( handle )
+	if ( id )
 	{
 		// Marks only, see RemoveAudioClip
-		FreeHandle(audio.musicHandles, handle);
+		GetMusicFile(id).desc.id = {};
+		Invalidate(id);
 	}
 }
 
-void MusicPlay(Engine &engine, MusicH handle)
+void MusicPlay(Engine &engine, ID musicId)
 {
 	Audio &audio = engine.audio;
 
-	if (audio.musicFile != handle)
+	if (!musicId) {
+		return;
+	}
+
+	if (musicId != audio.musicFile)
 	{
 		ResetArena( audio.moduleArena );
 
-		MusicFile &musicFile = GetMusicFile(engine.audio, handle);
+		MusicFile &musicFile = GetMusicFile(musicId);
 		DataChunk chunk = {};
 
 		if (musicFile.loadSource == LOAD_SOURCE_MOD_FILE)
@@ -1034,7 +1059,7 @@ void MusicPlay(Engine &engine, MusicH handle)
 				{
 					audio.module = module;
 					audio.moduleReplay = replay;
-					audio.musicFile = handle;
+					audio.musicFile = musicId;
 					audio.moduleSampleCount = replay_calculate_duration( audio.moduleReplay ) * 2;
 				}
 				else

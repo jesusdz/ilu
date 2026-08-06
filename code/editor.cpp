@@ -356,15 +356,15 @@ static void EditorSelectTexture(Editor &editor, ID handle)
 	editor.inspector.nextSelected.type = EditorSelectedType_Texture;
 }
 
-static void EditorSelectAudioClip(Editor &editor, AudioClipH handle)
+static void EditorSelectAudioClip(Editor &editor, ID clipId)
 {
-	editor.inspector.nextSelected.audioClipH = handle;
+	editor.inspector.nextSelected.audioClipId = clipId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Audio;
 }
 
-static void EditorSelectMusic(Editor &editor, MusicH handle)
+static void EditorSelectMusic(Editor &editor, ID musicId)
 {
-	editor.inspector.nextSelected.musicH = handle;
+	editor.inspector.nextSelected.musicId = musicId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Music;
 }
 
@@ -656,24 +656,24 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "AudioClips") )
 	{
-		for (u16 i = 0; i < HandleCount(audio.clipHandles); ++i)
+		for (u32 i = 0; i < audio.clipCount; ++i)
 		{
-			const AudioClipDesc &desc = audio.clipDescs[i];
+			const AudioClipDesc &desc = audio.clips[i].desc;
 
 			if ( UI_Button(ui, desc.name) ) {
-				EditorSelectAudioClip(editor, GetHandleAt(audio.clipHandles, i));
+				EditorSelectAudioClip(editor, desc.id);
 			}
 		}
 	}
 
 	if ( UI_Section(ui, "MusicFiles") )
 	{
-		for (u16 i = 0; i < HandleCount(audio.musicHandles); ++i)
+		for (u32 i = 0; i < audio.musicFileCount; ++i)
 		{
-			const MusicFileDesc &desc = audio.musicFileDescs[i];
+			const MusicFileDesc &desc = audio.musicFiles[i].desc;
 
 			if ( UI_Button(ui, desc.name) ) {
-				EditorSelectMusic(editor, GetHandleAt(audio.musicHandles, i));
+				EditorSelectMusic(editor, desc.id);
 			}
 		}
 	}
@@ -1014,14 +1014,14 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 
 		if (inspector.selected.type == EditorSelectedType_FileImage) {
 			WaitDeviceIdle(engine.gfx.device);
-			RemoveTexture(engine.gfx, inspector.tmpTextureH);
+			RemoveTexture(engine.gfx, inspector.tmpTextureId);
 		}
 		if (inspector.selected.type == EditorSelectedType_FileAudio) {
 			audioSourceIndex = U32_MAX;
-			RemoveAudioClip(engine, inspector.tmpAudioClipH);
+			RemoveAudioClip(engine, inspector.tmpAudioClipId);
 		}
 		if (inspector.selected.type == EditorSelectedType_FileMusic) {
-			DestroyMusicFile(engine, inspector.tmpMusicH);
+			DestroyMusicFile(engine, inspector.tmpMusicId);
 		}
 	}
 
@@ -1059,10 +1059,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.mipmap = true,
 					.flags = AssetFlag_Ghost,
 				};
-				inspector.tmpTextureH = CreateTexture(engine.gfx, desc);
+				inspector.tmpTextureId = CreateTexture(engine.gfx, desc);
 			}
 
-			const ImageH imageH = GetTextureImage(engine.gfx, inspector.tmpTextureH, engine.gfx.grayImageH);
+			const ImageH imageH = GetTextureImage(engine.gfx, inspector.tmpTextureId, engine.gfx.grayImageH);
 			UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
 
 			if ( UI_Button(ui, "Import texture") )
@@ -1091,13 +1091,13 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.filename = filename,
 					.flags = AssetFlag_Ghost,
 				};
-				inspector.tmpAudioClipH = CreateAudioClip(engine, desc);
+				inspector.tmpAudioClipId = CreateAudioClip(engine, desc);
 			}
 
-			if (inspector.tmpAudioClipH)
+			if (inspector.tmpAudioClipId)
 			{
 				if (UI_Button(ui, "Play")) {
-					audioSourceIndex = PlayAudioClip(engine, inspector.tmpAudioClipH);
+					audioSourceIndex = PlayAudioClip(engine, inspector.tmpAudioClipId);
 				}
 				if (UI_Button(ui, "Stop")) {
 					StopAudioSource(engine, audioSourceIndex);
@@ -1116,13 +1116,13 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.filename = filename,
 					//.flags = AssetFlag_Ghost,
 				};
-				inspector.tmpMusicH = CreateMusicFile(engine, desc);
+				inspector.tmpMusicId = CreateMusicFile(engine, desc);
 			}
 
-			if (inspector.tmpMusicH)
+			if (inspector.tmpMusicId)
 			{
 				if (UI_Button(ui, "Play")) {
-					MusicPlay(engine, inspector.tmpMusicH);
+					MusicPlay(engine, inspector.tmpMusicId);
 				}
 				if (UI_Button(ui, "Stop")) {
 					MusicStop(engine);
@@ -1227,10 +1227,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Audio)
 		{
-			if (inspector.selected.audioClipH)
+			if (inspector.selected.audioClipId)
 			{
 				if (UI_Button(ui, "Play")) {
-					audioSourceIndex = PlayAudioClip(engine, inspector.selected.audioClipH);
+					audioSourceIndex = PlayAudioClip(engine, inspector.selected.audioClipId);
 				}
 				if (UI_Button(ui, "Stop")) {
 					StopAudioSource(engine, audioSourceIndex);
@@ -1240,10 +1240,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Music)
 		{
-			if (inspector.selected.musicH)
+			if (inspector.selected.musicId)
 			{
 				if (UI_Button(ui, "Play")) {
-					MusicPlay(engine, inspector.selected.musicH);
+					MusicPlay(engine, inspector.selected.musicId);
 				}
 				if (UI_Button(ui, "Stop")) {
 					MusicStop(engine);
@@ -1574,7 +1574,7 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 				.filename = node->filename,
 				//.flags = AssetFlag_Ghost,
 			};
-			AudioClipH clipHandle = GetOrCreateAudioClip(engine, desc);
+			const ID clipId = GetOrCreateAudioClip(engine, desc);
 		}
 		else if (node->type == FileNodeType_Music)
 		{
@@ -1588,7 +1588,7 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 				.filename = node->filename,
 				//.flags = AssetFlag_Ghost,
 			};
-			MusicH clipHandle = GetOrCreateMusicFile(engine, desc);
+			const ID musicId = GetOrCreateMusicFile(engine, desc);
 		}
 	}
 }

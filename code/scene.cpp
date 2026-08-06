@@ -776,8 +776,8 @@ void CleanScene(Engine &engine)
 	for (u16 i = 0; i < scene.spriteCount; ++i) {
 		RemoveSprite(scene, scene.sprites[i].desc.id);
 	}
-	for (u16 i = 0; i < HandleCount(audio.clipHandles); ++i) {
-		RemoveAudioClip(engine, GetHandleAt(audio.clipHandles, i));
+	for (u16 i = 0; i < audio.clipCount; ++i) {
+		RemoveAudioClip(engine, audio.clips[i].desc.id);
 	}
 
 	// Compaction after removal

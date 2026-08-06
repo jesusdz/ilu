@@ -50,7 +50,6 @@ struct ImagePixels
 #include "shaders/types.hlsl"
 #include "shaders/bindings.hlsl"
 
-#include "handle_pool.h"
 #include "data.h"
 #include "audio.h"
 #include "graphics.h"
@@ -200,8 +199,24 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static AudioClipDesc audioClipDescs[MAX_AUDIO_CLIPS];
 	u32 audioClipCount = 0;
-	for (u16 i = 0; i < HandleCount(engine.audio.clipHandles); ++i) {
-		audioClipDescs[audioClipCount] = engine.audio.clipDescs[i];
+	for (u16 i = 0; i < engine.audio.clipCount; ++i) {
+		const AudioClipDesc &desc = engine.audio.clips[i].desc;
+		if ( !desc.id ) { continue; }
+		audioClipDescs[audioClipCount] = desc;
+		if ( !( desc.flags & AssetFlag_Ghost ) ) {
+			audioClipCount++;
+		}
+	}
+
+	static MusicFileDesc musicFileDescs[MAX_MUSIC_FILES];
+	u32 musicFileCount = 0;
+	for (u16 i = 0; i < engine.audio.musicFileCount; ++i) {
+		const MusicFileDesc &desc = engine.audio.musicFiles[i].desc;
+		if ( !desc.id ) { continue; }
+		musicFileDescs[musicFileCount] = desc;
+		if ( !( desc.flags & AssetFlag_Ghost ) ) {
+			musicFileCount++;
+		}
 	}
 
 	const AssetDescriptors assetDescs = {
@@ -219,6 +234,8 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		.roomDescCount = roomCount,
 		.audioClipDescs = audioClipDescs,
 		.audioClipDescCount = audioClipCount,
+		.musicFileDescs = musicFileDescs,
+		.musicFileDescCount = musicFileCount,
 	};
 
 	return assetDescs;
@@ -983,43 +1000,39 @@ Entity *TryGetEntity(ID entityId)
 	return ent;
 }
 
-AudioClipH GetAudioClip(const char *name)
+ID GetAudioClip(const char *name)
 {
-	AudioClipH handle = InvalidHandle;
-	for (u16 i = 0; i < HandleCount(engine->audio.clipHandles); ++i)
+	for (u32 i = 0; i < engine->audio.clipCount; ++i)
 	{
-		const AudioClipDesc &desc = engine->audio.clipDescs[i];
-		if ( StrEq(desc.name, name) ) {
-			handle = GetHandleAt(engine->audio.clipHandles, i);
-			break;
+		const AudioClipDesc &desc = engine->audio.clips[i].desc;
+		if ( desc.id && StrEq(desc.name, name) ) {
+			return desc.id;
 		}
 	}
-	return handle;
+	return {};
 }
 
-u32 PlayAudioClip(AudioClipH handle)
+u32 PlayAudioClip(ID clipId)
 {
-	u32 ret = PlayAudioClip(*engine, handle);
+	u32 ret = PlayAudioClip(*engine, clipId);
 	return ret;
 }
 
-MusicH GetMusic(const char *name)
+ID GetMusic(const char *name)
 {
-	MusicH handle = InvalidHandle;
-	for (u16 i = 0; i < HandleCount(engine->audio.musicHandles); ++i)
+	for (u32 i = 0; i < engine->audio.musicFileCount; ++i)
 	{
-		const MusicFileDesc &desc = engine->audio.musicFileDescs[i];
-		if ( StrEq(desc.name, name) ) {
-			handle = GetHandleAt(engine->audio.musicHandles, i);
-			break;
+		const MusicFileDesc &desc = engine->audio.musicFiles[i].desc;
+		if ( desc.id && StrEq(desc.name, name) ) {
+			return desc.id;
 		}
 	}
-	return handle;
+	return {};
 }
 
-void PlayMusic(MusicH handle)
+void PlayMusic(ID musicId)
 {
-	MusicPlay(*engine, handle);
+	MusicPlay(*engine, musicId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

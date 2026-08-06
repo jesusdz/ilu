@@ -218,7 +218,7 @@ static void GetSpriteBounds(const SpriteDesc &sprite, float2 bounds[4])
 	bounds[2] = { (f32)sprite.size.x, (f32)sprite.size.y };
 }
 
-static bool EntityIsInFrustum3D(Scene &scene, const Entity &entity, const FrustumPlanes &frustum)
+static bool EntityIsInFrustum3D(const Entity &entity, const FrustumPlanes &frustum)
 {
 	bool entityIsInFrustum = false;
 
@@ -273,7 +273,7 @@ static bool Intersects(float2 aMin, float2 aMax, float2 bMin, float2 bMax)
 	return !(outsideX || outsideY);
 }
 
-static bool EntityIsInFrustum2D(Scene &scene, const Entity &entity, float2 rectMin, float2 rectMax)
+static bool EntityIsInFrustum2D(const Entity &entity, float2 rectMin, float2 rectMax)
 {
 	float2 halfSize = { 0.5f * entity.scale, 0.5f * entity.scale };
 
@@ -407,7 +407,7 @@ bool RenderGraphics(Engine &engine)
 		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			Entity &entity = scene.entities[i];
-			entity.culled = !EntityIsInFrustum3D(scene, entity, frustumPlanes);
+			entity.culled = !EntityIsInFrustum3D(entity, frustumPlanes);
 		}
 	}
 	else
@@ -429,7 +429,7 @@ bool RenderGraphics(Engine &engine)
 		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			Entity &entity = scene.entities[i];
-			entity.culled = !EntityIsInFrustum2D(scene, entity, cameraMinMaxRect.xy, cameraMinMaxRect.zw);
+			entity.culled = !EntityIsInFrustum2D(entity, cameraMinMaxRect.xy, cameraMinMaxRect.zw);
 		}
 	}
 
@@ -825,7 +825,7 @@ bool RenderGraphics(Engine &engine)
 		{
 			PROFILE_BLOCK(Sky);
 
-			const ImageH &skyImage = GetTextureImage(gfx, gfx.skyTextureH, gfx.grayImageH);
+			const ImageH &skyImage = GetTextureImage(gfx, gfx.skyTexture, gfx.grayImageH);
 			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.skyPipelineH);
 			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
 			const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);

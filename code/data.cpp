@@ -399,6 +399,24 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "AudioClip %s = {", desc.name);
 
 		PushIndent(ctx);
+		WriteLine(ctx, ".id = %u,", desc.id.slot);
+		WriteLine(ctx, ".filename = \"%s\",", desc.filename);
+		PopIndent(ctx);
+
+		WriteLine(ctx, "};");
+		NewLine(ctx);
+	}
+
+	WriteSectionLine(ctx, "Music files");
+
+	for (u32 i = 0; i < assets.musicFileDescCount; ++i)
+	{
+		const MusicFileDesc &desc = assets.musicFileDescs[i];
+
+		WriteLine(ctx, "MusicFile %s = {", desc.name);
+
+		PushIndent(ctx);
+		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		WriteLine(ctx, ".filename = \"%s\",", desc.filename);
 		PopIndent(ctx);
 
@@ -1273,8 +1291,11 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
+					static const String sId = MakeString("id");
 					static const String sFilename = MakeString("filename");
-					if ( StrEq( field, sFilename ) ) {
+					if ( StrEq( field, sId ) ) {
+						desc.id = { DParser_ConsumeU32(parser) };
+					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
 					}
 
@@ -1300,8 +1321,11 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
+					static const String sId = MakeString("id");
 					static const String sFilename = MakeString("filename");
-					if ( StrEq( field, sFilename ) ) {
+					if ( StrEq( field, sId ) ) {
+						desc.id = { DParser_ConsumeU32(parser) };
+					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
 					}
 
@@ -1570,6 +1594,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			const u64 payloadSize = audioClip.sampleCount * audioClip.sampleSize;
 
 			const BinAudioClipDesc d = {
+				.id = desc.id,
 				.sampleCount = audioClip.sampleCount,
 				.samplingRate = audioClip.samplingRate,
 				.sampleSize = audioClip.sampleSize,
@@ -1604,6 +1629,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			const u64 payloadSize = fileChunk->size;
 
 			BinMusicFileDesc &d = binMusicFileDescs[i];
+			d.id              = desc.id;
 			d.name            = DataInternString(stringPool, desc.name);
 			d.location.offset = PostIncrement(&offset, payloadSize);
 			d.location.size   = U64ToU32(payloadSize);

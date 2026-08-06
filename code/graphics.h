@@ -185,7 +185,7 @@ struct Graphics
 	ImageH blackImageH;
 	ImageH noiseImageH;
 
-	ID skyTextureH;
+	ID skyTexture;
 	ID defaultTexture;
 	ID noiseTexture;
 
