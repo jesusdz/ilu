@@ -15,61 +15,50 @@ u16 GetSpriteIndex(const Scene &scene, ID id)
 	return index;
 }
 
-ID CreateSprite(Engine &engine, ID existingId)
+// Appends a sprite and gives it its ID. Null when the array is full.
+static Sprite *PushSprite(Scene &scene, const SpriteDesc &desc)
 {
-	Scene &scene = engine.scene;
-
 	if ( scene.spriteCount == MAX_SPRITES )
 	{
 		LOG(Warning, "Could not create sprite, the sprite array is full.\n");
-		return {};
-	}
-
-	ID id = existingId;
-	if ( id.slot == 0 ) {
-		id = NewID();
-	} else {
-		ReserveID(id);
+		return nullptr;
 	}
 
 	const u16 index = (u16)scene.spriteCount++;
 	Sprite &sprite = scene.sprites[index];
 	sprite = {};
-	sprite.desc.id = id;
+	sprite.desc = desc;
 	scene.spriteAnimStates[index] = {}; // The element held another sprite's animation before
 
-	SetObject(id, &sprite);
+	BindID(&sprite.desc.id, &sprite);
 
-	return id;
+	return &sprite;
 }
 
 ID CreateSprite(Engine &engine, const SpriteDesc &desc)
 {
 	Graphics &gfx = engine.gfx;
 
-	const ID id = CreateSprite(engine, desc.id);
-	if ( !id ) {
-		return id;
+	Sprite *sprite = PushSprite(engine.scene, desc);
+	if ( !sprite ) {
+		return {};
 	}
 
-	Sprite &sprite = GetSprite(id);
-	sprite.desc = desc;
-	sprite.desc.id = id;
-	sprite.desc.frameCount = desc.frameCount > 0 ? desc.frameCount : 1;
+	sprite->desc.frameCount = desc.frameCount > 0 ? desc.frameCount : 1;
 
-	if ( !Valid(sprite.desc.textureId) )
+	if ( !Valid(sprite->desc.textureId) )
 	{
 		LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n",
 				desc.name, desc.textureId.slot);
-		sprite.desc.textureId = gfx.defaultTexture;
+		sprite->desc.textureId = gfx.defaultTexture;
 	}
 
-	const Texture &tex = GetTexture(sprite.desc.textureId);
+	const Texture &tex = GetTexture(sprite->desc.textureId);
 	if ( desc.size.x == 0 && desc.size.y == 0 ) {
-		sprite.desc.size = tex.size;
+		sprite->desc.size = tex.size;
 	}
 
-	return id;
+	return sprite->desc.id;
 }
 
 ID CreateSprite(Engine &engine, const BinSpriteDesc &desc)
@@ -326,30 +315,22 @@ EntityDesc GetEntityDesc(ID id)
 	return entityDesc;
 }
 
-ID CreateEntity(Engine &engine, ID existingId)
+// Appends an entity and gives it its ID. Null when the array is full. Entities do not
+// keep their descriptor around, so the ID comes in on its own.
+static Entity *PushEntity(Scene &scene, ID id)
 {
-	Scene &scene = engine.scene;
-
 	if ( scene.entityCount == MAX_ENTITIES )
 	{
 		LOG(Warning, "Could not create entity, the entity array is full.\n");
-		return {};
-	}
-
-	ID id = existingId;
-	if ( id.slot == 0 ) {
-		id = NewID();
-	} else {
-		ReserveID(id);
+		return nullptr;
 	}
 
 	Entity &entity = scene.entities[scene.entityCount++];
-	entity = {};
-	entity.id = id;
+	entity = { .id = id };
 
-	SetObject(id, &entity);
+	BindID(&entity.id, &entity);
 
-	return id;
+	return &entity;
 }
 
 ID CreateEntity(Engine &engine, const EntityDesc &desc)
@@ -357,22 +338,21 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	BufferChunk vertices = GetVerticesForGeometryType(engine.gfx, desc.geometryType);
 	BufferChunk indices = GetIndicesForGeometryType(engine.gfx, desc.geometryType);
 
-	const ID id = CreateEntity(engine, desc.id);
-	if ( !id ) {
-		return id;
+	Entity *entity = PushEntity(engine.scene, desc.id);
+	if ( !entity ) {
+		return {};
 	}
 
-	Entity &entity = GetEntity(id);
-	entity.name = desc.name;
-	entity.visible = true;
-	EntitySetPosition(entity, desc.pos);
-	entity.scale = desc.scale;
-	entity.layer = desc.layer;
-	entity.geometryType = desc.geometryType;
-	entity.vertices = vertices;
-	entity.indices = indices;
-	entity.materialId = desc.materialId;
-	entity.spriteId = desc.spriteId;
+	entity->name = desc.name;
+	entity->visible = true;
+	EntitySetPosition(*entity, desc.pos);
+	entity->scale = desc.scale;
+	entity->layer = desc.layer;
+	entity->geometryType = desc.geometryType;
+	entity->vertices = vertices;
+	entity->indices = indices;
+	entity->materialId = desc.materialId;
+	entity->spriteId = desc.spriteId;
 
 	// An entity carries either a material or a sprite, so only an ID that was set and
 	// then failed to resolve is worth complaining about
@@ -380,16 +360,16 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	{
 		LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n",
 				desc.name, desc.materialId.slot);
-		entity.materialId = engine.gfx.defaultMaterial;
+		entity->materialId = engine.gfx.defaultMaterial;
 	}
 	if ( desc.spriteId.slot != 0 && !Valid(desc.spriteId) )
 	{
 		LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
 				desc.name, desc.spriteId.slot);
-		entity.spriteId = {};
+		entity->spriteId = {};
 	}
 
-	return id;
+	return entity->id;
 }
 
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
@@ -609,59 +589,46 @@ float2 RoomSize(const Room &room)
 	return res;
 }
 
-ID CreateRoom(Engine &engine, ID existingId)
+// Appends a room and gives it its ID. Null when the array is full. Rooms do not keep
+// their descriptor around, so the ID comes in on its own.
+static Room *PushRoom(Scene &scene, ID id)
 {
-	Scene &scene = engine.scene;
-
 	if ( scene.roomCount == MAX_ROOMS )
 	{
 		LOG(Warning, "Could not create room, the room array is full.\n");
-		return {};
-	}
-
-	ID id = existingId;
-	if ( id.slot == 0 ) {
-		id = NewID();
-	} else {
-		ReserveID(id);
+		return nullptr;
 	}
 
 	Room &room = scene.rooms[scene.roomCount++];
-	room = {};
-	room.id = id;
+	room = { .id = id };
 
-	SetObject(id, &room);
+	BindID(&room.id, &room);
 
-	return id;
+	return &room;
 }
 
+// An empty room, with the two layers every room starts with
 ID CreateRoom(Engine &engine)
 {
-	const ID id = CreateRoom(engine, ID{});
-	if ( !id ) {
-		return id;
-	}
-
-	Room &room = GetRoom(id);
-	room.name = InternString("Room");
-	room.pos = {};
-
-	const LayerDesc desc1 = { .name = "Layer", .isBase = true, .visible = true, .isCollider = false, .size {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} };
-	CreateLayer(room, desc1);
-	const LayerDesc desc2 = { .name = "Colliders", .visible = true, .isCollider = true, .size {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} };
-	CreateLayer(room, desc2);
-
-	return id;
+	const RoomDesc desc = {
+		.name = "Room",
+		.layers = {
+			{ .name = "Layer", .isBase = true, .visible = true, .size = {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} },
+			{ .name = "Colliders", .visible = true, .isCollider = true, .size = {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} },
+		},
+		.layerCount = 2,
+	};
+	return CreateRoom(engine, desc);
 }
 
 ID CreateRoom(Engine &engine, const RoomDesc &desc)
 {
-	const ID id = CreateRoom(engine, desc.id);
-	if ( !id ) {
-		return id;
+	Room *roomPtr = PushRoom(engine.scene, desc.id);
+	if ( !roomPtr ) {
+		return {};
 	}
 
-	Room &room = GetRoom(id);
+	Room &room = *roomPtr;
 	room.name = InternString(desc.name);
 	room.pos = desc.pos;
 
@@ -700,7 +667,7 @@ ID CreateRoom(Engine &engine, const RoomDesc &desc)
 		}
 	}
 
-	return id;
+	return room.id;
 }
 
 ID CreateRoom(Engine &engine, const BinRoom &binRoom)

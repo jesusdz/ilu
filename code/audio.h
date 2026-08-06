@@ -124,7 +124,6 @@ bool LoadAudioClipFromWAVFile(const char *filename, Arena &arena, AudioClip &aud
 bool LoadSamplesFromWAVFile(const char *filename, void *samples, u32 firstSampleIndex, u32 sampleCount);
 
 AudioClip &GetAudioClip(ID clipId);
-ID CreateAudioClip(Engine &engine, ID existingId);
 ID CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip);
 ID CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
 ID GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
@@ -141,7 +140,6 @@ void PreRenderAudio(Engine &engine);
 void RenderAudio(Engine &engine, SoundBuffer &soundBuffer);
 
 MusicFile &GetMusicFile(ID musicId);
-ID CreateMusicFile(Engine &engine, ID existingId);
 ID CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile);
 ID CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc);
 ID GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc);

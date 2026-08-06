@@ -69,7 +69,8 @@ void ReserveID(ID id);
 bool IsBuiltin(ID id);
 bool Valid(ID id);
 void Invalidate(ID id);
-void SetObject(ID id, void *ptr);
+void BindID(ID *idPtr, void *object);
+void SetObject(ID id, void *object);
 void *GetObject(ID id);
 
 
@@ -120,6 +121,24 @@ void ReserveID(ID id)
 	}
 }
 
+// Points a slot at `object`, minting the ID when the caller has none. Objects loaded from
+// an asset file come with an ID already, and keeping it is what makes references stored
+// in saved data still resolve on the next run.
+void BindID(ID *idPtr, void *object)
+{
+	ASSERT( idPtr );
+
+	ID &id = *idPtr;
+
+	if ( id.slot == 0 ) {
+		id = NewID();
+	} else {
+		ReserveID(id);
+	}
+
+	GetIDPool().slots[id.slot].object = object;
+}
+
 bool IsBuiltin(ID id)
 {
 	const bool builtin = id.slot != 0 && id.slot < ILU_ID_FIRST_DYNAMIC_SLOT;
@@ -139,7 +158,10 @@ void Invalidate(ID id)
 
 void SetObject(ID id, void *object)
 {
-	GetIDPool().slots[id.slot].object = object;
+	if ( id )
+	{
+		GetIDPool().slots[id.slot].object = object;
+	}
 }
 
 void *GetObject(ID id)

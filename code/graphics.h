@@ -263,7 +263,6 @@ ImageH EngineCreateImage(Graphics &gfx, const ImagePixels &img, const char *name
 
 Texture &GetTexture(ID id);
 Texture &GetTextureAt(Graphics &gfx, u32 index);
-ID CreateTexture(Graphics &gfx, ID existingId);
 ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH);
 ID CreateTexture(Graphics &gfx, const TextureDesc &desc);
 ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc);
@@ -279,7 +278,6 @@ void RecreateModifiedTextures(Engine &engine);
 
 Material &GetMaterial(ID id);
 u16 GetMaterialIndex(const Graphics &gfx, ID materialId);
-ID CreateMaterial(Graphics &gfx, ID existingId);
 ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc);
 ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc);
 ID CreateMaterial(Graphics &gfx, const BinMaterialDesc &desc);

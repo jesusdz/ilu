@@ -402,76 +402,61 @@ AudioClip &GetAudioClip(ID id)
 	return audioClip;
 }
 
-ID CreateAudioClip(Engine &engine, ID existingId)
+// Appends an audio clip and gives it its ID. Null when the array is full.
+static AudioClip *PushAudioClip(Audio &audio, const AudioClipDesc &desc)
 {
-	Audio &audio = engine.audio;
-
 	if ( audio.clipCount == MAX_AUDIO_CLIPS )
 	{
 		LOG(Warning, "Could not create audio clip, the audio clip array is full.\n");
-		return {};
-	}
-
-	ID id = existingId;
-	if ( id.slot == 0 ) {
-		id = NewID();
-	} else {
-		ReserveID(id);
+		return nullptr;
 	}
 
 	AudioClip &audioClip = audio.clips[audio.clipCount++];
 	audioClip = {};
-	audioClip.desc.id = id;
+	audioClip.desc = desc;
 
-	SetObject(id, &audioClip);
+	BindID(&audioClip.desc.id, &audioClip);
 
-	return id;
+	return &audioClip;
 }
 
 ID CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
 {
 	const BinAudioClipDesc &desc = *binAudioClip.desc;
 
-	const ID id = CreateAudioClip(engine, desc.id);
-	if ( !id ) {
-		return id;
+	AudioClip *audioClip = PushAudioClip(engine.audio, { .id = desc.id });
+	if ( !audioClip ) {
+		return {};
 	}
 
-	AudioClip &audioClip = GetAudioClip(id);
-	audioClip.sampleSize = desc.sampleSize;
-	audioClip.samplingRate = desc.samplingRate;
-	audioClip.channelCount = desc.channelCount;
-	audioClip.sampleCount = desc.sampleCount;
-	audioClip.loadSource = AUDIO_CLIP_LOAD_SOURCE_ASSETS;
-	audioClip.location = desc.location;
+	audioClip->sampleSize = desc.sampleSize;
+	audioClip->samplingRate = desc.samplingRate;
+	audioClip->channelCount = desc.channelCount;
+	audioClip->sampleCount = desc.sampleCount;
+	audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_ASSETS;
+	audioClip->location = desc.location;
 
-	return id;
+	return audioClip->desc.id;
 }
 
 ID CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
 {
-	const ID id = CreateAudioClip(engine, audioClipDesc.id);
-	if ( !id ) {
+	AudioClip *audioClip = PushAudioClip(engine.audio, audioClipDesc);
+	if ( !audioClip ) {
 		LOG(Warning, "Could not load audio clip %s (no more space left for audio clips)\n", audioClipDesc.filename);
-		return id;
-	}
-
-	AudioClip &audioClip = GetAudioClip(id);
-	audioClip.desc = audioClipDesc;
-	audioClip.desc.id = id;
-
-	if ( LoadAudioClipFromWAVFile(audioClipDesc.filename, audioClip) )
-	{
-		audioClip.loadSource = AUDIO_CLIP_LOAD_SOURCE_WAV;
-	}
-	else
-	{
-		LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
-		RemoveAudioClip(engine, id);
 		return {};
 	}
 
-	return id;
+	if ( !LoadAudioClipFromWAVFile(audioClipDesc.filename, *audioClip) )
+	{
+		LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
+		RemoveAudioClip(engine, audioClip->desc.id);
+		return {};
+	}
+
+	audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_WAV;
+
+	return audioClip->desc.id;
 }
 
 ID GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
@@ -921,64 +906,51 @@ MusicFile &GetMusicFile(ID id)
 	return musicFile;
 }
 
-ID CreateMusicFile(Engine &engine, ID existingId)
+// Appends a music file and gives it its ID. Null when the array is full.
+static MusicFile *PushMusicFile(Audio &audio, const MusicFileDesc &desc)
 {
-	Audio &audio = engine.audio;
-
 	if ( audio.musicFileCount == MAX_MUSIC_FILES )
 	{
 		LOG(Warning, "Could not create music file, the music file array is full.\n");
-		return {};
-	}
-
-	ID id = existingId;
-	if ( id.slot == 0 ) {
-		id = NewID();
-	} else {
-		ReserveID(id);
+		return nullptr;
 	}
 
 	MusicFile &musicFile = audio.musicFiles[audio.musicFileCount++];
 	musicFile = {};
-	musicFile.desc.id = id;
+	musicFile.desc = desc;
 
-	SetObject(id, &musicFile);
+	BindID(&musicFile.desc.id, &musicFile);
 
-	return id;
+	return &musicFile;
 }
 
 ID CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
 {
 	const BinMusicFileDesc &desc = *binMusicFile.desc;
 
-	const ID id = CreateMusicFile(engine, desc.id);
-	if ( !id ) {
-		return id;
+	MusicFile *musicFile = PushMusicFile(engine.audio, { .id = desc.id, .name = desc.name });
+	if ( !musicFile ) {
+		return {};
 	}
 
-	MusicFile &musicFile = GetMusicFile(id);
-	musicFile.desc.name = desc.name;
-	musicFile.loadSource = LOAD_SOURCE_ASSET_FILE;
-	musicFile.location = desc.location;
+	musicFile->loadSource = LOAD_SOURCE_ASSET_FILE;
+	musicFile->location = desc.location;
 
-	return id;
+	return musicFile->desc.id;
 }
 
 ID CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
 {
-	const ID id = CreateMusicFile(engine, musicFileDesc.id);
-	if ( !id ) {
+	MusicFile *musicFile = PushMusicFile(engine.audio, musicFileDesc);
+	if ( !musicFile ) {
 		LOG(Warning, "Could not load music file %s (no more space left for music files)\n", musicFileDesc.filename);
-		return id;
+		return {};
 	}
 
-	MusicFile &musicFile = GetMusicFile(id);
-	musicFile.desc = musicFileDesc;
-	musicFile.desc.id = id;
-	musicFile.loadSource = LOAD_SOURCE_MOD_FILE;
-	musicFile.filename = musicFileDesc.filename;
+	musicFile->loadSource = LOAD_SOURCE_MOD_FILE;
+	musicFile->filename = musicFileDesc.filename;
 
-	return id;
+	return musicFile->desc.id;
 }
 
 ID GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)

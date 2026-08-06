@@ -737,47 +737,38 @@ Texture &GetTexture(ID id)
 	return texture;
 }
 
-ID CreateTexture(Graphics &gfx, ID existingId)
+// Appends a texture and gives it its ID. Null when the array is full.
+static Texture *PushTexture(Graphics &gfx, const TextureDesc &desc)
 {
 	if ( gfx.textureCount == MAX_TEXTURES )
 	{
 		LOG(Warning, "Could not create texture, the texture array is full.\n");
-		return {};
-	}
-
-	ID id = existingId;
-	if ( id.slot == 0 ) {
-		id = NewID();
-	} else {
-		ReserveID(id);
+		return nullptr;
 	}
 
 	Texture &texture = gfx.textures[gfx.textureCount++];
 	texture = {};
-	texture.desc.id = id;
+	texture.desc = desc;
 
-	SetObject(id, &texture);
+	BindID(&texture.desc.id, &texture);
 
-	return id;
+	return &texture;
 }
 
 ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH)
 {
-	ID id = CreateTexture(gfx, desc.id);
-	if ( !id ) {
-		return id;
+	Texture *texture = PushTexture(gfx, desc);
+	if ( !texture ) {
+		return {};
 	}
 
-	Texture &texture = GetTexture(id);
-	texture.desc = desc;
-	texture.desc.id = id;
-	texture.image = imageH;
-	texture.ownsImage = false;
+	texture->image = imageH;
+	texture->ownsImage = false;
 
 	const Image &image = GetImageConst(gfx.device, imageH);
-	texture.size = { image.width, image.height };
+	texture->size = { image.width, image.height };
 
-	return id;
+	return texture->desc.id;
 }
 
 ID CreateTexture(Graphics &gfx, const TextureDesc &desc)
@@ -843,18 +834,17 @@ ID CreateTexture(Graphics &gfx, const BinImage &binImage)
 
 	const ImageH imageHandle = EngineCreateImage(gfx, name, width, height, channels, mipmap, pixels);
 
-	const ID id = CreateTexture(gfx, desc.id);
-	if ( !id ) {
+	const TextureDesc textureDesc = { .id = desc.id, .name = desc.name };
+	Texture *texture = PushTexture(gfx, textureDesc);
+	if ( !texture ) {
 		DestroyImageH(gfx.device, imageHandle);
-		return id;
+		return {};
 	}
 
-	Texture &texture = GetTexture(id);
-	texture.desc.name = desc.name;
-	texture.image = imageHandle;
-	texture.ownsImage = true;
+	texture->image = imageHandle;
+	texture->ownsImage = true;
 
-	return id;
+	return texture->desc.id;
 }
 
 ImageH GetTextureImage(Graphics &gfx, ID id, ImageH imageH)
@@ -1008,49 +998,40 @@ static u32 MaterialBufferOffset(const Graphics &gfx, u16 index)
 	return offset;
 }
 
-ID CreateMaterial(Graphics &gfx, ID existingId)
+// Appends a material and gives it its ID. Null when the array is full.
+static Material *PushMaterial(Graphics &gfx, const MaterialDesc &desc)
 {
 	if ( gfx.materialCount == MAX_MATERIALS )
 	{
 		LOG(Warning, "Could not create material, the material array is full.\n");
-		return {};
-	}
-
-	ID id = existingId;
-	if ( id.slot == 0 ) {
-		id = NewID();
-	} else {
-		ReserveID(id);
+		return nullptr;
 	}
 
 	const u16 index = (u16)gfx.materialCount++;
 	Material &material = gfx.materials[index];
 	material = {};
-	material.desc.id = id;
+	material.desc = desc;
 	material.bufferOffset = MaterialBufferOffset(gfx, index);
 
-	SetObject(id, &material);
+	BindID(&material.desc.id, &material);
 
-	return id;
+	return &material;
 }
 
 ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 {
-	const ID id = CreateMaterial(gfx, desc.id);
-	if ( !id ) {
-		return id;
+	Material *material = PushMaterial(gfx, desc);
+	if ( !material ) {
+		return {};
 	}
 
-	Material &material = GetMaterial(id);
-	material.desc = desc;
-	material.desc.id = id;
-	material.pipelineH = FindPipelineHandle(gfx, desc.pipelineName);
+	material->pipelineH = FindPipelineHandle(gfx, desc.pipelineName);
 
 	gfx.shouldUpdateMaterials = true;
 
-	CreateMaterialBindGroup(gfx, id);
+	CreateMaterialBindGroup(gfx, material->desc.id);
 
-	return id;
+	return material->desc.id;
 }
 
 ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc)

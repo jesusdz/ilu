@@ -99,7 +99,6 @@ struct Scene
 
 Sprite &GetSprite(ID spriteId);
 u16 GetSpriteIndex(const Scene &scene, ID spriteId);
-ID CreateSprite(Engine &engine, ID existingId);
 ID CreateSprite(Engine &engine, const SpriteDesc &desc);
 ID CreateSprite(Engine &engine, const BinSpriteDesc &desc);
 ID FindSprite(const Scene &scene, const char *name);
@@ -116,7 +115,6 @@ Entity &GetEntity(ID entityId);
 u16 GetEntityIndex(const Scene &scene, ID entityId);
 void EntitySetPosition(Entity &entity, float3 position);
 EntityDesc GetEntityDesc(ID entityId);
-ID CreateEntity(Engine &engine, ID existingId);
 ID CreateEntity(Engine &engine, const EntityDesc &desc);
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc);
 void RemoveEntity(Engine &engine, ID entityId);
@@ -151,7 +149,6 @@ const Layer *GetBaseLayer(const Room &room);
 float2 LayerSize(const Layer &layer);
 float2 RoomSize(const Room &room);
 ID CreateRoom(Engine &engine);
-ID CreateRoom(Engine &engine, ID existingId);
 ID CreateRoom(Engine &engine, const RoomDesc &desc);
 ID CreateRoom(Engine &engine, const BinRoom &binRoom);
 void RemoveRoom(Engine &engine, ID roomId);
