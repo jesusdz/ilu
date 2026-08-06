@@ -2525,7 +2525,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 			const uint2 framebufferSize = GetFramebufferSize(gfx.renderTargets.idFramebuffer);
 			SetViewportAndScissor(commandList, framebufferSize);
 
-			SetPipeline(commandList, gfx.modelIdPipelineH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_ModelId]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
 			SetVertexBuffer(commandList, vertexBuffer);
@@ -2550,7 +2550,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 				const uint32_t spriteFirstIndex = gfx.spriteIndices.offset / sizeof(Index);
 				const int32_t spriteFirstVertex = gfx.spriteVertices.offset / sizeof(Vertex);
 
-				SetPipeline(commandList, gfx.spriteIdPipelineH);
+				SetPipeline(commandList, gfx.pipelines[Pipeline_SpriteId]);
 
 				for (u32 i = 0; i < scene.entityCount; ++i)
 				{
@@ -2567,9 +2567,9 @@ void EditorRender(Engine &engine, CommandList &commandList)
 		}
 
 		{ // Write entity ID under mouse cursor into selection buffer
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.computeSelectH);
+			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_ComputeSelect]);
 
-			SetPipeline(commandList, gfx.computeSelectH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_ComputeSelect]);
 
 			const BindGroupDesc bindGroupDesc = {
 				.layout = pipeline.layout.bindGroupLayouts[3],

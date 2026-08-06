@@ -7,22 +7,6 @@ enum BuiltinID
 	BuiltinID_DefaultTexture = 1, // 0 is reserved for invalid ID
 	BuiltinID_NoiseTexture,
 	BuiltinID_DefaultMaterial,
-	// Pipelines. Declared even when the editor is compiled out, so a slot means the same
-	// thing in every build and saved data stays portable between them.
-	BuiltinID_PipelineShading,
-	BuiltinID_PipelineShading2D,
-	BuiltinID_PipelineShading2DTile,
-	BuiltinID_PipelineShadowmap,
-	BuiltinID_PipelineSky,
-	BuiltinID_PipelineGrid2D,
-	BuiltinID_PipelineGrid3D,
-	BuiltinID_PipelineBlit,
-	BuiltinID_PipelineUI,
-	BuiltinID_PipelineModelId,
-	BuiltinID_PipelineSpriteId,
-	BuiltinID_PipelineDebugDraw,
-	BuiltinID_PipelineFog,
-	BuiltinID_ComputeSelect,
 	BuiltinID_Count,
 };
 CT_ASSERT(BuiltinID_Count <= ILU_ID_FIRST_DYNAMIC_SLOT);
@@ -242,15 +226,6 @@ RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name)
 	INVALID_CODE_PATH();
 	return { .index = (u32)INVALID_HANDLE };
 }
-
-PipelineH GetPipelineHandle(ID id)
-{
-	ASSERT( Valid(id) );
-	PipelineH handle = *((PipelineH*)GetObject(id));
-	return handle;
-}
-
-
 
 struct StagedData
 {
@@ -751,8 +726,20 @@ ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 		return {};
 	}
 
-	material->pipelineId = desc.pipelineId;
-	material->pipelineH = GetPipelineHandle(desc.pipelineId);
+	const PipelineIndex pipelineIndex = FindPipelineIndex(desc.pipelineName);
+	if ( pipelineIndex == Pipeline_Count )
+	{
+		LOG(Warning, "Material <%s> refers to pipeline <%s>, which does not exist.\n",
+				desc.name, desc.pipelineName ? desc.pipelineName : "");
+		material->pipelineIndex = (u16)Pipeline_Shading;
+		// The name is what gets saved, so put the fallback there too rather than write
+		// the broken one back out
+		material->desc.pipelineName = GetPipelineName(material->pipelineIndex);
+	}
+	else
+	{
+		material->pipelineIndex = (u16)pipelineIndex;
+	}
 
 	gfx.shouldUpdateMaterials = true;
 
@@ -786,7 +773,7 @@ ID CreateMaterial( Graphics &gfx, const BinMaterialDesc &desc)
 		.id = desc.id,
 		.name = desc.name,
 		.textureId = desc.textureId,
-		.pipelineId = desc.pipelineId,
+		.pipelineName = desc.pipelineName,
 		.uvScale = desc.uvScale,
 	};
 	const ID id = CreateMaterial(gfx, materialDesc);
@@ -1076,6 +1063,330 @@ static ShaderSource GetShaderSource(BinAssets &assets, const char *shaderName)
 	return shaderSource;
 }
 
+static const ShaderAndPipelineDesc pipelineDescs[] =
+{
+	{
+		.vsName = "vs_shading_3d",
+		.fsName = "fs_shading_3d",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_Shading,
+		.desc = {
+			.name = "pipeline_shading",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = true,
+			.depthCompareOp = CompareOpGreaterOrEqual,
+		},
+	},
+	{
+		.vsName = "vs_shading_2d",
+		.fsName = "fs_shading_2d",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_Shading2D,
+		.desc = {
+			.name = "pipeline_shading_2d",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = true,
+			.depthCompareOp = CompareOpGreaterOrEqual,
+			.blending = true,
+		},
+	},
+	{
+		.vsName = "vs_shading_2d_tile",
+		.fsName = "fs_shading_2d_tile",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_Shading2DTile,
+		.desc = {
+			.name = "pipeline_shading_2d_tile",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = true,
+			.depthCompareOp = CompareOpGreaterOrEqual,
+			.blending = true,
+		}
+	},
+	{
+		.vsName = "vs_shadowmap",
+		.fsName = "fs_shadowmap",
+		.renderPass = "shadowmap_renderpass",
+		.index = Pipeline_Shadowmap,
+		.desc = {
+			.name = "pipeline_shadowmap",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 1,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+			},
+			.depthTest = true,
+			.depthWrite = true,
+			.depthCompareOp = CompareOpGreater,
+		}
+	},
+	{
+		.vsName = "vs_sky",
+		.fsName = "fs_sky",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_Sky,
+		.desc = {
+			.name = "pipeline_sky",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpGreaterOrEqual,
+		}
+	},
+	{
+		.vsName = "vs_grid_2d",
+		.fsName = "fs_grid_2d",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_Grid2D,
+		.desc = {
+			.name = "pipeline_grid_2d",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpGreaterOrEqual,
+			.blending = true,
+		}
+	},
+	{
+		.vsName = "vs_grid_3d",
+		.fsName = "fs_grid_3d",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_Grid3D,
+		.desc = {
+			.name = "pipeline_grid_3d",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpGreaterOrEqual,
+			.blending = true,
+		}
+	},
+	{
+		.vsName = "vs_blit",
+		.fsName = "fs_blit",
+		.renderPass = "display_renderpass",
+		.index = Pipeline_Blit,
+		.desc = {
+			.name = "pipeline_blit",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = false,
+			.blending = false,
+		}
+	},
+	{
+		.vsName = "vs_ui",
+		.fsName = "fs_ui",
+		.renderPass = "display_renderpass",
+		.index = Pipeline_UI,
+		.desc = {
+			.name = "pipeline_ui",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 20 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat2, },
+				{ .bufferIndex = 0, .location = 1, .offset = 8, .format = FormatFloat2, },
+				{ .bufferIndex = 0, .location = 2, .offset = 16, .format = FormatRGBA8, },
+			},
+			.depthTest = false,
+			.blending = true,
+		}
+	},
+#if USE_EDITOR
+	{
+		.vsName = "vs_id_model",
+		.fsName = "fs_id_model",
+		.renderPass = "id_renderpass",
+		.index = Pipeline_ModelId,
+		.desc = {
+			.name = "pipeline_model_id",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpEqual,
+		}
+	},
+	{
+		.vsName = "vs_id_sprite",
+		.fsName = "fs_id_sprite",
+		.renderPass = "id_renderpass",
+		.index = Pipeline_SpriteId,
+		.desc = {
+			.name = "pipeline_sprite_id",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpEqual,
+		}
+	},
+#endif // USE_EDITOR
+	{
+		.vsName = "vs_debug_draw",
+		.fsName = "fs_debug_draw",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_DebugDraw,
+		.desc = {
+			.name = "pipeline_debug_draw",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 20 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat2, },
+				{ .bufferIndex = 0, .location = 1, .offset = 8,  .format = FormatFloat2, },
+				{ .bufferIndex = 0, .location = 2, .offset = 16, .format = FormatRGBA8, },
+			},
+			.depthTest = false,
+			.blending = true,
+		}
+	},
+	{
+		.vsName = "vs_fog",
+		.fsName = "fs_fog",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_Fog,
+		.desc = {
+			.name = "pipeline_fog",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpGreaterOrEqual,
+			.blending = true,
+		}
+	},
+};
+
+static const ShaderAndComputeDesc computeDescs[] =
+{
+	{
+		.csName = "compute_select",
+		.index = Pipeline_ComputeSelect,
+		.desc = {
+			.name = "compute_select",
+			.function = "CSMain"
+		},
+	},
+};
+
+PipelineIndex FindPipelineIndex(const char *name)
+{
+	if ( name )
+	{
+		for (u32 i = 0; i < ARRAY_COUNT(pipelineDescs); ++i)
+		{
+			if ( StrEq(pipelineDescs[i].desc.name, name) ) {
+				return pipelineDescs[i].index;
+			}
+		}
+	}
+	return Pipeline_Count; // Not found
+}
+
+const char *GetPipelineName(u16 index)
+{
+	for (u32 i = 0; i < ARRAY_COUNT(pipelineDescs); ++i)
+	{
+		if ( pipelineDescs[i].index == index ) {
+			return pipelineDescs[i].desc.name;
+		}
+	}
+	return "";
+}
+
 void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipelineDesc &shaderPipeDesc)
 {
 	Graphics &gfx = engine.gfx;
@@ -1097,15 +1408,13 @@ void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipel
 	}
 
 	LOG(Info, "Creating Graphics Pipeline: %s\n", desc.name);
-	*shaderPipeDesc.id = shaderPipeDesc.builtinId;
-	BindID(shaderPipeDesc.id, shaderPipeDesc.handle);
-	PipelineH pipelineH = GetPipelineHandle(*shaderPipeDesc.id);
+	// Written in place, so everything reading through gfx.pipelines picks up the new one
+	PipelineH &pipelineH = gfx.pipelines[shaderPipeDesc.index];
 	if ( IsValid(pipelineH) ) {
 		DestroyPipelineH( gfx.device, pipelineH );
 	}
 	pipelineH = CreateGraphicsPipeline(gfx.device, scratch, desc, gfx.globalBindGroupLayout);
 	SetObjectNamePipeline(gfx.device, pipelineH, desc.name);
-	*shaderPipeDesc.handle = pipelineH;
 }
 
 void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComputeDesc &shaderComputeDesc)
@@ -1124,352 +1433,19 @@ void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComput
 	}
 
 	LOG(Info, "Creating Compute Pipeline: %s\n", desc.name);
-	*shaderComputeDesc.id = shaderComputeDesc.builtinId;
-	BindID(shaderComputeDesc.id, shaderComputeDesc.handle);
-	PipelineH pipelineH = GetPipelineHandle(*shaderComputeDesc.id);
+	PipelineH &pipelineH = gfx.pipelines[shaderComputeDesc.index];
 	if ( IsValid(pipelineH) ) {
 		DestroyPipelineH( gfx.device, pipelineH );
 	}
 	pipelineH = CreateComputePipeline(gfx.device, scratch, desc, gfx.globalBindGroupLayout);
 	SetObjectNamePipeline(gfx.device, pipelineH, desc.name);
-	*shaderComputeDesc.handle = pipelineH;
 }
 
 
-////////////////////////////////////////////////////////////////////////
-// Builtin handles
-
+// Rebuilds every pipeline in place. Everything reads through gfx.pipelines, so nothing
+// has to be re-linked afterwards.
 void RecompilePipelines(Engine &engine, Arena scratch)
 {
-	Graphics &gfx = engine.gfx;
-
-	static const ShaderAndPipelineDesc pipelineDescs[] =
-	{
-		{
-			.vsName = "vs_shading_3d",
-			.fsName = "fs_shading_3d",
-			.renderPass = "scene_renderpass",
-			.builtinId = { BuiltinID_PipelineShading },
-			.id = &gfx.pipelineShadingId,
-			.handle = &gfx.pipelineShadingH,
-			.desc = {
-				.name = "pipeline_shading",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 3,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = true,
-				.depthCompareOp = CompareOpGreaterOrEqual,
-			},
-		},
-		{
-			.vsName = "vs_shading_2d",
-			.fsName = "fs_shading_2d",
-			.renderPass = "scene_renderpass",
-			.builtinId = { BuiltinID_PipelineShading2D },
-			.id = &gfx.spritePipelineId,
-			.handle = &gfx.spritePipelineH,
-			.desc = {
-				.name = "pipeline_shading_2d",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 3,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = true,
-				.depthCompareOp = CompareOpGreaterOrEqual,
-				.blending = true,
-			},
-		},
-		{
-			.vsName = "vs_shading_2d_tile",
-			.fsName = "fs_shading_2d_tile",
-			.renderPass = "scene_renderpass",
-			.builtinId = { BuiltinID_PipelineShading2DTile },
-			.id = &gfx.tilePipelineId,
-			.handle = &gfx.tilePipelineH,
-			.desc = {
-				.name = "pipeline_shading_2d_tile",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 3,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = true,
-				.depthCompareOp = CompareOpGreaterOrEqual,
-				.blending = true,
-			}
-		},
-		{
-			.vsName = "vs_shadowmap",
-			.fsName = "fs_shadowmap",
-			.renderPass = "shadowmap_renderpass",
-			.builtinId = { BuiltinID_PipelineShadowmap },
-			.id = &gfx.shadowmapPipelineId,
-			.handle = &gfx.shadowmapPipelineH,
-			.desc = {
-				.name = "pipeline_shadowmap",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 1,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-				},
-				.depthTest = true,
-				.depthWrite = true,
-				.depthCompareOp = CompareOpGreater,
-			}
-		},
-		{
-			.vsName = "vs_sky",
-			.fsName = "fs_sky",
-			.renderPass = "scene_renderpass",
-			.builtinId = { BuiltinID_PipelineSky },
-			.id = &gfx.skyPipelineId,
-			.handle = &gfx.skyPipelineH,
-			.desc = {
-				.name = "pipeline_sky",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 2,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = false,
-				.depthCompareOp = CompareOpGreaterOrEqual,
-			}
-		},
-		{
-			.vsName = "vs_grid_2d",
-			.fsName = "fs_grid_2d",
-			.renderPass = "scene_renderpass",
-			.builtinId = { BuiltinID_PipelineGrid2D },
-			.id = &gfx.grid2dPipelineId,
-			.handle = &gfx.grid2dPipelineH,
-			.desc = {
-				.name = "pipeline_grid_2d",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 2,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = false,
-				.depthCompareOp = CompareOpGreaterOrEqual,
-				.blending = true,
-			}
-		},
-		{
-			.vsName = "vs_grid_3d",
-			.fsName = "fs_grid_3d",
-			.renderPass = "scene_renderpass",
-			.builtinId = { BuiltinID_PipelineGrid3D },
-			.id = &gfx.grid3dPipelineId,
-			.handle = &gfx.grid3dPipelineH,
-			.desc = {
-				.name = "pipeline_grid_3d",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 2,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = false,
-				.depthCompareOp = CompareOpGreaterOrEqual,
-				.blending = true,
-			}
-		},
-		{
-			.vsName = "vs_blit",
-			.fsName = "fs_blit",
-			.renderPass = "display_renderpass",
-			.builtinId = { BuiltinID_PipelineBlit },
-			.id = &gfx.blitPipelineId,
-			.handle = &gfx.blitPipelineH,
-			.desc = {
-				.name = "pipeline_blit",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 2,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = false,
-				.blending = false,
-			}
-		},
-		{
-			.vsName = "vs_ui",
-			.fsName = "fs_ui",
-			.renderPass = "display_renderpass",
-			.builtinId = { BuiltinID_PipelineUI },
-			.id = &gfx.guiPipelineId,
-			.handle = &gfx.guiPipelineH,
-			.desc = {
-				.name = "pipeline_ui",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 20 }, },
-				.vertexAttributeCount = 3,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat2, },
-					{ .bufferIndex = 0, .location = 1, .offset = 8, .format = FormatFloat2, },
-					{ .bufferIndex = 0, .location = 2, .offset = 16, .format = FormatRGBA8, },
-				},
-				.depthTest = false,
-				.blending = true,
-			}
-		},
-#if USE_EDITOR
-		{
-			.vsName = "vs_id_model",
-			.fsName = "fs_id_model",
-			.renderPass = "id_renderpass",
-			.builtinId = { BuiltinID_PipelineModelId },
-			.id = &gfx.modelIdPipelineId,
-			.handle = &gfx.modelIdPipelineH,
-			.desc = {
-				.name = "pipeline_model_id",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 3,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = false,
-				.depthCompareOp = CompareOpEqual,
-			}
-		},
-		{
-			.vsName = "vs_id_sprite",
-			.fsName = "fs_id_sprite",
-			.renderPass = "id_renderpass",
-			.builtinId = { BuiltinID_PipelineSpriteId },
-			.id = &gfx.spriteIdPipelineId,
-			.handle = &gfx.spriteIdPipelineH,
-			.desc = {
-				.name = "pipeline_sprite_id",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 3,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 2, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = false,
-				.depthCompareOp = CompareOpEqual,
-			}
-		},
-#endif // USE_EDITOR
-		{
-			.vsName = "vs_debug_draw",
-			.fsName = "fs_debug_draw",
-			.renderPass = "scene_renderpass",
-			.builtinId = { BuiltinID_PipelineDebugDraw },
-			.id = &gfx.debugDrawPipelineId,
-			.handle = &gfx.debugDrawPipelineH,
-			.desc = {
-				.name = "pipeline_debug_draw",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 20 }, },
-				.vertexAttributeCount = 3,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat2, },
-					{ .bufferIndex = 0, .location = 1, .offset = 8,  .format = FormatFloat2, },
-					{ .bufferIndex = 0, .location = 2, .offset = 16, .format = FormatRGBA8, },
-				},
-				.depthTest = false,
-				.blending = true,
-			}
-		},
-		{
-			.vsName = "vs_fog",
-			.fsName = "fs_fog",
-			.renderPass = "scene_renderpass",
-			.builtinId = { BuiltinID_PipelineFog },
-			.id = &gfx.fogPipelineId,
-			.handle = &gfx.fogPipelineH,
-			.desc = {
-				.name = "pipeline_fog",
-				.vsFunction = "VSMain",
-				.fsFunction = "PSMain",
-				.vertexBufferCount = 1,
-				.vertexBuffers = { { .stride = 32 }, },
-				.vertexAttributeCount = 2,
-				.vertexAttributes = {
-					{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
-					{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
-				},
-				.depthTest = true,
-				.depthWrite = false,
-				.depthCompareOp = CompareOpGreaterOrEqual,
-				.blending = true,
-			}
-		},
-	};
-
-	static const ShaderAndComputeDesc computeDescs[] =
-	{
-		{
-			.csName = "compute_select",
-			.builtinId = { BuiltinID_ComputeSelect },
-			.id = &gfx.computeSelectId,
-			.handle = &gfx.computeSelectH,
-			.desc = {
-				.name = "compute_select",
-				.function = "CSMain"
-			},
-		},
-	};
-
 	for (u32 i = 0; i < ARRAY_COUNT(pipelineDescs); ++i)
 	{
 		CompileGraphicsPipeline(engine, scratch, pipelineDescs[i]);
@@ -1791,7 +1767,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.id = { BuiltinID_DefaultMaterial },
 		.name = InternString("mat_default"),
 		.textureId = gfx.defaultTexture,
-		.pipelineId = gfx.pipelineShadingId,
+		.pipelineName = InternString("pipeline_shading"),
 		.uvScale = 1.0,
 		.flags = AssetFlag_Ghost | AssetFlag_Builtin,
 	};
@@ -1888,7 +1864,7 @@ void UpdateGlobalBindGroups(Graphics &gfx)
 
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)
 {
-	const Pipeline &pipeline = GetPipeline(gfx.device, material.pipelineH);
+	const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[material.pipelineIndex]);
 	const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[BIND_GROUP_MATERIAL];
 	const ImageH &albedoImage = GetTextureImage(gfx, material.desc.textureId, gfx.pinkImageH );
 
@@ -1932,7 +1908,7 @@ void UploadMaterialData(Graphics &gfx)
 void CreateMaterialBindGroup(Graphics &gfx, ID materialId)
 {
 	const Material &material = GetMaterial(materialId);
-	const Pipeline &pipeline = GetPipeline(gfx.device, material.pipelineH);
+	const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[material.pipelineIndex]);
 	gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)] = CreateBindGroup(gfx.device, pipeline.layout.bindGroupLayouts[1], gfx.materialBindGroupAllocator);
 	gfx.shouldUpdateMaterialBindGroups = true;
 }

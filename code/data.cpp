@@ -292,7 +292,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		PushIndent(ctx);
 		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		WriteLine(ctx, ".textureId = %u,", desc.textureId.slot);
-		WriteLine(ctx, ".pipelineId = %u,", desc.pipelineId.slot);
+		WriteLine(ctx, ".pipelineName = \"%s\",", desc.pipelineName);
 		WriteLine(ctx, ".uvScale = %f,", desc.uvScale);
 		PopIndent(ctx);
 
@@ -1124,15 +1124,15 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					static const String sId = MakeString("id");
 					static const String sTextureId = MakeString("textureId");
-					static const String sPipelineId = MakeString("pipelineId");
+					static const String sPipelineName = MakeString("pipelineName");
 					static const String sUvScale = MakeString("uvScale");
 
 					if ( StrEq( field, sId ) ) {
 						desc.id = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sTextureId ) ) {
 						desc.textureId = { DParser_ConsumeU32(parser) };
-					} else if ( StrEq( field, sPipelineId ) ) {
-						desc.pipelineId = { DParser_ConsumeU32(parser) };
+					} else if ( StrEq( field, sPipelineName ) ) {
+						desc.pipelineName = PushString(*parser.arena, DParser_ConsumeString(parser));
 					} else if ( StrEq( field, sUvScale ) ) {
 						desc.uvScale = DParser_ConsumeF32(parser);
 					} else {
@@ -1646,7 +1646,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			d.id           = desc.id;
 			d.name         = DataInternString(stringPool, desc.name);
 			d.textureId    = desc.textureId;
-			d.pipelineId   = desc.pipelineId;
+			d.pipelineName = DataInternString(stringPool, desc.pipelineName);
 			d.uvScale = desc.uvScale;
 		}
 
@@ -1862,7 +1862,8 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	for (u32 i = 0; i < assets.header.materialCount; ++i)
 	{
 		BinMaterialDesc &d = materialDescs[i];
-		d.name       = DataGetString( stringPool, d.name );
+		d.name         = DataGetString( stringPool, d.name );
+		d.pipelineName = DataGetString( stringPool, d.pipelineName );
 		assets.materials[i].desc = &d;
 	}
 

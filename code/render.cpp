@@ -664,7 +664,7 @@ bool RenderGraphics(Engine &engine)
 		const uint2 shadowmapSize = GetFramebufferSize(shadowmapFramebuffer);
 		SetViewportAndScissor(commandList, shadowmapSize);
 
-		SetPipeline(commandList, gfx.shadowmapPipelineH);
+		SetPipeline(commandList, gfx.pipelines[Pipeline_Shadowmap]);
 
 		SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
@@ -724,7 +724,7 @@ bool RenderGraphics(Engine &engine)
 			BeginDebugGroup(commandList, material.desc.name, ColorBlack);
 
 			// Pipeline
-			SetPipeline(commandList, material.pipelineH);
+			SetPipeline(commandList, gfx.pipelines[material.pipelineIndex]);
 
 			// Bind groups
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
@@ -749,12 +749,12 @@ bool RenderGraphics(Engine &engine)
 
 			BeginDebugGroup(commandList, "Tiles", ColorBlack);
 
-			const Pipeline &tilePipeline = GetPipeline(gfx.device, gfx.tilePipelineH);
+			const Pipeline &tilePipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Shading2DTile]);
 			const uint32_t tileIndexCount = gfx.spriteIndices.size / sizeof(Index);
 			const uint32_t tileFirstIndex = gfx.spriteIndices.offset / sizeof(Index);
 			const int32_t tileFirstVertex = gfx.spriteVertices.offset / sizeof(Vertex);
 
-			SetPipeline(commandList, gfx.tilePipelineH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_Shading2DTile]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
@@ -782,12 +782,12 @@ bool RenderGraphics(Engine &engine)
 		{
 			PROFILE_BLOCK(Sprites);
 			// Sprite entities
-			const Pipeline &spritePipeline = GetPipeline(gfx.device, gfx.spritePipelineH);
+			const Pipeline &spritePipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Shading2D]);
 			const uint32_t spriteIndexCount = gfx.spriteIndices.size / sizeof(Index);
 			const uint32_t spriteFirstIndex = gfx.spriteIndices.offset / sizeof(Index);
 			const int32_t spriteFirstVertex = gfx.spriteVertices.offset / sizeof(Vertex);
 
-			SetPipeline(commandList, gfx.spritePipelineH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_Shading2D]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
@@ -826,7 +826,7 @@ bool RenderGraphics(Engine &engine)
 			PROFILE_BLOCK(Sky);
 
 			const ImageH &skyImage = GetTextureImage(gfx, gfx.skyTexture, gfx.grayImageH);
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.skyPipelineH);
+			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Sky]);
 			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
 			const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
 			const uint32_t indexCount = indices.size/sizeof(Index);
@@ -844,7 +844,7 @@ bool RenderGraphics(Engine &engine)
 
 			BeginDebugGroup(commandList, "sky", ColorBlack);
 
-			SetPipeline(commandList, gfx.skyPipelineH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_Sky]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 			SetBindGroup(commandList, 3, bindGroup);
 			SetVertexBuffer(commandList, vertexBuffer);
@@ -870,7 +870,7 @@ bool RenderGraphics(Engine &engine)
 
 				BeginDebugGroup(commandList, "grid_3d", ColorBlack);
 
-				SetPipeline(commandList, gfx.grid3dPipelineH);
+				SetPipeline(commandList, gfx.pipelines[Pipeline_Grid3D]);
 				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 				SetVertexBuffer(commandList, vertexBuffer);
 				SetIndexBuffer(commandList, indexBuffer);
@@ -888,7 +888,7 @@ bool RenderGraphics(Engine &engine)
 
 				BeginDebugGroup(commandList, "grid_2d", ColorBlack);
 
-				SetPipeline(commandList, gfx.grid2dPipelineH);
+				SetPipeline(commandList, gfx.pipelines[Pipeline_Grid2D]);
 				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 				SetVertexBuffer(commandList, vertexBuffer);
 				SetIndexBuffer(commandList, indexBuffer);
@@ -906,10 +906,10 @@ bool RenderGraphics(Engine &engine)
 
 			BeginDebugGroup(commandList, "DebugDraw", ColorBlack);
 
-			const Pipeline &debugDrawPipeline = GetPipeline(gfx.device, gfx.debugDrawPipelineH);
+			const Pipeline &debugDrawPipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_DebugDraw]);
 			const BindGroupLayout &bindGroupLayout = debugDrawPipeline.layout.bindGroupLayouts[3];
 
-			SetPipeline(commandList, gfx.debugDrawPipelineH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_DebugDraw]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 			SetVertexBuffer(commandList, gfx.debugDrawVertexBuffer[frameIndex]);
 
@@ -943,7 +943,7 @@ bool RenderGraphics(Engine &engine)
 
 			BeginDebugGroup(commandList, "Fog", ColorBlack);
 
-			SetPipeline(commandList, gfx.fogPipelineH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_Fog]);
 
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
@@ -997,7 +997,7 @@ bool RenderGraphics(Engine &engine)
 			SetViewport(commandList, viewport);
 			SetScissor(commandList, viewport);
 
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.blitPipelineH);
+			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Blit]);
 			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];
 
 			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
@@ -1006,7 +1006,7 @@ bool RenderGraphics(Engine &engine)
 			const uint32_t firstIndex = indices.offset/sizeof(Index);
 			const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
 
-			SetPipeline(commandList, gfx.blitPipelineH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_Blit]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
 			ImageH sceneImage = gfx.renderTargets.sceneImage;
@@ -1038,10 +1038,10 @@ bool RenderGraphics(Engine &engine)
 
 			const UI &ui = engine.ui;
 
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.guiPipelineH);
+			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_UI]);
 			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];
 
-			SetPipeline(commandList, gfx.guiPipelineH);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_UI]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 			SetVertexBuffer(commandList, UI_GetVertexBuffer(ui));
 

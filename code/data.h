@@ -50,7 +50,7 @@ struct MaterialDesc
 	ID id;
 	const char *name;
 	ID textureId;
-	ID pipelineId;
+	const char *pipelineName;
 	float uvScale;
 	AssetFlags flags;
 };
@@ -235,7 +235,7 @@ struct BinMaterialDesc
 	ID id;
 	const char *name;
 	ID textureId;
-	ID pipelineId;
+	const char *pipelineName;
 	float uvScale;
 };
 
@@ -283,7 +283,7 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-constexpr u32 BinAssetsVersion = 9; // 9: materials refer to their pipeline by ID
+constexpr u32 BinAssetsVersion = 10; // 10: materials name their pipeline again
 
 struct BinAssetsHeader
 {

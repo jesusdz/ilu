@@ -40,8 +40,7 @@ struct Texture
 struct Material
 {
 	MaterialDesc desc;
-	ID pipelineId;
-	PipelineH pipelineH;
+	u16 pipelineIndex;   // Resolved from desc.pipelineName
 	u32 bufferOffset;    // Derived from the element index, so it moves with compaction
 };
 
@@ -82,23 +81,41 @@ struct Camera
 	f32 fovy;   // perspective only: vertical field of view, in degrees
 };
 
+// Code-only: never written to a file, so entries can be reordered or inserted freely.
+// Asset files name a pipeline instead. Declared unconditionally, editor-only ones
+// included, so the array shape does not depend on USE_EDITOR.
+enum PipelineIndex
+{
+	Pipeline_Shading,
+	Pipeline_Shading2D,
+	Pipeline_Shading2DTile,
+	Pipeline_Shadowmap,
+	Pipeline_Sky,
+	Pipeline_Grid2D,
+	Pipeline_Grid3D,
+	Pipeline_Blit,
+	Pipeline_UI,
+	Pipeline_ModelId,
+	Pipeline_SpriteId,
+	Pipeline_DebugDraw,
+	Pipeline_Fog,
+	Pipeline_ComputeSelect,
+	Pipeline_Count,
+};
+
 struct ShaderAndPipelineDesc
 {
 	const char *vsName;
 	const char *fsName;
 	const char *renderPass;
-	ID builtinId; // Fixed slot, so saved data can name this pipeline
-	ID *id;
-	PipelineH *handle;
+	PipelineIndex index;
 	PipelineDesc desc;
 };
 
 struct ShaderAndComputeDesc
 {
 	const char *csName;
-	ID builtinId; // Fixed slot, so saved data can name this pipeline
-	ID *id;
-	PipelineH *handle;
+	PipelineIndex index;
 	ComputeDesc desc;
 };
 
@@ -198,38 +215,7 @@ struct Graphics
 
 	ID defaultMaterial;
 
-	ID pipelineShadingId;
-	ID shadowmapPipelineId;
-	ID skyPipelineId;
-	ID spritePipelineId;
-	ID tilePipelineId;
-	ID blitPipelineId;
-	ID guiPipelineId;
-	ID debugDrawPipelineId;
-	ID fogPipelineId;
-	ID computeSelectId;
-#if USE_EDITOR
-	ID grid2dPipelineId;
-	ID grid3dPipelineId;
-	ID modelIdPipelineId;
-	ID spriteIdPipelineId;
-#endif
-	PipelineH pipelineShadingH;
-	PipelineH shadowmapPipelineH;
-	PipelineH skyPipelineH;
-	PipelineH spritePipelineH;
-	PipelineH tilePipelineH;
-	PipelineH blitPipelineH;
-	PipelineH guiPipelineH;
-	PipelineH debugDrawPipelineH;
-	PipelineH fogPipelineH;
-	PipelineH computeSelectH;
-#if USE_EDITOR
-	PipelineH grid2dPipelineH;
-	PipelineH grid3dPipelineH;
-	PipelineH modelIdPipelineH;
-	PipelineH spriteIdPipelineH;
-#endif
+	PipelineH pipelines[Pipeline_Count];
 
 	bool deviceInitialized;
 
@@ -254,6 +240,12 @@ u32 GetShaderSourceDescCount();
 
 const u32 FindShaderSourceDescIndex(const char *name);
 RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name);
+
+// Pipelines are named in asset files, so that adding or reordering one never invalidates
+// a file. Compute pipelines are deliberately not searched: only a graphics pipeline can
+// back a material.
+PipelineIndex FindPipelineIndex(const char *name);
+const char *GetPipelineName(u16 index);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -312,8 +304,8 @@ BufferChunk GetIndicesForGeometryType(Graphics &gfx, GeometryType geometryType);
 ////////////////////////////////////////////////////////////////////////
 // Pipeline compilation
 
-void CompileGraphicsPipeline(Engine &engine, Arena scratch, u32 pipelineIndex);
-void CompileComputePipeline(Engine &engine, Arena scratch, u32 pipelineIndex);
+void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipelineDesc &shaderPipeDesc);
+void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComputeDesc &shaderComputeDesc);
 void RecompilePipelines(Engine &engine, Arena scratch);
 
 
@@ -334,7 +326,6 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets);
 ////////////////////////////////////////////////////////////////////////
 // Device lifetime and bind groups
 
-void LinkHandles(Graphics &gfx);
 bool InitializeGraphics(Engine &engine, Arena &globalArena);
 BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameIndex);
 void UpdateGlobalBindGroups(Graphics &gfx);
