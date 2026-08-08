@@ -689,7 +689,7 @@ ID CreateRoom(Engine &engine, const BinRoom &binRoom)
 			.isCollider = ld.isCollider != 0,
 			.size = ld.size,
 			.tiles = binRoom.tiles[l],
-			.tileCount = ld.tiles.size / sizeof(TileDesc),
+			.tileCount = ld.tiles.size / (u32)sizeof(TileDesc),
 		};
 	}
 

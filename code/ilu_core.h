@@ -1493,7 +1493,7 @@ bool CopyFile(const char *srcPath, const char *dstPath)
 	if ( fd_rd == -1 ) {
 		LinuxReportError("CopyFile open O_RDONLY");
 	} else {
-		int fd_wr = open(dstPath, O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0666);
+		int fd_wr = open(dstPath, O_WRONLY | O_TRUNC, 0666);
 		if ( fd_wr == -1 ) {
 			LinuxReportError("CopyFile open O_WRONLY | O_CREAT | O_EXCL");
 		} else {
