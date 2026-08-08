@@ -1225,7 +1225,8 @@ static bool Run(Platform &platform)
 
 	if ( !InitializeAudio(platform) )
 	{
-		return false;
+		LOG(Error, "InitializeAudio failed!\n");
+		//return false; // Allow running without audio
 	}
 
 	if ( !InitializeWorkQueue(platform) )
@@ -1241,7 +1242,8 @@ static bool Run(Platform &platform)
 #if USE_AUDIO_THREAD
 	if ( !InitializeAudioThread(platform.audio) )
 	{
-		return false;
+		LOG(Error, "InitializeAudioThread failed!\n");
+		//return false; // Allow running without audio
 	}
 #endif // USE_AUDIO_THREAD
 
