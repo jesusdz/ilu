@@ -2558,8 +2558,12 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 	// Physical device selection
 	u32 bestDeviceScore = 0;
 
+	LOG(Info, "Physical device selection:\n");
+
 	for (u32 i = 0; i < physicalDeviceCount; ++i)
 	{
+		LOG(Info, "- Device[%d]\n", i);
+
 		u32 deviceScore = 0;
 		VkPhysicalDevice physicalDevice = physicalDevices[i];
 
@@ -2568,18 +2572,25 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 		// Prioritize discrete GPUs over integrated ones
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties( physicalDevice, &properties );
+		LOG(Info, "  - deviceType: %s\n", VkPhysicalDeviceTypeToString( properties.deviceType ));
 		deviceScore +=
 			( properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ) ? 200 :
 			( properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ) ? 100 :
+			( properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU ) ? 50 :
+			( properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ) ? 10 :
 			0;
-		if ( deviceScore == 0 )
+		if ( deviceScore == 0 ) {
+			LOG(Error, "  - Rejected: Unsupported device type\n");
 			continue;
+		}
 
 		VkPhysicalDeviceFeatures features;
 		vkGetPhysicalDeviceFeatures( physicalDevice, &features );
 		// Check any needed features here
-		if ( features.samplerAnisotropy == VK_FALSE )
+		if ( features.samplerAnisotropy == VK_FALSE ) {
+			LOG(Error, "  - Rejected: No sampler anisotropy\n");
 			continue;
+		}
 
 		// Check the available queue families
 		u32 queueFamilyCount = 0;
@@ -2607,8 +2618,10 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 		}
 
 		// We don't want a device that does not support both queue types
-		if ( gfxFamilyIndex == -1 || presentFamilyIndex == -1 )
+		if ( gfxFamilyIndex == -1 || presentFamilyIndex == -1 ) {
+			LOG(Error, "  - Rejected: No gfx or present queues available\n");
 			continue;
+		}
 
 		// Check if this physical device has all the required extensions
 		u32 deviceExtensionCount;
@@ -2636,19 +2649,24 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 
 			if ( !found )
 			{
+				LOG(Error, "  - Extension %s not available\n", requiredExtensionName);
 				break;
 			}
 		}
 
 		// We only want devices with all the required extensions
-		if ( foundDeviceExtensionCount < ARRAY_COUNT(requiredDeviceExtensionNames) )
+		if ( foundDeviceExtensionCount < ARRAY_COUNT(requiredDeviceExtensionNames) ) {
+			LOG(Error, "  - Rejected: Not all required extensions available\n");
 			continue;
+		}
 
 		// Swapchain format
 		u32 surfaceFormatCount = 0;
 		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, device.surface, &surfaceFormatCount, NULL);
-		if ( surfaceFormatCount == 0 )
+		if ( surfaceFormatCount == 0 ) {
+			LOG(Error, "  - Rejected: No surface formats available\n");
 			continue;
+		}
 		VkSurfaceFormatKHR *surfaceFormats = PushArray( scratch2, VkSurfaceFormatKHR, surfaceFormatCount );
 		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, device.surface, &surfaceFormatCount, surfaceFormats);
 
@@ -2665,7 +2683,6 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 		u32 surfaceFormatIndex = 0;
 
 		device.swapchainInfo.vkFormat = VK_FORMAT_MAX_ENUM;
-		LOG(Info, "Available surface formats:\n");
 		for ( u32 i = 0; i < surfaceFormatCount; ++i )
 		{
 			bool supported = false;
@@ -2684,15 +2701,16 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 				}
 			}
 
-			LOG(Info, "- %d. %s (%d) / colorSpace: %d %s\n", i, FormatName(FormatFromVulkan(format)), format, colorSpace, supported ? "" : "(unsupported)");
+			LOG(Info, "  - Surface format[%d]. %s (%d) / colorSpace: %d %s\n", i, FormatName(FormatFromVulkan(format)), format, colorSpace, supported ? "" : "(unsupported)");
 		}
 
 		if ( selectedEntryIndex == U32_MAX )
 		{
-			LOG(Warning, "- Could not find a supported surface format :-(\n");
+			LOG(Error, "  - Rejected: Could not find a supported surface format\n");
+			continue;
 		}
 
-		LOG(Info, "- Selected surface format: %d\n", surfaceFormatIndex);
+		LOG(Info, "  - Selected surface format: %d\n", surfaceFormatIndex);
 		device.swapchainInfo.vkFormat = surfaceFormats[surfaceFormatIndex].format;
 		device.swapchainInfo.format = FormatFromVulkan(device.swapchainInfo.vkFormat);
 		device.swapchainInfo.colorSpace = surfaceFormats[surfaceFormatIndex].colorSpace;
@@ -2700,8 +2718,10 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 		// Swapchain present mode
 		u32 surfacePresentModeCount = 0;
 		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, device.surface, &surfacePresentModeCount, NULL);
-		if ( surfacePresentModeCount == 0 )
+		if ( surfacePresentModeCount == 0 ) {
+			LOG(Error, "  - Rejected: No present modes available\n");
 			continue;
+		}
 		VkPresentModeKHR *surfacePresentModes = PushArray( scratch2, VkPresentModeKHR, surfacePresentModeCount );
 		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, device.surface, &surfacePresentModeCount, surfacePresentModes);
 
@@ -2733,7 +2753,7 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 
 	if ( bestDeviceScore == 0 )
 	{
-		LOG(Error, "Could not find any suitable GFX device.\n");
+		LOG(Error, "- Could not find any suitable GFX device.\n");
 		return false;
 	}
 
