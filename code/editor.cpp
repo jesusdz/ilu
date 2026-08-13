@@ -2542,7 +2542,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 				const uint32_t indexCount = entity.indices.size/2; // div 2 (2 bytes per index)
 				const uint32_t firstIndex = entity.indices.offset/2; // div 2 (2 bytes per index)
 				const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[i].id));
+				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[i].id), 1);
 			}
 
 			{ // Sprite entities
@@ -2559,7 +2559,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 					if ( !entity.visible || entity.culled ) continue;
 					if ( !entity.spriteId ) continue;
 
-					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, scene.entities[i].id));
+					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, scene.entities[i].id), 1);
 				}
 			}
 

@@ -300,9 +300,9 @@ static f32 GetSceneAspectRatio(const Graphics &gfx)
 	return ar;
 }
 
-static float2 GetRoomScrollRatio(const float2 &cameraPos, const float2 &roomPos, const float2 &roomSizeWorld, const float2 &viewportSizeWorld)
+static float2 GetRoomScrollRatio(const float2 &cameraPos, const float2 &roomMin, const float2 &roomSizeWorld, const float2 &viewportSizeWorld)
 {
-	const float2 viewMin = cameraPos - 0.5f * viewportSizeWorld - roomPos;
+	const float2 viewMin = cameraPos - 0.5f * viewportSizeWorld - roomMin;
 	const float2 travel = roomSizeWorld - viewportSizeWorld;
 	float2 ratio = { 0.5f, 0.5f };
 	if (travel.x > 0.0f) ratio.x = Clamp(viewMin.x / travel.x, 0.0f, 1.0f);
@@ -512,36 +512,57 @@ bool RenderGraphics(Engine &engine)
 			const float frameOffsetU = sprite.frameCount > 1
 				? scene.spriteAnimStates[i].currentFrame * frameUvSize.x
 				: 0.0f;
+			const float2 worldSize = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
 			spriteDataPtr[i].uvOffset  = {frameUvPos.x + frameOffsetU, frameUvPos.y};
 			spriteDataPtr[i].uvSize    = frameUvSize;
-			spriteDataPtr[i].worldSize = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
+			spriteDataPtr[i].worldSize = worldSize;
 		}
 	}
 
+	struct InstanceTileData
+	{
+		u32 firstTile;
+		u32 tileCount;
+		ImageH image;
+	};
+
 	// Layer: Update tile data buffer
-	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(ID));
+	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(ID) + sizeof(InstanceTileData));
 	Scratch tileScratch(tileScratchSize);
-	STileData *tileDataPtr = PushArray(tileScratch.arena, STileData, MAX_TILES);
+	STileData *tileData = PushArray(tileScratch.arena, STileData, MAX_TILES);
 	ID *tileSpriteIds = PushArray(tileScratch.arena, ID, MAX_TILES);
+	InstanceTileData *instanceTileData = PushArray(tileScratch.arena, InstanceTileData, MAX_TILES);
+	InstanceTileData *currInstanceTileData = nullptr;
+	u32 instanceTileDataCount = 0;
 
 
 	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / PIXELS_PER_METER;
 	const bool parallaxEnabled = engine.game.state == GameStateRunning; // The editor shows all layers unshifted
+
+	// Tiles are only culled under the 2D camera: cameraMinMaxRect comes from the orthographic
+	// height, which says nothing about what a perspective camera can see.
+	const bool cullTiles = camera.projectionType == ProjectionOrthographic;
+	const float2 cullMin = cameraMinMaxRect.xy;
+	const float2 cullMax = cameraMinMaxRect.zw;
 
 	u32 tileCount = 0;
 	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
 		const Room &room = scene.rooms[roomIndex];
 
-		// TODO: Skip room if not in camera
-
 		// We always need a base layer to render a room
 		const Layer *baseLayer = GetBaseLayer(room);
 		if (!baseLayer) continue;
 
-		const uint2 baseLayerSize = baseLayer->size;
-		const float2 roomPos = Float2(room.pos);
-		const float2 scrollRatio = GetRoomScrollRatio(camera.position.xy, roomPos, Float2(baseLayerSize), viewportSizeWorld);
+		const uint2 roomSize = baseLayer->size;
+		const float2 roomMin = Float2(room.pos);
+		const float2 roomMax = roomMin + Float2(roomSize);
+
+		if (cullTiles && !Intersects(roomMin, roomMax, cullMin, cullMax)) {
+			continue;
+		}
+
+		const float2 scrollRatio = GetRoomScrollRatio(camera.position.xy, roomMin, Float2(roomSize), viewportSizeWorld);
 
 		for (i32 i = ARRAY_COUNT(room.layers) - 1; i >= 0; --i)
 		{
@@ -549,22 +570,48 @@ bool RenderGraphics(Engine &engine)
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{
-				const float2 parallax = parallaxEnabled ? GetParallaxOffset(scrollRatio, baseLayerSize, layer.size, viewportSizeWorld) : float2{0.0f, 0.0f};
+				currInstanceTileData = nullptr;
+
+				const float2 parallax = parallaxEnabled ? GetParallaxOffset(scrollRatio, roomSize, layer.size, viewportSizeWorld) : float2{0.0f, 0.0f};
+				const float2 layerOrigin = roomMin + parallax;
 
 				for (i32 y = 0; y < layer.size.y; ++y)
 				{
 					for (i32 x = 0; x < layer.size.x; ++x)
 					{
-						// TODO: Skip cell if not in camera
-
 						const ID spriteId = layer.cells[x][y].spriteId;
-						if (spriteId && tileCount < MAX_TILES)
+						if (!spriteId || tileCount >= MAX_TILES) {
+							continue;
+						}
+
+						const SpriteDesc &sprite = GetSprite(spriteId).desc;
+						const float2 tileSize = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
+						const float2 tileMin = layerOrigin + Float2(int2{x, y});
+						const float2 tileMax = tileMin + tileSize;
+
+						// The cell range above is conservative; this trims the cells whose own
+						// sprite is smaller than the margin it allowed for.
+						if (cullTiles && !Intersects(tileMin, tileMax, cullMin, cullMax)) {
+							continue;
+						}
+
+						tileData[tileCount].pos.xy = tileMin;
+						tileData[tileCount].pos.z = -(float)i;
+						tileData[tileCount].spriteIndex = GetSpriteIndex(scene, spriteId);
+						tileSpriteIds[tileCount] = spriteId;
+						tileCount++;
+
+						const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
+						if (currInstanceTileData == nullptr || currInstanceTileData->image != imageH)
 						{
-							tileDataPtr[tileCount].pos.xy = roomPos + Float2(int2{x, y}) + parallax;
-							tileDataPtr[tileCount].pos.z = -(float)i;
-							tileDataPtr[tileCount].spriteIndex = GetSpriteIndex(scene, spriteId);
-							tileSpriteIds[tileCount] = spriteId;
-							tileCount++;
+							currInstanceTileData = &instanceTileData[instanceTileDataCount++];
+							currInstanceTileData->firstTile = tileCount - 1;
+							currInstanceTileData->tileCount = 1;
+							currInstanceTileData->image = imageH;
+						}
+						else
+						{
+							currInstanceTileData->tileCount++;
 						}
 					}
 				}
@@ -572,8 +619,8 @@ bool RenderGraphics(Engine &engine)
 		}
 	}
 
-	STileData *gpuTileDataPtr = (STileData*)GetBufferPtr(gfx.device, gfx.tileDataBuffer[frameIndex]);
-	MemCopy(gpuTileDataPtr, tileDataPtr, tileCount * sizeof(STileData));
+	STileData *gpuTileData = (STileData*)GetBufferPtr(gfx.device, gfx.tileDataBuffer[frameIndex]);
+	MemCopy(gpuTileData, tileData, tileCount * sizeof(STileData));
 
 	// Update entity data
 	SEntity *entities = (SEntity*)GetBufferPtr(gfx.device, gfx.entityBuffer[frameIndex]);
@@ -682,7 +729,7 @@ bool RenderGraphics(Engine &engine)
 			const uint32_t indexCount = entity.indices.size/sizeof(Index);
 			const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
 			const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[entityIndex].id));
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[entityIndex].id), 1);
 		}
 
 		EndRenderPass(commandList);
@@ -738,7 +785,7 @@ bool RenderGraphics(Engine &engine)
 			const uint32_t indexCount = entity.indices.size/sizeof(Index);
 			const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
 			const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, entity.id));
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, entity.id), 1);
 
 			EndDebugGroup(commandList);
 		}
@@ -759,6 +806,7 @@ bool RenderGraphics(Engine &engine)
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
 
+#if 0 // non-instanced version
 			for (u32 i = 0; i < tileCount; ++i)
 			{
 				const ID spriteId = tileSpriteIds[i];
@@ -773,8 +821,24 @@ bool RenderGraphics(Engine &engine)
 				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
 
 				SetBindGroup(commandList, 2, textureBindGroup);
-				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, i);
+				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, i, 1);
 			}
+#else
+			for (u32 i = 0; i < instanceTileDataCount; ++i)
+			{
+				const InstanceTileData &data = instanceTileData[i];
+				const BindGroupDesc textureBindGroupDesc = {
+					.layout = tilePipeline.layout.bindGroupLayouts[2],
+					.bindings = {
+						{ .index = 0, .image = data.image },
+					},
+				};
+				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
+
+				SetBindGroup(commandList, 2, textureBindGroup);
+				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, data.firstTile, data.tileCount);
+			}
+#endif
 
 			EndDebugGroup(commandList);
 		}
@@ -815,7 +879,7 @@ bool RenderGraphics(Engine &engine)
 
 				BeginDebugGroup(commandList, entity.name ? entity.name : "sprite", ColorBlack);
 				SetBindGroup(commandList, 2, textureBindGroup);
-				DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, entity.id));
+				DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, entity.id), 1);
 				EndDebugGroup(commandList);
 			}
 		}
@@ -849,7 +913,7 @@ bool RenderGraphics(Engine &engine)
 			SetBindGroup(commandList, 3, bindGroup);
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0);
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
 
 			EndDebugGroup(commandList);
 		}
@@ -874,7 +938,7 @@ bool RenderGraphics(Engine &engine)
 				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 				SetVertexBuffer(commandList, vertexBuffer);
 				SetIndexBuffer(commandList, indexBuffer);
-				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0);
+				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
 
 				EndDebugGroup(commandList);
 			}
@@ -892,7 +956,7 @@ bool RenderGraphics(Engine &engine)
 				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 				SetVertexBuffer(commandList, vertexBuffer);
 				SetIndexBuffer(commandList, indexBuffer);
-				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0);
+				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
 
 				EndDebugGroup(commandList);
 			}
@@ -954,7 +1018,7 @@ bool RenderGraphics(Engine &engine)
 			const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0);
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
 
 			EndDebugGroup(commandList);
 		}
@@ -1022,7 +1086,7 @@ bool RenderGraphics(Engine &engine)
 
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0);
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
 
 			SetViewportAndScissor(commandList, displaySize);
 

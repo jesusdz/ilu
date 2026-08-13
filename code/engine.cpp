@@ -643,6 +643,8 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 
 	if ( platform.engine )
 	{
+		::engine = platform.engine;
+
 		UI_ResetStyle(platform.engine->ui);
 
 		// Profile state does not survive the reload, so GPU profiling starts fresh
@@ -701,8 +703,6 @@ ENGINE_API bool OnPlatformPreInit(Plat &platform)
 
 ENGINE_API bool OnPlatformInit(Plat &platform)
 {
-	SetGraphicsStringInterning(platform.stringInterning);
-
 	Engine &engine = GetEngine(platform);
 
 	Graphics &gfx = engine.gfx;
@@ -787,8 +787,6 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 
 	Engine &engine = GetEngine(platform);
 	Graphics &gfx = engine.gfx;
-
-	::engine = &engine;
 
 	const Clock begin = GetClock();
 

@@ -258,6 +258,9 @@ struct SamplerH { u32 index; };
 struct PipelineH { u32 index; };
 struct RenderPassH { u32 index; };
 
+inline bool operator==(ImageH a, ImageH b) { return a.index == b.index; }
+inline bool operator!=(ImageH a, ImageH b) { return a.index != b.index; }
+
 struct BlitRegion
 {
 	i32 x;
@@ -768,7 +771,7 @@ typedef void FN_SetBindGroup(CommandList &commandList, u32 bindGroupIndex, const
 typedef void FN_SetVertexBuffer(CommandList &commandList, BufferH bufferH);
 typedef void FN_SetIndexBuffer(CommandList &commandList, BufferH bufferH);
 typedef void FN_Draw(CommandList &commandList, u32 vertexCount, u32 firstVertex);
-typedef void FN_DrawIndexed(CommandList &commandList, u32 indexCount, u32 firstIndex, u32 firstVertex, u32 instanceIndex);
+typedef void FN_DrawIndexed(CommandList &commandList, u32 indexCount, u32 firstIndex, u32 firstVertex, u32 firstInstance, u32 instanceCount);
 typedef void FN_Dispatch(CommandList &commandList, u32 x, u32 y, u32 z);
 typedef void FN_EndRenderPass(const CommandList &commandList);
 typedef TimestampPool FN_CreateTimestampPool(const GraphicsDevice &device, u32 maxQueries);
@@ -4455,11 +4458,11 @@ void Draw(CommandList &commandList, u32 vertexCount, u32 firstVertex)
 	vkCmdDraw(commandList.handle, vertexCount, 1, firstVertex, 0);
 }
 
-void DrawIndexed(CommandList &commandList, u32 indexCount, u32 firstIndex, u32 firstVertex, u32 instanceIndex)
+void DrawIndexed(CommandList &commandList, u32 indexCount, u32 firstIndex, u32 firstVertex, u32 firstInstance, u32 instanceCount)
 {
 	BindDescriptorSets(commandList);
 
-	vkCmdDrawIndexed(commandList.handle, indexCount, 1, firstIndex, firstVertex, instanceIndex);
+	vkCmdDrawIndexed(commandList.handle, indexCount, instanceCount, firstIndex, firstVertex, firstInstance);
 }
 
 void Dispatch(CommandList &commandList, u32 x, u32 y, u32 z)

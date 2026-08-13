@@ -1317,6 +1317,7 @@ static void Main( int argc, char **argv )
 	InitializeDirectories(platform);
 
 	GetGraphicsAPI(&platform.pub.graphicsAPI);
+	SetGraphicsStringInterning(&platform.stringInterning);
 
 	LoadEngineDLL(platform);
 
