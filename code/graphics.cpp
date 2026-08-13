@@ -1818,11 +1818,10 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	u32 iconCount = 0;
 #if USE_EDITOR
 	ResetArena(scratch.arena);
-	const char *iconFilenames[] = { "editor/play_16.png", "editor/open.png", "editor/save.png", "editor/reload.png" };
-	iconCount = ARRAY_COUNT(iconFilenames);
+	iconCount = ARRAY_COUNT(sEditorIconFilenames);
 	icons = PushArray(globalArena, UIIcon, iconCount);
 	for (u32 i = 0; i < iconCount; ++i) {
-		FilePath filepath = MakePath(ProjectDir, iconFilenames[i]);
+		FilePath filepath = MakePath(ProjectDir, sEditorIconFilenames[i]);
 		ReadImagePixels(scratch.arena, filepath.str, icons[i].image);
 	}
 #endif

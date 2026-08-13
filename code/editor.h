@@ -1,6 +1,32 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
+enum EditorIcon
+{
+	EditorIcon_Play,
+	EditorIcon_Open,
+	EditorIcon_Save,
+	EditorIcon_Reload,
+	EditorIcon_Eye,
+	EditorIcon_Up,
+	EditorIcon_Down,
+	EditorIcon_X,
+	EditorIcon_Count,
+};
+
+const char *sEditorIconFilenames[] = {
+	"editor/play_16.png",
+	"editor/open.png",
+	"editor/save.png",
+	"editor/reload.png",
+	"editor/eye16.png",
+	"editor/up_16.png",
+	"editor/down_16.png",
+	"editor/x_16.png",
+};
+
+CT_ASSERT(ARRAY_COUNT(sEditorIconFilenames) == EditorIcon_Count);
+
 enum EditorCommandType
 {
 	EditorCommandRemoveTexture,

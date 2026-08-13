@@ -214,9 +214,9 @@ PixelOutput PSMain(PixelInput IN) : SV_Target
 	float2 viewportSizePixels = float2(320, 180); //float2(globals.sceneResolution);
 	//float pixelsPerMeter = 32.0;
 	//float2 noiseInput = floor(IN.positionWs * pixelsPerMeter);
-	float alpha = 1.0 / (IN.positionWs.y * IN.positionWs.y * IN.positionWs.y);
-	float layer1 = Fbm(IN.positionWs * float2(1.0, 3.0) + time * float2(0.5, -0.3)) * ( 0.2 * sin(globals.time) + 1.0 );
-	float layer2 = Fbm(IN.positionWs * float2(1.0, 3.0) + time * float2(-0.5, -0.3));
+	float alpha = 1.0 / (2.0 * IN.positionWs.y * IN.positionWs.y);// * IN.positionWs.y);
+	float layer1 = Fbm(IN.positionWs * float2(1.0, 2.0) + time * float2(0.5, -0.4)) * ( 0.2 * sin(globals.time) + 1.0 );
+	float layer2 = Fbm(IN.positionWs * float2(1.0, 2.0) + time * float2(-0.5, -0.3));
 	float fog = (layer1 + 0.5 * layer2);
 	float fog2 = 2.0f * fog * fog;
 	OUT.color = float4(fog2.xxx, alpha );

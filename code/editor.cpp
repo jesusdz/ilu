@@ -497,18 +497,14 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 						};
 						CreateLayer(room, desc);
 					}
+					if (UI_MenuItem(ui, "Delete room"))
+					{
+						RemoveRoom(engine, scene.rooms[roomIdx].id);
+					}
 					UI_EndContextMenu(ui);
 				}
 				UI_PopID(ui);
-				const bool removeRoom = UI_Button(ui, "x");
 				UI_EndLayout(ui);
-
-				if (removeRoom)
-				{
-					EditorUnselectRoom(editor, scene.rooms[roomIdx].id);
-					RemoveRoom(engine, scene.rooms[roomIdx].id);
-					break;
-				}
 
 				if (roomIsOpen)
 				{
@@ -531,9 +527,12 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 						{
 							EditorSelectLayer(editor, scene.rooms[roomIdx].id, layerIndex);
 						}
-						const bool moveDown = UI_Button(ui, "v"); // Towards the back
-						const bool moveUp = UI_Button(ui, "^"); // Towards the front
-						const bool removeLayer = !layer.isBase && UI_Button(ui, "x");
+
+						UI_SetCursorPosXFromRight(ui, 110);
+						UI_ToggleIcon(ui, EditorIcon_Eye, &layer.visible);
+						const bool moveDown = UI_ButtonIcon(ui, EditorIcon_Down);
+						const bool moveUp = UI_ButtonIcon(ui, EditorIcon_Up);
+						const bool removeLayer = !layer.isBase && UI_ButtonIcon(ui, EditorIcon_X);
 
 						UI_EndLayout(ui);
 

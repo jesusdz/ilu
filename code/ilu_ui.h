@@ -54,6 +54,7 @@
 // cursors are always drawn in plain black or white. Everything themeable lives
 // in UIStyle below and is reached through ui.style.
 constexpr float4 UiColorWhite = { 1.0, 1.0, 1.0, 1.0 };
+constexpr float4 UiColorDarkGray = { 0.1, 0.1, 0.1, 1.0 };
 constexpr float4 UiColorGray = { 0.5, 0.5, 0.5, 1.0 };
 constexpr float4 UiColorBlack = { 0.0, 0.0, 0.0, 1.0 };
 
@@ -160,6 +161,7 @@ struct UIWindow
 	float2 anchor;
 	float2 pivot;
 	float2 displacement;
+	float2 containerPos;
 	float2 containerSize;
 	float2 contentSize; // Only known after filling container
 	u32 contentLayoutGroup; // Index of the layout group wrapping the window contents
@@ -691,6 +693,20 @@ float2 UI_LastMouseClickPosInWidgetNormalized(const UI &ui)
 	return normalizedPos;
 }
 
+UIWindow &UI_GetCurrentWindow(UI &ui)
+{
+	ASSERT(ui.windowStackSize > 0);
+	const u32 windowIndex = ui.windowStack[ui.windowStackSize-1];
+	return ui.windows[windowIndex];
+}
+
+const UIWindow &UI_GetCurrentWindow(const UI &ui)
+{
+	ASSERT(ui.windowStackSize > 0);
+	const u32 windowIndex = ui.windowStack[ui.windowStackSize-1];
+	return ui.windows[windowIndex];
+}
+
 float2 UI_GetCursorPos(const UI &ui)
 {
 	ASSERT(ui.cursorStackSize > 0);
@@ -720,6 +736,14 @@ void UI_SetCursorPosX(UI &ui, f32 x)
 {
 	ASSERT(ui.cursorStackSize > 0);
 	ui.cursorStack[ui.cursorStackSize-1].x = x;
+}
+
+void UI_SetCursorPosXFromRight(UI &ui, f32 x)
+{
+	const UIWindow &window = UI_GetCurrentWindow(ui);
+
+	ASSERT(ui.cursorStackSize > 0);
+	ui.cursorStack[ui.cursorStackSize-1].x = window.pos.x + window.size.x - x;
 }
 
 void UI_MoveCursorDown(UI &ui, float amount)
@@ -1012,20 +1036,6 @@ bool UI_MouseInArea(const UI &ui, float2 pos, float2 size)
 	return inArea;
 }
 
-UIWindow &UI_GetCurrentWindow(UI &ui)
-{
-	ASSERT(ui.windowStackSize > 0);
-	const u32 windowIndex = ui.windowStack[ui.windowStackSize-1];
-	return ui.windows[windowIndex];
-}
-
-const UIWindow &UI_GetCurrentWindow(const UI &ui)
-{
-	ASSERT(ui.windowStackSize > 0);
-	const u32 windowIndex = ui.windowStack[ui.windowStackSize-1];
-	return ui.windows[windowIndex];
-}
-
 void UI_RaiseWindow(UI &ui, UIWindow &window)
 {
 	// Push down all windows in front of the one to be raised
@@ -1263,7 +1273,7 @@ void UI_AddTriangle(UI &ui, float2 p0, float2 p1, float2 p2)
 	UI_AddTriangle(ui, p0, p1, p2, color);
 }
 
-void UI_AddQuad(UI &ui, float2 pos, float2 size, float2 uv, float2 uvSize, float4 fcolor)
+void UI_AddQuad(UI &ui, float2 pos, float2 size, float2 uv, float2 uvSize, float4 fcolorTop, float4 fcolorBot)
 {
 	UIDrawList &drawList = UI_GetDrawList(ui);
 
@@ -1290,17 +1300,23 @@ void UI_AddQuad(UI &ui, float2 pos, float2 size, float2 uv, float2 uvSize, float
 		const float2 uvTR = { uv.x + uvSize.x , uv.y };
 
 		// color
-		const rgba color  = Rgba(fcolor);
+		const rgba colorTop  = Rgba(fcolorTop);
+		const rgba colorBot  = Rgba(fcolorBot);
 
 		UI_AddTriangle(ui,
-				UIVertex{ v0, uvTL, color },
-				UIVertex{ v1, uvBL, color },
-				UIVertex{ v2, uvBR, color });
+				UIVertex{ v0, uvTL, colorTop },
+				UIVertex{ v1, uvBL, colorBot },
+				UIVertex{ v2, uvBR, colorBot });
 		UI_AddTriangle(ui,
-				UIVertex{ v0, uvTL, color },
-				UIVertex{ v2, uvBR, color },
-				UIVertex{ v3, uvTR, color });
+				UIVertex{ v0, uvTL, colorTop },
+				UIVertex{ v2, uvBR, colorBot },
+				UIVertex{ v3, uvTR, colorTop });
 	}
+}
+
+void UI_AddQuad(UI &ui, float2 pos, float2 size, float2 uv, float2 uvSize, float4 fcolor)
+{
+	UI_AddQuad(ui, pos, size, uv, uvSize, fcolor, fcolor);
 }
 
 void UI_AddRectangle(UI &ui, float2 pos, float2 size)
@@ -1308,6 +1324,12 @@ void UI_AddRectangle(UI &ui, float2 pos, float2 size)
 	const float2 uvSize = {0, 0};
 	const float4 color = UI_GetColor(ui);
 	UI_AddQuad(ui, pos, size, ui.whitePixelUv, uvSize, color);
+}
+
+void UI_AddRectangle(UI &ui, float2 pos, float2 size, float4 colorTop, float4 colorBot)
+{
+	const float2 uvSize = {0, 0};
+	UI_AddQuad(ui, pos, size, ui.whitePixelUv, uvSize, colorTop, colorBot);
 }
 
 void UI_AddCircle(UI &ui, float2 pos, float radius)
@@ -1772,12 +1794,16 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 		const rect containerRect = { .pos = containerPos, .size = containerSize };
 		UI_PushDrawList(ui, containerRect, ui.fontAtlasH);
 
-		cursorPos = panelPos + ui.style.windowPadding;
 		panelSize = {(f32)containerSize.x, (f32)containerSize.y};
 
+		cursorPos = panelPos + ui.style.windowPadding;
 		cursorPos.y += window.contentOffset;
+
+		// Adjusted so containerPos includes the padding (I think)
+		panelPos = {(f32)containerPos.x, (f32)containerPos.y};
 	}
 
+	window.containerPos = panelPos;
 	window.containerSize = panelSize;
 
 	UI_SetCursorPos(ui, cursorPos);
@@ -1868,6 +1894,11 @@ UISection &UI_GetSection(UIWindow &window, const char *caption)
 	section.hash = sectionHash;
 	section.open = false;
 	return section;
+}
+
+float2 UI_GetContainerPos(const UIWindow &window)
+{
+	return window.containerPos;
 }
 
 float2 UI_GetContainerSize(const UIWindow &window)
@@ -1999,7 +2030,7 @@ void UI_DrawBox(UI &ui, float2 a, float2 b)
 	UI_PopColor(ui);
 }
 
-bool UI_ButtonIcon(UI &ui, u32 iconIndex)
+static bool UI_IconWidget(UI &ui, u32 iconIndex, const bool *checked)
 {
 	ASSERT(iconIndex < ui.iconCount);
 	const UIIcon &icon = ui.icons[iconIndex];
@@ -2012,17 +2043,36 @@ bool UI_ButtonIcon(UI &ui, u32 iconIndex)
 
 	UI_BeginWidget(ui, widgetPos, widgetSize);
 
-	UI_PushColor(ui, UIElementButton);
-	UI_AddRectangle(ui, widgetPos, widgetSize);
-	UI_PopColor(ui);
+	//UI_PushColor(ui, UIElementButton);
+	//UI_AddRectangle(ui, widgetPos, widgetSize);
+	//UI_PopColor(ui);
 
-	UI_AddQuad(ui, iconPos, iconSize, icon.uv, icon.uvSize, UiColorWhite);
+	const bool lit = ( checked == nullptr || *checked || UI_WidgetHovered(ui) );
+	UI_AddQuad(ui, iconPos, iconSize, icon.uv, icon.uvSize, lit ? UiColorWhite : UiColorGray);
 
 	const bool clicked = UI_WidgetClicked(ui);
 
 	UI_EndWidget(ui);
 
 	UI_CursorAdvance(ui, widgetSize);
+
+	return clicked;
+}
+
+bool UI_ButtonIcon(UI &ui, u32 iconIndex)
+{
+	return UI_IconWidget(ui, iconIndex, nullptr);
+}
+
+bool UI_ToggleIcon(UI &ui, u32 iconIndex, bool *checked)
+{
+	ASSERT(checked != nullptr);
+
+	const bool clicked = UI_IconWidget(ui, iconIndex, checked);
+	if (clicked)
+	{
+		*checked = !*checked;
+	}
 
 	return clicked;
 }
@@ -2213,6 +2263,12 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 	UI_CursorAdvance(ui, widgetSize);
 }
 
+static float4 RGB0(const float4 rgba)
+{
+	const float4 res = {rgba.r, rgba.g, rgba.b, 0.0f};
+	return res;
+}
+
 bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen, u32 flags = UITreeNodeFlag_None)
 {
 	bool wasCreated;
@@ -2230,6 +2286,12 @@ bool UI_TreeNode(UI &ui, const char *text, const void *ptr, bool *isOpen, u32 fl
 	UI_BeginWidget(ui, boxPos, boxSize);
 
 	const bool drawOpenControl = !( flags & UITreeNodeFlag_Leaf );
+
+	const UIWindow &window = UI_GetCurrentWindow(ui);
+	const float containerWidth = UI_GetContainerSize(window).x;
+	const float2 rowPos = { window.containerPos.x, boxPos.y };
+	const float2 rowSize = { containerWidth, controlHeight };
+	UI_AddRectangle(ui, rowPos, rowSize, UiColorDarkGray, RGB0(UiColorDarkGray));
 
 	if ( drawOpenControl )
 	{
