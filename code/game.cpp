@@ -25,6 +25,8 @@ void GameStart(Game &game)
 	}
 	game.sprPlayerIdle = FindSprite("spr_playeridle");
 	game.sprPlayerRun = FindSprite("spr_playerrun");
+	game.sprPlayerJump = FindSprite("spr_playerjump");
+	game.sprPlayerFall = FindSprite("spr_playerfall");
 	game.sndJump = GetAudioClip("snd_bell_wav");
 	game.modEquinox = GetMusic("mod_equinox_mod");
 	game.playingMusic = false;
@@ -222,10 +224,21 @@ void GameSimulate(Game &game)
 		game.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
 		game.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
-		if ( Abs(game.speed2.x) < 0.2 ) {
-			player->spriteId = game.sprPlayerIdle;
-		} else {
-			player->spriteId = game.sprPlayerRun;
+		if ( game.playerState == OnFloor || game.playerState == OnPlatform )
+		{
+			if ( Abs(game.speed2.x) < 0.2 ) {
+				player->spriteId = game.sprPlayerIdle;
+			} else {
+				player->spriteId = game.sprPlayerRun;
+			}
+		}
+		else
+		{
+			if ( game.speed2.y >= 0.0f ) {
+				player->spriteId = game.sprPlayerJump;
+			} else {
+				player->spriteId = game.sprPlayerFall;
+			}
 		}
 		if ( game.speed2.x > 0 ) { player->flipX = false; }
 		else if ( game.speed2.x < 0 ) { player->flipX = true; }

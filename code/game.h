@@ -67,6 +67,8 @@ struct Game
 	ID entPlayer;
 	ID sprPlayerIdle;
 	ID sprPlayerRun;
+	ID sprPlayerJump;
+	ID sprPlayerFall;
 
 	ID sndJump;
 	ID modEquinox;

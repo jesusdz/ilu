@@ -155,9 +155,22 @@ u16 GetRoomIndex(const Scene &scene, ID id)
 	return index;
 }
 
+static COMPACT_MOVE(MoveRoom)
+{
+	Scene &scene = *(Scene*)data;
+	Room &room = scene.rooms[dstIndex];
+
+	for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+	{
+		if (room.layers[i].initialized) {
+			SetObject(room.layers[i].id, &room.layers[i]);
+		}
+	}
+}
+
 void CompactRooms(Scene &scene)
 {
-	COMPACT_ARRAY_BY_ID(Room, scene.rooms, scene.roomCount, id, nullptr, nullptr, nullptr);
+	COMPACT_ARRAY_BY_ID(Room, scene.rooms, scene.roomCount, id, MoveRoom, nullptr, &scene);
 }
 
 
@@ -628,7 +641,16 @@ void RemoveRoom(Engine &engine, ID id)
 	// Marks only, see RemoveEntity
 	if (id)
 	{
-		GetRoom(id).id = {};
+		Room &room = GetRoom(id);
+
+		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+		{
+			if (room.layers[i].initialized) {
+				Invalidate(room.layers[i].id);
+			}
+		}
+
+		room.id = {};
 		Invalidate(id);
 	}
 }

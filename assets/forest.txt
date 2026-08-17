@@ -19,6 +19,12 @@ Texture tex_sky03_png = {
  .mipmap = 1,
 };
 
+Texture tex_spritesheet_png = {
+ .id = 1023,
+ .filename = "spritesheet.png",
+ .mipmap = 1,
+};
+
 
 // Sprites /////////////////////////////////////////////////////////////
 
@@ -141,6 +147,36 @@ Sprite spr_tilesheet_png_14 = {
  .size = {48, 144},
 };
 
+Sprite spr_playerrun = {
+ .id = 1024,
+ .textureId = 1023,
+ .pos = {0, 32},
+ .size = {16, 32},
+ .frameCount = 12,
+ .fps = 12,
+ .loop = 1,
+};
+
+Sprite spr_playeridle = {
+ .id = 1032,
+ .textureId = 1023,
+ .size = {16, 32},
+};
+
+Sprite spr_playerfall = {
+ .id = 1036,
+ .textureId = 1023,
+ .pos = {16, 0},
+ .size = {16, 32},
+};
+
+Sprite spr_playerjump = {
+ .id = 1037,
+ .textureId = 1023,
+ .pos = {32, 0},
+ .size = {16, 32},
+};
+
 
 // Materials ///////////////////////////////////////////////////////////
 
@@ -148,11 +184,11 @@ Sprite spr_tilesheet_png_14 = {
 // Entities ////////////////////////////////////////////////////////////
 
 Entity player = {
- .id = 1020,
- .spriteId = 1016,
- .pos = {35.436821, 1.000000, 0.000000},
+ .id = 1027,
+ .spriteId = 1032,
+ .pos = {12.966992, 2.000000, 0.000000},
  .scale = 1.000000,
- .layer = 0,
+ .layerId = 1022,
 };
 
 
@@ -163,6 +199,7 @@ Room Room = {
  .pos = {0, 0},
  .layers = {
   {
+   .id = 1022,
    .name = "Main",
    .isBase = 1,
    .visible = 1,
@@ -188,6 +225,7 @@ Room Room = {
    },
   },
   {
+   .id = 1033,
    .name = "Forest",
    .isBase = 0,
    .visible = 1,
@@ -203,6 +241,7 @@ Room Room = {
    },
   },
   {
+   .id = 1034,
    .name = "Colliders",
    .isBase = 0,
    .visible = 1,
@@ -220,6 +259,7 @@ Room Room = {
    },
   },
   {
+   .id = 1035,
    .name = "Background",
    .isBase = 0,
    .visible = 1,
@@ -234,4 +274,7 @@ Room Room = {
 
 
 // Audio clips /////////////////////////////////////////////////////////
+
+
+// Music files /////////////////////////////////////////////////////////
 

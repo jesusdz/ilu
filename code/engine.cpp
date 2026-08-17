@@ -158,6 +158,7 @@ AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 				continue;
 			}
 			LayerDesc &layerDesc = desc.layers[desc.layerCount++];
+			layerDesc.id = layer.id;
 			layerDesc.name = layer.name;
 			layerDesc.isBase = layer.isBase;
 			layerDesc.visible = layer.visible;

@@ -1004,6 +1004,8 @@ static void EditorUpdateUI_InspectorLayer(Engine &engine, Layer &layer)
 	UI_InputText(ui, "layer#Name", name, ARRAY_COUNT(name));
 	layer.name = InternString(name);
 
+	UI_Text(ui, "ID", "%u", layer.id.slot);
+
 	UI_InputUInt2(ui, "Size", &layer.size);
 	UI_Text(ui, "Base", "%s", layer.isBase ? "yes" : "no"); // Set on creation, not editable here
 	UI_Checkbox(ui, "Visible", &layer.visible);
