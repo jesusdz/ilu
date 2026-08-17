@@ -261,6 +261,21 @@ static void UpdateGamepad(Platform &platform)
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// File watching
+
+static bool WatchDirectory(Platform &platform, const char *path, bool recursive)
+{
+	LOG(Info, "- Missing implementation\n");
+
+	return false;
+}
+
+static void UpdateFileWatcher(Platform &platform)
+{
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audio
 
 static aaudio_data_callback_result_t AAudioFillAudioBuffer(AAudioStream *stream, void *userData, void *audioData, int32_t numFrames)

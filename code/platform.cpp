@@ -185,6 +185,8 @@ static void ShowPlatformWindow(Window &window);
 static void PlatformUpdateEventLoop(Platform &platform);
 static bool InitializeGamepad(Platform &platform);
 static void UpdateGamepad(Platform &platform);
+static bool WatchDirectory(Platform &platform, const char *path, bool recursive);
+static void UpdateFileWatcher(Platform &platform);
 static bool InitializeAudioDevice(Platform &platform);
 static void UpdateAudioDevice(Platform &platform);
 static void WaitForAudioDevice(Platform &platform);
@@ -833,6 +835,7 @@ static void UpdateAndRender(Platform &platform)
 	ProcessPlatformEvents(platform);
 
 	UpdateGamepad(platform);
+	UpdateFileWatcher(platform);
 
 	if ( platform.windowInitialized )
 	{
@@ -840,6 +843,7 @@ static void UpdateAndRender(Platform &platform)
 		platform.RenderGraphicsCallback(platform.pub);
 
 		platform.window.flags = 0;
+		platform.pub.fileChangesDetected = false;
 	}
 
 	CheckEngineHotReload(platform);
@@ -1221,6 +1225,16 @@ static bool Run(Platform &platform)
 	if ( !InitializeGamepad(platform) )
 	{
 		// Do nothing
+	}
+
+	if ( !WatchDirectory(platform, AssetDir, false) )
+	{
+		LOG(Warning, "WatchDirectory failed for AssetDir\n");
+	}
+	const FilePath shaderSourceDir = MakePath(ProjectDir, "code/shaders");
+	if ( !WatchDirectory(platform, shaderSourceDir.str, false) )
+	{
+		LOG(Warning, "WatchDirectory failed for shader source directory\n");
 	}
 
 	if ( !InitializeAudio(platform) )

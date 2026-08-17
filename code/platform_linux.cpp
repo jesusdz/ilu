@@ -4,6 +4,7 @@
 
 #include <xcb/xcb.h>
 #include <stdlib.h> // free
+#include <sys/inotify.h>
 
 #define USE_UPDATE_THREAD 1
 #define USE_AUDIO_THREAD 1
@@ -635,6 +636,73 @@ static void PlatformUpdateEventLoop(Platform &platform)
 	{
 		XcbWindowProc(window, event);
 		free(event);
+	}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// File watching
+
+#define MAX_FILE_WATCHES 4
+
+static int fileWatchInotifyFd = -1;
+static int fileWatchWds[MAX_FILE_WATCHES];
+static u32 fileWatchCount = 0;
+
+static bool WatchDirectory(Platform &platform, const char *path, bool recursive)
+{
+	ASSERT(!recursive); // Recursive watches are not supported yet
+
+	if (fileWatchCount == MAX_FILE_WATCHES)
+	{
+		LOG(Warning, "WatchDirectory: no free watch slots for %s\n", path);
+		return false;
+	}
+
+	if (fileWatchInotifyFd == -1)
+	{
+		fileWatchInotifyFd = inotify_init1(IN_NONBLOCK);
+		if (fileWatchInotifyFd == -1)
+		{
+			LinuxReportError("WatchDirectory - inotify_init1");
+			return false;
+		}
+	}
+
+	// IN_CLOSE_WRITE rather than IN_MODIFY, so we get one notification per finished write
+	// instead of one per write() call while a file is being saved.
+	const int wd = inotify_add_watch(fileWatchInotifyFd, path,
+			IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_CLOSE_WRITE);
+	if (wd == -1)
+	{
+		LinuxReportError("WatchDirectory - inotify_add_watch");
+		return false;
+	}
+
+	fileWatchWds[fileWatchCount++] = wd;
+	return true;
+}
+
+static void UpdateFileWatcher(Platform &platform)
+{
+	if (fileWatchInotifyFd == -1)
+	{
+		return;
+	}
+
+	// We don't care what changed or what the events contain, only that something did. The
+	// buffer still has to be drained though, otherwise the kernel queue fills up and starts
+	// dropping events (IN_Q_OVERFLOW).
+	char buffer[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+	ssize_t len;
+	while ((len = read(fileWatchInotifyFd, buffer, sizeof(buffer))) > 0)
+	{
+		platform.pub.fileChangesDetected = true;
+	}
+
+	if (len == -1 && errno != EAGAIN)
+	{
+		LinuxReportError("UpdateFileWatcher - read");
 	}
 }
 

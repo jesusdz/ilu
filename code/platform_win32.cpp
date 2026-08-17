@@ -784,6 +784,99 @@ static void PlatformUpdateEventLoop(Platform &platform)
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// File watching
+
+#define MAX_FILE_WATCHES 4
+
+struct FileWatch
+{
+	HANDLE handle;
+	OVERLAPPED overlapped;
+	DWORD buffer[4096]; // DWORD-aligned scratch required by ReadDirectoryChangesW; contents unused
+	bool pending;
+};
+
+static FileWatch fileWatches[MAX_FILE_WATCHES];
+static u32 fileWatchCount = 0;
+
+static bool IssueReadDirectoryChanges(FileWatch &watch)
+{
+	watch.overlapped = {};
+	watch.pending = ReadDirectoryChangesW(
+			watch.handle,
+			watch.buffer, sizeof(watch.buffer),
+			FALSE, // do not watch the subtree, flat only
+			FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE,
+			NULL, &watch.overlapped, NULL) != 0;
+	return watch.pending;
+}
+
+static bool WatchDirectory(Platform &platform, const char *path, bool recursive)
+{
+	ASSERT(!recursive); // Recursive watches are not supported yet
+
+	if (fileWatchCount == MAX_FILE_WATCHES)
+	{
+		LOG(Warning, "WatchDirectory: no free watch slots for %s\n", path);
+		return false;
+	}
+
+	FileWatch &watch = fileWatches[fileWatchCount];
+	watch = {};
+
+	watch.handle = CreateFileA(path,
+			FILE_LIST_DIRECTORY,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			NULL, OPEN_EXISTING,
+			FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+			NULL);
+
+	if (watch.handle == INVALID_HANDLE_VALUE)
+	{
+		Win32ReportError("WatchDirectory - CreateFileA");
+		return false;
+	}
+
+	if (!IssueReadDirectoryChanges(watch))
+	{
+		Win32ReportError("WatchDirectory - ReadDirectoryChangesW");
+		CloseHandle(watch.handle);
+		return false;
+	}
+
+	fileWatchCount++;
+	return true;
+}
+
+static void UpdateFileWatcher(Platform &platform)
+{
+	for (u32 i = 0; i < fileWatchCount; ++i)
+	{
+		FileWatch &watch = fileWatches[i];
+
+		if (!watch.pending)
+		{
+			continue;
+		}
+
+		DWORD transferred = 0;
+		if (GetOverlappedResult(watch.handle, &watch.overlapped, &transferred, FALSE))
+		{
+			// We don't care what changed or what the buffer contains, only that something did
+			platform.pub.fileChangesDetected = true;
+
+			IssueReadDirectoryChanges(watch);
+		}
+		else if (GetLastError() != ERROR_IO_INCOMPLETE)
+		{
+			Win32ReportError("UpdateFileWatcher - GetOverlappedResult");
+			watch.pending = false;
+		}
+	}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Gamepad
 
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD userIndex, XINPUT_STATE *state)

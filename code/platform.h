@@ -271,6 +271,8 @@ struct Plat
 	Window *window;
 	Gamepad *gamepad;
 
+	bool fileChangesDetected; // true for the one frame in which a watched directory changed
+
 	Engine *engine;
 };
 

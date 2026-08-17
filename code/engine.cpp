@@ -811,26 +811,17 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 #endif
 
 #if USE_EDITOR
-	if (engine.settings.hotReload)
+	if (engine.settings.hotReload && platform.fileChangesDetected)
 	{
-		static Clock lastClock = GetClock();
-		const Clock currentClock = GetClock();
-		const f32 secondsSinceLastCheck  = GetSecondsElapsed(lastClock, currentClock);
-
-		if ( secondsSinceLastCheck > 0.2 )
+		if ( CompileModifiedShaders() )
 		{
-			lastClock = currentClock;
-
-			if ( CompileModifiedShaders() )
-			{
-				// NOTE(jesus): Recompiling all pipelines here even if likely only a shader was recompiled :-S
-				WaitDeviceIdle(gfx.device);
-				Scratch scratch;
-				RecompilePipelines(engine, scratch.arena);
-			}
-
-			RecreateModifiedTextures(engine);
+			// NOTE(jesus): Recompiling all pipelines here even if likely only a shader was recompiled :-S
+			WaitDeviceIdle(gfx.device);
+			Scratch scratch;
+			RecompilePipelines(engine, scratch.arena);
 		}
+
+		RecreateModifiedTextures(engine);
 	}
 
 	EditorUpdate(engine);
