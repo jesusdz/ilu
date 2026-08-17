@@ -74,6 +74,23 @@ void SetObject(ID id, void *object);
 void *GetObject(ID id);
 
 
+////////////////////////////////////////////////////////////////////////
+// Array compaction
+
+#define COMPACT_MOVE(name) void name(u32 dstIndex, u32 srcIndex, void *data)
+typedef COMPACT_MOVE(CompactMoveFunc);
+
+#define COMPACT_REMOVE(name) void name(u32 index, void *data)
+typedef COMPACT_REMOVE(CompactRemoveFunc);
+
+bool CompactArrayByID(void *elements, u32 elementSize, u32 &count, u32 idOffset,
+		CompactMoveFunc *onMove, CompactRemoveFunc *onRemove, void *data);
+
+// Spell the element type once instead of a sizeof and an offsetof at every call site
+#define COMPACT_ARRAY_BY_ID(Type, array, count, idMember, onMove, onRemove, data) \
+	CompactArrayByID(array, sizeof(Type), count, OFFSET_OF(Type, idMember), onMove, onRemove, data)
+
+
 #endif // ILU_ID_H
 
 #ifdef ILU_ID_IMPLEMENTATION
@@ -171,6 +188,59 @@ void *GetObject(ID id)
 }
 
 ID::operator bool() const { return Valid(*this); }
+
+static ID ElementID(const void *elements, u32 elementSize, u32 idOffset, u32 index)
+{
+	const ID id = *(const ID*)((const byte*)elements + index*elementSize + idOffset);
+	return id;
+}
+
+bool CompactArrayByID(void *elements, u32 elementSize, u32 &count, u32 idOffset, CompactMoveFunc *onMove, CompactRemoveFunc *onRemove, void *data)
+{
+	byte *base = (byte*)elements;
+
+	u32 storeIndex = U32_MAX;
+	for (u32 i = 0; i < count; ++i)
+	{
+		if ( !ElementID(base, elementSize, idOffset, i) ) {
+			storeIndex = i;
+			break;
+		}
+	}
+
+	if ( storeIndex == U32_MAX ) {
+		return false;
+	}
+
+	for (u32 readIndex = storeIndex; readIndex < count; ++readIndex)
+	{
+		if ( !ElementID(base, elementSize, idOffset, readIndex) )
+		{
+			if ( onRemove ) {
+				onRemove(readIndex, data);
+			}
+			continue;
+		}
+
+		// The sweep starts at a hole, so the write index trails the read index from
+		// here on and a survivor never lands on an element still waiting to be visited
+		const u32 writeIndex = storeIndex++;
+		byte *writeElement = base + writeIndex*elementSize;
+		MemCopy(writeElement, base + readIndex*elementSize, elementSize);
+
+		if ( onMove ) {
+			onMove(writeIndex, readIndex, data);
+		}
+
+		SetObject(ElementID(base, elementSize, idOffset, writeIndex), writeElement);
+	}
+
+	// Whatever the survivors left behind, so the tail reads as empty
+	MemSet(base + storeIndex*elementSize, (count - storeIndex)*elementSize, 0);
+
+	count = storeIndex;
+	return true;
+}
 
 #endif // ILU_ID_IMPLEMENTATION
 

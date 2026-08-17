@@ -7,6 +7,14 @@
 #define TOOLS_IMAGE_PIXELS
 #include "../ilu_core.h"
 #include "../handle_pool.h"
+#include "../ilu_id.h"
+
+// The ID pool the compaction tests bind their elements to. The engine keeps its own in
+// the Engine struct, ilu_id.h only asks for one to be named.
+static IDPool gTestIDPool;
+#define ILU_ID_POOL gTestIDPool
+#define ILU_ID_IMPLEMENTATION
+#include "../ilu_id.h"
 
 // ANSI color codes
 #ifdef _WIN32
@@ -1651,6 +1659,259 @@ void TestHandlePool()
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Array compaction tests
+
+// The ID sits inside a nested struct, the way the engine's arrays carry theirs
+struct TestCompactDesc
+{
+    ID id;
+    u32 value;
+};
+
+struct TestCompactElement
+{
+    TestCompactDesc desc;
+    u32 payload;
+};
+
+struct TestCompactPayload
+{
+    TestCompactElement *elements;
+    u32 parallel[8]; // Parallel to the elements, dragged along by the move callback
+    u32 moveCount;
+    u32 moveDst[8];
+    u32 moveSrc[8];
+    u32 removeCount;
+    u32 removedIndices[8];
+    u32 removedPayloads[8];
+};
+
+static COMPACT_MOVE(TestCompactMove)
+{
+    TestCompactPayload &payload = *(TestCompactPayload*)data;
+    payload.parallel[dstIndex] = payload.parallel[srcIndex];
+    if (payload.moveCount < ARRAY_COUNT(payload.moveDst)) {
+        payload.moveDst[payload.moveCount] = dstIndex;
+        payload.moveSrc[payload.moveCount] = srcIndex;
+        payload.moveCount++;
+    }
+}
+
+// Reads the element it is handed, which is only legal because the compaction has not
+// overwritten it yet
+static COMPACT_REMOVE(TestCompactRemove)
+{
+    TestCompactPayload &payload = *(TestCompactPayload*)data;
+    if (payload.removeCount < ARRAY_COUNT(payload.removedIndices)) {
+        payload.removedIndices[payload.removeCount] = index;
+        payload.removedPayloads[payload.removeCount] = payload.elements[index].payload;
+        payload.removeCount++;
+    }
+}
+
+// Fills the array with live elements, each bound to a fresh ID
+static void MakeTestElements(TestCompactElement *elements, u32 count, TestCompactPayload &payload)
+{
+    payload = {};
+    payload.elements = elements;
+
+    for (u32 i = 0; i < count; ++i) {
+        elements[i] = {};
+        elements[i].desc.value = 10 * (i + 1);
+        elements[i].payload = 100 * (i + 1);
+        payload.parallel[i] = 1000 * (i + 1);
+        BindID(&elements[i].desc.id, &elements[i]);
+    }
+}
+
+// Marks an element the way the engine's Remove functions do: clear the ID, drop the slot
+static void MarkTestElementRemoved(TestCompactElement &element)
+{
+    const ID id = element.desc.id;
+    element.desc.id = {};
+    Invalidate(id);
+}
+
+static bool IsZeroedTestElement(const TestCompactElement &element)
+{
+    const bool zeroed = element.desc.id.slot == 0 && element.desc.value == 0 && element.payload == 0;
+    return zeroed;
+}
+
+void TestCompactArray()
+{
+    TEST_SECTION("CompactArrayByID");
+
+    InitializeIDPool();
+
+    // The offset is the whole of what the compaction knows about the element type
+    TEST("OFFSET_OF finds a leading member", OFFSET_OF(TestCompactElement, desc.id) == 0);
+    TEST("OFFSET_OF walks into nested members",
+         OFFSET_OF(TestCompactElement, payload) == sizeof(TestCompactDesc));
+
+    // Nothing to do without holes
+    {
+        TestCompactElement elements[4];
+        TestCompactPayload payload;
+        MakeTestElements(elements, 4, payload);
+
+        u32 count = 4;
+        const bool compacted = COMPACT_ARRAY_BY_ID(TestCompactElement, elements, count, desc.id,
+                TestCompactMove, TestCompactRemove, &payload);
+
+        TEST("Compaction without holes reports nothing done", !compacted);
+        TEST("Compaction without holes keeps the count", count == 4);
+        TEST("Compaction without holes moves nothing", payload.moveCount == 0);
+        TEST("Compaction without holes removes nothing", payload.removeCount == 0);
+        TEST("Compaction without holes leaves the elements alone",
+             elements[0].desc.value == 10 && elements[3].desc.value == 40);
+    }
+
+    // A hole in the middle closes, and everything after it comes forward
+    {
+        TestCompactElement elements[4];
+        TestCompactPayload payload;
+        MakeTestElements(elements, 4, payload);
+
+        const ID removedId = elements[1].desc.id;
+        const ID survivorId = elements[2].desc.id;
+        MarkTestElementRemoved(elements[1]);
+
+        u32 count = 4;
+        const bool compacted = COMPACT_ARRAY_BY_ID(TestCompactElement, elements, count, desc.id,
+                TestCompactMove, TestCompactRemove, &payload);
+
+        TEST("Compaction reports what it did", compacted);
+        TEST("Compaction shrinks the array", count == 3);
+        TEST("Compaction preserves the relative order",
+             elements[0].desc.value == 10 && elements[1].desc.value == 30 && elements[2].desc.value == 40);
+        TEST("Compaction moves every element after the hole", payload.moveCount == 2);
+        TEST("Compaction moves towards the front",
+             payload.moveDst[0] == 1 && payload.moveSrc[0] == 2 &&
+             payload.moveDst[1] == 2 && payload.moveSrc[1] == 3);
+        TEST("Compaction drags the parallel array along",
+             payload.parallel[0] == 1000 && payload.parallel[1] == 3000 && payload.parallel[2] == 4000);
+        TEST("Compaction re-points the surviving IDs",
+             GetObject(survivorId) == &elements[1] &&
+             GetObject(elements[0].desc.id) == &elements[0] &&
+             GetObject(elements[2].desc.id) == &elements[2]);
+        TEST("Compaction leaves the removed ID invalid", !Valid(removedId));
+        TEST("Compaction zeroes the vacated tail", IsZeroedTestElement(elements[3]));
+    }
+
+    // Holes at the front, in the middle and at the back
+    {
+        TestCompactElement elements[5];
+        TestCompactPayload payload;
+        MakeTestElements(elements, 5, payload);
+
+        MarkTestElementRemoved(elements[0]);
+        MarkTestElementRemoved(elements[2]);
+        MarkTestElementRemoved(elements[4]);
+
+        u32 count = 5;
+        COMPACT_ARRAY_BY_ID(TestCompactElement, elements, count, desc.id,
+                TestCompactMove, TestCompactRemove, &payload);
+
+        TEST("Compaction drops every hole", count == 2);
+        TEST("Compaction keeps the survivors in order",
+             elements[0].desc.value == 20 && elements[1].desc.value == 40);
+        TEST("Compaction re-points every survivor",
+             GetObject(elements[0].desc.id) == &elements[0] &&
+             GetObject(elements[1].desc.id) == &elements[1]);
+        TEST("Compaction zeroes everything past the survivors",
+             IsZeroedTestElement(elements[2]) && IsZeroedTestElement(elements[3]) &&
+             IsZeroedTestElement(elements[4]));
+    }
+
+    // onRemove runs for each dropped element, while it is still readable
+    {
+        TestCompactElement elements[5];
+        TestCompactPayload payload;
+        MakeTestElements(elements, 5, payload);
+
+        MarkTestElementRemoved(elements[0]);
+        MarkTestElementRemoved(elements[2]);
+        MarkTestElementRemoved(elements[4]);
+
+        u32 count = 5;
+        COMPACT_ARRAY_BY_ID(TestCompactElement, elements, count, desc.id,
+                nullptr, TestCompactRemove, &payload);
+
+        TEST("onRemove runs once per dropped element", count == 2 && payload.removeCount == 3);
+        TEST("onRemove gets the index the element was at",
+             payload.removedIndices[0] == 0 && payload.removedIndices[1] == 2 &&
+             payload.removedIndices[2] == 4);
+        TEST("onRemove sees the dropped element intact",
+             payload.removedPayloads[0] == 100 && payload.removedPayloads[1] == 300 &&
+             payload.removedPayloads[2] == 500);
+    }
+
+    // A hole at the back displaces nobody
+    {
+        TestCompactElement elements[3];
+        TestCompactPayload payload;
+        MakeTestElements(elements, 3, payload);
+
+        MarkTestElementRemoved(elements[2]);
+
+        u32 count = 3;
+        const bool compacted = COMPACT_ARRAY_BY_ID(TestCompactElement, elements, count, desc.id,
+                TestCompactMove, TestCompactRemove, &payload);
+
+        TEST("A trailing hole still counts as compacted", compacted);
+        TEST("A trailing hole shrinks the array", count == 2);
+        TEST("A trailing hole moves nothing", payload.moveCount == 0);
+        TEST("A trailing hole leaves the survivors put",
+             elements[0].desc.value == 10 && elements[1].desc.value == 20);
+        TEST("A trailing hole is zeroed", IsZeroedTestElement(elements[2]));
+    }
+
+    // Removing everything empties the array
+    {
+        TestCompactElement elements[3];
+        TestCompactPayload payload;
+        MakeTestElements(elements, 3, payload);
+
+        for (u32 i = 0; i < 3; ++i) {
+            MarkTestElementRemoved(elements[i]);
+        }
+
+        u32 count = 3;
+        COMPACT_ARRAY_BY_ID(TestCompactElement, elements, count, desc.id,
+                TestCompactMove, TestCompactRemove, &payload);
+
+        TEST("Removing everything empties the array", count == 0);
+        TEST("Removing everything drops every element", payload.removeCount == 3);
+        TEST("Removing everything moves nothing", payload.moveCount == 0);
+        TEST("Removing everything zeroes the array",
+             IsZeroedTestElement(elements[0]) && IsZeroedTestElement(elements[1]) &&
+             IsZeroedTestElement(elements[2]));
+    }
+
+    // An empty array, and callbacks nobody passed
+    {
+        TestCompactElement elements[1];
+        TestCompactPayload payload;
+        MakeTestElements(elements, 1, payload);
+
+        u32 empty = 0;
+        TEST("An empty array has nothing to compact",
+             !COMPACT_ARRAY_BY_ID(TestCompactElement, elements, empty, desc.id,
+                     nullptr, nullptr, nullptr));
+        TEST("An empty array stays empty", empty == 0);
+
+        MarkTestElementRemoved(elements[0]);
+
+        u32 count = 1;
+        TEST("The callbacks are optional",
+             COMPACT_ARRAY_BY_ID(TestCompactElement, elements, count, desc.id,
+                     nullptr, nullptr, nullptr));
+        TEST("The only element is gone", count == 0 && IsZeroedTestElement(elements[0]));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main
 
 int main()
@@ -1682,6 +1943,7 @@ int main()
     TestTicks();
     TestClock();
     TestHandlePool();
+    TestCompactArray();
 
     LOG(Info, "\n" ANSI_BOLD "====================================\n" ANSI_RESET);
     if (gTestsFailed == 0) {

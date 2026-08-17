@@ -499,47 +499,9 @@ void RemoveAudioClip(ID id)
 // PreRenderAudio runs on the main one, so the two can overlap there.
 void CompactAudio(Audio &audio)
 {
-	u32 storeIndex = U32_MAX;
-	for (u32 i = 0; i < audio.clipCount; ++i)
-	{
-		if ( !audio.clips[i].desc.id ) { storeIndex = i; break; }
-	}
-	if ( storeIndex != U32_MAX )
-	{
-		for (u32 readIndex = storeIndex; readIndex < audio.clipCount; ++readIndex)
-		{
-			AudioClip &readClip = audio.clips[readIndex];
-			if ( !readClip.desc.id ) { readClip = {}; continue; }
+	COMPACT_ARRAY_BY_ID(AudioClip, audio.clips, audio.clipCount, desc.id, nullptr, nullptr, nullptr);
 
-			AudioClip &writeClip = audio.clips[storeIndex++];
-			writeClip = readClip;
-			readClip = {};
-
-			SetObject(writeClip.desc.id, &writeClip);
-		}
-		audio.clipCount = storeIndex;
-	}
-
-	storeIndex = U32_MAX;
-	for (u32 i = 0; i < audio.musicFileCount; ++i)
-	{
-		if ( !audio.musicFiles[i].desc.id ) { storeIndex = i; break; }
-	}
-	if ( storeIndex != U32_MAX )
-	{
-		for (u32 readIndex = storeIndex; readIndex < audio.musicFileCount; ++readIndex)
-		{
-			MusicFile &readFile = audio.musicFiles[readIndex];
-			if ( !readFile.desc.id ) { readFile = {}; continue; }
-
-			MusicFile &writeFile = audio.musicFiles[storeIndex++];
-			writeFile = readFile;
-			readFile = {};
-
-			SetObject(writeFile.desc.id, &writeFile);
-		}
-		audio.musicFileCount = storeIndex;
-	}
+	COMPACT_ARRAY_BY_ID(MusicFile, audio.musicFiles, audio.musicFileCount, desc.id, nullptr, nullptr, nullptr);
 }
 
 #define INVALID_AUDIO_CLIP U32_MAX

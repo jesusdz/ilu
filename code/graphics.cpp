@@ -574,54 +574,27 @@ void RemoveTexture(Graphics &gfx, ID id)
 		// still drawing with it this frame has something valid to sample.
 		GetTexture(id).desc.id = {};
 		Invalidate(id);
+	}
+}
 
-		gfx.shouldUpdateMaterialBindGroups = true;
+static COMPACT_REMOVE(RemoveTextureImage)
+{
+	Graphics &gfx = *(Graphics*)data;
+	Texture &texture = gfx.textures[index];
+
+	if ( texture.ownsImage && IsValid(texture.image) )
+	{
+		WaitDeviceIdle(gfx.device);
+		DestroyImageH(gfx.device, texture.image);
 	}
 }
 
 void CompactTextures(Graphics &gfx)
 {
-	u32 storeIndex = U32_MAX;
-	for (u32 i = 0; i < gfx.textureCount; ++i)
+	if ( COMPACT_ARRAY_BY_ID(Texture, gfx.textures, gfx.textureCount, desc.id, nullptr, RemoveTextureImage, &gfx) )
 	{
-		if ( !gfx.textures[i].desc.id ) {
-			storeIndex = i;
-			break;
-		}
+		gfx.shouldUpdateMaterialBindGroups = true;
 	}
-
-	if ( storeIndex == U32_MAX ) {
-		return;
-	}
-
-	// Releases images the in-flight frames may still be sampling, and removing a
-	// texture is rare enough that stalling here costs nothing
-	WaitDeviceIdle(gfx.device);
-
-	for (u32 readIndex = storeIndex; readIndex < gfx.textureCount; ++readIndex)
-	{
-		Texture &readTexture = gfx.textures[readIndex];
-
-		if ( !readTexture.desc.id )
-		{
-			if ( readTexture.ownsImage && IsValid(readTexture.image) ) {
-				DestroyImageH(gfx.device, readTexture.image);
-			}
-			readTexture = {};
-			continue;
-		}
-
-		Texture &writeTexture = gfx.textures[storeIndex++];
-		writeTexture = readTexture;
-		readTexture = {};
-
-		SetObject(writeTexture.desc.id, &writeTexture);
-	}
-
-	gfx.textureCount = storeIndex;
-
-	// Bind groups point at images by texture, and the textures moved
-	gfx.shouldUpdateMaterialBindGroups = true;
 }
 
 static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
@@ -798,49 +771,29 @@ void RemoveMaterial(Graphics &gfx, ID id)
 	}
 }
 
+static COMPACT_MOVE(MoveMaterial)
+{
+	Graphics &gfx = *(Graphics*)data;
+
+	// Offsets into the uniform buffer follow the index, and this one just changed. Both
+	// this and the material itself are CPU state until the re-upload below, so nothing
+	// the device can see has moved yet.
+	gfx.materials[dstIndex].bufferOffset = MaterialBufferOffset(gfx, (u16)dstIndex);
+
+	// The bind group about to be overwritten may still be bound by the in-flight frames,
+	// and removing a material is rare enough that stalling here costs nothing. The
+	// device is already idle by the time a second move gets here.
+	WaitDeviceIdle(gfx.device);
+	gfx.materialBindGroups[dstIndex] = gfx.materialBindGroups[srcIndex];
+}
+
 void CompactMaterials(Graphics &gfx)
 {
-	u32 storeIndex = U32_MAX;
-	for (u32 i = 0; i < gfx.materialCount; ++i)
+	if ( COMPACT_ARRAY_BY_ID(Material, gfx.materials, gfx.materialCount, desc.id, MoveMaterial, nullptr, &gfx) )
 	{
-		if ( !gfx.materials[i].desc.id ) {
-			storeIndex = i;
-			break;
-		}
+		gfx.shouldUpdateMaterials = true;          // re-upload at the new offsets
+		gfx.shouldUpdateMaterialBindGroups = true; // re-point the bind groups at them
 	}
-
-	if ( storeIndex == U32_MAX ) {
-		return;
-	}
-
-	// The bind groups about to be reshuffled may still be bound by the in-flight
-	// frames, and removing a material is rare enough that stalling here costs nothing
-	WaitDeviceIdle(gfx.device);
-
-	for (u32 readIndex = storeIndex; readIndex < gfx.materialCount; ++readIndex)
-	{
-		Material &readMaterial = gfx.materials[readIndex];
-
-		if ( !readMaterial.desc.id )
-		{
-			readMaterial = {};
-			continue;
-		}
-
-		const u32 writeIndex = storeIndex++;
-		Material &writeMaterial = gfx.materials[writeIndex];
-		writeMaterial = readMaterial;
-		writeMaterial.bufferOffset = MaterialBufferOffset(gfx, (u16)writeIndex);
-		gfx.materialBindGroups[writeIndex] = gfx.materialBindGroups[readIndex];
-		readMaterial = {};
-
-		SetObject(writeMaterial.desc.id, &writeMaterial);
-	}
-
-	gfx.materialCount = storeIndex;
-
-	gfx.shouldUpdateMaterials = true;          // re-upload at the new offsets
-	gfx.shouldUpdateMaterialBindGroups = true; // re-point the bind groups at them
 }
 
 

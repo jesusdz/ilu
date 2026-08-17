@@ -138,6 +138,13 @@ static const int __android_log_channel[] = {
 #define INVALID_CODE_PATH_MSG(message) ASSERT(0 && message)
 #define ARRAY_COUNT(array) (sizeof(array)/sizeof(array[0]))
 
+// offsetof, without pulling in <stddef.h>
+#if defined(__GNUC__) || defined(__clang__)
+#define OFFSET_OF(type, member) ((u32)__builtin_offsetof(type, member))
+#else
+#define OFFSET_OF(type, member) ((u32)(u64)&(((type*)0)->member))
+#endif
+
 #define CT_ASSERT3(expression, number) static int ct_assert_##number[(expression) ? 1 : -1]
 #define CT_ASSERT2(expression, number) CT_ASSERT3(expression, number)
 #define CT_ASSERT(expression) CT_ASSERT2(expression, __COUNTER__)

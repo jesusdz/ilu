@@ -124,41 +124,16 @@ void RemoveSprite(Scene &scene, ID id)
 	}
 }
 
+static COMPACT_MOVE(MoveSprite)
+{
+	Scene &scene = *(Scene*)data;
+	scene.spriteAnimStates[dstIndex] = scene.spriteAnimStates[srcIndex];
+}
+
 void CompactSprites(Scene &scene)
 {
-	u32 storeIndex = U32_MAX;
-	for (u32 i = 0; i < scene.spriteCount; ++i)
-	{
-		if ( !scene.sprites[i].desc.id ) {
-			storeIndex = i;
-			break;
-		}
-	}
-
-	if ( storeIndex == U32_MAX ) {
-		return;
-	}
-
-	for (u32 readIndex = storeIndex; readIndex < scene.spriteCount; ++readIndex)
-	{
-		Sprite &readSprite = scene.sprites[readIndex];
-
-		if ( !readSprite.desc.id )
-		{
-			readSprite = {};
-			continue;
-		}
-
-		const u32 writeIndex = storeIndex++;
-		Sprite &writeSprite = scene.sprites[writeIndex];
-		writeSprite = readSprite;
-		scene.spriteAnimStates[writeIndex] = scene.spriteAnimStates[readIndex];
-		readSprite = {};
-
-		SetObject(writeSprite.desc.id, &writeSprite);
-	}
-
-	scene.spriteCount = storeIndex;
+	COMPACT_ARRAY_BY_ID(Sprite, scene.sprites, scene.spriteCount, desc.id,
+			MoveSprite, nullptr, &scene);
 }
 
 
@@ -182,37 +157,7 @@ u16 GetRoomIndex(const Scene &scene, ID id)
 
 void CompactRooms(Scene &scene)
 {
-	u32 storeIndex = U32_MAX;
-	for (u32 i = 0; i < scene.roomCount; ++i)
-	{
-		if ( !scene.rooms[i].id ) {
-			storeIndex = i;
-			break;
-		}
-	}
-
-	if ( storeIndex == U32_MAX ) {
-		return;
-	}
-
-	for (u32 readIndex = storeIndex; readIndex < scene.roomCount; ++readIndex)
-	{
-		Room &readRoom = scene.rooms[readIndex];
-
-		if ( !readRoom.id )
-		{
-			readRoom = {};
-			continue;
-		}
-
-		Room &writeRoom = scene.rooms[storeIndex++];
-		writeRoom = readRoom;
-		readRoom = {};
-
-		SetObject(writeRoom.id, &writeRoom);
-	}
-
-	scene.roomCount = storeIndex;
+	COMPACT_ARRAY_BY_ID(Room, scene.rooms, scene.roomCount, id, nullptr, nullptr, nullptr);
 }
 
 
@@ -258,37 +203,7 @@ ID EntityFromDrawId(u32 drawId)
 
 void CompactEntities(Scene &scene)
 {
-	u32 storeIndex = U32_MAX;
-	for (u32 i = 0; i < scene.entityCount; ++i)
-	{
-		if ( !scene.entities[i].id ) {
-			storeIndex = i;
-			break;
-		}
-	}
-
-	if ( storeIndex == U32_MAX ) {
-		return;
-	}
-
-	for (u32 readIndex = storeIndex; readIndex < scene.entityCount; ++readIndex)
-	{
-		Entity &readEntity = scene.entities[readIndex];
-
-		if ( !readEntity.id )
-		{
-			readEntity = {};
-			continue;
-		}
-
-		Entity &writeEntity = scene.entities[storeIndex++];
-		writeEntity = readEntity;
-		readEntity = {};
-
-		SetObject(writeEntity.id, &writeEntity);
-	}
-
-	scene.entityCount = storeIndex;
+	COMPACT_ARRAY_BY_ID(Entity, scene.entities, scene.entityCount, id, nullptr, nullptr, nullptr);
 }
 
 void EntitySetPosition(Entity &entity, float3 position)
