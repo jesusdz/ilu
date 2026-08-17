@@ -118,37 +118,44 @@ struct Audio
 
 struct Engine;
 
+// Each function takes the narrowest thing it touches, so a signature says how far the
+// call can reach:
+// - ID only        Resolved through the ID pool, no subsystem state read (see ilu_id.h).
+// - nothing        Only queues an AudioCmd, which the mixing thread applies later.
+// - Audio &        Reads or writes the audio pools.
+// - Engine &       Streams from engine.assets, so it needs more than the audio state.
+
 bool InitializeAudio(Audio &audio, Arena &globalArena);
 
 bool LoadAudioClipFromWAVFile(const char *filename, Arena &arena, AudioClip &audioClip, void **outSamples);
 bool LoadSamplesFromWAVFile(const char *filename, void *samples, u32 firstSampleIndex, u32 sampleCount);
 
 AudioClip &GetAudioClip(ID clipId);
-ID CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip);
-ID CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
-ID GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc);
-void RemoveAudioClip(Engine &engine, ID clipId); // Deferred, takes effect on the next CompactAudio
+ID CreateAudioClip(Audio &audio, const BinAudioClip &binAudioClip);
+ID CreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc);
+ID GetOrCreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc);
+void RemoveAudioClip(ID clipId); // Deferred, takes effect on the next CompactAudio
 void CompactAudio(Audio &audio);
-u32 PlayAudioClip(Engine &engine, ID clipId);
-bool IsActiveAudioSource(Engine &engine, u32 audioSourceIndex);
-bool IsPausedAudioSource(Engine &engine, u32 audioSourceIndex);
-void PauseAudioSource(Engine &engine, u32 audioSourceIndex);
-void ResumeAudioSource(Engine &engine, u32 audioSourceIndex);
-void StopAudioSource(Engine &engine, u32 audioSourceIndex);
+u32 PlayAudioClip(Audio &audio, ID clipId);
+bool IsActiveAudioSource(const Audio &audio, u32 audioSourceIndex);
+bool IsPausedAudioSource(const Audio &audio, u32 audioSourceIndex);
+void PauseAudioSource(u32 audioSourceIndex);
+void ResumeAudioSource(u32 audioSourceIndex);
+void StopAudioSource(u32 audioSourceIndex);
 
-void PreRenderAudio(Engine &engine);
-void RenderAudio(Engine &engine, SoundBuffer &soundBuffer);
+void PreRenderAudio(Audio &audio);
+void RenderAudio(Engine &engine, SoundBuffer &soundBuffer); // Streams clips from engine.assets
 
 MusicFile &GetMusicFile(ID musicId);
-ID CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile);
-ID CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc);
-ID GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc);
-void DestroyMusicFile(Engine &engine, ID musicId);
-void MusicPlay(Engine &engine, ID musicId);
-void MusicPause(Engine &engine);
-void MusicStop(Engine &engine);
-bool MusicIsPlaying(Engine &engine);
+ID CreateMusicFile(Audio &audio, const BinMusicFile &binMusicFile);
+ID CreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc);
+ID GetOrCreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc);
+void DestroyMusicFile(ID musicId);
+void MusicPlay(Engine &engine, ID musicId); // Streams the module from engine.assets
+void MusicPause();
+void MusicStop(Audio &audio);
+bool MusicIsPlaying(const Audio &audio);
 
-void AudioStopAll(Engine &engine);
+void AudioStopAll(Audio &audio);
 
 #endif // AUDIO_H

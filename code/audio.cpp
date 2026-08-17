@@ -420,11 +420,11 @@ static AudioClip *PushAudioClip(Audio &audio, const AudioClipDesc &desc)
 	return &audioClip;
 }
 
-ID CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
+ID CreateAudioClip(Audio &audio, const BinAudioClip &binAudioClip)
 {
 	const BinAudioClipDesc &desc = *binAudioClip.desc;
 
-	AudioClip *audioClip = PushAudioClip(engine.audio, { .id = desc.id });
+	AudioClip *audioClip = PushAudioClip(audio, { .id = desc.id });
 	if ( !audioClip ) {
 		return {};
 	}
@@ -439,9 +439,9 @@ ID CreateAudioClip(Engine &engine, const BinAudioClip &binAudioClip)
 	return audioClip->desc.id;
 }
 
-ID CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
+ID CreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc)
 {
-	AudioClip *audioClip = PushAudioClip(engine.audio, audioClipDesc);
+	AudioClip *audioClip = PushAudioClip(audio, audioClipDesc);
 	if ( !audioClip ) {
 		LOG(Warning, "Could not load audio clip %s (no more space left for audio clips)\n", audioClipDesc.filename);
 		return {};
@@ -450,7 +450,7 @@ ID CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
 	if ( !LoadAudioClipFromWAVFile(audioClipDesc.filename, *audioClip) )
 	{
 		LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
-		RemoveAudioClip(engine, audioClip->desc.id);
+		RemoveAudioClip(audioClip->desc.id);
 		return {};
 	}
 
@@ -459,12 +459,12 @@ ID CreateAudioClip(Engine &engine, const AudioClipDesc &audioClipDesc)
 	return audioClip->desc.id;
 }
 
-ID GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
+ID GetOrCreateAudioClip(Audio &audio, const AudioClipDesc &desc)
 {
 	ID id = {};
-	for (u32 i = 0; i < engine.audio.clipCount; ++i)
+	for (u32 i = 0; i < audio.clipCount; ++i)
 	{
-		const AudioClipDesc &clipDesc = engine.audio.clips[i].desc;
+		const AudioClipDesc &clipDesc = audio.clips[i].desc;
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, clipDesc.name)) {
 			id = clipDesc.id;
 			break;
@@ -473,12 +473,12 @@ ID GetOrCreateAudioClip(Engine &engine, const AudioClipDesc &desc)
 
 	if ( !id )
 	{
-		id = CreateAudioClip(engine, desc);
+		id = CreateAudioClip(audio, desc);
 	}
 	return id;
 }
 
-void RemoveAudioClip(Engine &engine, ID id)
+void RemoveAudioClip(ID id)
 {
 	if (id)
 	{
@@ -560,10 +560,8 @@ void CompactAudio(Audio &audio)
 //	return audioClipIndex;
 //}
 
-u32 FindFreeAudioSource(Engine &engine)
+u32 FindFreeAudioSource(const Audio &audio)
 {
-	Audio &audio = engine.audio;
-
 	for (u32 i = 0; i < ARRAY_COUNT(audio.sources); ++i)
 	{
 		if (audio.sources[i].state == AUDIO_STATE_IDLE)
@@ -575,11 +573,9 @@ u32 FindFreeAudioSource(Engine &engine)
 	return INVALID_AUDIO_SOURCE;
 }
 
-u32 PlayAudioClip(Engine &engine, ID clipId)
+u32 PlayAudioClip(Audio &audio, ID clipId)
 {
-	Audio &audio = engine.audio;
-
-	const u32 audioSourceIndex = FindFreeAudioSource(engine);
+	const u32 audioSourceIndex = FindFreeAudioSource(audio);
 
 	if (audioSourceIndex == INVALID_AUDIO_SOURCE)
 	{
@@ -599,47 +595,42 @@ u32 PlayAudioClip(Engine &engine, ID clipId)
 	return audioSourceIndex;
 }
 
-bool IsActiveAudioSource(Engine &engine, u32 audioSourceIndex)
+bool IsActiveAudioSource(const Audio &audio, u32 audioSourceIndex)
 {
-	Audio &audio = engine.audio;
 	bool active = false;
 	if (audioSourceIndex < ARRAY_COUNT(audio.sources)) {
-		AudioSource &audioSource = audio.sources[audioSourceIndex];
+		const AudioSource &audioSource = audio.sources[audioSourceIndex];
 		active = audioSource.state != AUDIO_STATE_IDLE;
 	}
 	return active;
 }
 
-bool IsPausedAudioSource(Engine &engine, u32 audioSourceIndex)
+bool IsPausedAudioSource(const Audio &audio, u32 audioSourceIndex)
 {
-	Audio &audio = engine.audio;
 	bool paused = false;
 	if (audioSourceIndex < ARRAY_COUNT(audio.sources)) {
-		AudioSource &audioSource = audio.sources[audioSourceIndex];
+		const AudioSource &audioSource = audio.sources[audioSourceIndex];
 		paused = audioSource.state == AUDIO_STATE_PAUSED;
 	}
 	return paused;
 }
 
-void PauseAudioSource(Engine &engine, u32 audioSourceIndex)
+void PauseAudioSource(u32 audioSourceIndex)
 {
-	Audio &audio = engine.audio;
 	AudioCmd cmd = { .type = AudioCmd_SourcePause, .sourceIndex = audioSourceIndex };
 	AudioCmdQueue_Push(cmd);
 }
 
-void ResumeAudioSource(Engine &engine, u32 audioSourceIndex)
+void ResumeAudioSource(u32 audioSourceIndex)
 {
-	Audio &audio = engine.audio;
 	AudioCmd cmd = { .type = AudioCmd_SourcePlay, .sourceIndex = audioSourceIndex };
 	AudioCmdQueue_Push(cmd);
 }
 
-void StopAudioSource(Engine &engine, u32 audioSourceIndex)
+void StopAudioSource(u32 audioSourceIndex)
 {
 	if ( audioSourceIndex < MAX_AUDIO_SOURCES )
 	{
-		Audio &audio = engine.audio;
 		AudioCmd cmd = { .type = AudioCmd_SourceStop, .sourceIndex = audioSourceIndex };
 		AudioCmdQueue_Push(cmd);
 	}
@@ -650,10 +641,8 @@ void StopAudioSource(Engine &engine, u32 audioSourceIndex)
 ////////////////////////////////////////////////////////////////////////
 // Music pre-render
 
-void PreRenderAudio(Engine &engine)
+void PreRenderAudio(Audio &audio)
 {
-	Audio &audio = engine.audio;
-
 	CompactAudio(audio);
 
 	Clock beginClock = GetClock();
@@ -924,11 +913,11 @@ static MusicFile *PushMusicFile(Audio &audio, const MusicFileDesc &desc)
 	return &musicFile;
 }
 
-ID CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
+ID CreateMusicFile(Audio &audio, const BinMusicFile &binMusicFile)
 {
 	const BinMusicFileDesc &desc = *binMusicFile.desc;
 
-	MusicFile *musicFile = PushMusicFile(engine.audio, { .id = desc.id, .name = desc.name });
+	MusicFile *musicFile = PushMusicFile(audio, { .id = desc.id, .name = desc.name });
 	if ( !musicFile ) {
 		return {};
 	}
@@ -939,9 +928,9 @@ ID CreateMusicFile(Engine &engine, const BinMusicFile &binMusicFile)
 	return musicFile->desc.id;
 }
 
-ID CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
+ID CreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc)
 {
-	MusicFile *musicFile = PushMusicFile(engine.audio, musicFileDesc);
+	MusicFile *musicFile = PushMusicFile(audio, musicFileDesc);
 	if ( !musicFile ) {
 		LOG(Warning, "Could not load music file %s (no more space left for music files)\n", musicFileDesc.filename);
 		return {};
@@ -953,12 +942,12 @@ ID CreateMusicFile(Engine &engine, const MusicFileDesc &musicFileDesc)
 	return musicFile->desc.id;
 }
 
-ID GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
+ID GetOrCreateMusicFile(Audio &audio, const MusicFileDesc &desc)
 {
 	ID id = {};
-	for (u32 i = 0; i < engine.audio.musicFileCount; ++i)
+	for (u32 i = 0; i < audio.musicFileCount; ++i)
 	{
-		const MusicFileDesc &musicDesc = engine.audio.musicFiles[i].desc;
+		const MusicFileDesc &musicDesc = audio.musicFiles[i].desc;
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, musicDesc.name)) {
 			id = musicDesc.id;
 			break;
@@ -967,12 +956,12 @@ ID GetOrCreateMusicFile(Engine &engine, const MusicFileDesc &desc)
 
 	if ( !id )
 	{
-		id = CreateMusicFile(engine, desc);
+		id = CreateMusicFile(audio, desc);
 	}
 	return id;
 }
 
-void DestroyMusicFile(Engine &engine, ID id)
+void DestroyMusicFile(ID id)
 {
 	if ( id )
 	{
@@ -1056,36 +1045,34 @@ void MusicPlay(Engine &engine, ID musicId)
 	}
 }
 
-void MusicPause(Engine &engine)
+void MusicPause()
 {
 	AudioCmd cmd = { .type = AudioCmd_MusicPause };
 	AudioCmdQueue_Push(cmd);
 }
 
-void MusicStop(Engine &engine)
+void MusicStop(Audio &audio)
 {
 	AudioCmd cmd = { .type = AudioCmd_MusicStop };
 	AudioCmdQueue_Push(cmd);
 
-	Audio &audio = engine.audio;
 	if ( audio.moduleReplay != nullptr ) {
 		replay_set_sequence_pos( audio.moduleReplay, 0 );
 	}
 }
 
-bool MusicIsPlaying(Engine &engine)
+bool MusicIsPlaying(const Audio &audio)
 {
-	Audio &audio = engine.audio;
 	return audio.musicState == AUDIO_STATE_PLAYING;
 }
 
-void AudioStopAll(Engine &engine)
+void AudioStopAll(Audio &audio)
 {
-	MusicStop(engine);
+	MusicStop(audio);
 
 	for (u32 i = 0; i < MAX_AUDIO_SOURCES; ++i)
 	{
-		StopAudioSource(engine, i);
+		StopAudioSource(i);
 	}
 }
 

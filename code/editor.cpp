@@ -1009,7 +1009,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 
 	if ( refresh )
 	{
-		AudioStopAll(engine);
+		AudioStopAll(engine.audio);
 
 		if (inspector.selected.type == EditorSelectedType_FileImage) {
 			WaitDeviceIdle(engine.gfx.device);
@@ -1017,10 +1017,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		if (inspector.selected.type == EditorSelectedType_FileAudio) {
 			audioSourceIndex = U32_MAX;
-			RemoveAudioClip(engine, inspector.tmpAudioClipId);
+			RemoveAudioClip(inspector.tmpAudioClipId);
 		}
 		if (inspector.selected.type == EditorSelectedType_FileMusic) {
-			DestroyMusicFile(engine, inspector.tmpMusicId);
+			DestroyMusicFile(inspector.tmpMusicId);
 		}
 	}
 
@@ -1090,16 +1090,16 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.filename = filename,
 					.flags = AssetFlag_Ghost,
 				};
-				inspector.tmpAudioClipId = CreateAudioClip(engine, desc);
+				inspector.tmpAudioClipId = CreateAudioClip(engine.audio, desc);
 			}
 
 			if (inspector.tmpAudioClipId)
 			{
 				if (UI_Button(ui, "Play")) {
-					audioSourceIndex = PlayAudioClip(engine, inspector.tmpAudioClipId);
+					audioSourceIndex = PlayAudioClip(engine.audio, inspector.tmpAudioClipId);
 				}
 				if (UI_Button(ui, "Stop")) {
-					StopAudioSource(engine, audioSourceIndex);
+					StopAudioSource(audioSourceIndex);
 					audioSourceIndex = U32_MAX;
 				}
 			}
@@ -1115,7 +1115,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					.filename = filename,
 					//.flags = AssetFlag_Ghost,
 				};
-				inspector.tmpMusicId = CreateMusicFile(engine, desc);
+				inspector.tmpMusicId = CreateMusicFile(engine.audio, desc);
 			}
 
 			if (inspector.tmpMusicId)
@@ -1124,7 +1124,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					MusicPlay(engine, inspector.tmpMusicId);
 				}
 				if (UI_Button(ui, "Stop")) {
-					MusicStop(engine);
+					MusicStop(engine.audio);
 				}
 			}
 		}
@@ -1229,10 +1229,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 			if (inspector.selected.audioClipId)
 			{
 				if (UI_Button(ui, "Play")) {
-					audioSourceIndex = PlayAudioClip(engine, inspector.selected.audioClipId);
+					audioSourceIndex = PlayAudioClip(engine.audio, inspector.selected.audioClipId);
 				}
 				if (UI_Button(ui, "Stop")) {
-					StopAudioSource(engine, audioSourceIndex);
+					StopAudioSource(audioSourceIndex);
 					audioSourceIndex = U32_MAX;
 				}
 			}
@@ -1245,7 +1245,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 					MusicPlay(engine, inspector.selected.musicId);
 				}
 				if (UI_Button(ui, "Stop")) {
-					MusicStop(engine);
+					MusicStop(engine.audio);
 				}
 			}
 		}
@@ -1573,7 +1573,7 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 				.filename = node->filename,
 				//.flags = AssetFlag_Ghost,
 			};
-			const ID clipId = GetOrCreateAudioClip(engine, desc);
+			const ID clipId = GetOrCreateAudioClip(engine.audio, desc);
 		}
 		else if (node->type == FileNodeType_Music)
 		{
@@ -1587,7 +1587,7 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 				.filename = node->filename,
 				//.flags = AssetFlag_Ghost,
 			};
-			const ID musicId = GetOrCreateMusicFile(engine, desc);
+			const ID musicId = GetOrCreateMusicFile(engine.audio, desc);
 		}
 	}
 }

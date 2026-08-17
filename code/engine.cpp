@@ -306,13 +306,13 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 		// Audio clips
 		for (u32 i = 0; i < assetDescriptors.audioClipDescCount; ++i)
 		{
-			CreateAudioClip(engine, assetDescriptors.audioClipDescs[i]);
+			CreateAudioClip(engine.audio, assetDescriptors.audioClipDescs[i]);
 		}
 
 		// Music files
 		for (u32 i = 0; i < assetDescriptors.musicFileDescCount; ++i)
 		{
-			CreateMusicFile(engine, assetDescriptors.musicFileDescs[i]);
+			CreateMusicFile(engine.audio, assetDescriptors.musicFileDescs[i]);
 		}
 
 		UploadMaterialData(engine.gfx);
@@ -377,13 +377,13 @@ void LoadSceneFromBin(Engine &engine)
 		// Audio clips
 		for (u32 i = 0; i < engine.assets.header.audioClipCount; ++i)
 		{
-			CreateAudioClip(engine, engine.assets.audioClips[i]);
+			CreateAudioClip(engine.audio, engine.assets.audioClips[i]);
 		}
 
 		// Music files
 		for (u32 i = 0; i < engine.assets.header.musicFileCount; ++i)
 		{
-			CreateMusicFile(engine, engine.assets.musicFiles[i]);
+			CreateMusicFile(engine.audio, engine.assets.musicFiles[i]);
 		}
 
 		UploadMaterialData(engine.gfx);
@@ -561,7 +561,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 	{
 		GameStop(game);
 
-		AudioStopAll(engine);
+		AudioStopAll(engine.audio);
 
 		EngineWaitDeviceIdle(engine.gfx);
 		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
@@ -797,7 +797,12 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 	{
 		firstUpdate = false;
 		//LoadSceneFromBin(engine);
-		MusicPlay(engine, 0);
+		// Plays whichever module came first out of the asset file. LoadSceneFromBin ran
+		// back in OnPlatformWindowInit, so the pool is already populated here.
+		if ( engine.audio.musicFileCount > 0 )
+		{
+			MusicPlay(engine, engine.audio.musicFiles[0].desc.id);
+		}
 	}
 #endif
 
@@ -905,7 +910,7 @@ ENGINE_API void OnPlatformPreRenderAudio(Plat &platform)
 	PROFILE_FLUSH();
 	PROFILE_BLOCK(PreRenderAudio);
 	Engine &engine = GetEngine(platform);
-	PreRenderAudio(engine);
+	PreRenderAudio(engine.audio);
 }
 
 ENGINE_API void OnPlatformRenderAudio(Plat &platform, SoundBuffer &soundBuffer)
@@ -1010,7 +1015,7 @@ ID GetAudioClip(const char *name)
 
 u32 PlayAudioClip(ID clipId)
 {
-	u32 ret = PlayAudioClip(*engine, clipId);
+	u32 ret = PlayAudioClip(engine->audio, clipId);
 	return ret;
 }
 
