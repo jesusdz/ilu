@@ -32,6 +32,8 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 {
 	VertexOutput OUT;
 
+	float2 texCoord = IN.texCoord;
+
 #if USE_TILE_RENDERING
 
 	uint tileIndex = instanceID;
@@ -49,6 +51,9 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 	float3 posOs = float3(IN.position.xy * sprite.worldSize, IN.position.z);
 	float4 posWs = mul(entityData.world, float4(posOs, 1.0));
 
+	if (entityData.flipX)
+		texCoord.x = 1.0 - texCoord.x;
+
 #if USE_ENTITY_SELECTION
 	OUT.isSelected = instanceID == globals.selectedEntity;
 #endif
@@ -58,7 +63,7 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 #endif
 
 	OUT.position = mul(globals.cameraProj, mul(globals.cameraView, posWs));
-	OUT.texCoord = sprite.uvOffset + IN.texCoord * sprite.uvSize;
+	OUT.texCoord = sprite.uvOffset + texCoord * sprite.uvSize;
 	OUT.depth = posWs.z;
 
 	return OUT;

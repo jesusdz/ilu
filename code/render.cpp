@@ -639,6 +639,7 @@ bool RenderGraphics(Engine &engine)
 
 		const u32 spriteIndex = entity.spriteId ? GetSpriteIndex(scene, entity.spriteId) : 0;
 		entities[i].spriteIndex = spriteIndex;
+		entities[i].flipX = entity.flipX;
 	}
 
 	// Update materials
@@ -845,6 +846,7 @@ bool RenderGraphics(Engine &engine)
 
 		{
 			PROFILE_BLOCK(Sprites);
+
 			// Sprite entities
 			const Pipeline &spritePipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Shading2D]);
 			const uint32_t spriteIndexCount = gfx.spriteIndices.size / sizeof(Index);

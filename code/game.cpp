@@ -220,6 +220,8 @@ void GameSimulate(Game &game)
 		game.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
 		game.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
+		if ( game.speed2.x > 0 ) { player->flipX = false; }
+		else if ( game.speed2.x < 0 ) { player->flipX = true; }
 		EntitySetPosition(*player, Float3(playerPos, player->position.z));
 	}
 }

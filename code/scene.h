@@ -31,6 +31,7 @@ struct Entity
 	ID materialId;
 	// Sprite entity
 	ID spriteId;
+	bool flipX;
 	i32 layer;
 
 	// Hierarchy links. IDs rather than pointers: the element array compacts, so a

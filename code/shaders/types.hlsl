@@ -27,6 +27,7 @@ struct SEntity
 {
 	float4x4 world;
 	uint spriteIndex;
+	bool flipX;
 };
 
 struct SSpriteData
