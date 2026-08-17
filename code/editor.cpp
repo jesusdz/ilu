@@ -86,7 +86,7 @@ static ImageH EditorLoadIcon(Engine &engine, const char *filename, const char *n
 	ImagePixels imagePixels;
 	Scratch scratch;
 	ReadImagePixels(scratch.arena, path.str, imagePixels);
-	const ImageH handle = EngineCreateImage(engine.gfx, imagePixels, name, false);
+	const ImageH handle = GfxCreateImage(engine.gfx, imagePixels, name, false);
 	return handle;
 }
 
@@ -96,7 +96,7 @@ static ImageH EditorLoadSnapshot(Engine &engine, const char *filepath, const cha
 	Scratch scratch;
 	ReadImagePixels(scratch.arena, filepath, imagePixels);
 	imagePixels = ResizeImagePixels(scratch.arena, imagePixels, 32, 32);
-	const ImageH handle = EngineCreateImage(engine.gfx, imagePixels, name, false);
+	const ImageH handle = GfxCreateImage(engine.gfx, imagePixels, name, false);
 	return handle;
 }
 

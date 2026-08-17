@@ -372,7 +372,7 @@ void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandLis
 	TransitionImageLayout(commandList, imageH, ImageStateTransferDst, ImageStateShaderInput, image.mipLevels - 1, 1);
 }
 
-ImageH EngineCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels)
+ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels)
 {
 	const u32 pixelSize = channels * sizeof(byte);
 	const u32 size = width * height * pixelSize;
@@ -422,9 +422,9 @@ ImageH EngineCreateImage(Graphics &gfx, const char *name, int width, int height,
 	return image;
 }
 
-ImageH EngineCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, bool createMipmaps)
+ImageH GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, bool createMipmaps)
 {
-	const ImageH imageHandle = EngineCreateImage(gfx, name, img.width, img.height, img.channelCount, createMipmaps, img.pixels);
+	const ImageH imageHandle = GfxCreateImage(gfx, name, img.width, img.height, img.channelCount, createMipmaps, img.pixels);
 	return imageHandle;
 }
 
@@ -481,7 +481,7 @@ ID CreateTexture(Graphics &gfx, const TextureDesc &desc)
 	ImagePixels img;
 	if ( ReadImagePixels(scratch.arena, imagePath.str, img) )
 	{
-		const ImageH imageHandle = EngineCreateImage(gfx, img, desc.name, desc.mipmap);
+		const ImageH imageHandle = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
 
 		id = CreateTexture(gfx, desc, imageHandle);
 
@@ -533,7 +533,7 @@ ID CreateTexture(Graphics &gfx, const BinImage &binImage)
 	const u32 mipmap = desc.mipmap;
 	const u8 *pixels = binImage.pixels;
 
-	const ImageH imageHandle = EngineCreateImage(gfx, name, width, height, channels, mipmap, pixels);
+	const ImageH imageHandle = GfxCreateImage(gfx, name, width, height, channels, mipmap, pixels);
 
 	const TextureDesc textureDesc = { .id = desc.id, .name = desc.name };
 	Texture *texture = PushTexture(gfx, textureDesc);
@@ -653,7 +653,7 @@ static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
 				DestroyImageH(gfx.device, texture.image);
 			}
 
-			texture.image = EngineCreateImage(gfx, img, desc.name, desc.mipmap);
+			texture.image = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
 			texture.ownsImage = true;
 
 			GetFileLastWriteTimestamp(imagePath.str, texture.ts);
@@ -1720,13 +1720,13 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 	// Builtin images
 	const byte whiteImagePixels[] = { 255, 255, 255, 255 };
-	gfx.whiteImageH = EngineCreateImage(gfx, "whiteImage", 1, 1, 4, false, whiteImagePixels);
+	gfx.whiteImageH = GfxCreateImage(gfx, "whiteImage", 1, 1, 4, false, whiteImagePixels);
 	const byte pinkImagePixels[] = { 255, 0, 255, 255 };
-	gfx.pinkImageH = EngineCreateImage(gfx, "pinkImage", 1, 1, 4, false, pinkImagePixels);
+	gfx.pinkImageH = GfxCreateImage(gfx, "pinkImage", 1, 1, 4, false, pinkImagePixels);
 	const byte grayImagePixels[] = { 127, 127, 127, 255 };
-	gfx.grayImageH = EngineCreateImage(gfx, "grayImage", 1, 1, 4, false, grayImagePixels);
+	gfx.grayImageH = GfxCreateImage(gfx, "grayImage", 1, 1, 4, false, grayImagePixels);
 	const byte blackImagePixels[] = { 0, 0, 0, 0 };
-	gfx.blackImageH = EngineCreateImage(gfx, "blackImage", 1, 1, 4, false, blackImagePixels);
+	gfx.blackImageH = GfxCreateImage(gfx, "blackImage", 1, 1, 4, false, blackImagePixels);
 	const u32 noiseWidth = 32;
 	const u32 noiseHeight = 32;
 	ResetArena(scratch.arena);
@@ -1740,7 +1740,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			noiseImagePixels[y * noiseWidth + x] = {r, g, b, a};
 		}
 	}
-	gfx.noiseImageH = EngineCreateImage(gfx, "noiseImage", noiseWidth, noiseHeight, 4, false, (byte*)noiseImagePixels);
+	gfx.noiseImageH = GfxCreateImage(gfx, "noiseImage", noiseWidth, noiseHeight, 4, false, (byte*)noiseImagePixels);
 
 	// Builtin texture
 	const TextureDesc defaultTextureDesc = {
@@ -1921,7 +1921,7 @@ void CreateMaterialBindGroups(Graphics &gfx)
 	}
 }
 
-void EngineWaitDeviceIdle(Graphics &gfx)
+void GfxWaitDeviceIdle(Graphics &gfx)
 {
 	WaitDeviceIdle(gfx.device);
 
@@ -1930,7 +1930,7 @@ void EngineWaitDeviceIdle(Graphics &gfx)
 
 void CleanupGraphics(Graphics &gfx)
 {
-	EngineWaitDeviceIdle( gfx );
+	GfxWaitDeviceIdle( gfx );
 
 	PROFILE_GPU_CLEANUP(gfx.device);
 

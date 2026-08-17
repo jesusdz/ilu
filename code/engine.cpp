@@ -513,7 +513,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 	if (game.state == GameStateStarting)
 	{
-		EngineWaitDeviceIdle(engine.gfx);
+		GfxWaitDeviceIdle(engine.gfx);
 		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
 		CreateRenderTargets(engine.gfx, SCENE_WIDTH, SCENE_HEIGHT);
 
@@ -563,7 +563,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 		AudioStopAll(engine.audio);
 
-		EngineWaitDeviceIdle(engine.gfx);
+		GfxWaitDeviceIdle(engine.gfx);
 		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
 		CreateRenderTargets(engine.gfx);
 
@@ -872,7 +872,7 @@ ENGINE_API void OnPlatformRenderGraphics(Plat &platform)
 
 	if ( !IsValidSwapchain(gfx.device) )
 	{
-		EngineWaitDeviceIdle(gfx);
+		GfxWaitDeviceIdle(gfx);
 		DestroyRenderTargets(gfx, gfx.renderTargets);
 		if ( platform.window->width != 0 && platform.window->height != 0 )
 		{
@@ -926,7 +926,7 @@ ENGINE_API void OnPlatformWindowCleanup(Plat &platform)
 	Engine &engine = GetEngine(platform);
 	Graphics &gfx = engine.gfx;
 
-	EngineWaitDeviceIdle(gfx);
+	GfxWaitDeviceIdle(gfx);
 	DestroyRenderTargets(gfx, gfx.renderTargets);
 	DestroySwapchain(gfx.device);
 	CleanupGraphicsSurface(gfx.device);
@@ -938,7 +938,7 @@ ENGINE_API void OnPlatformCleanup(Plat &platform)
 	Graphics &gfx = engine.gfx;
 	Game &game = engine.game;
 
-	EngineWaitDeviceIdle(gfx);
+	GfxWaitDeviceIdle(gfx);
 
 #if USE_UI
 	UI_Cleanup(engine.ui);
