@@ -215,11 +215,11 @@ EntityDesc GetEntityDesc(ID id)
 {
 	const Entity &entity = GetEntity(id);
 	EntityDesc entityDesc = {
-		.id    = entity.id,
-		.name  = entity.name,
-		.layer = entity.layer,
-		.pos   = entity.position,
-		.scale = entity.scale,
+		.id      = entity.id,
+		.name    = entity.name,
+		.layerId = entity.layerId,
+		.pos     = entity.position,
+		.scale   = entity.scale,
 	};
 	if (entity.spriteId) {
 		entityDesc.spriteId = entity.spriteId;
@@ -262,7 +262,7 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	entity->visible = true;
 	EntitySetPosition(*entity, desc.pos);
 	entity->scale = desc.scale;
-	entity->layer = desc.layer;
+	entity->layerId = desc.layerId;
 	entity->geometryType = desc.geometryType;
 	entity->vertices = vertices;
 	entity->indices = indices;
@@ -295,7 +295,7 @@ ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 		.materialId = desc.materialId,
 		.geometryType = desc.geometryType,
 		.spriteId = desc.spriteId,
-		.layer = desc.layer,
+		.layerId = desc.layerId,
 		.pos = desc.pos,
 		.scale = desc.scale,
 	};
@@ -433,12 +433,15 @@ u32 CreateLayer(Room &room, const LayerDesc &desc)
 			{
 				room.layerCount++;
 				layer.initialized = true;
+				layer.id = desc.id;
 				layer.name = desc.name;
 				layer.isBase = desc.isBase;
 				layer.visible = desc.visible;
 				layer.isCollider = desc.isCollider;
 				layer.size = desc.size;
 				index = i;
+
+				BindID(&layer.id, &layer);
 				break;
 			}
 		}
@@ -455,6 +458,7 @@ void RemoveLayer(Room &room, u32 index)
 		// The base layer sets the room size and the parallax reference, so it always stays.
 		if (layer.initialized && !layer.isBase)
 		{
+			Invalidate(layer.id);
 			layer = {};
 			room.layerCount--;
 		}
@@ -476,6 +480,14 @@ u32 MoveLayer(Room &room, u32 index, i32 delta)
 		room.layers[index] = neighbour;
 		neighbour = moved;
 		return (u32)i;
+	}
+
+	for (i32 i = 0; i < ARRAY_COUNT(room.layers); ++i) {
+		Layer &layer = room.layers[i];
+		if (layer.initialized)
+		{
+			SetObject(layer.id, &layer);
+		}
 	}
 
 	return index; // Already at the end it was asked to move towards

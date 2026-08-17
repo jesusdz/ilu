@@ -32,7 +32,8 @@ struct Entity
 	// Sprite entity
 	ID spriteId;
 	bool flipX;
-	i32 layer;
+
+	ID layerId;
 
 	// Hierarchy links. IDs rather than pointers: the element array compacts, so a
 	// pointer into it would dangle at the next CompactEntities.
@@ -54,6 +55,7 @@ union Cell
 struct Layer
 {
 	bool initialized;
+	ID id;
 	const char *name;
 	bool isBase; // Room's reference layer
 	bool visible;

@@ -452,6 +452,9 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 	if ( UI_Section(ui, "Scene") )
 	{
+		Scratch scratch;
+		Entity **entities = PushArray(scratch.arena, Entity*, MAX_ENTITIES);
+
 		UI_BeginLayout(ui, UILayout_Horizontal);
 		bool sceneIsOpen;
 		if (UI_TreeNode(ui, "Scene", &scene, &sceneIsOpen))
@@ -536,6 +539,21 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 						UI_EndLayout(ui);
 
+						if ( layerIsOpen )
+						{
+							for (u32 i = 0; i < scene.entityCount; ++i)
+							{
+								const Entity &entity = scene.entities[i];
+
+								if ( entity.layerId == layer.id )
+								{
+									if ( UI_Button(ui, entity.name) ) {
+										EditorSelectEntity(editor, scene.entities[i].id);
+									}
+								}
+							}
+						}
+
 						const ID roomId = scene.rooms[roomIdx].id;
 
 						if (moveDown || moveUp)
@@ -562,16 +580,20 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 					UI_Unindent(ui);
 				}
 			}
-			UI_Unindent(ui);
-		}
 
-		for (u32 i = 0; i < scene.entityCount; ++i)
-		{
-			const Entity &entity = scene.entities[i];
+			for (u32 i = 0; i < scene.entityCount; ++i)
+			{
+				const Entity &entity = scene.entities[i];
 
-			if ( UI_Button(ui, entity.name) ) {
-				EditorSelectEntity(editor, scene.entities[i].id);
+				if ( !Valid(entity.layerId) )
+				{
+					if ( UI_Button(ui, entity.name) ) {
+						EditorSelectEntity(editor, scene.entities[i].id);
+					}
+				}
 			}
+
+			UI_Unindent(ui);
 		}
 	}
 

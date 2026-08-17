@@ -992,6 +992,12 @@ Entity *TryGetEntity(ID entityId)
 	return ent;
 }
 
+ID FindSprite(const char *name)
+{
+	ID id = FindSprite(engine->scene, name);
+	return id;
+}
+
 ID GetAudioClip(const char *name)
 {
 	for (u32 i = 0; i < engine->audio.clipCount; ++i)

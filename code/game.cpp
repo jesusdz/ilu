@@ -19,10 +19,12 @@ void GameStart(Game &game)
 	game.accel2 = 50;
 	game.playerState = OnAir;
 
-	game.entId = FindEntity("player");
-	if ( Entity *player = TryGetEntity(game.entId) ) {
+	game.entPlayer = FindEntity("player");
+	if ( Entity *player = TryGetEntity(game.entPlayer) ) {
 		player->position.xy = float2{1, 1};
 	}
+	game.sprPlayerIdle = FindSprite("spr_playeridle");
+	game.sprPlayerRun = FindSprite("spr_playerrun");
 	game.sndJump = GetAudioClip("snd_bell_wav");
 	game.modEquinox = GetMusic("mod_equinox_mod");
 	game.playingMusic = false;
@@ -75,7 +77,7 @@ void GameSimulate(Game &game)
 	constexpr f32 gravity = -15.8f;
 
 	const Room *roomPtr = TryGetRoom(game.roomId);
-	Entity *player = TryGetEntity(game.entId);
+	Entity *player = TryGetEntity(game.entPlayer);
 	if ( !roomPtr || !player ) {
 		return;
 	}
@@ -220,6 +222,11 @@ void GameSimulate(Game &game)
 		game.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
 		game.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
+		if ( Abs(game.speed2.x) < 0.2 ) {
+			player->spriteId = game.sprPlayerIdle;
+		} else {
+			player->spriteId = game.sprPlayerRun;
+		}
 		if ( game.speed2.x > 0 ) { player->flipX = false; }
 		else if ( game.speed2.x < 0 ) { player->flipX = true; }
 		EntitySetPosition(*player, Float3(playerPos, player->position.z));

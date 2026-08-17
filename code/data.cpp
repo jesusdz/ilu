@@ -319,7 +319,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
 		WriteLine(ctx, ".scale = %f,", desc.scale);
 		if (desc.spriteId.slot != 0) {
-			WriteLine(ctx, ".layer = %d,", desc.layer);
+			WriteLine(ctx, ".layerId = %u,", desc.layerId.slot);
 		}
 		PopIndent(ctx);
 
@@ -347,6 +347,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 			WriteLine(ctx, "{");
 			PushIndent(ctx);
+			WriteLine(ctx, ".id = %u,", layer.id.slot);
 			WriteLine(ctx, ".name = \"%s\",", layer.name);
 			WriteLine(ctx, ".isBase = %d,", layer.isBase);
 			WriteLine(ctx, ".visible = %d,", layer.visible);
@@ -1003,6 +1004,7 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 
 			DParser_TryConsume(parser, TOKEN_EQUAL);
 
+			static const String sId = MakeString("id");
 			static const String sName = MakeString("name");
 			static const String sIsBase = MakeString("isBase");
 			static const String sVisible = MakeString("visible");
@@ -1010,7 +1012,9 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 			static const String sSize = MakeString("size");
 			static const String sTiles = MakeString("tiles");
 
-			if ( StrEq( field, sName ) ) {
+			if ( StrEq( field, sId ) ) {
+				layerDesc.id = { DParser_ConsumeU32(parser) };
+			} else if ( StrEq( field, sName ) ) {
 				layerDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
 			} else if ( StrEq( field, sIsBase ) ) {
 				layerDesc.isBase = DParser_ConsumeU8(parser) != 0;
@@ -1216,7 +1220,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sSpriteId = MakeString("spriteId");
 					static const String sPos = MakeString("pos");
 					static const String sScale = MakeString("scale");
-					static const String sLayer = MakeString("layer");
+					static const String sLayerId = MakeString("layerId");
 					static const String sGeometryType = MakeString("geometryType");
 
 					if ( StrEq( field, sId ) ) {
@@ -1229,8 +1233,8 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						desc.pos = DParser_ConsumeFloat3(parser);
 					} else if ( StrEq( field, sScale ) ) {
 						desc.scale = DParser_ConsumeF32(parser);
-					} else if ( StrEq( field, sLayer ) ) {
-						desc.layer = DParser_ConsumeI32(parser);
+					} else if ( StrEq( field, sLayerId ) ) {
+						desc.layerId = { DParser_ConsumeU32(parser) };
 					} else if ( StrEq( field, sGeometryType ) ) {
 						desc.geometryType = DParser_ConsumeGeometryType(parser);
 					}
@@ -1679,7 +1683,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			d.spriteId     = desc.spriteId;
 			d.pos          = desc.pos;
 			d.scale        = desc.scale;
-			d.layer        = desc.layer;
+			d.layerId      = desc.layerId;
 			d.geometryType = desc.geometryType;
 		}
 
@@ -1701,6 +1705,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 				const u64 payloadSize = layer.tileCount * sizeof(TileDesc);
 
 				BinLayerDesc &ld = d.layers[l];
+				ld.id           = layer.id;
 				ld.name         = DataInternString(stringPool, layer.name);
 				ld.isBase       = layer.isBase ? 1 : 0;
 				ld.visible      = layer.visible ? 1 : 0;

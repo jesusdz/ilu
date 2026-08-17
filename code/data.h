@@ -85,7 +85,7 @@ struct EntityDesc
 	GeometryType geometryType;
 	// Sprite entity
 	ID spriteId;
-	i32 layer;
+	ID layerId;
 	// Common
 	float3 pos;
 	float scale;
@@ -108,6 +108,7 @@ struct TileDesc
 
 struct LayerDesc
 {
+	ID id;
 	const char *name;
 	bool isBase;
 	bool visible;
@@ -258,14 +259,15 @@ struct BinEntityDesc
 	const char *name;
 	ID materialId;
 	ID spriteId;
+	ID layerId;
 	float3 pos;
 	float scale;
-	i32 layer;
 	GeometryType geometryType;
 };
 
 struct BinLayerDesc
 {
+	ID id;
 	const char *name;
 	u8 isBase;
 	u8 visible;

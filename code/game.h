@@ -64,7 +64,9 @@ struct Game
 	float accel2;
 	PlayerState playerState;
 
-	ID entId;
+	ID entPlayer;
+	ID sprPlayerIdle;
+	ID sprPlayerRun;
 
 	ID sndJump;
 	ID modEquinox;
