@@ -518,6 +518,12 @@ struct UI
 
 	UIID activeWidgetId;
 
+	// Tracks the widget under the mouse when the left button went down, so a
+	// click only fires when the button is released over that same widget.
+	bool widgetPressActive;
+	float2 pressedWidgetPos;
+	float2 pressedWidgetSize;
+
 	float2 lastWidgetPos;
 	float2 lastWidgetSize;
 
@@ -626,25 +632,37 @@ static void UI_PositionWindow(UIWindow &window, float2 position)
 	window.displacement = position;
 }
 
-bool UI_IsMouseClickWithAnyButton(const UI &ui)
+bool UI_IsMousePressWithAnyButton(const UI &ui)
 {
-	const bool click =
+	const bool press =
 		ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_PRESS ||
 		ui.input.mouse.buttons[MOUSE_BUTTON_MIDDLE] == BUTTON_STATE_PRESS ||
 		ui.input.mouse.buttons[MOUSE_BUTTON_RIGHT] == BUTTON_STATE_PRESS;
-	return click;
+	return press;
 }
 
-bool UI_IsMouseClick(const UI &ui, MouseButton button)
+bool UI_IsMousePress(const UI &ui, MouseButton button)
 {
-	const bool click = ui.input.mouse.buttons[button] == BUTTON_STATE_PRESS;
-	return click;
+	const bool press = ui.input.mouse.buttons[button] == BUTTON_STATE_PRESS;
+	return press;
 }
 
-bool UI_IsMouseClick(const UI &ui)
+bool UI_IsMousePress(const UI &ui)
 {
-	const bool click = ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_PRESS;
-	return click;
+	const bool press = UI_IsMousePress(ui, MOUSE_BUTTON_LEFT);
+	return press;
+}
+
+bool UI_IsMouseRelease(const UI &ui, MouseButton button)
+{
+	const bool release = ui.input.mouse.buttons[button] == BUTTON_STATE_RELEASE;
+	return release;
+}
+
+bool UI_IsMouseRelease(const UI &ui)
+{
+	const bool release = UI_IsMouseRelease(ui, MOUSE_BUTTON_LEFT);
+	return release;
 }
 
 bool UI_IsMouseIdle(const UI &ui)
@@ -1116,27 +1134,61 @@ bool UI_WidgetHovered(const UI &ui)
 	return hover;
 }
 
-bool UI_WidgetClicked(const UI &ui, float2 widgetPos, float2 widgetSize)
+bool UI_WidgetPressed(const UI &ui, float2 widgetPos, float2 widgetSize)
 {
-	const bool clicked = UI_IsMouseClick(ui) && UI_WidgetHovered(ui, widgetPos, widgetSize);
+	const bool pressed = UI_IsMousePress(ui) && UI_WidgetHovered(ui, widgetPos, widgetSize);
+	return pressed;
+}
+
+bool UI_WidgetPressed(const UI &ui)
+{
+	const bool pressed = UI_IsMousePress(ui) && UI_WidgetHovered(ui);
+	return pressed;
+}
+
+bool UI_LastWidgetPressed(const UI &ui)
+{
+	const bool pressed = UI_WidgetPressed(ui, ui.lastWidgetPos, ui.lastWidgetSize);
+	return pressed;
+}
+
+bool UI_LastWidgetPressed(const UI &ui, MouseButton button)
+{
+	const bool pressed = UI_IsMousePress(ui, button) && UI_WidgetHovered(ui, ui.lastWidgetPos, ui.lastWidgetSize);
+	return pressed;
+}
+
+bool UI_WidgetClicked(UI &ui, float2 widgetPos, float2 widgetSize)
+{
+	const bool hovered = UI_WidgetHovered(ui, widgetPos, widgetSize);
+
+	if ( UI_IsMousePress(ui) && hovered )
+	{
+		ui.widgetPressActive = true;
+		ui.pressedWidgetPos = widgetPos;
+		ui.pressedWidgetSize = widgetSize;
+	}
+
+	const bool releasedHere = UI_IsMouseRelease(ui) && hovered;
+	const bool sameWidgetAsPress =
+		ui.pressedWidgetPos.x == widgetPos.x && ui.pressedWidgetPos.y == widgetPos.y &&
+		ui.pressedWidgetSize.x == widgetSize.x && ui.pressedWidgetSize.y == widgetSize.y;
+
+	const bool clicked = ui.widgetPressActive && releasedHere && sameWidgetAsPress;
 	return clicked;
 }
 
-bool UI_WidgetClicked(const UI &ui)
+bool UI_WidgetClicked(UI &ui)
 {
-	const bool clicked = UI_IsMouseClick(ui) && UI_WidgetHovered(ui);
+	ASSERT(ui.widgetStackSize > 0);
+	const UIWidget &widget = ui.widgetStack[ui.widgetStackSize-1];
+	const bool clicked = UI_WidgetClicked(ui, widget.pos, widget.size);
 	return clicked;
 }
 
-bool UI_LastWidgetClicked(const UI &ui)
+bool UI_LastWidgetClicked(UI &ui)
 {
 	const bool clicked = UI_WidgetClicked(ui, ui.lastWidgetPos, ui.lastWidgetSize);
-	return clicked;
-}
-
-bool UI_LastWidgetClicked(const UI &ui, MouseButton button)
-{
-	const bool clicked = UI_IsMouseClick(ui, button) && UI_WidgetHovered(ui, ui.lastWidgetPos, ui.lastWidgetSize);
 	return clicked;
 }
 
@@ -1151,9 +1203,9 @@ void UI_BeginWidget(UI &ui, float2 pos, float2 size, bool avoidWindowInteraction
 
 	UI_GrowLayoutGroup(ui, pos, size);
 
-	// Disable window interaction in case the widget was clicked
+	// Disable window interaction in case the widget was pressed
 	const UIWindow &currentWindow = UI_GetCurrentWindow(ui);
-	if ( !currentWindow.disableWidgets && UI_WidgetClicked(ui) )
+	if ( !currentWindow.disableWidgets && UI_WidgetPressed(ui) )
 	{
 		ui.avoidWindowInteraction = avoidWindowInteraction;
 	}
@@ -1713,7 +1765,7 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 		UI_PushColor(ui, UIElementButton);
 		UI_AddTriangle(ui, cornerBL, cornerBR, cornerTR);
 		UI_PopColor(ui);
-		if (UI_WidgetClicked(ui))
+		if (UI_WidgetPressed(ui))
 		{
 			window.sizeBeforeResize = {(i32)window.size.x, (i32)window.size.y};
 			window.resizing = true;
@@ -1780,7 +1832,7 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 			UI_PushColor(ui, UIElementScrollbar);
 			UI_AddRectangle(ui, scrollbarPos, scrollbarSize);
 			UI_PopColor(ui);
-			if (UI_WidgetClicked(ui)) {
+			if (UI_WidgetPressed(ui)) {
 				window.scrolling = true;
 				window.contentOffsetBeforeScrolling = window.contentOffset;
 			}
@@ -2195,7 +2247,7 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 	const float2 p2 = p0 + float2{triangleSide, 0.0f};
 	UI_AddTriangle(ui, p0, p1, p2, UiColorWhite);
 
-	const bool mouseClick = UI_IsMouseClick(ui);
+	const bool mouseClick = UI_IsMousePress(ui);
 	const bool clickedInside = UI_WidgetClicked(ui);
 
 	UI_EndWidget(ui);
@@ -2683,7 +2735,7 @@ bool UI_InputText(UI &ui, const char *label, char *buffer, u32 bufferSize)
 	const char *text = active ? activeBuffer : buffer;
 	UI_AddText(ui, textPos, text);
 
-	const bool mouseClick = UI_IsMouseClick(ui);
+	const bool mouseClick = UI_IsMousePress(ui);
 	const bool clickedInside = UI_WidgetClicked(ui);
 
 	UI_EndWidget(ui);
@@ -2730,7 +2782,7 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UI_StyleS
 	//UI_AddBorder(ui, boxPos, boxSize, 1);
 	//UI_PopColor(ui);
 
-	const bool boxClicked = UI_WidgetClicked(ui);
+	const bool boxClicked = UI_WidgetPressed(ui);
 	const bool active = UI_IsActiveWidget(ui, id);
 
 	if (boxClicked && !active)
@@ -2745,7 +2797,7 @@ bool UI_InputI64(UI &ui, const char *label, i64 *number, f32 spacing = UI_StyleS
 		const f32 dragDelta = (f32)(UI_MousePos(ui).x - UI_LastMouseClickPos(ui).x);
 		*number = numberBeforeDrag + (i64)dragDelta;
 
-		if ( ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE )
+		if ( UI_IsMouseRelease(ui) )
 		{
 			dragging = false;
 			if ( dragDelta > -ui.style.dragClickThreshold && dragDelta < ui.style.dragClickThreshold )
@@ -2890,7 +2942,7 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 	//UI_AddBorder(ui, boxPos, boxSize, 1);
 	//UI_PopColor(ui);
 
-	const bool boxClicked = UI_WidgetClicked(ui);
+	const bool boxClicked = UI_WidgetPressed(ui);
 	const bool active = UI_IsActiveWidget(ui, id);
 
 	if (boxClicked && !active)
@@ -2905,7 +2957,7 @@ bool UI_InputFloat(UI &ui, const char *label, f32 *number, f32 step = 0.1f, f32 
 		const f32 dragDelta = (f32)(UI_MousePos(ui).x - UI_LastMouseClickPos(ui).x);
 		*number = numberBeforeDrag + dragDelta * step;
 
-		if ( ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE )
+		if ( UI_IsMouseRelease(ui) )
 		{
 			dragging = false;
 			if ( dragDelta > -ui.style.dragClickThreshold && dragDelta < ui.style.dragClickThreshold )
@@ -3312,7 +3364,7 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 		static bool wasOpen = false;
 
 		const bool escape = ui.input.keyboard.keys[K_ESCAPE] == KEY_STATE_PRESS;
-		const bool clickOutside = wasOpen && UI_IsMouseClick(ui) && !UI_MouseInArea(ui, window.pos, window.size);
+		const bool clickOutside = wasOpen && UI_IsMousePress(ui) && !UI_MouseInArea(ui, window.pos, window.size);
 		const bool enter = ui.input.keyboard.keys[K_RETURN] == KEY_STATE_PRESS;
 		wasOpen = *isOpen;
 
@@ -3350,7 +3402,7 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 		UI_AddGradientQuad(ui, svPos, svSize, transparentBlack, transparentBlack, opaqueBlack, opaqueBlack);
 
 		static bool draggingSv = false;
-		if (UI_WidgetClicked(ui)) {
+		if (UI_WidgetPressed(ui)) {
 			draggingSv = true;
 		}
 		if (draggingSv)
@@ -3358,7 +3410,7 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 			const float2 local = Float2(UI_MousePos(ui)) - svPos;
 			activeHsv.y = Clamp(local.x / svSize.x, 0.0f, 1.0f);
 			activeHsv.z = Clamp(1.0f - local.y / svSize.y, 0.0f, 1.0f);
-			if (ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE) {
+			if (UI_IsMouseRelease(ui)) {
 				draggingSv = false;
 			}
 		}
@@ -3391,14 +3443,14 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 		}
 
 		static bool draggingHue = false;
-		if (UI_WidgetClicked(ui)) {
+		if (UI_WidgetPressed(ui)) {
 			draggingHue = true;
 		}
 		if (draggingHue)
 		{
 			const float2 local = Float2(UI_MousePos(ui)) - huePos;
 			activeHsv.x = Clamp(local.y / hueSize.y, 0.0f, 1.0f);
-			if (ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE) {
+			if (UI_IsMouseRelease(ui)) {
 				draggingHue = false;
 			}
 		}
@@ -3421,14 +3473,14 @@ void UI_ColorPicker(UI &ui, float4 *color, bool *isOpen)
 		UI_AddGradientQuad(ui, alphaPos, alphaSize, opaque, opaque, transparent, transparent);
 
 		static bool draggingAlpha = false;
-		if (UI_WidgetClicked(ui)) {
+		if (UI_WidgetPressed(ui)) {
 			draggingAlpha = true;
 		}
 		if (draggingAlpha)
 		{
 			const float2 local = Float2(UI_MousePos(ui)) - alphaPos;
 			color->a = Clamp(1.0f - local.y / alphaSize.y, 0.0f, 1.0f);
-			if (ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE) {
+			if (UI_IsMouseRelease(ui)) {
 				draggingAlpha = false;
 			}
 		}
@@ -4008,7 +4060,7 @@ bool UI_BeginContextMenu(UI &ui, const char *name, bool *isOpen = nullptr)
 	const UIID windowId = UI_MakeID(ui, name);
 	UIWindow &window = UI_FindOrCreateWindow(ui, windowId, name);
 
-	if (UI_IsMouseClick(ui, MOUSE_BUTTON_RIGHT) && UI_MouseInArea(ui, ui.lastWidgetPos, ui.lastWidgetSize))
+	if (UI_IsMousePress(ui, MOUSE_BUTTON_RIGHT) && UI_MouseInArea(ui, ui.lastWidgetPos, ui.lastWidgetSize))
 	{
 		ui.activeMenu = &window;
 		const float2 pos = Float2(ui.input.lastMouseClickPos);
@@ -4119,7 +4171,7 @@ void UI_DragAndDropSource(UI &ui, const char *payloadType, void *payload, ImageH
 	// Applies to the widget that was just ended, which UI_EndWidget recorded here.
 	const float2 prevWidgetPos = ui.lastWidgetPos;
 	const float2 prevWidgetSize = ui.lastWidgetSize;
-	const bool clicked = UI_IsMouseClick(ui) && UI_WidgetHovered(ui, prevWidgetPos, prevWidgetSize);
+	const bool clicked = UI_IsMousePress(ui) && UI_WidgetHovered(ui, prevWidgetPos, prevWidgetSize);
 	if (clicked)
 	{
 		ui.dragAndDrop.payloadType = payloadType;
@@ -4408,9 +4460,17 @@ void UI_BeginFrame(UI &ui)
 	ui.drawListCount = 0;
 	ui.drawListStackSize = 0;
 
-	if (UI_IsMouseClickWithAnyButton(ui))
+	if (UI_IsMousePressWithAnyButton(ui))
 	{
 		ui.input.lastMouseClickPos = UI_MousePos(ui);
+	}
+
+	// Forget which widget the previous click landed on. If the left button is
+	// going down this frame, whichever widget is hovered (if any) will mark
+	// itself as the pressed one again below, in UI_WidgetClicked.
+	if (UI_IsMousePress(ui))
+	{
+		ui.widgetPressActive = false;
 	}
 
 	// Reposition windows based on its anchor
@@ -4467,7 +4527,7 @@ void UI_BeginFrame(UI &ui)
 	}
 
 	// Update active window
-	if ( UI_IsMouseClickWithAnyButton(ui) )
+	if ( UI_IsMousePressWithAnyButton(ui) )
 	{
 		if ( ui.hoveredWindow && ui.hoveredWindow->visible )
 		{
@@ -4493,7 +4553,7 @@ void UI_BeginFrame(UI &ui)
 	{
 		const float2 pos = ui.activeMenu->pos;
 		const float2 size = ui.activeMenu->size;
-		if ( UI_IsMouseClick(ui) && !UI_MouseInArea(ui, pos, size)  )
+		if ( UI_IsMousePress(ui) && !UI_MouseInArea(ui, pos, size)  )
 		{
 			ui.activeMenu = nullptr;
 		}

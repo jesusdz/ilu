@@ -904,7 +904,7 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 			static bool spritesheetDrag = false;
 			static uint2 spriteRelPos = {};
 			static uint2 spriteSize = {};
-			if (UI_LastWidgetClicked(ui)) {
+			if (UI_LastWidgetPressed(ui)) {
 				// The offset is decided here and stays put for the rest of the drag
 				spritesheetDrag = true;
 				spriteRelPos = cell;
@@ -917,7 +917,7 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 					cell.y > spriteRelPos.y ? cell.y - spriteRelPos.y + grid : grid,
 				};
 
-				if (ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_RELEASE) {
+				if (UI_IsMouseRelease(ui)) {
 					spritesheetDrag = false;
 				}
 			}
@@ -1526,7 +1526,7 @@ static void EditorUpdateUI_About(Engine &engine)
 	UI_EndWindow(ui);
 
 	static bool wasShown = false;
-	if ( UI_IsMouseClickWithAnyButton(ui) && wasShown ) {
+	if ( UI_IsMousePressWithAnyButton(ui) && wasShown ) {
 		engine.editor.showAbout = false;
 	}
 	wasShown = engine.editor.showAbout;
@@ -2496,7 +2496,7 @@ void EditorUpdate(Engine &engine)
 
 	if ( handleInput )
 	{
-		if ( UI_IsMouseClick(engine.ui, MOUSE_BUTTON_RIGHT) )
+		if ( UI_IsMousePress(engine.ui, MOUSE_BUTTON_RIGHT) )
 		{
 			engine.editor.showContextMenu = true;
 		}
