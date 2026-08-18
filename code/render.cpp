@@ -6,6 +6,11 @@ static constexpr float4 ColorBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
 static constexpr float4 ColorOrange = { 1.0f, 0.5f, 0.0f, 1.0f };
 
 
+#define PROFILE_GFX_BLOCK(commandList, Name) \
+	PROFILE_BLOCK(Name); \
+	PROFILE_GPU_BLOCK(commandList, Name);
+
+
 ////////////////////////////////////////////////////////////////////////
 // Immediate draw
 
@@ -564,10 +569,10 @@ bool RenderGraphics(Engine &engine)
 
 		const float2 scrollRatio = GetRoomScrollRatio(camera.position.xy, roomMin, Float2(roomSize), viewportSizeWorld);
 
-		for (i32 i = ARRAY_COUNT(room.layers) - 1; i >= 0; --i)
+		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 		{
 			Layer &layer = room.layers[i];
-			layer.depth = -(f32)i;
+			layer.depth = (f32)i;
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{
@@ -705,8 +710,7 @@ bool RenderGraphics(Engine &engine)
 	// Shadow map
 	if (camera.projectionType == ProjectionPerspective)
 	{
-		PROFILE_BLOCK(ShadowMap);
-		PROFILE_GPU_BLOCK(commandList, ShadowMap);
+		PROFILE_GFX_BLOCK(commandList, ShadowMap);
 
 		BeginDebugGroup(commandList, "Shadow map", ColorBlack);
 
@@ -750,8 +754,7 @@ bool RenderGraphics(Engine &engine)
 
 	// Scene
 	{
-		PROFILE_BLOCK(Scene);
-		PROFILE_GPU_BLOCK(commandList, Scene);
+		PROFILE_GFX_BLOCK(commandList, Scene);
 
 		BeginDebugGroup(commandList, "Scene", ColorBlack);
 
@@ -765,41 +768,45 @@ bool RenderGraphics(Engine &engine)
 		SetViewportAndScissor(commandList, displaySize);
 
 		// Entities
-		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
-			const Entity &entity = scene.entities[i];
+			PROFILE_GFX_BLOCK(commandList, Entities);
 
-			if ( !entity.visible || entity.culled ) continue;
-			if ( !entity.materialId ) continue;
+			for (u32 i = 0; i < scene.entityCount; ++i)
+			{
+				const Entity &entity = scene.entities[i];
 
-			const ID materialId = entity.materialId;
-			const Material &material = GetMaterial(materialId);
+				if ( !entity.visible || entity.culled ) continue;
+				if ( !entity.materialId ) continue;
 
-			BeginDebugGroup(commandList, material.desc.name, ColorBlack);
+				const ID materialId = entity.materialId;
+				const Material &material = GetMaterial(materialId);
 
-			// Pipeline
-			SetPipeline(commandList, gfx.pipelines[material.pipelineIndex]);
+				BeginDebugGroup(commandList, material.desc.name, ColorBlack);
 
-			// Bind groups
-			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-			SetBindGroup(commandList, 1, gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)]);
+				// Pipeline
+				SetPipeline(commandList, gfx.pipelines[material.pipelineIndex]);
 
-			// Geometry
-			SetVertexBuffer(commandList, vertexBuffer);
-			SetIndexBuffer(commandList, indexBuffer);
+				// Bind groups
+				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+				SetBindGroup(commandList, 1, gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)]);
 
-			// Draw!!!
-			const uint32_t indexCount = entity.indices.size/sizeof(Index);
-			const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
-			const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, entity.id), 1);
+				// Geometry
+				SetVertexBuffer(commandList, vertexBuffer);
+				SetIndexBuffer(commandList, indexBuffer);
 
-			EndDebugGroup(commandList);
+				// Draw!!!
+				const uint32_t indexCount = entity.indices.size/sizeof(Index);
+				const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
+				const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
+				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, entity.id), 1);
+
+				EndDebugGroup(commandList);
+			}
 		}
 
 		// Layer tiles
 		{
-			PROFILE_BLOCK(LayerTiles);
+			PROFILE_GFX_BLOCK(commandList, LayerTiles);
 
 			BeginDebugGroup(commandList, "Tiles", ColorBlack);
 
@@ -851,7 +858,7 @@ bool RenderGraphics(Engine &engine)
 		}
 
 		{
-			PROFILE_BLOCK(Sprites);
+			PROFILE_GFX_BLOCK(commandList, Sprites);
 
 			// Sprite entities
 			const Pipeline &spritePipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Shading2D]);
@@ -895,7 +902,7 @@ bool RenderGraphics(Engine &engine)
 		// Sky
 		if (camera.projectionType == ProjectionPerspective)
 		{
-			PROFILE_BLOCK(Sky);
+			PROFILE_GFX_BLOCK(commandList, Sky);
 
 			const ImageH &skyImage = GetTextureImage(gfx, gfx.skyTexture, gfx.grayImageH);
 			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Sky]);
@@ -930,7 +937,7 @@ bool RenderGraphics(Engine &engine)
 		// Editor grid
 		if (editor.showGrid && engine.game.state == GameStateStopped)
 		{
-			PROFILE_BLOCK(EditorGrid);
+			PROFILE_GFX_BLOCK(commandList, EditorGrid);
 
 			if (camera.projectionType == ProjectionPerspective)
 			{
@@ -971,8 +978,30 @@ bool RenderGraphics(Engine &engine)
 		}
 #endif
 
+		if ( engine.game.state == GameStateRunning )
+		{
+			PROFILE_GFX_BLOCK(commandList, Fog);
+
+			BeginDebugGroup(commandList, "Fog", ColorBlack);
+
+			SetPipeline(commandList, gfx.pipelines[Pipeline_Fog]);
+
+			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+
+			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
+			const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
+			const uint32_t indexCount = indices.size/sizeof(Index);
+			const uint32_t firstIndex = indices.offset/sizeof(Index);
+			const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
+			SetVertexBuffer(commandList, vertexBuffer);
+			SetIndexBuffer(commandList, indexBuffer);
+			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+
+			EndDebugGroup(commandList);
+		}
+
 		{ // Debug draw
-			PROFILE_BLOCK(DebugDraw);
+			PROFILE_GFX_BLOCK(commandList, DebugDraw);
 
 			MemCopy(gfx.debugDrawVertices[frameIndex], gfx.debugDrawVerticesCPU, gfx.debugDrawVertexCount * sizeof(DebugDrawVertex));
 
@@ -1008,29 +1037,6 @@ bool RenderGraphics(Engine &engine)
 			EndDebugGroup(commandList);
 		}
 
-		if ( engine.game.state == GameStateRunning )
-		{
-			PROFILE_BLOCK(Fog);
-			PROFILE_GPU_BLOCK(commandList, Fog);
-
-			BeginDebugGroup(commandList, "Fog", ColorBlack);
-
-			SetPipeline(commandList, gfx.pipelines[Pipeline_Fog]);
-
-			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-
-			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
-			const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
-			const uint32_t indexCount = indices.size/sizeof(Index);
-			const uint32_t firstIndex = indices.offset/sizeof(Index);
-			const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			SetVertexBuffer(commandList, vertexBuffer);
-			SetIndexBuffer(commandList, indexBuffer);
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
-
-			EndDebugGroup(commandList);
-		}
-
 		EndRenderPass(commandList);
 
 		EndDebugGroup(commandList);
@@ -1038,8 +1044,7 @@ bool RenderGraphics(Engine &engine)
 
 	// Display
 	{
-		PROFILE_BLOCK(Display);
-		PROFILE_GPU_BLOCK(commandList, Display);
+		PROFILE_GFX_BLOCK(commandList, Display);
 
 		BeginDebugGroup(commandList, "Display", ColorBlack);
 
@@ -1052,8 +1057,7 @@ bool RenderGraphics(Engine &engine)
 		SetViewportAndScissor(commandList, displaySize);
 
 		{ // Scene blit
-			PROFILE_BLOCK(Blit);
-			PROFILE_GPU_BLOCK(commandList, Blit);
+			PROFILE_GFX_BLOCK(commandList, Blit);
 
 			BeginDebugGroup(commandList, "Blit", ColorBlack);
 
@@ -1103,8 +1107,7 @@ bool RenderGraphics(Engine &engine)
 
 #if USE_UI
 		{ // GUI
-			PROFILE_BLOCK(GUI);
-			PROFILE_GPU_BLOCK(commandList, GUI);
+			PROFILE_GFX_BLOCK(commandList, GUI);
 
 			BeginDebugGroup(commandList, "GUI", ColorBlack);
 
