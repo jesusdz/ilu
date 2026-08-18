@@ -548,7 +548,7 @@ bool RenderGraphics(Engine &engine)
 	u32 tileCount = 0;
 	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
-		const Room &room = scene.rooms[roomIndex];
+		Room &room = scene.rooms[roomIndex];
 
 		// We always need a base layer to render a room
 		const Layer *baseLayer = GetBaseLayer(room);
@@ -566,7 +566,8 @@ bool RenderGraphics(Engine &engine)
 
 		for (i32 i = ARRAY_COUNT(room.layers) - 1; i >= 0; --i)
 		{
-			const Layer &layer = room.layers[i];
+			Layer &layer = room.layers[i];
+			layer.depth = -(f32)i;
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{
@@ -623,12 +624,17 @@ bool RenderGraphics(Engine &engine)
 	MemCopy(gpuTileData, tileData, tileCount * sizeof(STileData));
 
 	// Update entity data
+	// TODO: This should bappen before culling (or culling should happen after this)
 	SEntity *entities = (SEntity*)GetBufferPtr(gfx.device, gfx.entityBuffer[frameIndex]);
 	for (u32 i = 0; i < scene.entityCount; ++i)
 	{
 		const Entity &entity = scene.entities[i];
 		float3 entityScale = Float3(entity.scale);
 		float3 entityPosition = entity.position;
+		if (Valid(entity.layerId)) {
+			const Layer &layer = GetLayer(entity.layerId);
+			entityPosition.z = layer.depth;
+		}
 		if (snapToPixelGrid)
 		{
 			entityPosition.x = Round(entityPosition.x / pixelSize) * pixelSize;

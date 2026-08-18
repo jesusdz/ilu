@@ -433,6 +433,13 @@ bool IsColliderInBox(float2 pos, float2 size, u32 collider)
 
 
 
+Layer &GetLayer(ID id)
+{
+	ASSERT( Valid(id) );
+	Layer &layer = *((Layer*)GetObject(id));
+	return layer;
+}
+
 u32 CreateLayer(Room &room, const LayerDesc &desc)
 {
 	u32 index = U32_MAX;
@@ -492,10 +499,13 @@ u32 MoveLayer(Room &room, u32 index, i32 delta)
 		const Layer moved = room.layers[index];
 		room.layers[index] = neighbour;
 		neighbour = moved;
-		return (u32)i;
+
+		index = (u32)i;
+		break;
 	}
 
-	for (i32 i = 0; i < ARRAY_COUNT(room.layers); ++i) {
+	for (i32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+	{
 		Layer &layer = room.layers[i];
 		if (layer.initialized)
 		{

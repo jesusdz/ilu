@@ -62,6 +62,7 @@ struct Layer
 	bool isCollider;
 	uint2 size;
 	Cell cells[TILE_GRID_SIZE_X][TILE_GRID_SIZE_Y]; // sprite per cell, an invalid ID if empty
+	f32 depth; // depth in world units
 };
 
 // MAX_LAYERS is defined in data.h (RoomDesc needs it)
@@ -145,6 +146,7 @@ bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 Room &GetRoom(ID roomId);
 u16 GetRoomIndex(const Scene &scene, ID roomId);
 void CompactRooms(Scene &scene);
+Layer &GetLayer(ID layerId);
 u32 CreateLayer(Room &room, const LayerDesc &desc);
 void RemoveLayer(Room &room, u32 index);
 u32 MoveLayer(Room &room, u32 index, i32 delta); // delta -1 moves towards the front, +1 towards the back
