@@ -446,6 +446,7 @@ static void EditorUnselectAll()
 	editor.context.selectedFile = nullptr;
 	editor.context.roomId = {};
 	editor.context.layerIndex = EditorNoLayer;
+	editor.inspector.nextSelected.id = {};
 	editor.inspector.nextSelected.value = 0;
 	editor.inspector.nextSelected.type = EditorSelectedType_None;
 }
@@ -471,8 +472,7 @@ static void EditorRemoveSelection()
 
 	const EditorSelection selection = editor.inspector.nextSelected;
 
-	if ( !( selection.type >= EditorSelectedType_AssetBegin || selection.type <= EditorSelectedType_AssetEnd ) )
-	{
+	if ( !( selection.type >= EditorSelectedType_AssetBegin && selection.type <= EditorSelectedType_AssetEnd ) ) {
 		return;
 	}
 
@@ -523,6 +523,39 @@ static void EditorRemoveSelection()
 	}
 
 	EditorUnselectAll();
+}
+
+static void EditorRemoveAsset(EditorSelectedType type, ID assetId)
+{
+	Editor &editor = GetEditor();
+	const EditorSelection previous = editor.inspector.nextSelected;
+
+	editor.inspector.nextSelected.type = type;
+	editor.inspector.nextSelected.id = assetId;
+	EditorRemoveSelection();
+
+	if ( !(previous.type == type && previous.id == assetId) ) {
+		editor.inspector.nextSelected = previous;
+	}
+}
+
+static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID assetId)
+{
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
+
+	if ( IsBuiltin(assetId) ) { return; }
+
+	UI_PushID(ui, assetId.slot);
+	if (UI_BeginContextMenu(ui, name))
+	{
+		if (UI_MenuItem(ui, "Delete"))
+		{
+			EditorRemoveAsset(type, assetId);
+		}
+		UI_EndContextMenu(ui);
+	}
+	UI_PopID(ui);
 }
 
 static void EditorUpdateUI_DebugUI()
@@ -656,6 +689,7 @@ static void EditorUpdateUI_Outliner()
 									if ( UI_Button(ui, entity.name) ) {
 										EditorSelectEntity(scene.entities[i].id);
 									}
+									EditorAssetContextMenu("EntityContext", EditorSelectedType_Entity, scene.entities[i].id);
 								}
 							}
 						}
@@ -696,6 +730,7 @@ static void EditorUpdateUI_Outliner()
 					if ( UI_Button(ui, entity.name) ) {
 						EditorSelectEntity(scene.entities[i].id);
 					}
+					EditorAssetContextMenu("EntityContext", EditorSelectedType_Entity, scene.entities[i].id);
 				}
 			}
 
@@ -709,7 +744,6 @@ static void EditorUpdateUI_Outliner()
 
 		UI_BeginLayout(ui, UILayout_ItemBrowser);
 
-		UIID id = 0;
 		for (u32 i = 0; i < scene.spriteCount; ++i)
 		{
 			const SpriteDesc &sprite = scene.sprites[i].desc;
@@ -725,22 +759,7 @@ static void EditorUpdateUI_Outliner()
 				EditorSelectSprite(spriteId);
 				selectedSprite = spriteId;
 			}
-			UI_PushID(ui, id++);
-			if (UI_BeginContextMenu(ui, "SpriteContext"))
-			{
-				if (UI_MenuItem(ui, "Delete"))
-				{
-					// Removal only takes effect at the end of the frame, so deleting
-					// from inside the loop leaves the array alone
-					EditorUnselectSprite(spriteId);
-					RemoveSprite(scene, spriteId);
-					if (selectedSprite == spriteId) {
-						selectedSprite = {};
-					}
-				}
-				UI_EndContextMenu(ui);
-			}
-			UI_PopID(ui);
+			EditorAssetContextMenu("SpriteContext", EditorSelectedType_Sprite, spriteId);
 		}
 
 		UI_EndLayout(ui);
@@ -755,6 +774,7 @@ static void EditorUpdateUI_Outliner()
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectMaterial(desc.id);
 			}
+			EditorAssetContextMenu("MaterialContext", EditorSelectedType_Material, desc.id);
 		}
 	}
 
@@ -777,6 +797,7 @@ static void EditorUpdateUI_Outliner()
 				EditorSelectTexture(handle);
 				selectedHandle = handle;
 			}
+			EditorAssetContextMenu("TextureContext", EditorSelectedType_Texture, handle);
 		}
 		UI_EndLayout(ui);
 	}
@@ -790,6 +811,7 @@ static void EditorUpdateUI_Outliner()
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectAudioClip(desc.id);
 			}
+			EditorAssetContextMenu("AudioClipContext", EditorSelectedType_Audio, desc.id);
 		}
 	}
 
@@ -802,6 +824,7 @@ static void EditorUpdateUI_Outliner()
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectMusic(desc.id);
 			}
+			EditorAssetContextMenu("MusicFileContext", EditorSelectedType_Music, desc.id);
 		}
 	}
 
