@@ -65,6 +65,9 @@ enum EditorSelectedType
 	EditorSelectedType_FileMusic,
 	EditorSelectedType_FileUnknown,
 	EditorSelectedType_Count,
+	// The types that name an asset, all of them an ID living in the same union
+	EditorSelectedType_AssetBegin = EditorSelectedType_Entity,
+	EditorSelectedType_AssetEnd = EditorSelectedType_Sprite,
 	EditorSelectedType_FileBegin = EditorSelectedType_FileImage,
 	EditorSelectedType_FileEnd = EditorSelectedType_FileUnknown,
 };
@@ -127,13 +130,7 @@ struct EditorSelection
 	// which kind this one is: go through the matching EditorSelect* helper.
 	union
 	{
-		ID roomId;
-		ID entityId;
-		ID materialId;
-		ID textureId;
-		ID audioClipId;
-		ID musicId;
-		ID spriteId;
+		ID id;
 		FileNode *file;
 		u64 value;
 	};
@@ -223,7 +220,7 @@ inline ID EditorGetSelectedEntity(const Editor &editor)
 {
 	ID entityId = {};
 	if ( editor.inspector.selected.type == EditorSelectedType_Entity ) {
-		entityId = editor.inspector.selected.entityId;
+		entityId = editor.inspector.selected.id;
 	}
 	return entityId;
 }

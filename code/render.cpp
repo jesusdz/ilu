@@ -35,7 +35,8 @@ static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 
 void DrawSprite(ID spriteId, float2 worldPos, float4 pcolor)
 {
-	Graphics &gfx = engine->gfx;
+	Engine &engine = GetEngine();
+	Graphics &gfx = engine.gfx;
 
 	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
 
@@ -66,7 +67,8 @@ void DrawSprite(ID spriteId, float2 worldPos, float4 pcolor)
 
 void DrawBox(float2 pos, float2 size, float4 color)
 {
-	Graphics &gfx = engine->gfx;
+	Engine &engine = GetEngine();
+	Graphics &gfx = engine.gfx;
 
 	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
 	const rgba c = Rgba(color);

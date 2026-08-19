@@ -410,13 +410,15 @@ static u32 GetColliderAtGridCoord(Scene &scene, int2 coord)
 
 u32 GetColliderAtWorldPos(float2 worldPos)
 {
-	return GetColliderAtGridCoord(engine->scene, WorldPosToGridCoord(worldPos));
+	Engine &engine = GetEngine();
+	return GetColliderAtGridCoord(engine.scene, WorldPosToGridCoord(worldPos));
 }
 
 // pos is the box's bottom-left corner, size its width/height (same convention as DrawBox).
 // Tiles the box only touches at an edge count as colliding.
 bool IsColliderInBox(float2 pos, float2 size, u32 collider)
 {
+	Engine &engine = GetEngine();
 	const int2 minCoord = WorldPosToGridCoord(pos);
 	const int2 maxCoord = WorldPosToGridCoord(pos + size);
 
@@ -424,7 +426,7 @@ bool IsColliderInBox(float2 pos, float2 size, u32 collider)
 	{
 		for (i32 x = minCoord.x; x <= maxCoord.x; ++x)
 		{
-			if (GetColliderAtGridCoord(engine->scene, int2{x, y}) == collider)
+			if (GetColliderAtGridCoord(engine.scene, int2{x, y}) == collider)
 				return true;
 		}
 	}

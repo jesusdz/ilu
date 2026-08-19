@@ -26,8 +26,9 @@ static const char *MakeName(const char *format, ...)
 }
 
 // Both null once the selection is gone, and only good for this frame
-static Room *EditorGetContextRoom(Engine &engine)
+static Room *EditorGetContextRoom()
 {
+	Engine &engine = GetEngine();
 	const ID roomId = engine.editor.context.roomId;
 	Room *room = nullptr;
 	if ( roomId ) {
@@ -36,10 +37,11 @@ static Room *EditorGetContextRoom(Engine &engine)
 	return room;
 }
 
-static Layer *EditorGetContextLayer(Engine &engine)
+static Layer *EditorGetContextLayer()
 {
+	Engine &engine = GetEngine();
 	const u32 layerIndex = engine.editor.context.layerIndex;
-	Room *room = EditorGetContextRoom(engine);
+	Room *room = EditorGetContextRoom();
 	Layer *layer = nullptr;
 	if ( room && layerIndex < ARRAY_COUNT(room->layers) && room->layers[layerIndex].initialized ) {
 		layer = &room->layers[layerIndex];
@@ -47,41 +49,47 @@ static Layer *EditorGetContextLayer(Engine &engine)
 	return layer;
 }
 
-static bool EditorMode3D(Editor &editor)
+static bool EditorMode3D()
 {
+	Editor &editor = GetEditor();
 	return editor.cameraType == ProjectionPerspective;
 }
 
-static bool EditorMode2D(Editor &editor)
+static bool EditorMode2D()
 {
-	return !EditorMode3D(editor);
+	return !EditorMode3D();
 }
 
-static void EditorSetCamera(Editor &editor)
+static void EditorSetCamera()
 {
+	Editor &editor = GetEditor();
 	SetCamera(editor.camera[editor.cameraType]);
 }
 
-static void EditorSetMode3D(Editor &editor)
+static void EditorSetMode3D()
 {
+	Editor &editor = GetEditor();
 	editor.cameraType = ProjectionPerspective;
-	EditorSetCamera(editor);
+	EditorSetCamera();
 }
 
-static void EditorSetMode2D(Editor &editor)
+static void EditorSetMode2D()
 {
+	Editor &editor = GetEditor();
 	editor.cameraType = ProjectionOrthographic;
-	EditorSetCamera(editor);
+	EditorSetCamera();
 }
 
-static void AddEditorCommand(Editor &editor, const EditorCommand &command)
+static void AddEditorCommand(const EditorCommand &command)
 {
+	Editor &editor = GetEditor();
 	ASSERT(editor.commandCount < ARRAY_COUNT(editor.commands));
 	editor.commands[editor.commandCount++] = command;
 }
 
-static ImageH EditorLoadIcon(Engine &engine, const char *filename, const char *name)
+static ImageH EditorLoadIcon(const char *filename, const char *name)
 {
+	Engine &engine = GetEngine();
 	const FilePath path = MakePath(ProjectDir, filename);
 	ImagePixels imagePixels;
 	Scratch scratch;
@@ -90,8 +98,9 @@ static ImageH EditorLoadIcon(Engine &engine, const char *filename, const char *n
 	return handle;
 }
 
-static ImageH EditorLoadSnapshot(Engine &engine, const char *filepath, const char *name)
+static ImageH EditorLoadSnapshot(const char *filepath, const char *name)
 {
+	Engine &engine = GetEngine();
 	ImagePixels imagePixels;
 	Scratch scratch;
 	ReadImagePixels(scratch.arena, filepath, imagePixels);
@@ -100,8 +109,9 @@ static ImageH EditorLoadSnapshot(Engine &engine, const char *filepath, const cha
 	return handle;
 }
 
-static SnapshotNode *EditorGetOrCreateSnapshotNode(Engine &engine, const char *filepath)
+static SnapshotNode *EditorGetOrCreateSnapshotNode(const char *filepath)
 {
+	Engine &engine = GetEngine();
 	// First we try to find an existing snapshot for this path
 	SnapshotNode *snapshot = engine.editor.snapshots;
 	while (snapshot)
@@ -122,15 +132,16 @@ static SnapshotNode *EditorGetOrCreateSnapshotNode(Engine &engine, const char *f
 		}
 		engine.editor.snapshots = snapshot;
 		snapshot->filepath = InternString(filepath);
-		snapshot->imageH = EditorLoadSnapshot(engine, filepath, "editor_snapshot");
+		snapshot->imageH = EditorLoadSnapshot(filepath, "editor_snapshot");
 	}
 
 	return snapshot;
 }
 
-static void EditorUpdateUI_MenuBar(Engine &engine)
+static void EditorUpdateUI_MenuBar()
 {
-	UI &ui = GetUI(engine);
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
 	Editor &editor = engine.editor;
@@ -142,7 +153,7 @@ static void EditorUpdateUI_MenuBar(Engine &engine)
 			if ( UI_MenuItem(ui, "New scene") )
 			{
 				const EditorCommand command = { .type = EditorCommandNew };
-				AddEditorCommand(editor, command);
+				AddEditorCommand(command);
 			}
 
 			if ( UI_MenuItem(ui, "Load scene") )
@@ -159,13 +170,13 @@ static void EditorUpdateUI_MenuBar(Engine &engine)
 			if ( UI_MenuItem(ui, "Load scene (BIN)") )
 			{
 				const EditorCommand command = { .type = EditorCommandLoadBin };
-				AddEditorCommand(editor, command);
+				AddEditorCommand(command);
 			}
 
 			if ( UI_MenuItem(ui, "Build scene (BIN)") )
 			{
 				const EditorCommand command = { .type = EditorCommandBuildBin };
-				AddEditorCommand(editor, command);
+				AddEditorCommand(command);
 			}
 
 			UI_Separator(ui);
@@ -234,9 +245,10 @@ static void EditorUpdateUI_MenuBar(Engine &engine)
 	}
 }
 
-static void EditorUpdateUI_ToolBar(Engine &engine)
+static void EditorUpdateUI_ToolBar()
 {
-	UI &ui = GetUI(engine);
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
 	Scene &scene = engine.scene;
 	EditorContext &context = engine.editor.context;
 
@@ -251,17 +263,17 @@ static void EditorUpdateUI_ToolBar(Engine &engine)
 
 		UI_Label(ui, "Camera");
 
-		if ( UI_Radio(ui, "2D", EditorMode2D(engine.editor)) ) {
-			EditorSetMode2D(engine.editor);
+		if ( UI_Radio(ui, "2D", EditorMode2D()) ) {
+			EditorSetMode2D();
 		}
-		if ( UI_Radio(ui, "3D", EditorMode3D(engine.editor)) ) {
-			EditorSetMode3D(engine.editor);
+		if ( UI_Radio(ui, "3D", EditorMode3D()) ) {
+			EditorSetMode3D();
 		}
 
 		UI_Separator(ui);
 
-		const Room *contextRoom = EditorGetContextRoom(engine);
-		const Layer *contextLayer = EditorGetContextLayer(engine);
+		const Room *contextRoom = EditorGetContextRoom();
+		const Layer *contextLayer = EditorGetContextLayer();
 		if (contextRoom)
 		{
 			UI_Label(ui, "%s", contextRoom->name);
@@ -302,20 +314,23 @@ static void EditorUpdateUI_ToolBar(Engine &engine)
 	}
 }
 
-static void EditorSelectScene(Editor &editor, Scene &scene)
+static void EditorSelectScene()
 {
+	Editor &editor = GetEditor();
 	editor.inspector.nextSelected.type = EditorSelectedType_Scene;
 }
 
-static void EditorSelectRoom(Editor &editor, ID roomId)
+static void EditorSelectRoom(ID roomId)
 {
+	Editor &editor = GetEditor();
 	editor.context.roomId = roomId;
 	editor.context.layerIndex = EditorNoLayer;
 	editor.inspector.nextSelected.type = EditorSelectedType_Room;
 }
 
-static void EditorUnselectRoom(Editor &editor, ID roomId)
+static void EditorUnselectRoom(ID roomId)
 {
+	Editor &editor = GetEditor();
 	if (editor.context.roomId == roomId) {
 		editor.context.roomId = {};
 		editor.context.layerIndex = EditorNoLayer;
@@ -323,60 +338,69 @@ static void EditorUnselectRoom(Editor &editor, ID roomId)
 	}
 }
 
-static void EditorSelectLayer(Editor &editor, ID roomId, u32 layerIndex)
+static void EditorSelectLayer(ID roomId, u32 layerIndex)
 {
+	Editor &editor = GetEditor();
 	editor.context.roomId = roomId;
 	editor.context.layerIndex = layerIndex;
 	editor.inspector.nextSelected.type = EditorSelectedType_Layer;
 }
 
-static void EditorUnselectLayer(Editor &editor, ID roomId, u32 layerIndex)
+static void EditorUnselectLayer(ID roomId, u32 layerIndex)
 {
+	Editor &editor = GetEditor();
 	if (editor.context.roomId == roomId && editor.context.layerIndex == layerIndex) {
 		editor.context.layerIndex = EditorNoLayer;
 		editor.inspector.nextSelected.type = EditorSelectedType_None;
 	}
 }
 
-static void EditorSelectEntity(Editor &editor, ID entityId)
+static void EditorSelectEntity(ID entityId)
 {
-	editor.inspector.nextSelected.entityId = entityId;
+	Editor &editor = GetEditor();
+	editor.inspector.nextSelected.id = entityId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Entity;
 }
 
-static void EditorSelectMaterial(Editor &editor, ID materialId)
+static void EditorSelectMaterial(ID materialId)
 {
-	editor.inspector.nextSelected.materialId = materialId;
+	Editor &editor = GetEditor();
+	editor.inspector.nextSelected.id = materialId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Material;
 }
 
-static void EditorSelectTexture(Editor &editor, ID handle)
+static void EditorSelectTexture(ID handle)
 {
-	editor.inspector.nextSelected.textureId = handle;
+	Editor &editor = GetEditor();
+	editor.inspector.nextSelected.id = handle;
 	editor.inspector.nextSelected.type = EditorSelectedType_Texture;
 }
 
-static void EditorSelectAudioClip(Editor &editor, ID clipId)
+static void EditorSelectAudioClip(ID clipId)
 {
-	editor.inspector.nextSelected.audioClipId = clipId;
+	Editor &editor = GetEditor();
+	editor.inspector.nextSelected.id = clipId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Audio;
 }
 
-static void EditorSelectMusic(Editor &editor, ID musicId)
+static void EditorSelectMusic(ID musicId)
 {
-	editor.inspector.nextSelected.musicId = musicId;
+	Editor &editor = GetEditor();
+	editor.inspector.nextSelected.id = musicId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Music;
 }
 
-static void EditorSelectSprite(Editor &editor, ID spriteId)
+static void EditorSelectSprite(ID spriteId)
 {
+	Editor &editor = GetEditor();
 	editor.context.spriteId = spriteId;
-	editor.inspector.nextSelected.spriteId = spriteId;
+	editor.inspector.nextSelected.id = spriteId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Sprite;
 }
 
-static void EditorUnselectSprite(Editor &editor, ID spriteId)
+static void EditorUnselectSprite(ID spriteId)
 {
+	Editor &editor = GetEditor();
 	if (editor.context.spriteId == spriteId) {
 		editor.context.spriteId = {};
 		editor.inspector.nextSelected.type = EditorSelectedType_None;
@@ -384,36 +408,41 @@ static void EditorUnselectSprite(Editor &editor, ID spriteId)
 }
 
 
-static void EditorSelectFileImage(Editor &editor, FileNode *node)
+static void EditorSelectFileImage(FileNode *node)
 {
+	Editor &editor = GetEditor();
 	editor.context.selectedFile = node;
 	editor.inspector.nextSelected.file = node;
 	editor.inspector.nextSelected.type = EditorSelectedType_FileImage;
 }
 
-static void EditorSelectFileAudio(Editor &editor, FileNode *node)
+static void EditorSelectFileAudio(FileNode *node)
 {
+	Editor &editor = GetEditor();
 	editor.context.selectedFile = node;
 	editor.inspector.nextSelected.file = node;
 	editor.inspector.nextSelected.type = EditorSelectedType_FileAudio;
 }
 
-static void EditorSelectFileMusic(Editor &editor, FileNode *node)
+static void EditorSelectFileMusic(FileNode *node)
 {
+	Editor &editor = GetEditor();
 	editor.context.selectedFile = node;
 	editor.inspector.nextSelected.file = node;
 	editor.inspector.nextSelected.type = EditorSelectedType_FileMusic;
 }
 
-static void EditorSelectFileUnknown(Editor &editor, FileNode *node)
+static void EditorSelectFileUnknown(FileNode *node)
 {
+	Editor &editor = GetEditor();
 	editor.context.selectedFile = node;
 	editor.inspector.nextSelected.file = node;
 	editor.inspector.nextSelected.type = EditorSelectedType_FileUnknown;
 }
 
-static void EditorUnselectAll(Editor &editor)
+static void EditorUnselectAll()
 {
+	Editor &editor = GetEditor();
 	editor.context.selectedFile = nullptr;
 	editor.context.roomId = {};
 	editor.context.layerIndex = EditorNoLayer;
@@ -421,9 +450,85 @@ static void EditorUnselectAll(Editor &editor)
 	editor.inspector.nextSelected.type = EditorSelectedType_None;
 }
 
-static void EditorUpdateUI_DebugUI(Engine &engine)
+static void EditorRepointSpritesToDefaultTexture(Engine &engine, ID textureId)
 {
-	UI &ui = GetUI(engine);
+	Scene &scene = engine.scene;
+	for (u32 i = 0; i < scene.spriteCount; ++i)
+	{
+		SpriteDesc &sprite = scene.sprites[i].desc;
+		if ( !Valid(sprite.textureId) )// == textureId )
+		{
+			LOG(Warning, "Sprite <%s> lost the texture it refers to, falling back to the default one.\n", sprite.name);
+			sprite.textureId = engine.gfx.defaultTexture;
+		}
+	}
+}
+
+static void EditorRemoveSelection()
+{
+	Engine &engine = GetEngine();
+	Editor &editor = engine.editor;
+
+	const EditorSelection selection = editor.inspector.nextSelected;
+
+	if ( !( selection.type >= EditorSelectedType_AssetBegin || selection.type <= EditorSelectedType_AssetEnd ) )
+	{
+		return;
+	}
+
+	const ID assetId = selection.id;
+	if ( IsBuiltin(assetId) ) {
+		return;
+	}
+
+	switch ( selection.type )
+	{
+		case EditorSelectedType_Entity:
+			editor.isTranslating = false;
+			RemoveEntity(engine, assetId);
+			break;
+
+		case EditorSelectedType_Material:
+			RemoveMaterial(engine.gfx, assetId);
+			break;
+
+		case EditorSelectedType_Texture:
+			RemoveTexture(engine.gfx, assetId);
+			EditorRepointSpritesToDefaultTexture(engine, assetId);
+			break;
+
+		case EditorSelectedType_Audio:
+			for (u32 i = 0; i < ARRAY_COUNT(engine.audio.sources); ++i) {
+				if ( engine.audio.sources[i].clip == assetId ) {
+					StopAudioSource(i);
+				}
+			}
+			RemoveAudioClip(assetId);
+			break;
+
+		case EditorSelectedType_Music:
+			if ( engine.audio.musicFile == assetId ) {
+				MusicStop(engine.audio);
+				engine.audio.musicFile = {}; // So the next play loads its module afresh
+			}
+			DestroyMusicFile(assetId);
+			break;
+
+		case EditorSelectedType_Sprite:
+			RemoveSprite(engine.scene, assetId);
+			break;
+
+		default:
+			break;
+	}
+
+	EditorUnselectAll();
+}
+
+static void EditorUpdateUI_DebugUI()
+{
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
 	Editor &editor = engine.editor;
@@ -435,8 +540,9 @@ static void EditorUpdateUI_DebugUI(Engine &engine)
 }
 
 
-static void EditorUpdateUI_Outliner(Engine &engine)
+static void EditorUpdateUI_Outliner()
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 	Editor &editor = engine.editor;
 	Scene &scene = engine.scene;
@@ -459,7 +565,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 		bool sceneIsOpen;
 		if (UI_TreeNode(ui, "Scene", &scene, &sceneIsOpen))
 		{
-			EditorSelectScene(editor, scene);
+			EditorSelectScene();
 		}
 		if (UI_BeginContextMenu(ui, "SceneContext"))
 		{
@@ -485,7 +591,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 				bool roomIsOpen;
 				if (UI_TreeNode(ui, room.name, &room, &roomIsOpen))
 				{
-					EditorSelectRoom(editor, scene.rooms[roomIdx].id);
+					EditorSelectRoom(scene.rooms[roomIdx].id);
 				}
 				UI_PushID(ui, roomIndex++);
 				if (UI_BeginContextMenu(ui, "RoomContext"))
@@ -528,7 +634,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 						// the room's own node.
 						if  (UI_TreeNode(ui, layer.name, &room.layers, &layerIsOpen))
 						{
-							EditorSelectLayer(editor, scene.rooms[roomIdx].id, layerIndex);
+							EditorSelectLayer(scene.rooms[roomIdx].id, layerIndex);
 						}
 
 						UI_SetCursorPosXFromRight(ui, 110);
@@ -548,7 +654,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 								if ( entity.layerId == layer.id )
 								{
 									if ( UI_Button(ui, entity.name) ) {
-										EditorSelectEntity(editor, scene.entities[i].id);
+										EditorSelectEntity(scene.entities[i].id);
 									}
 								}
 							}
@@ -564,14 +670,14 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 								editor.context.layerIndex == layerIndex;
 							const u32 movedIndex = MoveLayer(room, layerIndex, moveDown ? 1 : -1);
 							if (wasSelected) {
-								EditorSelectLayer(editor, roomId, movedIndex);
+								EditorSelectLayer(roomId, movedIndex);
 							}
 							break;
 						}
 
 						if (removeLayer)
 						{
-							EditorUnselectLayer(editor, roomId, layerIndex);
+							EditorUnselectLayer(roomId, layerIndex);
 							RemoveLayer(room, layerIndex);
 							break;
 						}
@@ -588,7 +694,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 				if ( !Valid(entity.layerId) )
 				{
 					if ( UI_Button(ui, entity.name) ) {
-						EditorSelectEntity(editor, scene.entities[i].id);
+						EditorSelectEntity(scene.entities[i].id);
 					}
 				}
 			}
@@ -616,7 +722,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 			if (UI_Image(ui, texture.image, float2{32, 32}, flags, uvRect))
 			{
-				EditorSelectSprite(editor, spriteId);
+				EditorSelectSprite(spriteId);
 				selectedSprite = spriteId;
 			}
 			UI_PushID(ui, id++);
@@ -626,7 +732,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 				{
 					// Removal only takes effect at the end of the frame, so deleting
 					// from inside the loop leaves the array alone
-					EditorUnselectSprite(editor, spriteId);
+					EditorUnselectSprite(spriteId);
 					RemoveSprite(scene, spriteId);
 					if (selectedSprite == spriteId) {
 						selectedSprite = {};
@@ -647,7 +753,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			const MaterialDesc &desc = gfx.materials[i].desc;
 
 			if ( UI_Button(ui, desc.name) ) {
-				EditorSelectMaterial(editor, desc.id);
+				EditorSelectMaterial(desc.id);
 			}
 		}
 	}
@@ -668,7 +774,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 
 			if (UI_Image(ui, texture.image, float2{32, 32}, flags))
 			{
-				EditorSelectTexture(editor, handle);
+				EditorSelectTexture(handle);
 				selectedHandle = handle;
 			}
 		}
@@ -682,7 +788,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			const AudioClipDesc &desc = audio.clips[i].desc;
 
 			if ( UI_Button(ui, desc.name) ) {
-				EditorSelectAudioClip(editor, desc.id);
+				EditorSelectAudioClip(desc.id);
 			}
 		}
 	}
@@ -694,7 +800,7 @@ static void EditorUpdateUI_Outliner(Engine &engine)
 			const MusicFileDesc &desc = audio.musicFiles[i].desc;
 
 			if ( UI_Button(ui, desc.name) ) {
-				EditorSelectMusic(editor, desc.id);
+				EditorSelectMusic(desc.id);
 			}
 		}
 	}
@@ -727,9 +833,10 @@ static bool IsImgFile(const char *filename)
 	return isImg;
 }
 
-static void EditorUpdateUI_Assets(Engine &engine)
+static void EditorUpdateUI_Assets()
 {
-	UI &ui = GetUI(engine);
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
 	Editor &editor = engine.editor;
@@ -761,7 +868,7 @@ static void EditorUpdateUI_Assets(Engine &engine)
 		// For images, we get a snapshot
 		ImageH iconImg = editor.iconImg;
 		if ( isImg ) {
-			SnapshotNode *snapshot = EditorGetOrCreateSnapshotNode(engine, path.str);
+			SnapshotNode *snapshot = EditorGetOrCreateSnapshotNode(path.str);
 			if ( snapshot ) {
 				iconImg = snapshot->imageH;
 			}
@@ -780,19 +887,19 @@ static void EditorUpdateUI_Assets(Engine &engine)
 		{
 			if ( isWav )
 			{
-				EditorSelectFileAudio(editor, node);
+				EditorSelectFileAudio(node);
 			}
 			else if ( isMusic )
 			{
-				EditorSelectFileMusic(editor, node);
+				EditorSelectFileMusic(node);
 			}
 			else if ( isImg )
 			{
-				EditorSelectFileImage(editor, node);
+				EditorSelectFileImage(node);
 			}
 			else
 			{
-				EditorSelectFileUnknown(editor, node);
+				EditorSelectFileUnknown(node);
 			}
 		}
 
@@ -817,9 +924,10 @@ static const char *EditorMakeSpriteName(const Scene &scene, const char *textureN
 	return name;
 }
 
-static void EditorUpdateUI_SpriteSheet(Engine &engine)
+static void EditorUpdateUI_SpriteSheet()
 {
-	UI &ui = GetUI(engine);
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
 	Editor &editor = engine.editor;
@@ -969,16 +1077,18 @@ static void EditorUpdateUI_SpriteSheet(Engine &engine)
 	UI_EndWindow(ui);
 }
 
-static void EditorUpdateUI_InspectorScene(Engine &engine, Scene &scene)
+static void EditorUpdateUI_InspectorScene(Scene &scene)
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 	UI_Text(ui, "Rooms", "%u", scene.roomCount);
 	UI_Text(ui, "Entities", "%u", scene.entityCount);
 	UI_Text(ui, "Sprites", "%u", scene.spriteCount);
 }
 
-static void EditorUpdateUI_InspectorRoom(Engine &engine, Room &room)
+static void EditorUpdateUI_InspectorRoom(Room &room)
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 
 	UI_SeparatorLabel(ui, "Room");
@@ -992,8 +1102,9 @@ static void EditorUpdateUI_InspectorRoom(Engine &engine, Room &room)
 	UI_Text(ui, "Layers", "%u", room.layerCount);
 }
 
-static void EditorUpdateUI_InspectorLayer(Engine &engine, Layer &layer)
+static void EditorUpdateUI_InspectorLayer(Layer &layer)
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 	EditorInspector &inspector = engine.editor.inspector;
 
@@ -1012,8 +1123,9 @@ static void EditorUpdateUI_InspectorLayer(Engine &engine, Layer &layer)
 	UI_Checkbox(ui, "Collider", &layer.isCollider);
 }
 
-static void EditorUpdateUI_Inspector(Engine &engine)
+static void EditorUpdateUI_Inspector()
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 	Editor &editor = engine.editor;
 	EditorInspector &inspector = editor.inspector;
@@ -1100,7 +1212,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				};
 				ID textureId = GetOrCreateTexture(engine.gfx, textureDesc);
 
-				EditorSelectTexture(editor, textureId);
+				EditorSelectTexture(textureId);
 			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_FileAudio)
@@ -1161,32 +1273,32 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 	{
 		if (inspector.selected.type == EditorSelectedType_Scene)
 		{
-			EditorUpdateUI_InspectorScene(engine, engine.scene);
+			EditorUpdateUI_InspectorScene(engine.scene);
 		}
 		else if (inspector.selected.type == EditorSelectedType_Room)
 		{
-			EditorUpdateUI_InspectorScene(engine, engine.scene);
-			if ( Room *room = EditorGetContextRoom(engine) ) {
-				EditorUpdateUI_InspectorRoom(engine, *room);
+			EditorUpdateUI_InspectorScene(engine.scene);
+			if ( Room *room = EditorGetContextRoom() ) {
+				EditorUpdateUI_InspectorRoom(*room);
 			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_Layer)
 		{
-			EditorUpdateUI_InspectorScene(engine, engine.scene);
-			Room *room = EditorGetContextRoom(engine);
-			Layer *layer = EditorGetContextLayer(engine);
+			EditorUpdateUI_InspectorScene(engine.scene);
+			Room *room = EditorGetContextRoom();
+			Layer *layer = EditorGetContextLayer();
 			if ( room && layer ) {
-				EditorUpdateUI_InspectorRoom(engine, *room);
-				EditorUpdateUI_InspectorLayer(engine, *layer);
+				EditorUpdateUI_InspectorRoom(*room);
+				EditorUpdateUI_InspectorLayer(*layer);
 			}
 		}
 		else if(inspector.selected.type == EditorSelectedType_Entity)
 		{
 			// The ID goes invalid the moment the entity is removed, so this can be a
 			// stale selection even though the element survives until CompactEntities
-			if (inspector.selected.entityId)
+			if (inspector.selected.id)
 			{
-				Entity &entity = GetEntity(inspector.selected.entityId);
+				Entity &entity = GetEntity(inspector.selected.id);
 
 				static char name[64];
 				StrCopy(name, entity.name);
@@ -1209,7 +1321,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 
 					if (UI_Button(ui, "Go to sprite"))
 					{
-						EditorSelectSprite(editor, entity.spriteId);
+						EditorSelectSprite(entity.spriteId);
 					}
 				}
 			}
@@ -1219,20 +1331,20 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Texture)
 		{
-			if (inspector.selected.textureId)
+			if (inspector.selected.id)
 			{
-				const Texture &texture = GetTexture(inspector.selected.textureId);
+				const Texture &texture = GetTexture(inspector.selected.id);
 				UI_Text(ui, "Name", "%s", texture.desc.name);
 				UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
 
-				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.textureId, engine.gfx.grayImageH);
+				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.id, engine.gfx.grayImageH);
 				UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
 
 				UI_SeparatorLabel(ui, "Sprite");
 				UI_BeginLayout(ui, UILayout_Horizontal);
 				if (UI_Button(ui, "Create"))
 				{
-					ID textureId = inspector.selected.textureId;
+					ID textureId = inspector.selected.id;
 
 					const SpriteDesc spriteDesc = {
 						.name = "spr_new",
@@ -1242,7 +1354,7 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 				}
 				if (UI_Button(ui, "Sprite sheet..."))
 				{
-					editor.spriteSheet.textureId = inspector.selected.textureId;
+					editor.spriteSheet.textureId = inspector.selected.id;
 					editor.showSpriteSheet = true;
 				}
 				UI_EndLayout(ui);
@@ -1250,10 +1362,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Audio)
 		{
-			if (inspector.selected.audioClipId)
+			if (inspector.selected.id)
 			{
 				if (UI_Button(ui, "Play")) {
-					audioSourceIndex = PlayAudioClip(engine.audio, inspector.selected.audioClipId);
+					audioSourceIndex = PlayAudioClip(engine.audio, inspector.selected.id);
 				}
 				if (UI_Button(ui, "Stop")) {
 					StopAudioSource(audioSourceIndex);
@@ -1263,10 +1375,10 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Music)
 		{
-			if (inspector.selected.musicId)
+			if (inspector.selected.id)
 			{
 				if (UI_Button(ui, "Play")) {
-					MusicPlay(engine, inspector.selected.musicId);
+					MusicPlay(engine, inspector.selected.id);
 				}
 				if (UI_Button(ui, "Stop")) {
 					MusicStop(engine.audio);
@@ -1275,9 +1387,9 @@ static void EditorUpdateUI_Inspector(Engine &engine)
 		}
 		else if (inspector.selected.type == EditorSelectedType_Sprite)
 		{
-			if (inspector.selected.spriteId)
+			if (inspector.selected.id)
 			{
-				SpriteDesc &sprite = GetSprite(inspector.selected.spriteId).desc;
+				SpriteDesc &sprite = GetSprite(inspector.selected.id).desc;
 
 				static char name[64];
 				StrCopy(name, sprite.name);
@@ -1404,8 +1516,9 @@ static void UI_ProfilerFrame(UI &ui, const char *frameName, const ProfileNode *n
 	UI_EndTable(ui);
 }
 
-static void EditorUpdateUI_Profiler(Engine &engine)
+static void EditorUpdateUI_Profiler()
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 	const Graphics &gfx = engine.gfx;
 	Editor &editor = engine.editor;
@@ -1503,8 +1616,9 @@ static void EditorUpdateUI_Profiler(Engine &engine)
 }
 #endif // USE_PROFILE
 
-static void EditorUpdateUI_About(Engine &engine)
+static void EditorUpdateUI_About()
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 	Editor &editor = engine.editor;
 
@@ -1532,9 +1646,10 @@ static void EditorUpdateUI_About(Engine &engine)
 	wasShown = engine.editor.showAbout;
 }
 
-static void EditorUpdateUI_DragAndDropLost(Engine &engine)
+static void EditorUpdateUI_DragAndDropLost()
 {
-	UI &ui = GetUI(engine);
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
 	if ( UI_DragAndDropTargetLost(ui, "FileNode") )
 	{
 		FileNode *node = (FileNode*) UI_DragAndDropPayload(ui);
@@ -1542,9 +1657,9 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 		{
 			LOG(Info, "Image asset dropped: %s\n", node->filename);
 
-			const Mouse &mouse = sPlatform->window->mouse;
+			const Mouse &mouse = GetWindow().mouse;
 
-			if (EditorMode2D(engine.editor))
+			if (EditorMode2D())
 			{
 				const Camera &camera = engine.editor.camera[ProjectionOrthographic];
 				const float2 worldPos = Floor(GetWorld2DCoord(engine, camera, mouse.pos));
@@ -1616,8 +1731,9 @@ static void EditorUpdateUI_DragAndDropLost(Engine &engine)
 	}
 }
 
-static void EditorUpdateUI_ContextMenu(Engine &engine)
+static void EditorUpdateUI_ContextMenu()
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 
 	const float2 pos = Float2(ui.input.lastMouseClickPos);
@@ -1632,8 +1748,9 @@ static void EditorUpdateUI_ContextMenu(Engine &engine)
 	}
 }
 
-static void EditorUpdateUI_Settings(Engine &engine)
+static void EditorUpdateUI_Settings()
 {
+	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 	Editor &editor = engine.editor;
 
@@ -1721,11 +1838,12 @@ static const EditorFileDialogStrings EditorFileDialogStringsArray[] = {
 };
 CT_ASSERT( ARRAY_COUNT(EditorFileDialogStringsArray) == EditorFileDialogModeCount );
 
-static bool EditorFileDialog(Engine &engine, EditorFileDialogMode mode, const char *extension, bool *isOpen, FilePath *filePath)
+static bool EditorFileDialog(EditorFileDialogMode mode, const char *extension, bool *isOpen, FilePath *filePath)
 {
+	Engine &engine = GetEngine();
 	bool ret = false;
 
-	UI &ui = GetUI(engine);
+	UI &ui = engine.ui;
 	Editor &editor = engine.editor;
 
 	static bool wasOpen = false;
@@ -1780,23 +1898,24 @@ static bool EditorFileDialog(Engine &engine, EditorFileDialogMode mode, const ch
 	return ret;
 }
 
-static void EditorUpdateUI(Engine &engine)
+static void EditorUpdateUI()
 {
-	UI &ui = GetUI(engine);
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
 	Editor &editor = engine.editor;
 
-	EditorUpdateUI_MenuBar(engine);
-	EditorUpdateUI_ToolBar(engine);
+	EditorUpdateUI_MenuBar();
+	EditorUpdateUI_ToolBar();
 
 	if ( editor.showLoadScene )
 	{
 		static FilePath filePath = {};
-		if ( EditorFileDialog(engine, EditorFileDialog_LoadFile, "txt", &editor.showLoadScene, &filePath) )
+		if ( EditorFileDialog(EditorFileDialog_LoadFile, "txt", &editor.showLoadScene, &filePath) )
 		{
 			const EditorCommand command = { .type = EditorCommandLoadTxt, .filepath = filePath.str };
-			AddEditorCommand(editor, command);
+			AddEditorCommand(command);
 		}
 	}
 
@@ -1804,7 +1923,7 @@ static void EditorUpdateUI(Engine &engine)
 	static bool saveScene = false;
 	if ( editor.showSaveScene )
 	{
-		if ( EditorFileDialog(engine, EditorFileDialog_SaveFile, "txt", &editor.showSaveScene, &saveSceneFilepath) )
+		if ( EditorFileDialog(EditorFileDialog_SaveFile, "txt", &editor.showSaveScene, &saveSceneFilepath) )
 		{
 			saveScene = true;
 		}
@@ -1819,7 +1938,7 @@ static void EditorUpdateUI(Engine &engine)
 			{
 				if ( result == 0 ) {
 					EditorCommand command = { .type = EditorCommandSaveTxt, .filepath = saveSceneFilepath.str };
-					AddEditorCommand(editor, command);
+					AddEditorCommand(command);
 				}
 				saveScene = false;
 			}
@@ -1827,7 +1946,7 @@ static void EditorUpdateUI(Engine &engine)
 		else
 		{
 			EditorCommand command = { .type = EditorCommandSaveTxt, .filepath = saveSceneFilepath.str };
-			AddEditorCommand(editor, command);
+			AddEditorCommand(command);
 
 			saveScene = false;
 		}
@@ -1835,49 +1954,49 @@ static void EditorUpdateUI(Engine &engine)
 
 	if ( editor.showOutliner )
 	{
-		EditorUpdateUI_Outliner(engine);
+		EditorUpdateUI_Outliner();
 	}
 
 	if ( editor.showAssets )
 	{
-		EditorUpdateUI_Assets(engine);
+		EditorUpdateUI_Assets();
 	}
 
 	if ( editor.showInspector )
 	{
-		EditorUpdateUI_Inspector(engine);
+		EditorUpdateUI_Inspector();
 	}
 
 	if ( editor.showSpriteSheet )
 	{
-		EditorUpdateUI_SpriteSheet(engine);
+		EditorUpdateUI_SpriteSheet();
 	}
 
 	#if USE_PROFILE
 	if ( editor.showProfiler )
 	{
-		EditorUpdateUI_Profiler(engine);
+		EditorUpdateUI_Profiler();
 	}
 	#endif // USE_PROFILE
 
 	if ( editor.showDebugUI )
 	{
-		EditorUpdateUI_DebugUI(engine);
+		EditorUpdateUI_DebugUI();
 	}
 
 	if ( editor.showAbout )
 	{
-		EditorUpdateUI_About(engine);
+		EditorUpdateUI_About();
 	}
 
 	if ( editor.showContextMenu )
 	{
-		EditorUpdateUI_ContextMenu(engine);
+		EditorUpdateUI_ContextMenu();
 	}
 
 	if ( editor.showSettings )
 	{
-		EditorUpdateUI_Settings(engine);
+		EditorUpdateUI_Settings();
 	}
 
 	if ( editor.showQuit )
@@ -1893,7 +2012,7 @@ static void EditorUpdateUI(Engine &engine)
 		}
 	}
 
-	EditorUpdateUI_DragAndDropLost(engine);
+	EditorUpdateUI_DragAndDropLost();
 }
 
 #if PLATFORM_ANDROID
@@ -1944,6 +2063,8 @@ static void EditorUpdateCamera3DOrbit(Camera &camera, f32 deltaSeconds)
 
 static void EditorUpdateCamera3D(const Window &window, Camera &camera, f32 deltaSeconds, bool handleInput)
 {
+	const Mouse &mouse = window.mouse;
+
 	float3 dir = { 0, 0, 0 };
 
 	if ( handleInput )
@@ -1959,9 +2080,9 @@ static void EditorUpdateCamera3D(const Window &window, Camera &camera, f32 delta
 			deltaPitch = - window.touches[touchId].dy * ToRadians * 0.2f;
 		}
 #else
-		if (MouseButtonPressed(window.mouse, MOUSE_BUTTON_LEFT)) {
-			deltaYaw = - window.mouse.delta.x * ToRadians * 0.2f;
-			deltaPitch = - window.mouse.delta.y * ToRadians * 0.2f;
+		if (MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT)) {
+			deltaYaw = - mouse.delta.x * ToRadians * 0.2f;
+			deltaPitch = - mouse.delta.y * ToRadians * 0.2f;
 		}
 #endif
 		float2 angles = camera.orientation;
@@ -2007,8 +2128,9 @@ static void EditorUpdateCamera3D(const Window &window, Camera &camera, f32 delta
 	speed = Mul(speed, 0.9);
 }
 
-static void EditorUpdateInteraction2D(Engine &engine, const Window &window, const Gamepad &gamepad, Camera &camera, f32 deltaSeconds, bool handleInput)
+static void EditorUpdateInteraction2D(const Window &window, const Gamepad &gamepad, Camera &camera, f32 deltaSeconds, bool handleInput)
 {
+	Engine &engine = GetEngine();
 	Editor &editor = engine.editor;
 	UI &ui = engine.ui;
 	const Mouse &mouse = window.mouse;
@@ -2037,10 +2159,10 @@ static void EditorUpdateInteraction2D(Engine &engine, const Window &window, cons
 			if (!wasTranslating) {
 				initialWorldPos = float2{entity.position.x, entity.position.y};
 				initialWorldOffset = Floor(initialWorldPos) - Floor(mouseWorldPos);
-			} else if (MouseButtonPress(window.mouse, MOUSE_BUTTON_RIGHT) || KeyPress(window.keyboard, K_ESCAPE)) {
+			} else if (MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT) || KeyPress(window.keyboard, K_ESCAPE)) {
 				EntitySetPosition(entity, Float3(initialWorldPos, entity.position.z));
 				editor.isTranslating = false;
-			} else if (MouseButtonRelease(window.mouse, MOUSE_BUTTON_LEFT) || MouseButtonPress(window.mouse, MOUSE_BUTTON_LEFT)) {
+			} else if (MouseButtonRelease(mouse, MOUSE_BUTTON_LEFT) || MouseButtonPress(mouse, MOUSE_BUTTON_LEFT)) {
 				editor.isTranslating = false;
 			} else {
 				const float2 finalPos = Floor(mouseWorldPos) + initialWorldOffset;
@@ -2056,34 +2178,16 @@ static void EditorUpdateInteraction2D(Engine &engine, const Window &window, cons
 			isScaling = true;
 			initialWorldOffset = float2{entity.position.x, entity.position.y} - mouseWorldPos;
 			initialScale = entity.scale;
-		} else if (isScaling && MouseButtonPress(window.mouse, MOUSE_BUTTON_RIGHT)) {
+		} else if (isScaling && MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT)) {
 			entity.scale = initialScale;
 			isScaling = false;
-		} else if (isScaling && MouseButtonPress(window.mouse, MOUSE_BUTTON_LEFT)) {
+		} else if (isScaling && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT)) {
 			isScaling = false;
 		} else if (isScaling) {
 			const float2 worldOffset = float2{entity.position.x, entity.position.y} - mouseWorldPos;
 			const f32 initialOffsetLen = Length(initialWorldOffset);
 			const f32 offsetLen = Length(worldOffset);
 			entity.scale = initialScale * offsetLen / initialOffsetLen;
-		}
-
-		if (KeyPress(window.keyboard, K_DELETE))
-		{
-			RemoveEntity(engine, selectedEntity);
-			EditorUnselectAll(engine.editor);
-		}
-
-		if (KeyPressed(window.keyboard, K_SHIFT))
-		{
-			handleInput = false; // K_SHIFT is for commands, so abort camera translation
-
-			if (KeyPress(window.keyboard, K_D))
-			{
-				const ID newEntity = DuplicateEntity(engine, selectedEntity);
-				EditorSelectEntity(editor, newEntity);
-				editor.isTranslating = true;
-			}
 		}
 	}
 
@@ -2168,15 +2272,17 @@ static void EditorUpdateInteraction2D(Engine &engine, const Window &window, cons
 	}
 }
 
-static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool handleInput)
+static void EditorBeginSceneEditing(bool handleInput)
 {
-	Editor &editor = engine.editor;
+	const Mouse &mouse = GetWindow().mouse;
+	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	Scene &scene = engine.scene;
 
 	if ( handleInput )
 	{
 		// While the Tilesets panel is open, left click paints/erases tiles instead of selecting entities
-		const bool tileEditMode = EditorMode2D(editor) && EditorGetContextLayer(engine) != nullptr;
+		const bool tileEditMode = EditorMode2D() && EditorGetContextLayer() != nullptr;
 
 		if (!tileEditMode && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) && !editor.isTranslating)
 		{
@@ -2194,21 +2300,21 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 
 			if (entityId)
 			{
-				EditorSelectEntity(editor, entityId);
+				EditorSelectEntity(entityId);
 			}
 			else
 			{
-				EditorUnselectAll(editor);
+				EditorUnselectAll();
 			}
 		}
 
 		if (tileEditMode && MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT))
 		{
-			Layer *contextLayer = EditorGetContextLayer(engine);
+			Layer *contextLayer = EditorGetContextLayer();
 			if (contextLayer)
 			{
 				const Camera &camera = editor.camera[ProjectionOrthographic];
-				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos) - EditorGetContextRoom(engine)->pos;
+				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos) - EditorGetContextRoom()->pos;
 
 				Layer &layer = *contextLayer;
 
@@ -2231,12 +2337,13 @@ static void EditorBeginSceneEditing(Engine &engine, const Mouse &mouse, bool han
 	}
 }
 
-void EditorDebugDraw(Engine &engine)
+void EditorDebugDraw()
 {
+	Engine &engine = GetEngine();
 	Editor &editor = engine.editor;
 
-	Room *contextRoom = EditorGetContextRoom(engine);
-	Layer *contextLayer = EditorGetContextLayer(engine);
+	Room *contextRoom = EditorGetContextRoom();
+	Layer *contextLayer = EditorGetContextLayer();
 
 	if (contextLayer != nullptr)
 	{
@@ -2246,9 +2353,9 @@ void EditorDebugDraw(Engine &engine)
 		const float2 size = LayerSize(layer);
 		DrawBoxOutline(pos, size, ColorOrange);
 
-		if (EditorMode2D(editor))
+		if (EditorMode2D())
 		{
-			const Mouse &mouse = sPlatform->window->mouse;
+			const Mouse &mouse = GetWindow().mouse;
 			const float2 worldPos = Floor(GetWorld2DCoord(engine, editor.camera[ProjectionOrthographic], mouse.pos));
 
 			if ( layer.isCollider )
@@ -2288,8 +2395,9 @@ void EditorDebugDraw(Engine &engine)
 	}
 }
 
-static void EditorProcessCommands(Engine &engine, Arena scratch)
+static void EditorProcessCommands(Arena scratch)
 {
+	Engine &engine = GetEngine();
 	Editor &editor = engine.editor;
 	Graphics &gfx = engine.gfx;
 
@@ -2310,7 +2418,7 @@ static void EditorProcessCommands(Engine &engine, Arena scratch)
 				}
 				case EditorCommandNew:
 				{
-					EditorUnselectAll(engine.editor);
+					EditorUnselectAll();
 					CleanScene(engine);
 					CreateScene(engine);
 					break;
@@ -2348,8 +2456,9 @@ static void EditorProcessCommands(Engine &engine, Arena scratch)
 	}
 }
 
-static FileNode *GetFreeFileNode(Editor &editor)
+static FileNode *GetFreeFileNode()
 {
+	Editor &editor = GetEditor();
 	ASSERT(editor.freeNodes != nullptr);
 	FileNode *res = editor.freeNodes;
 	editor.freeNodes = res->next;
@@ -2362,8 +2471,9 @@ static FileNode *GetFreeFileNode(Editor &editor)
 	return res;
 }
 
-static void FreeFileNode(Editor &editor, FileNode *node)
+static void FreeFileNode(FileNode *node)
 {
+	Editor &editor = GetEditor();
 	FileNode *first = editor.freeNodes;
 	if (first) { first->prev = node; }
 	node->prev = nullptr;
@@ -2423,13 +2533,13 @@ void EditorInitialize(Engine &engine)
 
 	editor.spriteSheet.textureId = {};
 
-	editor.iconAsset = EditorLoadIcon(engine, "editor/file_32x32.png", "file_32x32");
-	editor.iconWav = EditorLoadIcon(engine, "editor/wav_32x32.png", "wav_32x32");
-	editor.iconMod = EditorLoadIcon(engine, "editor/mod_32x32.png", "mod_32x32");
-	editor.iconImg = EditorLoadIcon(engine, "editor/img_32x32.png", "img_32x32");
-	editor.iluLogo = EditorLoadIcon(engine, "editor/ilu_logo.png", "ilu_logo");
+	editor.iconAsset = EditorLoadIcon("editor/file_32x32.png", "file_32x32");
+	editor.iconWav = EditorLoadIcon("editor/wav_32x32.png", "wav_32x32");
+	editor.iconMod = EditorLoadIcon("editor/mod_32x32.png", "mod_32x32");
+	editor.iconImg = EditorLoadIcon("editor/img_32x32.png", "img_32x32");
+	editor.iluLogo = EditorLoadIcon("editor/ilu_logo.png", "ilu_logo");
 
-	EditorUnselectAll(editor);
+	EditorUnselectAll();
 
 	// Make a liked list of free file nodes
 	constexpr u32 maxFileNodes = 4092;
@@ -2451,7 +2561,7 @@ void EditorInitialize(Engine &engine)
 		DirEntry entry;
 		while ( ReadDir(dir, entry) )
 		{
-			FileNode *node = GetFreeFileNode(editor);
+			FileNode *node = GetFreeFileNode();
 			node->filename = InternString(entry.name);
 			node->type = IsImgFile(entry.name) ? FileNodeType_Image :
 						IsMusicFile(entry.name) ? FileNodeType_Music :
@@ -2466,22 +2576,59 @@ void EditorInitialize(Engine &engine)
 	CleanScene(engine);
 }
 
+static bool EditorHandleKeyboardShortcuts()
+{
+	Engine &engine = GetEngine();
+	Editor &editor = engine.editor;
+	const Window &window = GetWindow();
+
+	bool handleInput = true;
+
+	// Delete takes any selection, the rest of the shortcuts only act on an entity
+	if (KeyPress(window.keyboard, K_DELETE))
+	{
+		EditorRemoveSelection();
+	}
+
+	const ID selectedEntity = EditorGetSelectedEntity(editor);
+	if ( !selectedEntity )
+	{
+		return handleInput;
+	}
+
+	if (KeyPressed(window.keyboard, K_SHIFT))
+	{
+		handleInput = false; // K_SHIFT is for commands, so abort camera translation
+
+		if (KeyPress(window.keyboard, K_D))
+		{
+			const ID newEntity = DuplicateEntity(engine, selectedEntity);
+			EditorSelectEntity(newEntity);
+			editor.isTranslating = true;
+		}
+	}
+
+	return handleInput;
+}
+
 void EditorUpdate(Engine &engine)
 {
-	Plat &platform = *sPlatform;
+	const Plat &platform = GetPlatform();
+	const Gamepad &gamepad = *platform.gamepad;
+	const Window &window = GetWindow();
 	Graphics &gfx = engine.gfx;
 
-	if ( KeyPress(platform.window->keyboard, K_F5) )
+	if ( KeyPress(window.keyboard, K_F5) )
 	{
 		if ( engine.game.state == GameStateStopped ) {
 			engine.game.state = GameStateStarting;
 		}
 	}
-	else if ( KeyPress(platform.window->keyboard, K_ESCAPE) )
+	else if ( KeyPress(window.keyboard, K_ESCAPE) )
 	{
 		if ( engine.game.state == GameStateRunning ) {
 			engine.game.state = GameStateStopping;
-			EditorSetCamera(engine.editor);
+			EditorSetCamera();
 		}
 	}
 
@@ -2490,9 +2637,11 @@ void EditorUpdate(Engine &engine)
 		return;
 	}
 
-	EditorUpdateUI(engine);
+	EditorUpdateUI();
 
-	const bool handleInput = !engine.ui.wantsInput && engine.game.state == GameStateStopped;
+	bool handleInput = !engine.ui.wantsInput && engine.game.state == GameStateStopped;
+
+	EditorHandleKeyboardShortcuts();
 
 	if ( handleInput )
 	{
@@ -2502,7 +2651,7 @@ void EditorUpdate(Engine &engine)
 		}
 	}
 
-	if (EditorMode3D(engine.editor))
+	if (EditorMode3D())
 	{
 		if (engine.editor.cameraOrbit)
 		{
@@ -2510,20 +2659,20 @@ void EditorUpdate(Engine &engine)
 		}
 		else
 		{
-			EditorUpdateCamera3D(*platform.window, engine.editor.camera[ProjectionPerspective], gfx.deltaSeconds, handleInput);
+			EditorUpdateCamera3D(window, engine.editor.camera[ProjectionPerspective], gfx.deltaSeconds, handleInput);
 		}
 
 		SetCamera(engine.editor.camera[ProjectionPerspective]);
 	}
 	else
 	{
-		EditorUpdateInteraction2D(engine, *platform.window, *platform.gamepad, engine.editor.camera[ProjectionOrthographic], gfx.deltaSeconds, handleInput);
+		EditorUpdateInteraction2D(window, gamepad, engine.editor.camera[ProjectionOrthographic], gfx.deltaSeconds, handleInput);
 		SetCamera(engine.editor.camera[ProjectionOrthographic]);
 	}
 
-	EditorBeginSceneEditing(engine, platform.window->mouse, handleInput);
+	EditorBeginSceneEditing(handleInput);
 
-	EditorDebugDraw(engine);
+	EditorDebugDraw();
 }
 
 void EditorRender(Engine &engine, CommandList &commandList)
@@ -2621,7 +2770,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 void EditorPostRender(Engine &engine)
 {
 	Scratch scratch;
-	EditorProcessCommands(engine, scratch.arena);
+	EditorProcessCommands(scratch.arena);
 }
 
 #if 0

@@ -68,7 +68,13 @@ static constexpr bool sLoadShadersFromText = true;
 static constexpr bool sLoadShadersFromText = false;
 #endif
 
-static Engine *engine = nullptr;
+// Access to singletons
+inline Plat &GetPlatform() { return *sPlatform; }
+inline Window &GetWindow() { return *sPlatform->window; }
+inline Engine &GetEngine() { return *sPlatform->engine; }
+#if USE_EDITOR
+inline Editor &GetEditor() { return sPlatform->engine->editor; }
+#endif
 
 
 static const char * InternString(const char *str)
@@ -93,13 +99,6 @@ Engine &GetEngine(Plat &platform)
 	ASSERT(engine != NULL);
 	return *engine;
 }
-
-#if USE_UI
-UI &GetUI(Engine &engine)
-{
-	return engine.ui;
-}
-#endif
 
 
 AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
@@ -581,8 +580,8 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 void UIBeginFrameRecording(Engine &engine)
 {
-	UI &ui = GetUI(engine);
-	const Window &window = *sPlatform->window;
+	UI &ui = engine.ui;
+	const Window &window = GetWindow();
 	Graphics &gfx = engine.gfx;
 
 	UI_SetInputState(ui, window.keyboard, window.mouse, window.chars);
@@ -593,7 +592,7 @@ void UIBeginFrameRecording(Engine &engine)
 
 void UIEndFrameRecording(Engine &engine)
 {
-	UI &ui = GetUI(engine);
+	UI &ui = engine.ui;
 	UI_EndFrame(ui);
 }
 
@@ -644,8 +643,6 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 
 	if ( platform.engine )
 	{
-		::engine = platform.engine;
-
 		UI_ResetStyle(platform.engine->ui);
 
 		// Profile state does not survive the reload, so GPU profiling starts fresh
@@ -666,12 +663,11 @@ ENGINE_API void OnPlatformUnloadEngine(Plat &platform)
 
 ENGINE_API bool OnPlatformPreInit(Plat &platform)
 {
-	::engine = PushZeroStruct(GlobalArena, Engine);
-	platform.engine = ::engine;
+	platform.engine = PushZeroStruct(GlobalArena, Engine);
 
 	InitializeIDPool();
 
-	Engine &engine = *::engine;
+	Engine &engine = GetEngine();
 
 #if USE_DATA_BUILD
 	bool buildAssets = false;
@@ -945,14 +941,16 @@ ENGINE_API void OnPlatformCleanup(Plat &platform)
 
 void SetCamera(const Camera &camera)
 {
-	engine->gfx.camera = camera;
+	Engine &engine = GetEngine();
+	engine.gfx.camera = camera;
 }
 
 ID FindRoom(const char *name)
 {
-	for (u32 i = 0; i < engine->scene.roomCount; ++i)
+	Engine &engine = GetEngine();
+	for (u32 i = 0; i < engine.scene.roomCount; ++i)
 	{
-		const Room &room = engine->scene.rooms[i];
+		const Room &room = engine.scene.rooms[i];
 		if ( room.id && StrEq(room.name, name) ) {
 			return room.id;
 		}
@@ -973,9 +971,10 @@ Room *TryGetRoom(ID roomId)
 
 ID FindEntity(const char *name)
 {
-	for (u32 i = 0; i < engine->scene.entityCount; ++i)
+	Engine &engine = GetEngine();
+	for (u32 i = 0; i < engine.scene.entityCount; ++i)
 	{
-		const Entity &entity = engine->scene.entities[i];
+		const Entity &entity = engine.scene.entities[i];
 		if ( entity.id && StrEq(entity.name, name) ) {
 			return entity.id;
 		}
@@ -995,15 +994,17 @@ Entity *TryGetEntity(ID entityId)
 
 ID FindSprite(const char *name)
 {
-	ID id = FindSprite(engine->scene, name);
+	Engine &engine = GetEngine();
+	ID id = FindSprite(engine.scene, name);
 	return id;
 }
 
 ID GetAudioClip(const char *name)
 {
-	for (u32 i = 0; i < engine->audio.clipCount; ++i)
+	Engine &engine = GetEngine();
+	for (u32 i = 0; i < engine.audio.clipCount; ++i)
 	{
-		const AudioClipDesc &desc = engine->audio.clips[i].desc;
+		const AudioClipDesc &desc = engine.audio.clips[i].desc;
 		if ( desc.id && StrEq(desc.name, name) ) {
 			return desc.id;
 		}
@@ -1013,15 +1014,17 @@ ID GetAudioClip(const char *name)
 
 u32 PlayAudioClip(ID clipId)
 {
-	u32 ret = PlayAudioClip(engine->audio, clipId);
+	Engine &engine = GetEngine();
+	u32 ret = PlayAudioClip(engine.audio, clipId);
 	return ret;
 }
 
 ID GetMusic(const char *name)
 {
-	for (u32 i = 0; i < engine->audio.musicFileCount; ++i)
+	Engine &engine = GetEngine();
+	for (u32 i = 0; i < engine.audio.musicFileCount; ++i)
 	{
-		const MusicFileDesc &desc = engine->audio.musicFiles[i].desc;
+		const MusicFileDesc &desc = engine.audio.musicFiles[i].desc;
 		if ( desc.id && StrEq(desc.name, name) ) {
 			return desc.id;
 		}
@@ -1031,7 +1034,8 @@ ID GetMusic(const char *name)
 
 void PlayMusic(ID musicId)
 {
-	MusicPlay(*engine, musicId);
+	Engine &engine = GetEngine();
+	MusicPlay(engine, musicId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1058,7 +1062,7 @@ void PlayMusic(ID musicId)
 
 #include "game.cpp"
 
-#define ILU_ID_POOL ::engine->idPool
+#define ILU_ID_POOL GetEngine().idPool
 #define ILU_ID_IMPLEMENTATION
 #include "ilu_id.h"
 
