@@ -101,7 +101,7 @@ ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size)
 
 ID GetOrCreateSprite(Engine &engine, const SpriteDesc &desc)
 {
-	ID id = FindSprite(engine.scene, desc.name);
+	ID id = FindSprite(engine.scene, desc.textureId, desc.pos, desc.size);
 	if (!id)
 		id = CreateSprite(engine, desc);
 	return id;

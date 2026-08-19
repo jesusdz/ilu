@@ -369,10 +369,10 @@ static void EditorSelectMaterial(ID materialId)
 	editor.inspector.nextSelected.type = EditorSelectedType_Material;
 }
 
-static void EditorSelectTexture(ID handle)
+static void EditorSelectTexture(ID textureId)
 {
 	Editor &editor = GetEditor();
-	editor.inspector.nextSelected.id = handle;
+	editor.inspector.nextSelected.id = textureId;
 	editor.inspector.nextSelected.type = EditorSelectedType_Texture;
 }
 
@@ -558,6 +558,20 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 	UI_PopID(ui);
 }
 
+static void EditorEntityDropTarget(ID layerId)
+{
+	Engine &engine = GetEngine();
+	UI &ui = engine.ui;
+
+	if ( UI_DragAndDropTarget(ui, "Entity") )
+	{
+		const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+		if ( droppedId ) {
+			GetEntity(droppedId).layerId = layerId;
+		}
+	}
+}
+
 static void EditorUpdateUI_DebugUI()
 {
 	Engine &engine = GetEngine();
@@ -571,7 +585,6 @@ static void EditorUpdateUI_DebugUI()
 
 	UI_EndWindow(ui);
 }
-
 
 static void EditorUpdateUI_Outliner()
 {
@@ -600,6 +613,7 @@ static void EditorUpdateUI_Outliner()
 		{
 			EditorSelectScene();
 		}
+		EditorEntityDropTarget({}); // The way back out of a layer
 		if (UI_BeginContextMenu(ui, "SceneContext"))
 		{
 			if (UI_MenuItem(ui, "Create room"))
@@ -625,6 +639,11 @@ static void EditorUpdateUI_Outliner()
 				if (UI_TreeNode(ui, room.name, &room, &roomIsOpen))
 				{
 					EditorSelectRoom(scene.rooms[roomIdx].id);
+				}
+				// An entity belongs to a layer and not to a room, so the drop lands on the
+				// one the room is measured by
+				if ( const Layer *baseLayer = GetBaseLayer(room) ) {
+					EditorEntityDropTarget(baseLayer->id);
 				}
 				UI_PushID(ui, roomIndex++);
 				if (UI_BeginContextMenu(ui, "RoomContext"))
@@ -669,6 +688,7 @@ static void EditorUpdateUI_Outliner()
 						{
 							EditorSelectLayer(scene.rooms[roomIdx].id, layerIndex);
 						}
+						EditorEntityDropTarget(layer.id);
 
 						UI_SetCursorPosXFromRight(ui, 110);
 						UI_ToggleIcon(ui, EditorIcon_Eye, &layer.visible);
@@ -687,8 +707,9 @@ static void EditorUpdateUI_Outliner()
 								if ( entity.layerId == layer.id )
 								{
 									if ( UI_Button(ui, entity.name) ) {
-										EditorSelectEntity(scene.entities[i].id);
+										EditorSelectEntity(entity.id);
 									}
+									UI_DragAndDropSource(ui, "Entity", UI_Payload(entity.id.slot), editor.iconAsset );
 									EditorAssetContextMenu("EntityContext", EditorSelectedType_Entity, scene.entities[i].id);
 								}
 							}
@@ -730,6 +751,7 @@ static void EditorUpdateUI_Outliner()
 					if ( UI_Button(ui, entity.name) ) {
 						EditorSelectEntity(scene.entities[i].id);
 					}
+					UI_DragAndDropSource(ui, "Entity", UI_Payload(entity.id.slot), editor.iconAsset );
 					EditorAssetContextMenu("EntityContext", EditorSelectedType_Entity, scene.entities[i].id);
 				}
 			}
@@ -759,6 +781,9 @@ static void EditorUpdateUI_Outliner()
 				EditorSelectSprite(spriteId);
 				selectedSprite = spriteId;
 			}
+
+			UI_DragAndDropSource(ui, "Sprite", UI_Payload(spriteId.slot), texture.image );
+
 			EditorAssetContextMenu("SpriteContext", EditorSelectedType_Sprite, spriteId);
 		}
 
@@ -789,15 +814,18 @@ static void EditorUpdateUI_Outliner()
 
 			if ( (desc.flags & AssetFlag_Ghost) && !(desc.flags & AssetFlag_Builtin) ) { continue; }
 
-			const ID handle = desc.id;
-			const UIWidgetFlags flags = selectedHandle == handle ? UIWidgetFlag_Outline : UIWidgetFlag_None;
+			const ID textureId = desc.id;
+			const UIWidgetFlags flags = selectedHandle == textureId ? UIWidgetFlag_Outline : UIWidgetFlag_None;
 
 			if (UI_Image(ui, texture.image, float2{32, 32}, flags))
 			{
-				EditorSelectTexture(handle);
-				selectedHandle = handle;
+				EditorSelectTexture(textureId);
+				selectedHandle = textureId;
 			}
-			EditorAssetContextMenu("TextureContext", EditorSelectedType_Texture, handle);
+
+			UI_DragAndDropSource(ui, "Texture", UI_Payload(textureId.slot), texture.image );
+
+			EditorAssetContextMenu("TextureContext", EditorSelectedType_Texture, textureId);
 		}
 		UI_EndLayout(ui);
 	}
@@ -926,7 +954,7 @@ static void EditorUpdateUI_Assets()
 			}
 		}
 
-		UI_DragAndDropSource(ui, "FileNode", node, icon );
+		UI_DragAndDropSource(ui, "FileNode", UI_Payload(node), icon );
 
 		node = node->next;
 	}
@@ -970,16 +998,16 @@ static void EditorUpdateUI_SpriteSheet()
 		{
 			const Texture &texture = gfx.textures[i];
 			const TextureDesc &desc = texture.desc;
-			const ID handle = desc.id;
+			const ID textureId = desc.id;
 			if ( desc.flags & AssetFlag_Ghost ) {
 				continue;
 			}
 
-			const UIWidgetFlags flags = handle == sheet.textureId ? UIWidgetFlag_Outline : UIWidgetFlag_None;
+			const UIWidgetFlags flags = textureId == sheet.textureId ? UIWidgetFlag_Outline : UIWidgetFlag_None;
 
 			if ( UI_Image(ui, texture.image, float2{32, 32}, flags) )
 			{
-				sheet.textureId = handle;
+				sheet.textureId = textureId;
 			}
 		}
 		UI_EndLayout(ui);
@@ -1335,22 +1363,65 @@ static void EditorUpdateUI_Inspector()
 				UI_InputFloat(ui, "Scale", &entity.scale);
 				UI_Checkbox(ui, "Visible", &entity.visible);
 
-				if (entity.spriteId)
+				UI_SeparatorLabel(ui, "Sprite");
+
+				const SpriteDesc *sprite = entity.spriteId ? &GetSprite(entity.spriteId).desc : nullptr;
+				UI_Text(ui, "Name", "%s", sprite ? sprite->name : "<none>");
+				if ( UI_DragAndDropTarget(ui, "Sprite") )
 				{
-					UI_SeparatorLabel(ui, "Sprite");
-
-					const SpriteDesc &sprite = GetSprite(entity.spriteId).desc;
-					UI_Text(ui, "Name", sprite.name);
-
-					if (UI_Button(ui, "Go to sprite"))
-					{
-						EditorSelectSprite(entity.spriteId);
+					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+					if ( droppedId ) {
+						entity.spriteId = droppedId;
 					}
+				}
+
+				if (sprite && UI_Button(ui, "Go to sprite"))
+				{
+					EditorSelectSprite(entity.spriteId);
 				}
 			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_Material)
 		{
+			if (inspector.selected.id)
+			{
+				MaterialDesc &desc = GetMaterial(inspector.selected.id).desc;
+
+				static char name[64];
+				StrCopy(name, desc.name);
+				UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
+				desc.name = InternString(name);
+
+				// Resolved into a pipeline index on creation, so it is not editable here
+				UI_Text(ui, "Pipeline", "%s", desc.pipelineName ? desc.pipelineName : "");
+
+				if (UI_InputFloat(ui, "UV scale", &desc.uvScale)) {
+					engine.gfx.shouldUpdateMaterials = true; // uvScale is what the buffer holds
+				}
+
+				UI_SeparatorLabel(ui, "Texture");
+
+				// A material outlives the texture it names, and drawing it pink is the point,
+				// so the row reads as empty rather than resolving one
+				const Texture *texture = desc.textureId ? &GetTexture(desc.textureId) : nullptr;
+				UI_Text(ui, "Name", "%s", texture ? texture->desc.name : "<none>");
+				if ( UI_DragAndDropTarget(ui, "Texture") )
+				{
+					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+					if ( droppedId ) {
+						desc.textureId = droppedId;
+						engine.gfx.shouldUpdateMaterialBindGroups = true; // albedo is bound there
+					}
+				}
+
+				const ImageH imageH = GetTextureImage(engine.gfx, desc.textureId, engine.gfx.grayImageH);
+				UI_Image(ui, imageH, float2{0, 0}, UIWidgetFlag_Expand);
+
+				if (texture && UI_Button(ui, "Go to texture"))
+				{
+					EditorSelectTexture(desc.textureId);
+				}
+			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_Texture)
 		{
@@ -1365,16 +1436,6 @@ static void EditorUpdateUI_Inspector()
 
 				UI_SeparatorLabel(ui, "Sprite");
 				UI_BeginLayout(ui, UILayout_Horizontal);
-				if (UI_Button(ui, "Create"))
-				{
-					ID textureId = inspector.selected.id;
-
-					const SpriteDesc spriteDesc = {
-						.name = "spr_new",
-						.textureId = texture.desc.id,
-					};
-					GetOrCreateSprite(engine, spriteDesc);
-				}
 				if (UI_Button(ui, "Sprite sheet..."))
 				{
 					editor.spriteSheet.textureId = inspector.selected.id;
@@ -1427,6 +1488,13 @@ static void EditorUpdateUI_Inspector()
 						.zw = Float2(sprite.size)/Float2(texture.size),
 					};
 					UI_Text(ui, "Texture", texture.desc.name);
+					if ( UI_DragAndDropTarget(ui, "Texture") )
+					{
+						ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+						if ( droppedId ) {
+							sprite.textureId = droppedId;
+						}
+					}
 					UI_Image(ui, texture.image, float2{0, 0}, UIWidgetFlag_Expand, uvRect);
 				}
 
@@ -1669,63 +1737,90 @@ static void EditorUpdateUI_About()
 	wasShown = engine.editor.showAbout;
 }
 
+static ID EditorSpawnEntityAtMouse(ID spriteId)
+{
+	Engine &engine = GetEngine();
+
+	if ( !EditorMode2D() )
+	{
+		LOG(Debug, "Drag and Drop not implemented in 3D mode.\n");
+		return {};
+	}
+
+	const Mouse &mouse = GetWindow().mouse;
+	const Camera &camera = engine.editor.camera[ProjectionOrthographic];
+	const float2 worldPos = Floor(GetWorld2DCoord(engine, camera, mouse.pos));
+	//LOG(Info, "World x: %f, y: %f\n", worldPos.x, worldPos.y);
+
+	const EntityDesc entityDesc = {
+		.name = InternString("entity"),
+		.spriteId = spriteId,
+		.pos = Float3(worldPos, 0.0),
+		.scale = 1.0f,
+	};
+
+	return CreateEntity(engine, entityDesc);
+}
+
 static void EditorUpdateUI_DragAndDropLost()
 {
 	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
+
+	if ( UI_DragAndDropTargetLost(ui, "Sprite") )
+	{
+		const ID spriteId = { UI_DragAndDropPayload(ui).uvalue };
+		if ( spriteId ) {
+			EditorSpawnEntityAtMouse(spriteId);
+		}
+	}
+
+	if ( UI_DragAndDropTargetLost(ui, "Texture") )
+	{
+		const ID textureId = { UI_DragAndDropPayload(ui).uvalue };
+		if ( textureId )
+		{
+			const Texture &texture = GetTexture(textureId);
+			const SpriteDesc spriteDesc = {
+				.name = EditorMakeSpriteName(engine.scene, texture.desc.name),
+				.textureId = textureId,
+				.pos = { 0, 0 },
+				.size = texture.size,
+			};
+			const ID spriteId = GetOrCreateSprite(engine, spriteDesc);
+			if ( spriteId ) {
+				EditorSpawnEntityAtMouse(spriteId);
+			}
+		}
+	}
+
 	if ( UI_DragAndDropTargetLost(ui, "FileNode") )
 	{
-		FileNode *node = (FileNode*) UI_DragAndDropPayload(ui);
+		FileNode *node = (FileNode*) UI_DragAndDropPayload(ui).ptr;
 		if (node->type == FileNodeType_Image)
 		{
-			LOG(Info, "Image asset dropped: %s\n", node->filename);
+			//LOG(Info, "Image asset dropped: %s\n", node->filename);
 
-			const Mouse &mouse = GetWindow().mouse;
+			const char *basename = NameFromFilename(node->filename);
 
-			if (EditorMode2D())
-			{
-				const Camera &camera = engine.editor.camera[ProjectionOrthographic];
-				const float2 worldPos = Floor(GetWorld2DCoord(engine, camera, mouse.pos));
-				LOG(Info, "World x: %f, y: %f\n", worldPos.x, worldPos.y);
+			const TextureDesc textureDesc = {
+				.name = MakeName("tex_%s", basename),
+				.filename = node->filename,
+				.mipmap = true,
+			};
+			const ID textureId = GetOrCreateTexture(engine.gfx, textureDesc);
 
-				const char *basename = NameFromFilename(node->filename);
-				const char *texname = MakeName("tex_%s", basename);
-				const char *matname = MakeName("mat_%s", basename);
-				const char *spriteName = MakeName("spr_%s", basename);
+			const SpriteDesc spriteDesc = {
+				.name = MakeName("spr_%s", basename),
+				.textureId = textureId,
+			};
+			const ID spriteId = GetOrCreateSprite(engine, spriteDesc);
 
-				const TextureDesc textureDesc = {
-					.name = texname,
-					.filename = node->filename,
-					.mipmap = true,
-				};
-				ID textureId = GetOrCreateTexture(engine.gfx, textureDesc);
-
-				const SpriteDesc spriteDesc = {
-					.name = spriteName,
-					.textureId = textureId,
-				};
-				const ID spriteId = GetOrCreateSprite(engine, spriteDesc);
-
-				const Texture &texture = GetTexture(textureId);
-				constexpr f32 pixelsPerGridTile = 32;
-
-				const EntityDesc entityDesc = {
-					.name = InternString("entity"),
-					.spriteId = spriteId,
-					.pos = Float3(worldPos, 0.0),
-					.scale = 1.0f,
-				};
-
-				CreateEntity(engine, entityDesc);
-			}
-			else
-			{
-				LOG(Debug, "Drag and Drop not implemented in 3D mode.\n");
-			}
+			EditorSpawnEntityAtMouse(spriteId);
 		}
 		else if (node->type == FileNodeType_Sound)
 		{
-			LOG(Info, "AudioClip asset dropped: %s\n", node->filename);
+			//LOG(Info, "AudioClip asset dropped: %s\n", node->filename);
 
 			const char *basename = NameFromFilename(node->filename);
 			const char *clipname = MakeName("snd_%s", basename);
@@ -1739,7 +1834,7 @@ static void EditorUpdateUI_DragAndDropLost()
 		}
 		else if (node->type == FileNodeType_Music)
 		{
-			LOG(Info, "MusicFile asset dropped: %s\n", node->filename);
+			//LOG(Info, "MusicFile asset dropped: %s\n", node->filename);
 
 			const char *basename = NameFromFilename(node->filename);
 			const char *modname = MakeName("mod_%s", basename);

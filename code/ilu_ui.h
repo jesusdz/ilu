@@ -260,10 +260,16 @@ struct UIIcon
 	float2 uvSize;
 };
 
+union UIPayload
+{
+	void *ptr;
+	u32 uvalue;
+};
+
 struct UIDragAndDrop
 {
 	const char *payloadType;
-	void *payload;
+	UIPayload payload;
 	ImageH imageH;
 };
 
@@ -4166,7 +4172,17 @@ bool UI_MessageBox(UI &ui, const char *caption, const char *text, const char **b
 	return *result != -1;
 }
 
-void UI_DragAndDropSource(UI &ui, const char *payloadType, void *payload, ImageH imageH)
+inline UIPayload UI_Payload(void *ptr) {
+	UIPayload payload = { .ptr = ptr };
+	return payload;
+}
+
+inline UIPayload UI_Payload(u32 val) {
+	UIPayload payload = { .uvalue = val };
+	return payload;
+}
+
+void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, ImageH imageH)
 {
 	// Applies to the widget that was just ended, which UI_EndWidget recorded here.
 	const float2 prevWidgetPos = ui.lastWidgetPos;
@@ -4180,26 +4196,30 @@ void UI_DragAndDropSource(UI &ui, const char *payloadType, void *payload, ImageH
 	}
 }
 
-bool UI_DragAndDropInProgress(UI &ui, const char *payloadType)
-{
-	if ( ui.dragAndDrop.payload && StrEq(ui.dragAndDrop.payloadType, payloadType) )
-	{
-		return true;
-	}
-
-	return false;
-}
-
 bool UI_DragAndDropTarget(UI &ui, const char *payloadType)
 {
-	// TODO: Check if there was a drop event on the previous widget
-	return false;
+	bool handleDrop = false;
+
+	// Applies to the widget that was just ended, which UI_EndWidget recorded here.
+	const float2 prevWidgetPos = ui.lastWidgetPos;
+	const float2 prevWidgetSize = ui.lastWidgetSize;
+	const bool hovered = UI_WidgetHovered(ui, prevWidgetPos, prevWidgetSize);
+	if ( hovered && StrEq(ui.dragAndDrop.payloadType, payloadType) )
+	{
+		UI_PushColor(ui, ui.style.accentColor);
+		UI_AddBorder(ui, prevWidgetPos, prevWidgetSize, ui.style.borderSize.x);
+		UI_PopColor(ui);
+
+		handleDrop = UI_IsMouseRelease(ui);
+	}
+
+	return handleDrop;
 }
 
 // If a drop was lost we will likely treat it globally (e.g. putting someting on the editor scene) anyways
 bool UI_DragAndDropTargetLost(UI &ui, const char *payloadType)
 {
-	if ( UI_IsMouseIdle(ui) && !ui.hoveredWindow && ui.dragAndDrop.payload && StrEq(ui.dragAndDrop.payloadType, payloadType) )
+	if ( UI_IsMouseIdle(ui) && !ui.hoveredWindow && ui.dragAndDrop.payload.ptr && StrEq(ui.dragAndDrop.payloadType, payloadType) )
 	{
 		return true;
 	}
@@ -4207,7 +4227,7 @@ bool UI_DragAndDropTargetLost(UI &ui, const char *payloadType)
 	return false;
 }
 
-void * UI_DragAndDropPayload(UI &ui)
+UIPayload UI_DragAndDropPayload(UI &ui)
 {
 	return ui.dragAndDrop.payload;
 }
@@ -4582,7 +4602,7 @@ void UI_BeginFrame(UI &ui)
 void UI_EndFrame(UI &ui)
 {
 	// Draw drag and drop item
-	if ( ui.dragAndDrop.payload )
+	if ( ui.dragAndDrop.payload.ptr )
 	{
 		const char *idString = "$draganddrop";
 		const UIID windowId = UI_MakeID(ui, idString);
@@ -4598,7 +4618,7 @@ void UI_EndFrame(UI &ui)
 
 		if ( UI_IsMouseIdle(ui) )
 		{
-			ui.dragAndDrop.payload = 0;
+			ui.dragAndDrop = {};
 		}
 	}
 
