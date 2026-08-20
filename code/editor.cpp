@@ -782,7 +782,7 @@ static void EditorUpdateUI_Outliner()
 				selectedSprite = spriteId;
 			}
 
-			UI_DragAndDropSource(ui, "Sprite", UI_Payload(spriteId.slot), texture.image );
+			UI_DragAndDropSource(ui, "Sprite", UI_Payload(spriteId.slot), texture.image, uvRect );
 
 			EditorAssetContextMenu("SpriteContext", EditorSelectedType_Sprite, spriteId);
 		}

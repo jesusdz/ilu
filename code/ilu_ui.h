@@ -271,6 +271,7 @@ struct UIDragAndDrop
 	const char *payloadType;
 	UIPayload payload;
 	ImageH imageH;
+	float4 uvRect;
 };
 
 struct UIElementColor
@@ -4182,7 +4183,7 @@ inline UIPayload UI_Payload(u32 val) {
 	return payload;
 }
 
-void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, ImageH imageH)
+void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, ImageH imageH, float4 uvRect = {0, 0, 0, 0})
 {
 	// Applies to the widget that was just ended, which UI_EndWidget recorded here.
 	const float2 prevWidgetPos = ui.lastWidgetPos;
@@ -4193,6 +4194,7 @@ void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, Im
 		ui.dragAndDrop.payloadType = payloadType;
 		ui.dragAndDrop.payload = payload;
 		ui.dragAndDrop.imageH = imageH;
+		ui.dragAndDrop.uvRect = uvRect;
 	}
 }
 
@@ -4613,7 +4615,7 @@ void UI_EndFrame(UI &ui)
 		UI_RaiseWindow(ui, window);
 
 		UI_BeginWindow(ui, windowId, UIWindowFlag_None);
-		UI_Image(ui, ui.dragAndDrop.imageH, window.size);
+		UI_Image(ui, ui.dragAndDrop.imageH, window.size, UIWidgetFlag_None, ui.dragAndDrop.uvRect);
 		UI_EndWindow(ui);
 
 		if ( UI_IsMouseIdle(ui) )
