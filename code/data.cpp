@@ -857,6 +857,13 @@ static u8 DParser_ConsumeU8( DParser &parser )
 	return res;
 }
 
+static u16 DParser_ConsumeU16( DParser &parser )
+{
+	const DToken &token = DParser_Consume(parser);
+	const u16 res = I32ToU16(StrToInt(token.lexeme));
+	return res;
+}
+
 static f32 DParser_ConsumeF32( DParser &parser )
 {
 	const DToken &token = DParser_Consume(parser);
@@ -884,6 +891,12 @@ static u32 DParser_ConsumeU32( DParser &parser )
 	const DToken &token = DParser_Consume(parser);
 	const u32 res = StrToUnsignedInt(token.lexeme);
 	return res;
+}
+
+static ID DParser_ConsumeID( DParser &parser )
+{
+	ID id = { .slot = DParser_ConsumeU32(parser) };
+	return id;
 }
 
 static void DParser_SkipFieldValue( DParser &parser )
@@ -1013,7 +1026,7 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 			static const String sTiles = MakeString("tiles");
 
 			if ( StrEq( field, sId ) ) {
-				layerDesc.id = { DParser_ConsumeU32(parser) };
+				layerDesc.id = DParser_ConsumeID(parser);
 			} else if ( StrEq( field, sName ) ) {
 				layerDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
 			} else if ( StrEq( field, sIsBase ) ) {
@@ -1094,7 +1107,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sFilename = MakeString("filename");
 					static const String sMipmap = MakeString("mipmap");
 					if ( StrEq( field, sId ) ) {
-						desc.id = { DParser_ConsumeU32(parser) };
+						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser));
 					} else if ( StrEq( field, sMipmap ) ) {
@@ -1132,9 +1145,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sUvScale = MakeString("uvScale");
 
 					if ( StrEq( field, sId ) ) {
-						desc.id = { DParser_ConsumeU32(parser) };
+						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sTextureId ) ) {
-						desc.textureId = { DParser_ConsumeU32(parser) };
+						desc.textureId = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sPipelineName ) ) {
 						desc.pipelineName = PushString(*parser.arena, DParser_ConsumeString(parser));
 					} else if ( StrEq( field, sUvScale ) ) {
@@ -1175,9 +1188,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sLoop       = MakeString("loop");
 
 					if ( StrEq( field, sId ) ) {
-						desc.id = { DParser_ConsumeU32(parser) };
+						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sTextureId ) ) {
-						desc.textureId = { DParser_ConsumeU32(parser) };
+						desc.textureId = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sPos ) ) {
 						desc.pos = DParser_ConsumeUint2(parser);
 					} else if ( StrEq( field, sSize ) ) {
@@ -1224,17 +1237,17 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sGeometryType = MakeString("geometryType");
 
 					if ( StrEq( field, sId ) ) {
-						desc.id = { DParser_ConsumeU32(parser) };
+						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sMaterialId ) ) {
-						desc.materialId = { DParser_ConsumeU32(parser) };
+						desc.materialId = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sSpriteId ) ) {
-						desc.spriteId = { DParser_ConsumeU32(parser) };
+						desc.spriteId = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sPos ) ) {
 						desc.pos = DParser_ConsumeFloat3(parser);
 					} else if ( StrEq( field, sScale ) ) {
 						desc.scale = DParser_ConsumeF32(parser);
 					} else if ( StrEq( field, sLayerId ) ) {
-						desc.layerId = { DParser_ConsumeU32(parser) };
+						desc.layerId = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sGeometryType ) ) {
 						desc.geometryType = DParser_ConsumeGeometryType(parser);
 					}
@@ -1266,7 +1279,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sLayers = MakeString("layers");
 
 					if ( StrEq( field, sId ) ) {
-						desc.id = { DParser_ConsumeU32(parser) };
+						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sPos ) ) {
 						desc.pos = DParser_ConsumeInt2(parser);
 					} else if ( StrEq( field, sLayers ) ) {
@@ -1298,7 +1311,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sId = MakeString("id");
 					static const String sFilename = MakeString("filename");
 					if ( StrEq( field, sId ) ) {
-						desc.id = { DParser_ConsumeU32(parser) };
+						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
 					}
@@ -1328,7 +1341,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					static const String sId = MakeString("id");
 					static const String sFilename = MakeString("filename");
 					if ( StrEq( field, sId ) ) {
-						desc.id = { DParser_ConsumeU32(parser) };
+						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
 					}

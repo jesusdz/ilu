@@ -28,7 +28,7 @@
 #define ILU_ID_H
 
 #ifndef ILU_ID_MAX_SLOTS
-#define ILU_ID_MAX_SLOTS U16_MAX // At 64 bits per slot, this is 512KB
+#define ILU_ID_MAX_SLOTS U16_MAX // At 8 bytes per slot, this is 512KB
 #endif // ILU_ID_MAX_SLOTS
 
 #ifndef ILU_ID_FIRST_DYNAMIC_SLOT
@@ -43,10 +43,9 @@ struct ID
 	operator bool() const;
 };
 
-union IDSlot
+struct IDSlot
 {
 	void *object;
-	u32 nextFree;
 };
 
 struct IDPool
