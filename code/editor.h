@@ -140,6 +140,7 @@ struct EditorInspector
 {
 	EditorSelection selected;
 	EditorSelection nextSelected;
+	u32 audioSourceIndex; // Source the inspector plays through
 	// Preview asset built from the inspected file, discriminated by selected.type
 	// the same way EditorSelection is
 	union
