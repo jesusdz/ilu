@@ -314,6 +314,12 @@ static void EditorUpdateUI_ToolBar()
 	}
 }
 
+static void EditorSelectGame()
+{
+	Editor &editor = GetEditor();
+	editor.inspector.nextSelected.type = EditorSelectedType_Game;
+}
+
 static void EditorSelectScene()
 {
 	Editor &editor = GetEditor();
@@ -675,7 +681,14 @@ static void EditorUpdateUI_Outliner()
 
 	UI_BeginWindow(ui, "Outliner", &editor.showOutliner);
 
-	if ( UI_Section(ui, "Scene") )
+	if ( UI_Section(ui, "Behavior") )
+	{
+		if (UI_TreeNode(ui, "Game", &scene, nullptr))
+		{
+			EditorSelectGame();
+		}
+	}
+	if ( UI_Section(ui, "Hierarchy") )
 	{
 		Scratch scratch;
 		Entity **entities = PushArray(scratch.arena, Entity*, MAX_ENTITIES);
@@ -1201,6 +1214,48 @@ static void EditorUpdateUI_SpriteSheet()
 	UI_EndWindow(ui);
 }
 
+static void EditorUpdateUI_Property(const Property &property, void *data)
+{
+	UI &ui = GetEngine().ui;
+	byte *base = (byte *)data;
+
+	switch (property.type)
+	{
+		case Property_U32:
+		{
+			u32 *value = (u32*)(base + property.offset);
+			UI_InputUInt(ui, property.name, value);
+			break;
+		}
+		case Property_ID:
+		{
+			ID *id = (ID*)(base + property.offset);
+			Entity *entity = nullptr;
+			if ( id && *id )
+			{
+				entity = &GetEntity(*id);
+			}
+			UI_Text(ui, property.name, "%s", entity ? entity->name : "<none>");
+			if ( UI_DragAndDropTarget(ui, "Entity") )
+			{
+				const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+				*id = droppedId;
+			}
+			break;
+		}
+	}
+}
+
+static void EditorUpdateUI_InspectorGame(Game &game)
+{
+	for (u32 i = 0; i < game.propertyCount; ++i)
+	{
+		const Property &property = game.properties[i];
+
+		EditorUpdateUI_Property(property, &game);
+	}
+}
+
 static void EditorUpdateUI_InspectorScene(Scene &scene)
 {
 	Engine &engine = GetEngine();
@@ -1336,7 +1391,11 @@ static void EditorUpdateUI_Inspector()
 	}
 	else
 	{
-		if (inspector.selected.type == EditorSelectedType_Scene)
+		if (inspector.selected.type == EditorSelectedType_Game)
+		{
+			EditorUpdateUI_InspectorGame(engine.game);
+		}
+		else if (inspector.selected.type == EditorSelectedType_Scene)
 		{
 			EditorUpdateUI_InspectorScene(engine.scene);
 		}

@@ -643,6 +643,8 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 
 	if ( platform.engine )
 	{
+		GameRegisterProperties(platform.engine->game);
+
 		UI_ResetStyle(platform.engine->ui);
 
 		// Profile state does not survive the reload, so GPU profiling starts fresh
@@ -668,6 +670,8 @@ ENGINE_API bool OnPlatformPreInit(Plat &platform)
 	InitializeIDPool();
 
 	Engine &engine = GetEngine();
+
+	GameRegisterProperties(engine.game);
 
 #if USE_DATA_BUILD
 	bool buildAssets = false;

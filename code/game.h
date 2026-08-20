@@ -47,6 +47,19 @@ enum PlayerState
 	OnAir,
 };
 
+enum PropertyType : u8
+{
+	Property_U32,
+	Property_ID,
+};
+
+struct Property
+{
+	const char *name;
+	u16 offset;
+	PropertyType type;
+};
+
 struct Game
 {
 	GameState state;
@@ -78,12 +91,16 @@ struct Game
 	Camera camera;
 
 	ID roomId;
+
+	u32 propertyCount;
+	Property properties[32];
 };
 
 ////////////////////////////////////////////////////////////////////////
 // Engine -> Game interface
 ////////////////////////////////////////////////////////////////////////
 
+void GameRegisterProperties(Game &game);
 void GameSetInput(Game &game, const Keyboard &, const Mouse &, const Gamepad &);
 void GameStart(Game &game);
 void GameSimulate(Game &game);

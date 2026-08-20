@@ -51,6 +51,7 @@ struct EditorCommand
 enum EditorSelectedType
 {
 	EditorSelectedType_None,
+	// Assets
 	EditorSelectedType_Scene,
 	EditorSelectedType_Room,
 	EditorSelectedType_Layer,
@@ -60,10 +61,14 @@ enum EditorSelectedType
 	EditorSelectedType_Audio,
 	EditorSelectedType_Music,
 	EditorSelectedType_Sprite,
+	// File
 	EditorSelectedType_FileImage,
 	EditorSelectedType_FileAudio,
 	EditorSelectedType_FileMusic,
 	EditorSelectedType_FileUnknown,
+	// Game
+	EditorSelectedType_Game,
+	// Count
 	EditorSelectedType_Count,
 	// The types that name an asset, all of them an ID living in the same union
 	EditorSelectedType_AssetBegin = EditorSelectedType_Entity,
@@ -87,6 +92,7 @@ static const char *EditorSelectedTypeName[] = {
 	"Audio file",
 	"Music file",
 	"Unknown file type",
+	"Game",
 };
 CT_ASSERT(ARRAY_COUNT(EditorSelectedTypeName) == EditorSelectedType_Count);
 

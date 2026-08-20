@@ -1,4 +1,22 @@
 
+static Property& GameAllocateProperty(Game &game)
+{
+	ASSERT(game.propertyCount < ARRAY_COUNT(game.properties));
+	Property &property = game.properties[game.propertyCount++];
+	return property;
+}
+
+void GameRegisterProperties(Game &game)
+{
+	game.propertyCount = 0;
+	ZeroArray(game.properties);
+	GameAllocateProperty(game) = {
+		.name = "Player",
+		.offset = OFFSET_OF(Game, entPlayer),
+		.type = Property_ID,
+	};
+}
+
 void GameStart(Game &game)
 {
 	LOG(Info, "- GameStart!\n");
@@ -19,7 +37,9 @@ void GameStart(Game &game)
 	game.accel2 = 50;
 	game.playerState = OnAir;
 
-	game.entPlayer = FindEntity("player");
+	if ( !game.entPlayer ) {
+		game.entPlayer = FindEntity("player");
+	}
 	if ( Entity *player = TryGetEntity(game.entPlayer) ) {
 		player->position.xy = float2{1, 1};
 	}
