@@ -443,10 +443,15 @@ static void EditorSelectFileUnknown(FileNode *node)
 static void EditorUnselectAll()
 {
 	Editor &editor = GetEditor();
+
+	editor.inspector.tmpTextureId = {}; // The preview asset union, whichever member is live
 	editor.context.selectedFile = nullptr;
 	editor.context.roomId = {};
 	editor.context.layerIndex = EditorNoLayer;
-	editor.inspector.nextSelected.id = {};
+	editor.context.spriteId = {};
+	editor.spriteSheet.textureId = {};
+	editor.inspector.selected.value = 0;
+	editor.inspector.selected.type = EditorSelectedType_None;
 	editor.inspector.nextSelected.value = 0;
 	editor.inspector.nextSelected.type = EditorSelectedType_None;
 }
@@ -2543,6 +2548,7 @@ static void EditorProcessCommands(Arena scratch)
 				}
 				case EditorCommandLoadTxt:
 				{
+					EditorUnselectAll();
 					CleanScene(engine);
 					LoadSceneFromTxt(engine, command.filepath);
 					break;
@@ -2554,6 +2560,7 @@ static void EditorProcessCommands(Arena scratch)
 				}
 				case EditorCommandLoadBin:
 				{
+					EditorUnselectAll();
 					CleanScene(engine);
 					LoadSceneFromBin(engine);
 					break;

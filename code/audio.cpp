@@ -62,6 +62,7 @@ static void AudioCmdQueue_ProcessCommand(Audio &audio, AudioCmd cmd)
 			audio.musicState = AUDIO_STATE_IDLE;
 			audio.musicBufferReadSampleIndex = 0;
 			audio.musicBufferWriteSampleIndex = 0;
+			audio.musicFile = {};
 			break;
 		case AudioCmd_StopAll:
 			break;

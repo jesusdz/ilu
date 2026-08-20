@@ -676,13 +676,15 @@ void CleanScene(Engine &engine)
 {
 	WaitDeviceIdle(engine.gfx.device);
 
-	if (PopDataArenaState(engine))
-	{
-	}
-
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
 	Audio &audio = engine.audio;
+
+	AudioStopAll(audio);
+
+	if (PopDataArenaState(engine))
+	{
+	}
 
 	// Mark everything the scene owns
 	for (u16 i = 0; i < gfx.textureCount; ++i) {
@@ -706,6 +708,9 @@ void CleanScene(Engine &engine)
 	}
 	for (u16 i = 0; i < audio.clipCount; ++i) {
 		RemoveAudioClip(audio.clips[i].desc.id);
+	}
+	for (u32 i = 0; i < audio.musicFileCount; ++i) {
+		DestroyMusicFile(audio.musicFiles[i].desc.id);
 	}
 
 	// Compaction after removal
