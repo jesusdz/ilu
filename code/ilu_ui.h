@@ -4183,7 +4183,7 @@ inline UIPayload UI_Payload(u32 val) {
 	return payload;
 }
 
-void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, ImageH imageH, float4 uvRect = {0, 0, 0, 0})
+void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, ImageH imageH, float4 uvRect = {0, 0, 1, 1})
 {
 	// Applies to the widget that was just ended, which UI_EndWidget recorded here.
 	const float2 prevWidgetPos = ui.lastWidgetPos;

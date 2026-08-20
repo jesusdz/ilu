@@ -433,7 +433,10 @@ ImageH GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, b
 
 Texture &GetTexture(ID id)
 {
-	ASSERT( Valid(id) );
+	if ( !id ) {
+		Graphics &gfx = GetEngine().gfx;
+		id = gfx.defaultTexture;
+	}
 	Texture &texture = *((Texture*)GetObject(id));
 	return texture;
 }
@@ -651,7 +654,10 @@ void RecreateModifiedTextures(Engine &engine)
 
 Material &GetMaterial(ID id)
 {
-	ASSERT( Valid(id) );
+	if ( !id ) {
+		Graphics &gfx = GetEngine().gfx;
+		id = gfx.defaultMaterial;
+	}
 	Material &material = *((Material*)GetObject(id));
 	return material;
 }

@@ -574,7 +574,7 @@ bool RenderGraphics(Engine &engine)
 		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 		{
 			Layer &layer = room.layers[i];
-			layer.depth = (f32)i;
+			layer.depth = -(f32)i;
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{

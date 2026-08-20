@@ -153,6 +153,7 @@ struct EditorInspector
 struct EditorSpriteSheet
 {
 	ID textureId;
+	ID spriteId;
 };
 
 constexpr u32 EditorNoLayer = U32_MAX;
