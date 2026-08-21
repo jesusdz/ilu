@@ -97,7 +97,6 @@ struct RenderTargets
 	bool initialized;
 };
 
-// NOTE: Camera lives here rather than in render.h because Graphics embeds one.
 enum ProjectionType
 {
 	ProjectionPerspective,
@@ -109,6 +108,7 @@ constexpr const char *ProjectionTypeStr[] = {
 	"ProjectionOrthographic",
 };
 CT_ASSERT(ARRAY_COUNT(ProjectionTypeStr) == ProjectionTypeCount);
+
 inline const char *ProjectionTypeToStr(ProjectionType type)
 {
 	if ( type < ProjectionTypeCount ) {
@@ -126,6 +126,7 @@ inline ProjectionType StrToProjectionType(const char *str)
 			return (ProjectionType)i;
 		}
 	}
+	LOG(Warning, "StrToProjectionType could not find projection type for: %s\n", str);
 	return type;
 }
 

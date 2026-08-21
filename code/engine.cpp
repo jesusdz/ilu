@@ -244,7 +244,12 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		}
 	}
 
+	const SceneDesc sceneDesc = {
+		.projectionType = engine.scene.projectionType,
+	};
+
 	const AssetDescriptors assetDescs = {
+		.sceneDesc = sceneDesc,
 		.shaderDescs = nullptr, // shaderSourceDescs,
 		.shaderDescCount = 0, //ARRAY_COUNT(shaderSourceDescs),
 		.textureDescs = textureDescs,
@@ -294,6 +299,8 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 	{
 		Arena &dataArena = DataArena;
 		AssetDescriptors assetDescriptors = ParseDescriptors(filepath, dataArena);
+
+		engine.scene.projectionType = assetDescriptors.sceneDesc.projectionType;
 
 		// Textures
 		for (u32 i = 0; i < assetDescriptors.textureDescCount; ++i)

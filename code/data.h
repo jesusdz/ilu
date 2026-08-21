@@ -53,6 +53,7 @@ struct BinAssetsHeader
 {
 	u32 magicNumber;
 	u32 version;
+	u32 sceneOffset;
 	u32 shadersOffset;
 	u32 shaderCount;
 	u32 imagesOffset;
@@ -82,6 +83,7 @@ struct BinAssets
 
 	BinAssetsHeader header;
 
+	BinSceneDesc scene;
 	BinShader *shaders;
 	BinImage *images;
 	BinAudioClip *audioClips;

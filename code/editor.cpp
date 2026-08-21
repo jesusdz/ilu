@@ -1263,6 +1263,8 @@ static void EditorUpdateUI_InspectorScene(Scene &scene)
 	UI_Text(ui, "Rooms", "%u", scene.roomCount);
 	UI_Text(ui, "Entities", "%u", scene.entityCount);
 	UI_Text(ui, "Sprites", "%u", scene.spriteCount);
+
+	UI_Combo(ui, "Projection", (const char **)ProjectionTypeStr, ProjectionTypeCount, (u32*)&scene.projectionType);
 }
 
 static void EditorUpdateUI_InspectorRoom(Room &room)

@@ -243,7 +243,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 	WriteLine(ctx, "Scene scene = {");
 
 	PushIndent(ctx);
-	WriteLine(ctx, ".projectionType = %s,", desc.projectionType);
+	WriteLine(ctx, ".projectionType = \"%s\",", ProjectionTypeToStr(desc.projectionType));
 	PopIndent(ctx);
 
 	WriteLine(ctx, "};");
@@ -1079,6 +1079,7 @@ static void DParser_ConsumeUntil( DParser &parser, DTokenId tokenId )
 	}
 }
 
+static const String sSceneStr = MakeString("Scene");
 static const String sMaterialStr = MakeString("Material");
 static const String sTextureStr = MakeString("Texture");
 static const String sSpriteStr = MakeString("Sprite");
@@ -1086,6 +1087,13 @@ static const String sEntityStr = MakeString("Entity");
 static const String sRoomStr = MakeString("Room");
 static const String sAudioClipStr = MakeString("AudioClip");
 static const String sMusicFileStr = MakeString("MusicFile");
+
+const char *StringToCStr( String str )
+{
+	static char cstr[128];
+	StrCopy(cstr, str);
+	return cstr;
+}
 
 static void DParseDescriptors(DParser &parser, bool countOnly)
 {
@@ -1097,8 +1105,33 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 		{
 			const String type = DParser_GetPreviousToken(parser).lexeme;
 
+			// Scene
+			if ( StrEq(type, sSceneStr) ) {
+				if ( countOnly ) goto parse_descriptors_continue;
+
+				SceneDesc &desc = descriptors.sceneDesc;
+				const String name = DParser_ConsumeLexeme( parser ); // Unused for now
+
+				DParser_TryConsume( parser, TOKEN_EQUAL );
+				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
+				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				{
+					DParser_TryConsume( parser, TOKEN_DOT );
+
+					const String field = DParser_ConsumeLexeme( parser );
+
+					DParser_TryConsume( parser, TOKEN_EQUAL );
+
+					static const String sProjectionType = MakeString("projectionType");
+					if ( StrEq( field, sProjectionType ) ) {
+						const char *cstr = StringToCStr( DParser_ConsumeString(parser) );
+						desc.projectionType = StrToProjectionType( cstr );
+					}
+				}
+			}
+
 			// Texture
-			if ( StrEq(type, sTextureStr) ) {
+			else if ( StrEq(type, sTextureStr) ) {
 
 				const uint index = descriptors.textureDescCount++;
 				if ( countOnly ) goto parse_descriptors_continue;
@@ -1491,6 +1524,8 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 	{
 		u32 offset = sizeof( BinAssetsHeader );
 
+		const u32 sceneOffset = PostIncrement(&offset, sizeof(BinSceneDesc));
+
 		const u32 shaderCount = descriptors.shaderDescCount;
 		const u32 shadersSize = shaderCount * sizeof(BinShaderDesc);
 		const u32 shadersOffset = PostIncrement(&offset, shadersSize);
@@ -1540,6 +1575,9 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		// Prepare asset descs and write asset payloads
 
 		fseek(file, offset, SEEK_SET);
+
+		// Scene
+
 
 		// Shaders
 		for (u32 i = 0; i < shaderCount; ++i)
@@ -1766,6 +1804,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		const BinAssetsHeader fileHeader = {
 			.magicNumber      = U32FromChars('I', 'R', 'I', 'S'),
 			.version          = BinAssetsVersion,
+			.sceneOffset      = sceneOffset,
 			.shadersOffset    = shadersOffset,
 			.shaderCount      = shaderCount,
 			.imagesOffset     = imagesOffset,
@@ -1845,6 +1884,11 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 
 	const char *stringPool = (const char*)PushDataFromFile(
 		dataArena, file, assets.header.stringPoolOffset, assets.header.stringPoolSize);
+
+	// Scene
+	BinSceneDesc *binSceneDesc = (BinSceneDesc*)PushDataFromFile(
+		dataArena, file, assets.header.sceneOffset, sizeof(BinSceneDesc));
+	assets.scene.projectionType = binSceneDesc->projectionType;
 
 	// Shaders
 	BinShaderDesc *binShaderDescs = (BinShaderDesc*)PushDataFromFile(

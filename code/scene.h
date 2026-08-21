@@ -153,6 +153,8 @@ constexpr u32 SCENE_HEIGHT = 180;
 
 struct Scene
 {
+	ProjectionType projectionType;
+
 	u32 roomCount;
 	Room rooms[MAX_ROOMS];
 
@@ -165,6 +167,11 @@ struct Scene
 };
 
 #pragma pack(push, 1)
+
+struct BinSceneDesc
+{
+	ProjectionType projectionType;
+};
 
 struct BinSpriteDesc
 {
