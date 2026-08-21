@@ -7,6 +7,22 @@ struct Engine;
 
 typedef u16 Index;
 
+enum GeometryType
+{
+	GeometryTypeCube,
+	GeometryTypePlane,
+	GeometryTypeScreen,
+	GeometryTypeQuad,
+	GeometryTypeSprite,
+};
+
+enum ShaderType
+{
+	ShaderTypeVertex,
+	ShaderTypeFragment,
+	ShaderTypeCompute
+};
+
 struct Vertex
 {
 	float3 pos;
@@ -28,6 +44,15 @@ struct DebugDrawBatch
 	u32 vertexCount;
 };
 
+struct TextureDesc
+{
+	ID id;
+	const char *name;
+	const char *filename;
+	u8 mipmap;
+	AssetFlags flags;
+};
+
 struct Texture
 {
 	TextureDesc desc;
@@ -35,6 +60,16 @@ struct Texture
 	bool ownsImage;
 	uint2 size;
 	u64 ts;
+};
+
+struct MaterialDesc
+{
+	ID id;
+	const char *name;
+	ID textureId;
+	const char *pipelineName;
+	float uvScale;
+	AssetFlags flags;
 };
 
 struct Material
@@ -69,6 +104,30 @@ enum ProjectionType
 	ProjectionOrthographic,
 	ProjectionTypeCount,
 };
+constexpr const char *ProjectionTypeStr[] = {
+	"ProjectionPerspective",
+	"ProjectionOrthographic",
+};
+CT_ASSERT(ARRAY_COUNT(ProjectionTypeStr) == ProjectionTypeCount);
+inline const char *ProjectionTypeToStr(ProjectionType type)
+{
+	if ( type < ProjectionTypeCount ) {
+		return ProjectionTypeStr[type];
+	} else {
+		return "<unknown>";
+	}
+}
+
+inline ProjectionType StrToProjectionType(const char *str)
+{
+	ProjectionType type = ProjectionTypeCount;
+	for (u32 i = 0; i < ProjectionTypeCount; ++i) {
+		if ( StrEq(ProjectionTypeStr[i], str) ) {
+			return (ProjectionType)i;
+		}
+	}
+	return type;
+}
 
 struct Camera
 {
@@ -117,6 +176,15 @@ struct ShaderAndComputeDesc
 	const char *csName;
 	PipelineIndex index;
 	ComputeDesc desc;
+};
+
+struct ShaderSourceDesc
+{
+	ShaderType type;
+	const char *filename;
+	const char *entryPoint;
+	const char *name;
+	const char *defines;
 };
 
 #define MAX_TEXTURES 4092
@@ -224,6 +292,56 @@ struct Graphics
 	Camera camera;
 };
 
+
+#pragma pack(push, 1)
+
+struct BinShaderDesc
+{
+	const char *name;
+	const char *entryPoint;
+	ShaderType type;
+	BinLocation location;
+};
+
+struct BinImageDesc
+{
+	ID id;
+	const char *name;
+	u16 width;
+	u16 height;
+	u8  channels;
+	u8  mipmap;
+	u16 unused;
+	BinLocation location;
+};
+
+struct BinMaterialDesc
+{
+	ID id;
+	const char *name;
+	ID textureId;
+	const char *pipelineName;
+	float uvScale;
+};
+
+struct BinShader
+{
+	BinShaderDesc *desc;
+	byte *spirv;
+};
+
+struct BinImage
+{
+	BinImageDesc *desc;
+	byte *pixels;
+};
+
+struct BinMaterial
+{
+	BinMaterialDesc *desc;
+};
+
+#pragma pack(pop)
 
 ////////////////////////////////////////////////////////////////////////
 // Image loading

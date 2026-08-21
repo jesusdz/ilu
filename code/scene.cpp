@@ -339,7 +339,7 @@ ID DuplicateEntity(Engine &engine, ID entityId)
 
 float2 GetWorld2DCoord(const Engine &engine, const Camera &camera, int2 pixelCoord)
 {
-	const Window &window = *sPlatform->window;
+	const Window &window = GetWindow();
 	const uint2 windowSize = { window.width, window.height };
 	const float2 uvCoords = {(f32)pixelCoord.x/windowSize.x, 1.0f - (f32)pixelCoord.y/windowSize.y};
 	const float2 ndcCoords = 2.0f * uvCoords - float2{1.0f, 1.0f};

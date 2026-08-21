@@ -332,7 +332,7 @@ bool RenderGraphics(Engine &engine)
 
 	Scene &scene = engine.scene;
 	Graphics &gfx = engine.gfx;
-	Window &window = *sPlatform->window;
+	Window &window = GetWindow();
 #if USE_EDITOR
 	Editor &editor = engine.editor;
 #endif
@@ -959,7 +959,7 @@ bool RenderGraphics(Engine &engine)
 
 				EndDebugGroup(commandList);
 			}
-			else // if (IsEngineMode2D(engine.mode))
+			else // if ( camera.projectionType == ProjectionOrthographic )
 			{
 				const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
 				const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);

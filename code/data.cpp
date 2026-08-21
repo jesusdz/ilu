@@ -236,6 +236,19 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 	char line[MAX_PATH_LENGTH];
 
+	WriteSectionLine(ctx, "Scene");
+
+	const SceneDesc &desc = assets.sceneDesc;
+
+	WriteLine(ctx, "Scene scene = {");
+
+	PushIndent(ctx);
+	WriteLine(ctx, ".projectionType = %s,", desc.projectionType);
+	PopIndent(ctx);
+
+	WriteLine(ctx, "};");
+	NewLine(ctx);
+
 	WriteSectionLine(ctx, "Textures");
 
 	for (u32 i = 0; i < assets.textureDescCount; ++i)

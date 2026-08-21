@@ -3,6 +3,75 @@
 
 struct Engine;
 
+struct SceneDesc
+{
+	ProjectionType projectionType;
+};
+
+struct SpriteDesc
+{
+	ID id;
+	const char *name;
+	ID textureId;
+	uint2 pos;
+	uint2 size;
+	u32 frameCount;
+	u32 fps;
+	u8 loop;
+};
+
+struct EntityDesc
+{
+	ID id;
+	const char *name;
+	// 3D entity
+	ID materialId;
+	GeometryType geometryType;
+	// Sprite entity
+	ID spriteId;
+	ID layerId;
+	// Common
+	float3 pos;
+	float scale;
+};
+
+struct TileDesc
+{
+	u16 x;
+	u16 y;
+	// Which member applies is decided by the owning LayerDesc::isCollider. Both are
+	// four bytes wide, so the raw u32 doubles as the serialized view of either.
+	union
+	{
+		ID spriteId;
+		u32 collider;
+	};
+};
+
+struct LayerDesc
+{
+	ID id;
+	const char *name;
+	bool isBase;
+	bool visible;
+	bool isCollider;
+	uint2 size;
+	TileDesc *tiles; // non-empty grid cells only
+	u32 tileCount;
+};
+
+#define MAX_LAYERS 4
+
+
+struct RoomDesc
+{
+	ID id;
+	const char *name;
+	int2 pos;
+	LayerDesc layers[MAX_LAYERS];
+	u32 layerCount;
+};
+
 // Resolved form of the descriptor: size filled in from the texture when the desc left
 // it at zero, frameCount forced to at least one, textureId guaranteed to resolve.
 struct Sprite
@@ -65,8 +134,6 @@ struct Layer
 	f32 depth; // depth in world units
 };
 
-// MAX_LAYERS is defined in data.h (RoomDesc needs it)
-
 struct Room
 {
 	ID id;
@@ -96,6 +163,72 @@ struct Scene
 	Sprite sprites[MAX_SPRITES];
 	SpriteAnimState spriteAnimStates[MAX_SPRITES]; // Parallel to sprites
 };
+
+#pragma pack(push, 1)
+
+struct BinSpriteDesc
+{
+	ID id;
+	const char *name;
+	ID textureId;
+	uint2 pos;
+	uint2 size;
+	u32 frameCount;
+	u32 fps;
+	u8 loop;
+	u8 _pad[3];
+};
+
+struct BinEntityDesc
+{
+	ID id;
+	const char *name;
+	ID materialId;
+	ID spriteId;
+	ID layerId;
+	float3 pos;
+	float scale;
+	GeometryType geometryType;
+};
+
+struct BinLayerDesc
+{
+	ID id;
+	const char *name;
+	u8 isBase;
+	u8 visible;
+	u8 isCollider;
+	uint2 size;
+	BinLocation tiles; // payload of TileDesc entries; count == tiles.size / sizeof(TileDesc)
+};
+
+struct BinRoomDesc
+{
+	ID id;
+	const char *name;
+	int2 pos;
+	u32 layerCount;
+	BinLayerDesc layers[MAX_LAYERS];
+};
+
+struct BinSprite
+{
+	BinSpriteDesc *desc;
+};
+
+struct BinEntity
+{
+	BinEntityDesc *desc;
+};
+
+struct BinRoom
+{
+	BinRoomDesc *desc;
+	TileDesc *tiles[MAX_LAYERS];
+};
+
+#pragma pack(pop)
+
 
 
 ////////////////////////////////////////////////////////////////////////

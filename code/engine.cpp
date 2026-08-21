@@ -50,12 +50,45 @@ struct ImagePixels
 #include "shaders/types.hlsl"
 #include "shaders/bindings.hlsl"
 
-#include "data.h"
+////////////////////////////////////////////////////////////////////////
+// Asset flags
+
+enum AssetFlags
+{
+	// Not serialized and hidden from the editor's asset lists. Transient previews are ghosts, and so
+	// are the builtins, which the engine recreates on its own.
+	AssetFlag_Ghost = 1 << 0,
+	// Owned by the engine, not by the scene, so CleanScene must leave it alone. These assets hold the
+	// shared images bound in the global bind group, which nothing recreates after initialization.
+	AssetFlag_Builtin = 1 << 1,
+};
+
+// The desc fields below are typed AssetFlags, but combining two enumerators yields an int that C++
+// will not convert back to the enum on its own, so give the type the operator it is used as if it had.
+inline AssetFlags operator|(AssetFlags a, AssetFlags b) { return (AssetFlags)((u32)a | (u32)b); }
+
+////////////////////////////////////////////////////////////////////////
+// Binary data
+
+// Types
+
+#pragma pack(push, 1)
+
+struct BinLocation
+{
+	u32 offset;
+	u32 size;
+};
+
+#pragma pack(pop)
+
+
 #include "audio.h"
 #include "graphics.h"
 #include "scene.h"
 #include "render.h"
 #include "game.h"
+#include "data.h"
 #if USE_EDITOR
 #include "editor.h"
 #endif
@@ -93,15 +126,7 @@ u32 U32FromChars(char a, char b, char c, char d)
 	return res;
 }
 
-Engine &GetEngine(Plat &platform)
-{
-	Engine *engine = platform.engine;
-	ASSERT(engine != NULL);
-	return *engine;
-}
-
-
-AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
+static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 {
 	static TextureDesc textureDescs[MAX_TEXTURES];
 	u32 textureCount = 0;
@@ -328,7 +353,7 @@ void SaveSceneToTxt(Engine &engine, const char *filepath)
 }
 #endif // USE_DATA_BUILD
 
-void LoadShadersFromBin(Engine &engine)
+static void LoadShadersFromBin(Engine &engine)
 {
 	const FilePath filepath = MakePath(DataDir, "shaders.dat");
 	engine.shaderAssets = OpenAssets(DataArena, filepath.str);
@@ -704,7 +729,7 @@ ENGINE_API bool OnPlatformPreInit(Plat &platform)
 
 ENGINE_API bool OnPlatformInit(Plat &platform)
 {
-	Engine &engine = GetEngine(platform);
+	Engine &engine = GetEngine();
 
 	Graphics &gfx = engine.gfx;
 	Game &game = engine.game;
@@ -734,7 +759,7 @@ ENGINE_API bool OnPlatformInit(Plat &platform)
 
 ENGINE_API bool OnPlatformWindowInit(Plat &platform)
 {
-	Engine &engine = GetEngine(platform);
+	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
 	if ( !InitializeGraphicsSurface(gfx.device, *platform.window) )
@@ -772,7 +797,6 @@ ENGINE_API bool OnPlatformWindowInit(Plat &platform)
 #if USE_EDITOR
 		EditorInitialize(engine);
 #else
-		engine.mode = EngineModeGame3D;
 		LoadSceneFromBin(engine);
 #endif
 	}
@@ -786,7 +810,7 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 	PROFILE_FRAME();
 	PROFILE_BLOCK(Update);
 
-	Engine &engine = GetEngine(platform);
+	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
 	const Clock begin = GetClock();
@@ -849,7 +873,7 @@ ENGINE_API void OnPlatformRenderGraphics(Plat &platform)
 {
 	PROFILE_BLOCK(RenderGraphics);
 
-	Engine &engine = GetEngine(platform);
+	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
 	static Clock lastClock = GetClock();
@@ -901,7 +925,7 @@ ENGINE_API void OnPlatformPreRenderAudio(Plat &platform)
 	PROFILE_THREAD("Audio");
 	PROFILE_FLUSH();
 	PROFILE_BLOCK(PreRenderAudio);
-	Engine &engine = GetEngine(platform);
+	Engine &engine = GetEngine();
 	PreRenderAudio(engine.audio);
 }
 
@@ -909,13 +933,13 @@ ENGINE_API void OnPlatformRenderAudio(Plat &platform, SoundBuffer &soundBuffer)
 {
 	PROFILE_FLUSH();
 	PROFILE_BLOCK(RenderAudio);
-	Engine &engine = GetEngine(platform);
+	Engine &engine = GetEngine();
 	RenderAudio(engine, soundBuffer);
 }
 
 ENGINE_API void OnPlatformWindowCleanup(Plat &platform)
 {
-	Engine &engine = GetEngine(platform);
+	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
 	GfxWaitDeviceIdle(gfx);
@@ -926,7 +950,7 @@ ENGINE_API void OnPlatformWindowCleanup(Plat &platform)
 
 ENGINE_API void OnPlatformCleanup(Plat &platform)
 {
-	Engine &engine = GetEngine(platform);
+	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 	Game &game = engine.game;
 

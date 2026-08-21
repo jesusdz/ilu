@@ -29,18 +29,10 @@ struct Engine
 	u32 dataArenaStateCount;
 };
 
-Engine &GetEngine(Plat &platform);
-#if USE_UI
-UI &GetUI(Engine &engine);
-#endif
-
 
 ////////////////////////////////////////////////////////////////////////
 // Asset descriptors and scene serialization
 
-AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena);
-
-void LoadShadersFromBin(Engine &engine);
 void LoadSceneFromBin(Engine &engine);
 
 #if USE_DATA_BUILD

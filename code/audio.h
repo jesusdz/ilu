@@ -21,6 +21,14 @@ enum AudioClipLoadSource
 	AUDIO_CLIP_LOAD_SOURCE_ASSETS,
 };
 
+struct AudioClipDesc
+{
+	ID id;
+	const char *name;
+	const char *filename;
+	AssetFlags flags;
+};
+
 struct AudioClip
 {
 	AudioClipDesc desc;
@@ -63,6 +71,14 @@ enum LoadSource
 {
 	LOAD_SOURCE_MOD_FILE,
 	LOAD_SOURCE_ASSET_FILE,
+};
+
+struct MusicFileDesc
+{
+	ID id;
+	const char *name;
+	const char *filename;
+	AssetFlags flags;
 };
 
 struct MusicFile
@@ -112,6 +128,37 @@ struct Audio
 	bool initialized;
 };
 
+
+#pragma pack(push, 1)
+
+struct BinAudioClipDesc
+{
+	ID id;
+	u32 sampleCount;
+	u32 samplingRate;
+	u16 sampleSize;
+	u16 channelCount;
+	BinLocation location;
+};
+
+struct BinMusicFileDesc
+{
+	ID id;
+	const char *name;
+	BinLocation location;
+};
+
+struct BinAudioClip
+{
+	BinAudioClipDesc *desc;
+};
+
+struct BinMusicFile
+{
+	BinMusicFileDesc *desc;
+};
+
+#pragma pack(pop)
 
 ////////////////////////////////////////////////////////////////////////
 // Functions
