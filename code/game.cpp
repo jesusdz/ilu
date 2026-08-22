@@ -21,20 +21,6 @@ void GameStart(Game &game)
 {
 	LOG(Info, "- GameStart!\n");
 
-	game.box1 = {
-		.pos = { 0, 0 },
-		.size = { 1, 1 },
-		.color = { 0.0, 0.5, 1.0, 1.0 },
-	};
-	game.box2 = {
-		.pos = { 0, 0 },
-		.size = { 1, 1 },
-		.color = { 1.0, 0.5, 0.0, 1.0 },
-	};
-
-	game.speed = {2.0f, 10.0f};
-	game.speed2 = {};
-	game.accel2 = 50;
 	game.playerState = OnAir;
 
 	if ( !game.entPlayer ) {
@@ -42,6 +28,9 @@ void GameStart(Game &game)
 	}
 	if ( Entity *player = TryGetEntity(game.entPlayer) ) {
 		player->position.xy = float2{1, 1};
+		player->colliderSize = float2{player->scale, player->scale};
+		player->speed = {};
+		player->accel = 50;
 	}
 	game.sprPlayerIdle = FindSprite("spr_playeridle");
 	game.sprPlayerRun = FindSprite("spr_playerrun");
@@ -105,56 +94,46 @@ void GameSimulate(Game &game)
 	}
 	const Room &room = *roomPtr;
 
+	const f32 screenLeft = room.pos.x;
+	const f32 screenRight = room.pos.x + RoomSize(room).x;
+	const f32 screenBottom = room.pos.y;
+	const f32 screenTop = room.pos.y + RoomSize(room).y;
+
+	// Player entity
 	{
-		float2 &pos = game.box1.pos;
-
-		pos.x += game.speed.x * deltaSeconds;
-		if (pos.x > 10) pos.x = -10;
-
-		pos.y = pos.y + game.speed.y * deltaSeconds + 0.5 * gravity * deltaSeconds * deltaSeconds;
-		game.speed.y = game.speed.y + gravity * deltaSeconds;
-
-		if (pos.y < 0.0f ) {
-			pos.y = 0.0f;
-			game.speed.y = 10.0f;
-		}
-	}
-
-	{
-		float2 playerPos = player->position.xy;
-		const float2 playerSize = { player->scale, player->scale };
+		const float2 size = player->colliderSize;
+		const f32 accel = player->accel;
+		float2 &pos = player->position.xy;
+		float2 &speed = player->speed;
 
 		f32 direction = game.input.move.x;
 
 		// Speed epsilon ///////////////////////////////////////////////
 
-		// Only X: friction decays toward zero without ever reaching it, so it needs a deadzone.
-		// Y must not be snapped, or the jump apex would read as grounded for a frame.
 		constexpr f32 SPEED_EPSILON = 0.01;
-		if ( Abs(game.speed2.x) < SPEED_EPSILON ) { game.speed2.x = 0.0f; }
+		if ( Abs(speed.x) < SPEED_EPSILON ) { speed.x = 0.0f; }
 
 		// X ///////////////////////////////////////////////////////////
 
-		if ((direction < 0.0f && game.speed2.x > 0.0f) ||
-				(direction > 0.0f && game.speed2.x < 0.0f) ||
+		if ((direction < 0.0f && speed.x > 0.0f) ||
+				(direction > 0.0f && speed.x < 0.0f) ||
 				!direction )
 		{
 			// Retune of the old per-frame 0.8 factor, kept identical at 60Hz but framerate independent
 			constexpr f32 frictionAt60Hz = 0.8f;
-			game.speed2.x *= Pow(frictionAt60Hz, deltaSeconds * 60.0f);
+			speed.x *= Pow(frictionAt60Hz, deltaSeconds * 60.0f);
 		}
 
-		if (direction != 0) {
-			game.speed2.x = game.speed2.x + direction * game.accel2 * deltaSeconds;
-		}
+		speed.x = speed.x + direction * accel * deltaSeconds;
 
-		game.speed2.x = Clamp(game.speed2.x, -10.0f, 10.0f);
+		speed.x = Clamp(speed.x, -10.0f, 10.0f);
 
-		const f32 prevX = playerPos.x;
-		playerPos.x += game.speed2.x * deltaSeconds;
-		if (IsColliderInBox(playerPos, playerSize, 1)) {
-			playerPos.x = prevX;
-			game.speed2.x = 0.0f;
+		const f32 prevX = pos.x;
+		pos.x += speed.x * deltaSeconds;
+
+		if (IsColliderInBox(pos, size, 1)) {
+			pos.x = prevX;
+			speed.x = 0.0f;
 		}
 
 		// Y ///////////////////////////////////////////////////////////
@@ -168,65 +147,89 @@ void GameSimulate(Game &game)
 		if (game.input.jump.press) {
 			if (game.playerState == OnFloor || game.playerState == OnPlatform) {
 				if (game.input.move.y < 0.0 && Abs(game.input.move.y) > Abs(2 * game.input.move.x) && game.playerState == OnPlatform) {
-					playerPos.y -= 0.1;
+					pos.y -= 0.1;
 				} else {
-					game.speed2.y = jumpSpeed;
+					speed.y = jumpSpeed;
 				}
 				game.playerState = OnAir;
 				PlayAudioClip(game.sndJump);
 			}
 		}
 
-		if (game.speed2.y > 0 && !game.input.jump.pressed) {
-			game.speed2.y *= jumpCutMultiplier;
+		if (speed.y > 0 && !game.input.jump.pressed) {
+			speed.y *= jumpCutMultiplier;
 		}
 
-		const f32 gravity2 = game.speed2.y > 0 ? gravityRise : gravityFall;
-		const f32 prevY = playerPos.y;
-		playerPos.y += game.speed2.y * deltaSeconds + 0.5 * gravity2 * deltaSeconds * deltaSeconds;
-		game.speed2.y = game.speed2.y + gravity2 * deltaSeconds;
+		const f32 gravity2 = speed.y > 0 ? gravityRise : gravityFall;
+		const f32 prevY = pos.y;
+		pos.y += speed.y * deltaSeconds + 0.5 * gravity2 * deltaSeconds * deltaSeconds;
+		speed.y = speed.y + gravity2 * deltaSeconds;
 
 		// Only landing on a surface grounds the player, hitting a ceiling does not
 		game.playerState = OnAir;
 
-		if (IsColliderInBox(playerPos, playerSize, 1)) {
-			if (prevY < playerPos.y) {
-				playerPos.y = Ceil(prevY);
+		if (IsColliderInBox(pos, size, 1)) {
+			if (prevY < pos.y) {
+				pos.y = Ceil(prevY);
 			} else {
-				playerPos.y = Floor(prevY);
+				pos.y = Floor(prevY);
 				game.playerState = OnFloor;
 			}
-			game.speed2.y = 0.0f;
+			speed.y = 0.0f;
 		}
 
-		if (game.speed2.y < 0.0)
+		if (speed.y < 0.0)
 		{
-			const float2 prevVertical = {playerPos.x, prevY};
+			const float2 prevVertical = {pos.x, prevY};
 			if (GetColliderAtWorldPos(prevVertical) == 0 &&
-				GetColliderAtWorldPos(playerPos) == 2) {
-				if (prevY > playerPos.y) {
-					playerPos.y = Floor(prevY);
-					game.speed2.y = 0.0f;
+				GetColliderAtWorldPos(pos) == 2) {
+				if (prevY > pos.y) {
+					pos.y = Floor(prevY);
+					speed.y = 0.0f;
 					game.playerState = OnPlatform;
 				}
 			}
 		}
 
-		if (playerPos.y < 0) {
-			playerPos.y = 0;
-			game.speed2.y = 0;
+		if (pos.y < 0) {
+			pos.y = 0;
+			speed.y = 0;
 			game.playerState = OnFloor;
 		}
 
 		// Player bounds
-		const f32 screenLeft = room.pos.x;
-		const f32 screenRight = room.pos.x + RoomSize(room).x;
-		const f32 screenBottom = room.pos.y;
-		const f32 screenTop = room.pos.y + RoomSize(room).y;
-		playerPos.x = Clamp(playerPos.x, screenLeft, screenRight - playerSize.x);
-		playerPos.y = Clamp(playerPos.y, screenBottom, screenTop - playerSize.y);
+		pos.x = Clamp(pos.x, screenLeft, screenRight - size.x);
+		pos.y = Clamp(pos.y, screenBottom, screenTop - size.y);
 
-		// Camera bounds
+		// Animation
+		if ( game.playerState == OnFloor || game.playerState == OnPlatform )
+		{
+			if ( Abs(speed.x) < 0.2 ) {
+				player->spriteId = game.sprPlayerIdle;
+			} else {
+				player->spriteId = game.sprPlayerRun;
+			}
+		}
+		else
+		{
+			if ( speed.y >= 0.0f ) {
+				player->spriteId = game.sprPlayerJump;
+			} else {
+				player->spriteId = game.sprPlayerFall;
+			}
+		}
+
+		if ( speed.x > 0 ) {
+			player->flipX = false;
+		} else if ( speed.x < 0 ) {
+			player->flipX = true;
+		}
+	}
+
+	// Camera
+	{
+		const float2 playerPos = player->position.xy;
+
 		const float2 halfSceneSize = 0.5f * float2{SCENE_WIDTH, SCENE_HEIGHT} / PIXELS_PER_METER;
 		const f32 cameraLeft = screenLeft + halfSceneSize.x;
 		const f32 cameraRight = screenRight - halfSceneSize.x;
@@ -244,25 +247,6 @@ void GameSimulate(Game &game)
 		game.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
 		game.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
-		if ( game.playerState == OnFloor || game.playerState == OnPlatform )
-		{
-			if ( Abs(game.speed2.x) < 0.2 ) {
-				player->spriteId = game.sprPlayerIdle;
-			} else {
-				player->spriteId = game.sprPlayerRun;
-			}
-		}
-		else
-		{
-			if ( game.speed2.y >= 0.0f ) {
-				player->spriteId = game.sprPlayerJump;
-			} else {
-				player->spriteId = game.sprPlayerFall;
-			}
-		}
-		if ( game.speed2.x > 0 ) { player->flipX = false; }
-		else if ( game.speed2.x < 0 ) { player->flipX = true; }
-		EntitySetPosition(*player, Float3(playerPos, player->position.z));
 	}
 }
 
@@ -272,7 +256,7 @@ void GameUpdate(Game &game)
 
 	//const Room *roomPtr = TryGetRoom(game.roomId);
 	//DrawBoxOutline(Float2(roomPtr->pos), LayerSize(roomPtr->layers[0]), ColorOrange);
-	DrawBox(game.box1.pos, game.box1.size, game.box1.color);
+	//DrawBox(game.box1.pos, game.box1.size, game.box1.color);
 }
 
 void GameStop(Game &game)

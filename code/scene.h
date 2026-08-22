@@ -24,15 +24,20 @@ struct EntityDesc
 {
 	ID id;
 	const char *name;
+	// Transform
+	float3 pos;
+	float scale;
 	// 3D entity
 	ID materialId;
 	GeometryType geometryType;
 	// Sprite entity
 	ID spriteId;
 	ID layerId;
-	// Common
-	float3 pos;
-	float scale;
+	// Collider
+	float2 colliderSize;
+	// Physics
+	float2 speed;
+	f32 accel;
 };
 
 struct TileDesc
@@ -89,10 +94,9 @@ struct Entity
 {
 	ID id;
 	const char *name;
+	// Transform
 	float3 position;
 	float scale;
-	bool visible;
-	bool culled;
 	// 3D entity
 	GeometryType geometryType;
 	BufferChunk vertices;
@@ -101,13 +105,21 @@ struct Entity
 	// Sprite entity
 	ID spriteId;
 	bool flipX;
+	// Collider
+	float2 colliderSize;
+	// Physics
+	float2 speed;
+	f32 accel;
 
 	ID layerId;
 
+	bool visible;
+	bool culled;
+
 	// Hierarchy links. IDs rather than pointers: the element array compacts, so a
 	// pointer into it would dangle at the next CompactEntities.
-	ID next;  // Sibling
-	ID child; // First child
+	//ID next;  // Sibling
+	//ID child; // First child
 };
 
 #define PIXELS_PER_METER 16

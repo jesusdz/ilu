@@ -33,12 +33,12 @@ struct GameInput
 	InputButton jump;
 };
 
-struct Box
-{
-	float2 pos;
-	float2 size;
-	float4 color;
-};
+//struct Box
+//{
+//	float2 pos;
+//	float2 size;
+//	float4 color;
+//};
 
 enum PlayerState
 {
@@ -69,12 +69,6 @@ struct Game
 
 	GameInput input;
 
-	Box box1;
-	float2 speed;
-
-	Box box2;
-	float2 speed2;
-	float accel2;
 	PlayerState playerState;
 
 	ID entPlayer;

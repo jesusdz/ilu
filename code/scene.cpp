@@ -230,9 +230,9 @@ EntityDesc GetEntityDesc(ID id)
 	EntityDesc entityDesc = {
 		.id      = entity.id,
 		.name    = entity.name,
-		.layerId = entity.layerId,
 		.pos     = entity.position,
 		.scale   = entity.scale,
+		.layerId = entity.layerId,
 	};
 	if (entity.spriteId) {
 		entityDesc.spriteId = entity.spriteId;
@@ -305,12 +305,12 @@ ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 	const EntityDesc entityDesc = {
 		.id = desc.id,
 		.name = desc.name,
+		.pos = desc.pos,
+		.scale = desc.scale,
 		.materialId = desc.materialId,
 		.geometryType = desc.geometryType,
 		.spriteId = desc.spriteId,
 		.layerId = desc.layerId,
-		.pos = desc.pos,
-		.scale = desc.scale,
 	};
 	return CreateEntity(engine, entityDesc);
 }

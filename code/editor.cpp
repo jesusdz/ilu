@@ -1829,9 +1829,9 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 
 	const EntityDesc entityDesc = {
 		.name = InternString("entity"),
-		.spriteId = spriteId,
 		.pos = Float3(worldPos, 0.0),
 		.scale = 1.0f,
+		.spriteId = spriteId,
 	};
 
 	return CreateEntity(engine, entityDesc);
