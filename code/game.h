@@ -2,12 +2,6 @@
 #define GAME_H
 
 ////////////////////////////////////////////////////////////////////////
-// Engine Types
-////////////////////////////////////////////////////////////////////////
-
-struct Entity;
-
-////////////////////////////////////////////////////////////////////////
 // Game Types
 ////////////////////////////////////////////////////////////////////////
 
@@ -32,13 +26,6 @@ struct GameInput
 	float2 move;
 	InputButton jump;
 };
-
-//struct Box
-//{
-//	float2 pos;
-//	float2 size;
-//	float4 color;
-//};
 
 enum PlayerState
 {
@@ -68,7 +55,10 @@ struct Game
 	f32 accumulatedSeconds;
 
 	GameInput input;
+};
 
+struct Script
+{
 	PlayerState playerState;
 
 	ID entPlayer;
@@ -94,12 +84,11 @@ struct Game
 // Engine -> Game interface
 ////////////////////////////////////////////////////////////////////////
 
-void GameRegisterProperties(Game &game);
-void GameSetInput(Game &game, const Keyboard &, const Mouse &, const Gamepad &);
-void GameStart(Game &game);
-void GameSimulate(Game &game);
-void GameUpdate(Game &game);
-void GameStop(Game &game);
+void RegisterProperties(Script &script);
+void Start(Script &script);
+void Simulate(Script &script, Game &game);
+void Update(Script &script);
+void Stop(Script &script);
 
 ////////////////////////////////////////////////////////////////////////
 // Game -> Engine interface

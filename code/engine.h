@@ -14,6 +14,7 @@ struct Engine
 	Audio audio;
 	Scene scene;
 	Game game;
+	Script script;
 #if USE_UI
 	UI ui;
 #endif

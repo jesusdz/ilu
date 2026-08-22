@@ -1246,13 +1246,13 @@ static void EditorUpdateUI_Property(const Property &property, void *data)
 	}
 }
 
-static void EditorUpdateUI_InspectorGame(Game &game)
+static void EditorUpdateUI_InspectorProperties(const Property *properties, u32 propertyCount, void *base)
 {
-	for (u32 i = 0; i < game.propertyCount; ++i)
+	for (u32 i = 0; i < propertyCount; ++i)
 	{
-		const Property &property = game.properties[i];
+		const Property &property = properties[i];
 
-		EditorUpdateUI_Property(property, &game);
+		EditorUpdateUI_Property(property, base);
 	}
 }
 
@@ -1395,7 +1395,7 @@ static void EditorUpdateUI_Inspector()
 	{
 		if (inspector.selected.type == EditorSelectedType_Game)
 		{
-			EditorUpdateUI_InspectorGame(engine.game);
+			EditorUpdateUI_InspectorProperties(engine.script.properties, engine.script.propertyCount, &engine.script);
 		}
 		else if (inspector.selected.type == EditorSelectedType_Scene)
 		{

@@ -1,46 +1,46 @@
 
-static Property& GameAllocateProperty(Game &game)
+static Property& ScriptAllocateProperty(Script &script)
 {
-	ASSERT(game.propertyCount < ARRAY_COUNT(game.properties));
-	Property &property = game.properties[game.propertyCount++];
+	ASSERT(script.propertyCount < ARRAY_COUNT(script.properties));
+	Property &property = script.properties[script.propertyCount++];
 	return property;
 }
 
-void GameRegisterProperties(Game &game)
+void RegisterProperties(Script &script)
 {
-	game.propertyCount = 0;
-	ZeroArray(game.properties);
-	GameAllocateProperty(game) = {
+	script.propertyCount = 0;
+	ZeroArray(script.properties);
+	ScriptAllocateProperty(script) = {
 		.name = "Player",
-		.offset = OFFSET_OF(Game, entPlayer),
+		.offset = OFFSET_OF(Script, entPlayer),
 		.type = Property_ID,
 	};
 }
 
-void GameStart(Game &game)
+void Start(Script &script)
 {
-	LOG(Info, "- GameStart!\n");
+	LOG(Info, "- Start!\n");
 
-	game.playerState = OnAir;
+	script.playerState = OnAir;
 
-	if ( !game.entPlayer ) {
-		game.entPlayer = FindEntity("player");
+	if ( !script.entPlayer ) {
+		script.entPlayer = FindEntity("player");
 	}
-	if ( Entity *player = TryGetEntity(game.entPlayer) ) {
+	if ( Entity *player = TryGetEntity(script.entPlayer) ) {
 		player->position.xy = float2{1, 1};
 		player->colliderSize = float2{player->scale, player->scale};
 		player->speed = {};
 		player->accel = 50;
 	}
-	game.sprPlayerIdle = FindSprite("spr_playeridle");
-	game.sprPlayerRun = FindSprite("spr_playerrun");
-	game.sprPlayerJump = FindSprite("spr_playerjump");
-	game.sprPlayerFall = FindSprite("spr_playerfall");
-	game.sndJump = GetAudioClip("snd_bell_wav");
-	game.modEquinox = GetMusic("mod_equinox_mod");
-	game.playingMusic = false;
+	script.sprPlayerIdle = FindSprite("spr_playeridle");
+	script.sprPlayerRun = FindSprite("spr_playerrun");
+	script.sprPlayerJump = FindSprite("spr_playerjump");
+	script.sprPlayerFall = FindSprite("spr_playerfall");
+	script.sndJump = GetAudioClip("snd_bell_wav");
+	script.modEquinox = GetMusic("mod_equinox_mod");
+	script.playingMusic = false;
 
-	game.camera = {
+	script.camera = {
 		.projectionType = ProjectionOrthographic,
 		.position = {0, 0, -1},
 		.znear = -10.0f,
@@ -49,46 +49,25 @@ void GameStart(Game &game)
 		.height = 90.0f / PIXELS_PER_METER,
 	};
 
-	game.roomId = FindRoom("Room");
+	script.roomId = FindRoom("Room");
 }
 
-// Translate platform input to game input controls
-void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mouse, const Gamepad &gamepad)
+void Simulate(Script &script, Game &game)
 {
-	game.input = {};
+	LOG(Debug, "- Simulate!\n");
 
-	// Keyboard
-
-	game.input.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
-	game.input.move.x -= KeyPressed(keyboard, K_A) ? 1.0f : 0.0f;
-	game.input.move.y += KeyPressed(keyboard, K_W) ? 1.0f : 0.0f;
-	game.input.move.y -= KeyPressed(keyboard, K_S) ? 1.0f : 0.0f;
-	game.input.jump.press = KeyPress(keyboard, K_SPACE);
-	game.input.jump.pressed = KeyPressed(keyboard, K_SPACE);
-
-	// Gamepad
-
-	game.input.move += gamepad.leftAxis;
-	game.input.jump.press |= ButtonPress(gamepad.a);
-	game.input.jump.pressed |= ButtonPressed(gamepad.a);
-}
-
-void GameSimulate(Game &game)
-{
-	LOG(Debug, "- GameUpdate!\n");
-
-	if (!game.playingMusic)
+	if (!script.playingMusic)
 	{
-		PlayMusic(game.modEquinox);
-		game.playingMusic = true;
+		PlayMusic(script.modEquinox);
+		script.playingMusic = true;
 	}
 
 
 	const f32 deltaSeconds = game.deltaSeconds;
 	constexpr f32 gravity = -15.8f;
 
-	const Room *roomPtr = TryGetRoom(game.roomId);
-	Entity *player = TryGetEntity(game.entPlayer);
+	const Room *roomPtr = TryGetRoom(script.roomId);
+	Entity *player = TryGetEntity(script.entPlayer);
 	if ( !roomPtr || !player ) {
 		return;
 	}
@@ -145,14 +124,14 @@ void GameSimulate(Game &game)
 
 		// Grounded state comes from last frame's collision resolution, before this frame moves the player
 		if (game.input.jump.press) {
-			if (game.playerState == OnFloor || game.playerState == OnPlatform) {
-				if (game.input.move.y < 0.0 && Abs(game.input.move.y) > Abs(2 * game.input.move.x) && game.playerState == OnPlatform) {
+			if (script.playerState == OnFloor || script.playerState == OnPlatform) {
+				if (game.input.move.y < 0.0 && Abs(game.input.move.y) > Abs(2 * game.input.move.x) && script.playerState == OnPlatform) {
 					pos.y -= 0.1;
 				} else {
 					speed.y = jumpSpeed;
 				}
-				game.playerState = OnAir;
-				PlayAudioClip(game.sndJump);
+				script.playerState = OnAir;
+				PlayAudioClip(script.sndJump);
 			}
 		}
 
@@ -166,14 +145,14 @@ void GameSimulate(Game &game)
 		speed.y = speed.y + gravity2 * deltaSeconds;
 
 		// Only landing on a surface grounds the player, hitting a ceiling does not
-		game.playerState = OnAir;
+		script.playerState = OnAir;
 
 		if (IsColliderInBox(pos, size, 1)) {
 			if (prevY < pos.y) {
 				pos.y = Ceil(prevY);
 			} else {
 				pos.y = Floor(prevY);
-				game.playerState = OnFloor;
+				script.playerState = OnFloor;
 			}
 			speed.y = 0.0f;
 		}
@@ -186,7 +165,7 @@ void GameSimulate(Game &game)
 				if (prevY > pos.y) {
 					pos.y = Floor(prevY);
 					speed.y = 0.0f;
-					game.playerState = OnPlatform;
+					script.playerState = OnPlatform;
 				}
 			}
 		}
@@ -194,7 +173,7 @@ void GameSimulate(Game &game)
 		if (pos.y < 0) {
 			pos.y = 0;
 			speed.y = 0;
-			game.playerState = OnFloor;
+			script.playerState = OnFloor;
 		}
 
 		// Player bounds
@@ -202,20 +181,20 @@ void GameSimulate(Game &game)
 		pos.y = Clamp(pos.y, screenBottom, screenTop - size.y);
 
 		// Animation
-		if ( game.playerState == OnFloor || game.playerState == OnPlatform )
+		if ( script.playerState == OnFloor || script.playerState == OnPlatform )
 		{
 			if ( Abs(speed.x) < 0.2 ) {
-				player->spriteId = game.sprPlayerIdle;
+				player->spriteId = script.sprPlayerIdle;
 			} else {
-				player->spriteId = game.sprPlayerRun;
+				player->spriteId = script.sprPlayerRun;
 			}
 		}
 		else
 		{
 			if ( speed.y >= 0.0f ) {
-				player->spriteId = game.sprPlayerJump;
+				player->spriteId = script.sprPlayerJump;
 			} else {
-				player->spriteId = game.sprPlayerFall;
+				player->spriteId = script.sprPlayerFall;
 			}
 		}
 
@@ -235,32 +214,32 @@ void GameSimulate(Game &game)
 		const f32 cameraRight = screenRight - halfSceneSize.x;
 		const f32 cameraBottom = screenBottom + halfSceneSize.y;
 		const f32 cameraTop = screenTop - halfSceneSize.y;
-		//const f32 cameraX = Lerp(game.camera.position.x, playerPos.x, 0.2f);
-		//const f32 cameraY = Lerp(game.camera.position.y, playerPos.y, 0.2f);
-		float2 cameraPos = game.camera.position.xy;
+		//const f32 cameraX = Lerp(script.camera.position.x, playerPos.x, 0.2f);
+		//const f32 cameraY = Lerp(script.camera.position.y, playerPos.y, 0.2f);
+		float2 cameraPos = script.camera.position.xy;
 		cameraPos.x = cameraPos.x < playerPos.x - 1.0 ? playerPos.x - 1.0 : cameraPos.x;
 		cameraPos.x = cameraPos.x > playerPos.x + 1.0 ? playerPos.x + 1.0 : cameraPos.x;
 		cameraPos.y = cameraPos.y < playerPos.y - 1.0 ? playerPos.y - 1.0 : cameraPos.y;
 		cameraPos.y = cameraPos.y > playerPos.y + 1.0 ? playerPos.y + 1.0 : cameraPos.y;
 		if ( game.input.move.x == 0.0f ) { cameraPos.x = Lerp(cameraPos.x, playerPos.x, 0.2f); }
 		if ( game.input.move.y == 0.0f ) { cameraPos.y = Lerp(cameraPos.y, playerPos.y, 0.2f); }
-		game.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
-		game.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
+		script.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
+		script.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
 	}
 }
 
-void GameUpdate(Game &game)
+void Update(Script &script)
 {
-	SetCamera(game.camera);
+	SetCamera(script.camera);
 
-	//const Room *roomPtr = TryGetRoom(game.roomId);
+	//const Room *roomPtr = TryGetRoom(script.roomId);
 	//DrawBoxOutline(Float2(roomPtr->pos), LayerSize(roomPtr->layers[0]), ColorOrange);
-	//DrawBox(game.box1.pos, game.box1.size, game.box1.color);
+	//DrawBox(script.box1.pos, script.box1.size, script.box1.color);
 }
 
-void GameStop(Game &game)
+void Stop(Script &script)
 {
-	LOG(Info, "- GameStop!\n");
+	LOG(Info, "- Stop!\n");
 }
 

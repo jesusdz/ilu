@@ -536,9 +536,30 @@ static void InputConsume(PlatformInput &input)
 	}
 }
 
+static void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mouse, const Gamepad &gamepad)
+{
+	game.input = {};
+
+	// Keyboard
+
+	game.input.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
+	game.input.move.x -= KeyPressed(keyboard, K_A) ? 1.0f : 0.0f;
+	game.input.move.y += KeyPressed(keyboard, K_W) ? 1.0f : 0.0f;
+	game.input.move.y -= KeyPressed(keyboard, K_S) ? 1.0f : 0.0f;
+	game.input.jump.press = KeyPress(keyboard, K_SPACE);
+	game.input.jump.pressed = KeyPressed(keyboard, K_SPACE);
+
+	// Gamepad
+
+	game.input.move += gamepad.leftAxis;
+	game.input.jump.press |= ButtonPress(gamepad.a);
+	game.input.jump.pressed |= ButtonPressed(gamepad.a);
+}
+
 void GameUpdate(Engine &engine, const Plat &platform)
 {
 	Game &game = engine.game;
+	Script &script = engine.script;
 
 	static PlatformInput accumulatedInput = {};
 	static f32 accumulatedSeconds = 0.0f;
@@ -553,7 +574,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		accumulatedSeconds = 0.0f;
 		MemSet(sKeyPendingRelease, sizeof(sKeyPendingRelease), 0);
 
-		GameStart(game);
+		Start(script);
 		game.state = GameStateRunning;
 	}
 
@@ -578,7 +599,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		{
 			game.deltaSeconds = fixedStepSeconds;
 			GameSetInput(game, accumulatedInput.keyboard, accumulatedInput.mouse, accumulatedInput.gamepad);
-			GameSimulate(game);
+			Simulate(script, game);
 			InputConsume(accumulatedInput);
 			accumulatedSeconds -= fixedStepSeconds;
 			//count++;
@@ -586,12 +607,12 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 		//LOG(Info, "Update count: %u\n", count);
 
-		GameUpdate(game);
+		Update(script);
 	}
 
 	if (game.state == GameStateStopping)
 	{
-		GameStop(game);
+		Stop(script);
 
 		AudioStopAll(engine.audio);
 
@@ -655,6 +676,7 @@ ENGINE_API u32 OnPlatformGetStateSignature()
 		sizeof(Scene),
 		sizeof(Audio),
 		sizeof(Game),
+		sizeof(Script),
 #if USE_UI
 		sizeof(UI),
 #endif
@@ -675,7 +697,7 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 
 	if ( platform.engine )
 	{
-		GameRegisterProperties(platform.engine->game);
+		RegisterProperties(platform.engine->script);
 
 		UI_ResetStyle(platform.engine->ui);
 
@@ -703,7 +725,7 @@ ENGINE_API bool OnPlatformPreInit(Plat &platform)
 
 	Engine &engine = GetEngine();
 
-	GameRegisterProperties(engine.game);
+	RegisterProperties(engine.script);
 
 #if USE_DATA_BUILD
 	bool buildAssets = false;
