@@ -673,6 +673,7 @@ static void EditorUpdateUI_Outliner()
 	Scene &scene = engine.scene;
 	Graphics &gfx = engine.gfx;
 	Audio &audio = engine.audio;
+	Game &game = engine.game;
 
 	constexpr uint2 size = {200, 500};
 	UI_SetNextWindowDefaultSize(ui, size);
@@ -939,6 +940,18 @@ static void EditorUpdateUI_Outliner()
 				EditorSelectMusic(desc.id);
 			}
 			EditorAssetContextMenu("MusicFileContext", EditorSelectedType_Music, desc.id);
+		}
+	}
+
+	if ( UI_Section(ui, "Scripts") )
+	{
+		for (u32 i = 0; i < game.scriptCount; ++i)
+		{
+			const Script &script = game.scripts[i];
+
+			if ( UI_Button(ui, script.name) ) {
+				// EditorSelectScript(script);
+			}
 		}
 	}
 
@@ -1395,7 +1408,7 @@ static void EditorUpdateUI_Inspector()
 	{
 		if (inspector.selected.type == EditorSelectedType_Game)
 		{
-			EditorUpdateUI_InspectorProperties(engine.script.properties, engine.script.propertyCount, &engine.script);
+			//EditorUpdateUI_InspectorProperties(engine.script.properties, engine.script.propertyCount, &engine.script);
 		}
 		else if (inspector.selected.type == EditorSelectedType_Scene)
 		{

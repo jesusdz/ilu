@@ -559,7 +559,7 @@ static void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mous
 void GameUpdate(Engine &engine, const Plat &platform)
 {
 	Game &game = engine.game;
-	Script &script = engine.script;
+	ScriptPlayerController &script = engine.script;
 
 	static PlatformInput accumulatedInput = {};
 	static f32 accumulatedSeconds = 0.0f;
@@ -697,7 +697,7 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 
 	if ( platform.engine )
 	{
-		RegisterProperties(platform.engine->script);
+		RegisterProperties(platform.engine->game);
 
 		UI_ResetStyle(platform.engine->ui);
 
@@ -725,7 +725,7 @@ ENGINE_API bool OnPlatformPreInit(Plat &platform)
 
 	Engine &engine = GetEngine();
 
-	RegisterProperties(engine.script);
+	RegisterProperties(engine.game);
 
 #if USE_DATA_BUILD
 	bool buildAssets = false;

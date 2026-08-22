@@ -42,22 +42,41 @@ enum PropertyType : u8
 
 struct Property
 {
+	PropertyType type;
 	const char *name;
 	u16 offset;
-	PropertyType type;
 };
+
+struct Script
+{
+	const char *name;
+	u32 propertyOffset;
+	u32 propertyCount;
+};
+
+constexpr u32 MAX_SCRIPTS = 64;
+constexpr u32 MAX_PROPERTIES = 64;
 
 struct Game
 {
 	GameState state;
+	GameInput input;
 
 	f32 deltaSeconds;
 	f32 accumulatedSeconds;
 
-	GameInput input;
+	u32 scriptCount;
+	Script scripts[MAX_SCRIPTS];
+
+	u32 propertyCount;
+	Property properties[MAX_PROPERTIES];
 };
 
-struct Script
+////////////////////////////////////////////////////////////////////////
+// Engine -> Game interface
+////////////////////////////////////////////////////////////////////////
+
+struct ScriptPlayerController
 {
 	PlayerState playerState;
 
@@ -75,20 +94,13 @@ struct Script
 	Camera camera;
 
 	ID roomId;
-
-	u32 propertyCount;
-	Property properties[32];
 };
 
-////////////////////////////////////////////////////////////////////////
-// Engine -> Game interface
-////////////////////////////////////////////////////////////////////////
-
-void RegisterProperties(Script &script);
-void Start(Script &script);
-void Simulate(Script &script, Game &game);
-void Update(Script &script);
-void Stop(Script &script);
+void RegisterProperties(Game &game);
+void Start(ScriptPlayerController &script);
+void Simulate(ScriptPlayerController &script, Game &game);
+void Update(ScriptPlayerController &script);
+void Stop(ScriptPlayerController &script);
 
 ////////////////////////////////////////////////////////////////////////
 // Game -> Engine interface

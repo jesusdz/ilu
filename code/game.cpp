@@ -1,23 +1,23 @@
 
-static Property& ScriptAllocateProperty(Script &script)
+static Property& AllocateProperty(Game &game)
 {
-	ASSERT(script.propertyCount < ARRAY_COUNT(script.properties));
-	Property &property = script.properties[script.propertyCount++];
+	ASSERT(game.propertyCount < ARRAY_COUNT(game.properties));
+	Property &property = game.properties[game.propertyCount++];
 	return property;
 }
 
-void RegisterProperties(Script &script)
+void RegisterProperties(Game &game)
 {
-	script.propertyCount = 0;
-	ZeroArray(script.properties);
-	ScriptAllocateProperty(script) = {
-		.name = "Player",
-		.offset = OFFSET_OF(Script, entPlayer),
+	game.propertyCount = 0;
+	ZeroArray(game.properties);
+	AllocateProperty(game) = {
 		.type = Property_ID,
+		.name = "Player",
+		.offset = OFFSET_OF(ScriptPlayerController, entPlayer),
 	};
 }
 
-void Start(Script &script)
+void Start(ScriptPlayerController &script)
 {
 	LOG(Info, "- Start!\n");
 
@@ -52,7 +52,7 @@ void Start(Script &script)
 	script.roomId = FindRoom("Room");
 }
 
-void Simulate(Script &script, Game &game)
+void Simulate(ScriptPlayerController &script, Game &game)
 {
 	LOG(Debug, "- Simulate!\n");
 
@@ -229,7 +229,7 @@ void Simulate(Script &script, Game &game)
 	}
 }
 
-void Update(Script &script)
+void Update(ScriptPlayerController &script)
 {
 	SetCamera(script.camera);
 
@@ -238,7 +238,7 @@ void Update(Script &script)
 	//DrawBox(script.box1.pos, script.box1.size, script.box1.color);
 }
 
-void Stop(Script &script)
+void Stop(ScriptPlayerController &script)
 {
 	LOG(Info, "- Stop!\n");
 }

@@ -14,7 +14,6 @@ struct Engine
 	Audio audio;
 	Scene scene;
 	Game game;
-	Script script;
 #if USE_UI
 	UI ui;
 #endif
@@ -22,6 +21,8 @@ struct Engine
 	Editor editor;
 #endif
 	Settings settings;
+
+	ScriptPlayerController script;
 
 	BinAssets shaderAssets;
 	BinAssets assets;
