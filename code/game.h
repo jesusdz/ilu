@@ -55,7 +55,7 @@ struct Script
 };
 
 constexpr u32 MAX_SCRIPTS = 64;
-constexpr u32 MAX_PROPERTIES = 64;
+constexpr u32 MAX_PROPERTIES = MAX_SCRIPTS * 64;
 
 struct Game
 {
@@ -96,7 +96,7 @@ struct ScriptPlayerController
 	ID roomId;
 };
 
-void RegisterProperties(Game &game);
+void RegisterScripts(Game &game);
 void Start(ScriptPlayerController &script);
 void Simulate(ScriptPlayerController &script, Game &game);
 void Update(ScriptPlayerController &script);

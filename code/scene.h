@@ -38,6 +38,8 @@ struct EntityDesc
 	// Physics
 	float2 speed;
 	f32 accel;
+	// Script
+
 };
 
 struct TileDesc

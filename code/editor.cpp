@@ -949,7 +949,7 @@ static void EditorUpdateUI_Outliner()
 		{
 			const Script &script = game.scripts[i];
 
-			if ( UI_Button(ui, script.name) ) {
+			if  (UI_TreeNode(ui, script.name, nullptr, nullptr)) {
 				// EditorSelectScript(script);
 			}
 		}
@@ -1259,8 +1259,12 @@ static void EditorUpdateUI_Property(const Property &property, void *data)
 	}
 }
 
-static void EditorUpdateUI_InspectorProperties(const Property *properties, u32 propertyCount, void *base)
+static void EditorUpdateUI_InspectorProperties(const char *scriptName, const Property *properties, u32 propertyCount, void *base)
 {
+	UI &ui = GetEngine().ui;
+
+	UI_SeparatorLabel(ui, scriptName);
+
 	for (u32 i = 0; i < propertyCount; ++i)
 	{
 		const Property &property = properties[i];
@@ -1408,7 +1412,10 @@ static void EditorUpdateUI_Inspector()
 	{
 		if (inspector.selected.type == EditorSelectedType_Game)
 		{
-			//EditorUpdateUI_InspectorProperties(engine.script.properties, engine.script.propertyCount, &engine.script);
+			//Script &script = engine.game.scripts[0];
+			//const Property *properties = engine.game.properties + script.propertyOffset;
+			//const u32 propertyCount = script.propertyCount;
+			//EditorUpdateUI_InspectorProperties(script.name, properties, propertyCount, &engine.script);
 		}
 		else if (inspector.selected.type == EditorSelectedType_Scene)
 		{

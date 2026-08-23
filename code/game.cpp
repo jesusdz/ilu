@@ -6,21 +6,46 @@ static Property& AllocateProperty(Game &game)
 	return property;
 }
 
-void RegisterProperties(Game &game)
+static Script& AllocateScript(Game &game)
 {
+	ASSERT(game.scriptCount < ARRAY_COUNT(game.scripts));
+	Script &script = game.scripts[game.scriptCount++];
+	return script;
+}
+
+#define BEGIN_SCRIPT(StructName) \
+	typedef StructName ScriptType; \
+	Script &script = AllocateScript(game) = { \
+		.name = #StructName, \
+		.propertyOffset = game.propertyCount, \
+	}
+
+#define END_SCRIPT() script.propertyCount = game.propertyCount - script.propertyOffset
+
+#define PROPERTY(FieldType, Name) \
+	AllocateProperty(game) = { \
+		.type = Property_##FieldType, \
+		.name = #Name, \
+		.offset = OFFSET_OF(ScriptType, Name), \
+	};
+
+
+void RegisterScripts(Game &game)
+{
+	game.scriptCount = 0;
+	ZeroArray(game.scripts);
 	game.propertyCount = 0;
 	ZeroArray(game.properties);
-	AllocateProperty(game) = {
-		.type = Property_ID,
-		.name = "Player",
-		.offset = OFFSET_OF(ScriptPlayerController, entPlayer),
-	};
+
+	{
+		BEGIN_SCRIPT(ScriptPlayerController);
+		PROPERTY(ID, entPlayer);
+		END_SCRIPT();
+	}
 }
 
 void Start(ScriptPlayerController &script)
 {
-	LOG(Info, "- Start!\n");
-
 	script.playerState = OnAir;
 
 	if ( !script.entPlayer ) {
@@ -54,8 +79,6 @@ void Start(ScriptPlayerController &script)
 
 void Simulate(ScriptPlayerController &script, Game &game)
 {
-	LOG(Debug, "- Simulate!\n");
-
 	if (!script.playingMusic)
 	{
 		PlayMusic(script.modEquinox);
@@ -240,6 +263,5 @@ void Update(ScriptPlayerController &script)
 
 void Stop(ScriptPlayerController &script)
 {
-	LOG(Info, "- Stop!\n");
 }
 
