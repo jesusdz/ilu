@@ -287,7 +287,7 @@ static aaudio_data_callback_result_t AAudioFillAudioBuffer(AAudioStream *stream,
 	soundBuffer.samplesPerSecond = audio.samplesPerSecond;
 	soundBuffer.sampleCount = numFrames;
 	soundBuffer.samples = (i16*)audioData;
-	platform.RenderAudioCallback(platform.pub, soundBuffer);
+	platform.OnPlatformRenderAudio(platform.pub, soundBuffer);
 
 	return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }

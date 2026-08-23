@@ -92,18 +92,17 @@ struct Platform
 	u32 stringMemorySize = KB(16);
 	u32 dataMemorySize = MB(16);
 
-	void (*LoadEngineCallback)(Plat &);
-	void (*UnloadEngineCallback)(Plat &);
-	bool (*PreInitCallback)(Plat &);
-	bool (*InitCallback)(Plat &);
-	void (*UpdateCallback)(Plat &);
-	void (*RenderGraphicsCallback)(Plat &);
-	void (*PreRenderAudioCallback)(Plat &);
-	void (*RenderAudioCallback)(Plat &, SoundBuffer &soundBuffer);
-	void (*CleanupCallback)(Plat &);
-	bool (*WindowInitCallback)(Plat &);
-	void (*WindowCleanupCallback)(Plat &);
-	u32 (*GetStateSignatureCallback)();
+	void (*OnPlatformLoadEngine)(Plat &);
+	void (*OnPlatformUnloadEngine)(Plat &);
+	bool (*OnPlatformInit)(Plat &);
+	void (*OnPlatformUpdate)(Plat &);
+	void (*OnPlatformRenderGraphics)(Plat &);
+	void (*OnPlatformPreRenderAudio)(Plat &);
+	void (*OnPlatformRenderAudio)(Plat &, SoundBuffer &soundBuffer);
+	void (*OnPlatformCleanup)(Plat &);
+	bool (*OnPlatformWindowInit)(Plat &);
+	void (*OnPlatformWindowCleanup)(Plat &);
+	u32 (*OnPlatformGetStateSignature)();
 
 	void *userData;
 
@@ -441,9 +440,9 @@ static void UpdateAudio(Platform &platform)
 {
 	UpdateAudioDevice(platform);
 
-	if ( platform.PreRenderAudioCallback )
+	if ( platform.OnPlatformPreRenderAudio )
 	{
-		platform.PreRenderAudioCallback(platform.pub);
+		platform.OnPlatformPreRenderAudio(platform.pub);
 	}
 }
 
@@ -451,15 +450,15 @@ static bool InitializeAudio(Platform &platform)
 {
 	LOG(Info, "Sound system initialization:\n");
 
-	if ( platform.RenderAudioCallback == nullptr )
+	if ( platform.OnPlatformRenderAudio == nullptr )
 	{
-		LOG(Info, "- RenderAudioCallback not provided, sound system not required\n");
+		LOG(Info, "- OnPlatformRenderAudio not provided, sound system not required\n");
 		return true;
 	}
 
-	if ( platform.PreRenderAudioCallback == nullptr )
+	if ( platform.OnPlatformPreRenderAudio == nullptr )
 	{
-		LOG(Info, "- PreRenderAudioCallback not provided (you might want it to pre-render costly stuff)\n");
+		LOG(Info, "- OnPlatformPreRenderAudio not provided (you might want it to pre-render costly stuff)\n");
 	}
 
 	AudioDevice &audio = platform.audio;
@@ -763,7 +762,7 @@ static void ProcessPlatformEvents(Platform &platform)
 		{
 			case PlatformEventTypeWindowWasCreated:
 			{
-				platform.WindowInitCallback(platform.pub);
+				platform.OnPlatformWindowInit(platform.pub);
 				platform.windowInitialized = true;
 				ShowPlatformWindow(platform.window);
 				break;
@@ -771,7 +770,7 @@ static void ProcessPlatformEvents(Platform &platform)
 			case PlatformEventTypeWindowWillDestroy:
 			{
 				platform.windowInitialized = false;
-				platform.WindowCleanupCallback(platform.pub);
+				platform.OnPlatformWindowCleanup(platform.pub);
 				CleanupWindow(platform.window);
 				break;
 			};
@@ -839,8 +838,8 @@ static void UpdateAndRender(Platform &platform)
 
 	if ( platform.windowInitialized )
 	{
-		platform.UpdateCallback(platform.pub);
-		platform.RenderGraphicsCallback(platform.pub);
+		platform.OnPlatformUpdate(platform.pub);
+		platform.OnPlatformRenderGraphics(platform.pub);
 
 		platform.window.flags = 0;
 		platform.pub.fileChangesDetected = false;
@@ -987,6 +986,23 @@ static u32 AcquireScratchArena(Arena &outArena, u32 minSize)
 static FilePath sEngineLibPath = {};
 static FilePath sEngineTmpLibPath = {};
 
+// Resolves an engine entry point into the platform field of the same name. Mandatory
+// symbols abort the load; optional ones only warn and leave the field null, so callers
+// must check them before use.
+#define LOAD_ENGINE_SYMBOL(name, type) \
+	platform.name = (type) LoadSymbol(platform.engineLib, #name); \
+	if( !platform.name ) { \
+		LOG(Error, "- Couldn't load symbol: " #name "\n"); \
+		return false; \
+	} \
+	LOG(Info, "- Symbol loaded: " #name "\n")
+
+#define LOAD_ENGINE_SYMBOL_OPTIONAL(name, type) \
+	platform.name = (type) LoadSymbol(platform.engineLib, #name); \
+	if( !platform.name ) { LOG(Warning, "- Couldn't load optional symbol: " #name "\n"); } \
+	else { LOG(Info, "- Symbol loaded: " #name "\n"); } \
+	(void)0
+
 static bool LoadEngineDLL(Platform &platform)
 {
 	LOG(Info, "Loading engine DLL:\n");
@@ -1008,77 +1024,17 @@ static bool LoadEngineDLL(Platform &platform)
 
 	// Engine interface exposed to platform
 
-	platform.LoadEngineCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformLoadEngine");
-	if( !platform.LoadEngineCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformLoadEngine\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformLoadEngine\n");
+	LOAD_ENGINE_SYMBOL(OnPlatformLoadEngine,        void (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformUnloadEngine,      void (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformInit,              bool (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformUpdate,            void (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformRenderGraphics,    void (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformCleanup,           void (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformWindowInit,        bool (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformWindowCleanup,     void (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformGetStateSignature, u32 (*)());
 
-	platform.UnloadEngineCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformUnloadEngine");
-	if( !platform.UnloadEngineCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformUnloadEngine\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformUnloadEngine\n");
-
-	platform.PreInitCallback = (bool (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformPreInit");
-	if( !platform.PreInitCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformPreInit\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformPreInit\n");
-
-	platform.InitCallback = (bool (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformInit");
-	if( !platform.InitCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformInit\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformInit\n");
-
-	platform.UpdateCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformUpdate");
-	if( !platform.UpdateCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformUpdate\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformUpdate\n");
-
-	platform.RenderGraphicsCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformRenderGraphics");
-	if( !platform.RenderGraphicsCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformRenderGraphics\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformRenderGraphics\n");
-
-	platform.CleanupCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformCleanup");
-	if( !platform.CleanupCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformCleanup\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformCleanup\n");
-
-	platform.WindowInitCallback = (bool (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformWindowInit");
-	if( !platform.WindowInitCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformWindowInit\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformWindowInit\n");
-
-	platform.WindowCleanupCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformWindowCleanup");
-	if( !platform.WindowCleanupCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformWindowCleanup\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformWindowCleanup\n");
-
-	platform.GetStateSignatureCallback = (u32 (*)()) LoadSymbol(platform.engineLib, "OnPlatformGetStateSignature");
-	if( !platform.GetStateSignatureCallback ) {
-		LOG(Error, "- Couldn't load symbol: OnPlatformGetStateSignature\n");
-		return false;
-	}
-	LOG(Info, "- Symbol loaded: OnPlatformGetStateSignature\n");
-
-	const u32 stateSignature = platform.GetStateSignatureCallback();
+	const u32 stateSignature = platform.OnPlatformGetStateSignature();
 	if ( !platform.engineStateSignatureInitialized )
 	{
 		platform.engineStateSignature = stateSignature;
@@ -1091,29 +1047,28 @@ static bool LoadEngineDLL(Platform &platform)
 		return false;
 	}
 
-	platform.RenderAudioCallback = (void (*)(Plat &, SoundBuffer &)) LoadSymbol(platform.engineLib, "OnPlatformRenderAudio");
-	if( !platform.RenderAudioCallback ) { LOG(Error, "- Couldn't load symbol: OnPlatformRenderAudio\n"); }
-	else { LOG( Info, "- Symbol loaded: OnPlatformRenderAudio\n" ); }
-
-	platform.PreRenderAudioCallback = (void (*)(Plat &)) LoadSymbol(platform.engineLib, "OnPlatformPreRenderAudio");
-	if( !platform.PreRenderAudioCallback ) { LOG(Error, "- Couldn't load symbol: OnPlatformPreRenderAudio\n"); }
-	else { LOG( Info, "- Symbol loaded: OnPlatformPreRenderAudio\n" ); }
+	// The engine is allowed to ship without audio
+	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformRenderAudio,    void (*)(Plat &, SoundBuffer &));
+	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformPreRenderAudio, void (*)(Plat &));
 
 	// Platform interface exposed to engine
 	platform.pub.api.PlatformQuit        = PlatformQuit;
 	platform.pub.api.AcquireScratchArena = AcquireScratchArena;
 	platform.pub.api.ReleaseScratchArena = ReleaseScratchArena;
 
-	platform.LoadEngineCallback(platform.pub);
+	platform.OnPlatformLoadEngine(platform.pub);
 
 	return true;
 }
+
+#undef LOAD_ENGINE_SYMBOL
+#undef LOAD_ENGINE_SYMBOL_OPTIONAL
 
 static void UnloadEngineDLL(Platform &platform)
 {
 	if (platform.engineLib)
 	{
-		platform.UnloadEngineCallback(platform.pub);
+		platform.OnPlatformUnloadEngine(platform.pub);
 		CloseLibrary(platform.engineLib);
 		platform.engineLib = 0;
 	}
@@ -1197,15 +1152,7 @@ static void CheckEngineHotReload(Platform &platform)
 
 static bool Run(Platform &platform)
 {
-	platform.paused = false;
-	platform.keepRunning = true;
-
 	if ( !CreateMutex( platform.renderLock ) )
-	{
-		return false;
-	}
-
-	if ( !platform.PreInitCallback(platform.pub) )
 	{
 		return false;
 	}
@@ -1248,7 +1195,7 @@ static bool Run(Platform &platform)
 		return false;
 	}
 
-	if ( !platform.InitCallback(platform.pub) )
+	if ( !platform.OnPlatformInit(platform.pub) )
 	{
 		return false;
 	}
@@ -1310,10 +1257,10 @@ static bool Run(Platform &platform)
 
 	if ( platform.windowInitialized )
 	{
-		platform.WindowCleanupCallback(platform.pub);
+		platform.OnPlatformWindowCleanup(platform.pub);
 	}
 
-	platform.CleanupCallback(platform.pub);
+	platform.OnPlatformCleanup(platform.pub);
 	// TODO: Cleanup window and audio
 
 	return false;
@@ -1333,11 +1280,18 @@ static void Main( int argc, char **argv )
 	GetGraphicsAPI(&platform.pub.graphicsAPI);
 	SetGraphicsStringInterning(&platform.stringInterning);
 
-	LoadEngineDLL(platform);
+	platform.paused = false;
+	platform.keepRunning = true;
 
-	Run(platform);
+	if ( LoadEngineDLL(platform) )
+	{
+		if ( platform.keepRunning )
+		{
+			Run(platform);
+		}
 
-	UnloadEngineDLL(platform);
+		UnloadEngineDLL(platform);
+	}
 }
 
 

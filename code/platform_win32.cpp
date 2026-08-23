@@ -1242,7 +1242,7 @@ static void UpdateAudioDevice(Platform &platform)
 		soundBuffer.samplesPerSecond = audio.samplesPerSecond;
 		soundBuffer.sampleCount = bytesToWrite / (audio.bytesPerSample * audio.channelCount);
 		soundBuffer.samples = audio.outputSamples;
-		platform.RenderAudioCallback(platform.pub, soundBuffer);
+		platform.OnPlatformRenderAudio(platform.pub, soundBuffer);
 
 		Win32FillAudioBuffer(audio, byteToLock, bytesToWrite, soundBuffer.samples);
 	}

@@ -1071,7 +1071,7 @@ static void UpdateAudioDevice(Platform &platform)
 				soundBuffer.samplesPerSecond = audio.samplesPerSecond;
 				soundBuffer.sampleCount = framesToRender;
 				soundBuffer.samples = audio.outputSamples;
-				platform.RenderAudioCallback(platform.pub, soundBuffer);
+				platform.OnPlatformRenderAudio(platform.pub, soundBuffer);
 
 				res = FP_snd_pcm_writei(audioPcm, soundBuffer.samples, framesToRender);
 

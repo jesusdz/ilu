@@ -695,17 +695,54 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 	SetGraphicsAPI(&platform.graphicsAPI);
 	PROFILE_INIT();
 
-	if ( platform.engine )
+	const bool firstLoad = ( platform.engine == nullptr );
+
+	if ( firstLoad )
 	{
+		platform.engine = PushZeroStruct(GlobalArena, Engine);
 		Engine &engine = GetEngine();
 
-		RegisterScripts(engine.game);
+		// The ID pool lives in the retained engine state, so it is only reset once
+		InitializeIDPool();
 
+#if USE_DATA_BUILD
+		bool buildAssets = false;
+		bool exitAfterBuild = false;
+		for ( u32 i = 0; i < platform.argc; ++i ) {
+			if ( StrEq(platform.argv[i], "--build-assets") ) {
+				buildAssets = true;
+				exitAfterBuild = true;
+			}
+		}
+
+		const FilePath assetsFilepath = MakePath(DataDir, "assets.dat");
+		if ( !ExistsFile(assetsFilepath.str) ) {
+			buildAssets = true;
+		}
+
+		if ( buildAssets ) {
+			const FilePath shadersFilepath = MakePath(DataDir, "shaders.dat");
+			BuildShaders(engine, shadersFilepath.str);
+			const FilePath descriptorsFilepath = MakePath(AssetDir, "assets.txt");
+			BuildAssetsFromTxt(engine, descriptorsFilepath.str, assetsFilepath.str);
+			if (exitAfterBuild) {
+				PlatformQuit();
+			}
+		}
+#endif // USE_DATA_BUILD
+	}
+
+	Engine &engine = GetEngine();
+
+	RegisterScripts(engine.game);
+
+	if ( !firstLoad )
+	{
 		UI_ResetStyle(engine.ui);
 
-		// Profile state does not survive the reload, so GPU profiling starts fresh
 		PROFILE_GPU_INIT(engine.gfx.device);
 	}
+
 }
 
 ENGINE_API void OnPlatformUnloadEngine(Plat &platform)
@@ -717,45 +754,6 @@ ENGINE_API void OnPlatformUnloadEngine(Plat &platform)
 		WaitDeviceIdle(gfx.device);
 		PROFILE_GPU_CLEANUP(gfx.device);
 	}
-}
-
-ENGINE_API bool OnPlatformPreInit(Plat &platform)
-{
-	platform.engine = PushZeroStruct(GlobalArena, Engine);
-
-	InitializeIDPool();
-
-	Engine &engine = GetEngine();
-
-	RegisterScripts(engine.game);
-
-#if USE_DATA_BUILD
-	bool buildAssets = false;
-	bool exitAfterBuild = false;
-	for ( u32 i = 0; i < platform.argc; ++i ) {
-		if ( StrEq(platform.argv[i], "--build-assets") ) {
-			buildAssets = true;
-			exitAfterBuild = true;
-		}
-	}
-
-	const FilePath assetsFilepath = MakePath(DataDir, "assets.dat");
-	if ( !ExistsFile(assetsFilepath.str) ) {
-		buildAssets = true;
-	}
-
-	if ( buildAssets ) {
-		const FilePath shadersFilepath = MakePath(DataDir, "shaders.dat");
-		BuildShaders(engine, shadersFilepath.str);
-		const FilePath descriptorsFilepath = MakePath(AssetDir, "assets.txt");
-		BuildAssetsFromTxt(engine, descriptorsFilepath.str, assetsFilepath.str);
-		if (exitAfterBuild) {
-			PlatformQuit();
-		}
-	}
-#endif // USE_DATA_BUILD
-
-	return true;
 }
 
 ENGINE_API bool OnPlatformInit(Plat &platform)
