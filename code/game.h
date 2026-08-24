@@ -47,15 +47,40 @@ struct Property
 	u16 offset;
 };
 
+enum ScriptHookType
+{
+	ScriptHook_Start,
+	ScriptHook_Simulate,
+	ScriptHook_Update,
+	ScriptHook_Stop,
+	ScriptHook_Count,
+};
+
+typedef void (*ScriptHook)(void *instance);
+
 struct Script
 {
 	const char *name;
-	u32 propertyOffset;
+	u32 propertyFirst;
 	u32 propertyCount;
+	u32 instanceSize;
+	ScriptHook hooks[ScriptHook_Count];
 };
 
 constexpr u32 MAX_SCRIPTS = 64;
 constexpr u32 MAX_PROPERTIES = MAX_SCRIPTS * 64;
+constexpr u32 MAX_SCRIPT_INSTANCES = 1024;
+constexpr u32 SCRIPT_INSTANCE_ALIGN = 16;
+constexpr u32 SCRIPT_INSTANCE_DATA_SIZE = MAX_SCRIPT_INSTANCES * 128; // 128K
+
+struct ScriptInstance
+{
+	ID entity; // Owner entity (invalid means remove the instance)
+	const char *scriptName;
+	u32 offset; // Offset into the data blob
+	u32 size; // To compare against new hot-reloaded data
+	u16 scriptIndex;
+};
 
 struct Game
 {
@@ -65,22 +90,37 @@ struct Game
 	f32 deltaSeconds;
 	f32 accumulatedSeconds;
 
+	u32 propertyCount;
+	Property properties[MAX_PROPERTIES];
+
 	u32 scriptCount;
 	Script scripts[MAX_SCRIPTS];
 
-	u32 propertyCount;
-	Property properties[MAX_PROPERTIES];
+	u32 scriptInstanceCount;
+	ScriptInstance scriptInstances[MAX_SCRIPT_INSTANCES];
+
+	u32 scriptInstanceDataUsed;
+	alignas(SCRIPT_INSTANCE_ALIGN) byte scriptInstanceData[SCRIPT_INSTANCE_DATA_SIZE];
+
+	ID currentEntity;
 };
 
 ////////////////////////////////////////////////////////////////////////
 // Engine -> Game interface
 ////////////////////////////////////////////////////////////////////////
 
+////////////////////////////////////////////////////////////////////////
+// Registration
+
+void RegisterScripts(Game &game);
+
+////////////////////////////////////////////////////////////////////////
+// Game scripts
+
 struct ScriptPlayerController
 {
 	PlayerState playerState;
 
-	ID entPlayer;
 	ID sprPlayerIdle;
 	ID sprPlayerRun;
 	ID sprPlayerJump;
@@ -96,9 +136,8 @@ struct ScriptPlayerController
 	ID roomId;
 };
 
-void RegisterScripts(Game &game);
 void Start(ScriptPlayerController &script);
-void Simulate(ScriptPlayerController &script, Game &game);
+void Simulate(ScriptPlayerController &script);
 void Update(ScriptPlayerController &script);
 void Stop(ScriptPlayerController &script);
 
@@ -106,6 +145,7 @@ void Stop(ScriptPlayerController &script);
 // Game -> Engine interface
 ////////////////////////////////////////////////////////////////////////
 
+Entity &GetSelf();
 ID FindEntity(const char *name);
 Entity *TryGetEntity(ID entityId); // Null once the entity is gone
 ID FindRoom(const char *name);

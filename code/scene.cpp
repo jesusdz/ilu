@@ -721,6 +721,8 @@ void CleanScene(Engine &engine)
 	CompactTextures(engine.gfx);
 	// The audio pools are not compacted here: only the mixing thread may move that
 
+	RemoveScriptInstances(engine.game);
+
 	CloseAssets(engine.assets);
 
 	engine.gfx.shouldUpdateMaterials = true;

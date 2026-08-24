@@ -22,8 +22,6 @@ struct Engine
 #endif
 	Settings settings;
 
-	ScriptPlayerController script;
-
 	BinAssets shaderAssets;
 	BinAssets assets;
 

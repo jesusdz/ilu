@@ -314,12 +314,6 @@ static void EditorUpdateUI_ToolBar()
 	}
 }
 
-static void EditorSelectGame()
-{
-	Editor &editor = GetEditor();
-	editor.inspector.nextSelected.type = EditorSelectedType_Game;
-}
-
 static void EditorSelectScene()
 {
 	Editor &editor = GetEditor();
@@ -682,13 +676,6 @@ static void EditorUpdateUI_Outliner()
 
 	UI_BeginWindow(ui, "Outliner", &editor.showOutliner);
 
-	if ( UI_Section(ui, "Behavior") )
-	{
-		if (UI_TreeNode(ui, "Game", &scene, nullptr))
-		{
-			EditorSelectGame();
-		}
-	}
 	if ( UI_Section(ui, "Hierarchy") )
 	{
 		Scratch scratch;
@@ -948,10 +935,8 @@ static void EditorUpdateUI_Outliner()
 		for (u32 i = 0; i < game.scriptCount; ++i)
 		{
 			const Script &script = game.scripts[i];
-
-			if  (UI_TreeNode(ui, script.name, nullptr, nullptr)) {
-				// EditorSelectScript(script);
-			}
+			UI_TreeNode(ui, script.name, nullptr, nullptr, UITreeNodeFlag_Leaf);
+			UI_DragAndDropSource(ui, "Script", UI_Payload((void*)&script), editor.iconAsset );
 		}
 	}
 
@@ -1410,14 +1395,7 @@ static void EditorUpdateUI_Inspector()
 	}
 	else
 	{
-		if (inspector.selected.type == EditorSelectedType_Game)
-		{
-			//Script &script = engine.game.scripts[0];
-			//const Property *properties = engine.game.properties + script.propertyOffset;
-			//const u32 propertyCount = script.propertyCount;
-			//EditorUpdateUI_InspectorProperties(script.name, properties, propertyCount, &engine.script);
-		}
-		else if (inspector.selected.type == EditorSelectedType_Scene)
+		if (inspector.selected.type == EditorSelectedType_Scene)
 		{
 			EditorUpdateUI_InspectorScene(engine.scene);
 		}
@@ -1473,6 +1451,36 @@ static void EditorUpdateUI_Inspector()
 				if (sprite && UI_Button(ui, "Go to sprite"))
 				{
 					EditorSelectSprite(entity.spriteId);
+				}
+
+				for (u32 i = 0; i < engine.game.scriptInstanceCount; ++i) 
+				{
+					const ScriptInstance &instance = engine.game.scriptInstances[i];
+					if ( instance.scriptIndex >= engine.game.scriptCount ) {
+						continue;
+					}
+
+					if ( instance.entity == inspector.selected.id )
+					{
+						const Script &script = engine.game.scripts[instance.scriptIndex];
+						const Property *properties = engine.game.properties + script.propertyFirst;
+						const u32 propertyCount = script.propertyCount;
+						void * base = engine.game.scriptInstanceData + instance.offset;
+						EditorUpdateUI_InspectorProperties(instance.scriptName, properties, propertyCount, base);
+						if (UI_Button(ui, "Remove"))
+						{
+							RemoveScript(engine.game, i);
+						}
+					}
+				}
+
+				UI_SeparatorLabel(ui, "New script");
+
+				UI_Text(ui, "Script", "<drag here>");
+				if ( UI_DragAndDropTarget(ui, "Script") )
+				{
+					const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
+					AddScript(engine.game, inspector.selected.id, script.name);
 				}
 			}
 		}

@@ -13,14 +13,29 @@ static Script& AllocateScript(Game &game)
 	return script;
 }
 
-#define BEGIN_SCRIPT(StructName) \
+#define SCRIPT_THUNK(StructName) \
+	static void StructName##_Start(void *instance) { Start(*(StructName*)instance); } \
+	static void StructName##_Simulate(void *instance) { Simulate(*(StructName*)instance); } \
+	static void StructName##_Update(void *instance) { Update(*(StructName*)instance); } \
+	static void StructName##_Stop(void *instance) { Stop(*(StructName*)instance); }
+
+SCRIPT_THUNK(ScriptPlayerController)
+
+#define SCRIPT_BEGIN(StructName) \
 	typedef StructName ScriptType; \
 	Script &script = AllocateScript(game) = { \
 		.name = #StructName, \
-		.propertyOffset = game.propertyCount, \
+		.propertyFirst = game.propertyCount, \
+		.instanceSize = AlignUp((u32)sizeof(StructName), SCRIPT_INSTANCE_ALIGN), \
+		.hooks = { \
+			StructName##_Start, \
+			StructName##_Simulate, \
+			StructName##_Update, \
+			StructName##_Stop, \
+		}, \
 	}
 
-#define END_SCRIPT() script.propertyCount = game.propertyCount - script.propertyOffset
+#define SCRIPT_END() script.propertyCount = game.propertyCount - script.propertyFirst
 
 #define PROPERTY(FieldType, Name) \
 	AllocateProperty(game) = { \
@@ -38,25 +53,35 @@ void RegisterScripts(Game &game)
 	ZeroArray(game.properties);
 
 	{
-		BEGIN_SCRIPT(ScriptPlayerController);
-		PROPERTY(ID, entPlayer);
-		END_SCRIPT();
+		SCRIPT_BEGIN(ScriptPlayerController);
+		//PROPERTY(ID, entPlayer);
+		SCRIPT_END();
 	}
+}
+
+static Game &GetGame()
+{
+	Engine &engine = GetEngine();
+	return engine.game;
+}
+
+Entity &GetSelf()
+{
+	Game &game = GetGame();
+	Entity &entity = GetEntity(game.currentEntity);
+	return entity;
 }
 
 void Start(ScriptPlayerController &script)
 {
 	script.playerState = OnAir;
 
-	if ( !script.entPlayer ) {
-		script.entPlayer = FindEntity("player");
-	}
-	if ( Entity *player = TryGetEntity(script.entPlayer) ) {
-		player->position.xy = float2{1, 1};
-		player->colliderSize = float2{player->scale, player->scale};
-		player->speed = {};
-		player->accel = 50;
-	}
+	Entity &player = GetSelf();
+	player.position.xy = float2{1, 1};
+	player.colliderSize = float2{player.scale, player.scale};
+	player.speed = {};
+	player.accel = 50;
+
 	script.sprPlayerIdle = FindSprite("spr_playeridle");
 	script.sprPlayerRun = FindSprite("spr_playerrun");
 	script.sprPlayerJump = FindSprite("spr_playerjump");
@@ -77,8 +102,10 @@ void Start(ScriptPlayerController &script)
 	script.roomId = FindRoom("Room");
 }
 
-void Simulate(ScriptPlayerController &script, Game &game)
+void Simulate(ScriptPlayerController &script)
 {
+	const Game &game = GetGame();
+
 	if (!script.playingMusic)
 	{
 		PlayMusic(script.modEquinox);
@@ -90,11 +117,11 @@ void Simulate(ScriptPlayerController &script, Game &game)
 	constexpr f32 gravity = -15.8f;
 
 	const Room *roomPtr = TryGetRoom(script.roomId);
-	Entity *player = TryGetEntity(script.entPlayer);
-	if ( !roomPtr || !player ) {
+	if ( !roomPtr ) {
 		return;
 	}
 	const Room &room = *roomPtr;
+	Entity &player = GetSelf();
 
 	const f32 screenLeft = room.pos.x;
 	const f32 screenRight = room.pos.x + RoomSize(room).x;
@@ -103,10 +130,10 @@ void Simulate(ScriptPlayerController &script, Game &game)
 
 	// Player entity
 	{
-		const float2 size = player->colliderSize;
-		const f32 accel = player->accel;
-		float2 &pos = player->position.xy;
-		float2 &speed = player->speed;
+		const float2 size = player.colliderSize;
+		const f32 accel = player.accel;
+		float2 &pos = player.position.xy;
+		float2 &speed = player.speed;
 
 		f32 direction = game.input.move.x;
 
@@ -207,30 +234,30 @@ void Simulate(ScriptPlayerController &script, Game &game)
 		if ( script.playerState == OnFloor || script.playerState == OnPlatform )
 		{
 			if ( Abs(speed.x) < 0.2 ) {
-				player->spriteId = script.sprPlayerIdle;
+				player.spriteId = script.sprPlayerIdle;
 			} else {
-				player->spriteId = script.sprPlayerRun;
+				player.spriteId = script.sprPlayerRun;
 			}
 		}
 		else
 		{
 			if ( speed.y >= 0.0f ) {
-				player->spriteId = script.sprPlayerJump;
+				player.spriteId = script.sprPlayerJump;
 			} else {
-				player->spriteId = script.sprPlayerFall;
+				player.spriteId = script.sprPlayerFall;
 			}
 		}
 
 		if ( speed.x > 0 ) {
-			player->flipX = false;
+			player.flipX = false;
 		} else if ( speed.x < 0 ) {
-			player->flipX = true;
+			player.flipX = true;
 		}
 	}
 
 	// Camera
 	{
-		const float2 playerPos = player->position.xy;
+		const float2 playerPos = player.position.xy;
 
 		const float2 halfSceneSize = 0.5f * float2{SCENE_WIDTH, SCENE_HEIGHT} / PIXELS_PER_METER;
 		const f32 cameraLeft = screenLeft + halfSceneSize.x;

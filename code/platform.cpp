@@ -986,9 +986,6 @@ static u32 AcquireScratchArena(Arena &outArena, u32 minSize)
 static FilePath sEngineLibPath = {};
 static FilePath sEngineTmpLibPath = {};
 
-// Resolves an engine entry point into the platform field of the same name. Mandatory
-// symbols abort the load; optional ones only warn and leave the field null, so callers
-// must check them before use.
 #define LOAD_ENGINE_SYMBOL(name, type) \
 	platform.name = (type) LoadSymbol(platform.engineLib, #name); \
 	if( !platform.name ) { \
@@ -1000,8 +997,7 @@ static FilePath sEngineTmpLibPath = {};
 #define LOAD_ENGINE_SYMBOL_OPTIONAL(name, type) \
 	platform.name = (type) LoadSymbol(platform.engineLib, #name); \
 	if( !platform.name ) { LOG(Warning, "- Couldn't load optional symbol: " #name "\n"); } \
-	else { LOG(Info, "- Symbol loaded: " #name "\n"); } \
-	(void)0
+	else { LOG(Info, "- Symbol loaded: " #name "\n"); }
 
 static bool LoadEngineDLL(Platform &platform)
 {

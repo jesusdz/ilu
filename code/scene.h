@@ -39,7 +39,6 @@ struct EntityDesc
 	float2 speed;
 	f32 accel;
 	// Script
-
 };
 
 struct TileDesc
@@ -112,6 +111,7 @@ struct Entity
 	// Physics
 	float2 speed;
 	f32 accel;
+	// Script
 
 	ID layerId;
 

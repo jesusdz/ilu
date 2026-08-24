@@ -444,6 +444,197 @@ void BuildAssetsFromTxt(Engine &engine, const char *inTxtFilepath, const char *o
 #endif // USE_DATA_BUILD
 
 
+////////////////////////////////////////////////////////////////////////
+// Scripts
+
+static u32 FindScriptIndex(const Game &game, const char *scriptName)
+{
+	for (u32 i = 0; i < game.scriptCount; ++i)
+	{
+		if ( StrEq( game.scripts[i].name, scriptName ) ) {
+			return i;
+		}
+	}
+	return U32_MAX;
+}
+
+static bool HasScript(const Game &game, ID entity, const char *scriptName)
+{
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		const ScriptInstance &instance = game.scriptInstances[i];
+		if ( instance.entity == entity && StrEq( instance.scriptName, scriptName ) )
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
+{
+	return game.scriptInstanceData + instance.offset;
+}
+
+static bool AddScript(Game &game, ID ownerEntityId, const char *scriptName)
+{
+	const u32 scriptIndex = FindScriptIndex(game, scriptName);
+	if ( scriptIndex == U32_MAX ) {
+		LOG(Warning, "AddScript: no script named <%s> is registered.\n", scriptName);
+		return false;
+	}
+
+	if ( game.scriptInstanceCount == MAX_SCRIPT_INSTANCES ) {
+		LOG(Warning, "AddScript: the script instance array is full (%u).\n", MAX_SCRIPT_INSTANCES);
+		return false;
+	}
+
+	const Script &script = game.scripts[scriptIndex];
+
+	if ( game.scriptInstanceDataUsed + script.instanceSize > ARRAY_COUNT(game.scriptInstanceData) ) {
+		LOG(Warning, "AddScript: out of script instance data, <%s> needs %u more bytes.\n", scriptName, script.instanceSize);
+		return false;
+	}
+
+	if ( HasScript(game, ownerEntityId, scriptName) ) {
+		LOG(Warning, "AddScript: script instance <%s> already added.\n", scriptName);
+		return false;
+	}
+
+	const u32 dataOffset = game.scriptInstanceDataUsed;
+	game.scriptInstanceDataUsed += script.instanceSize;
+
+	ScriptInstance &instance = game.scriptInstances[game.scriptInstanceCount++];
+	instance = {
+		.entity = ownerEntityId,
+		.scriptName = InternString(scriptName),
+		.offset = dataOffset,
+		.size = script.instanceSize,
+		.scriptIndex = (u16)scriptIndex,
+	};
+
+	MemSet(GetScriptInstanceData(game, instance), script.instanceSize, 0);
+
+	return true;
+}
+
+static void RemoveScript(Game &game, u32 scriptInstanceIndex)
+{
+	if ( scriptInstanceIndex >= game.scriptInstanceCount ) {
+		LOG(Warning, "RemoveScript: script instance at index %u does not exist.", scriptInstanceIndex);
+		return;
+	}
+
+	ScriptInstance &instance = game.scriptInstances[scriptInstanceIndex];
+	instance.entity = {};
+}
+
+static bool ScriptInstanceAlive(const ScriptInstance &instance)
+{
+	const bool alive = instance.entity;
+	return alive;
+}
+
+static void CompactScripts(Game &game)
+{
+	// Find the first hole
+	u32 writeIndex = U32_MAX;
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		if ( !ScriptInstanceAlive(game.scriptInstances[i]) ) {
+			writeIndex = i;
+			break;
+		}
+	}
+
+	if ( writeIndex == U32_MAX ) {
+		return; // No holes, so nothing moves
+	}
+
+	// Everything ahead of the first hole is already in place, and so is its data
+	u32 writeOffset = game.scriptInstances[writeIndex].offset;
+
+	for (u32 readIndex = writeIndex; readIndex < game.scriptInstanceCount; ++readIndex)
+	{
+		const ScriptInstance &instance = game.scriptInstances[readIndex];
+
+		if ( ScriptInstanceAlive(instance) )
+		{
+			MemCopy(game.scriptInstanceData + writeOffset, game.scriptInstanceData + instance.offset, instance.size);
+
+			ScriptInstance &survivor = game.scriptInstances[writeIndex++];
+			survivor = instance;
+			survivor.offset = writeOffset;
+
+			writeOffset += instance.size;
+		}
+	}
+
+	// Clear the part of the tail that's now unused
+	MemSet(game.scriptInstances + writeIndex, (game.scriptInstanceCount - writeIndex) * (u32)sizeof(ScriptInstance), 0);
+
+	game.scriptInstanceCount = writeIndex;
+	game.scriptInstanceDataUsed = writeOffset;
+}
+
+static void RemoveScriptInstances(Game &game)
+{
+	game.scriptInstanceCount = 0;
+	game.scriptInstanceDataUsed = 0;
+	ZeroArray(game.scriptInstances);
+}
+
+static void RebindScriptInstances(Game &game)
+{
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		ScriptInstance &instance = game.scriptInstances[i];
+
+		const u32 scriptIndex = FindScriptIndex(game, instance.scriptName);
+		if ( scriptIndex == U32_MAX ) {
+			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", instance.scriptName);
+			instance.scriptIndex = U16_MAX;
+			continue;
+		}
+
+		const Script &script = game.scripts[scriptIndex];
+		if ( script.instanceSize != instance.size ) {
+			LOG(Warning, "Script <%s> changed size across the reload (%u -> %u), its instance data is stale.\n",
+					instance.scriptName, instance.size, script.instanceSize);
+		}
+
+		instance.scriptIndex = (u16)scriptIndex;
+	}
+}
+
+static void RunScriptHook(Game &game, ScriptHookType hook)
+{
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		const ScriptInstance &instance = game.scriptInstances[i];
+
+		if ( instance.scriptIndex >= game.scriptCount ) {
+			continue; // Lost script on a reload
+		}
+
+		ID prevEntity = instance.entity;
+		game.currentEntity = instance.entity;
+
+		const Script &script = game.scripts[instance.scriptIndex];
+		if ( ScriptHook hookFn = script.hooks[hook] ) {
+			hookFn(GetScriptInstanceData(game, instance));
+		}
+
+		game.currentEntity = prevEntity;
+	}
+
+	game.currentEntity = {};
+}
+
+
+////////////////////////////////////////////////////////////////////////
+// Game loop
+
 static bool sKeyPendingRelease[K_COUNT];
 static bool sGamepadButtonPendingRelease[ARRAY_COUNT(Gamepad::buttons)];
 
@@ -559,7 +750,6 @@ static void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mous
 void GameUpdate(Engine &engine, const Plat &platform)
 {
 	Game &game = engine.game;
-	ScriptPlayerController &script = engine.script;
 
 	static PlatformInput accumulatedInput = {};
 	static f32 accumulatedSeconds = 0.0f;
@@ -574,7 +764,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		accumulatedSeconds = 0.0f;
 		MemSet(sKeyPendingRelease, sizeof(sKeyPendingRelease), 0);
 
-		Start(script);
+		RunScriptHook(game, ScriptHook_Start);
 		game.state = GameStateRunning;
 	}
 
@@ -593,26 +783,21 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 		accumulatedSeconds += Min(engine.gfx.deltaSeconds, maxFrameSeconds);
 
-		//u32 count = 0;
-
 		while (accumulatedSeconds >= fixedStepSeconds)
 		{
 			game.deltaSeconds = fixedStepSeconds;
 			GameSetInput(game, accumulatedInput.keyboard, accumulatedInput.mouse, accumulatedInput.gamepad);
-			Simulate(script, game);
+			RunScriptHook(game, ScriptHook_Simulate);
 			InputConsume(accumulatedInput);
 			accumulatedSeconds -= fixedStepSeconds;
-			//count++;
 		}
 
-		//LOG(Info, "Update count: %u\n", count);
-
-		Update(script);
+		RunScriptHook(game, ScriptHook_Update);
 	}
 
 	if (game.state == GameStateStopping)
 	{
-		Stop(script);
+		RunScriptHook(game, ScriptHook_Stop);
 
 		AudioStopAll(engine.audio);
 
@@ -735,6 +920,7 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 	Engine &engine = GetEngine();
 
 	RegisterScripts(engine.game);
+	RebindScriptInstances(engine.game);
 
 	if ( !firstLoad )
 	{
@@ -896,6 +1082,7 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 	CompactSprites(engine.scene);
 	CompactMaterials(engine.gfx);
 	CompactTextures(engine.gfx);
+	CompactScripts(engine.game);
 }
 
 ENGINE_API void OnPlatformRenderGraphics(Plat &platform)

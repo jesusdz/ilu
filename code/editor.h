@@ -66,8 +66,6 @@ enum EditorSelectedType
 	EditorSelectedType_FileAudio,
 	EditorSelectedType_FileMusic,
 	EditorSelectedType_FileUnknown,
-	// Game
-	EditorSelectedType_Game,
 	// Count
 	EditorSelectedType_Count,
 	// The types that name an asset, all of them an ID living in the same union
@@ -92,7 +90,6 @@ static const char *EditorSelectedTypeName[] = {
 	"Audio file",
 	"Music file",
 	"Unknown file type",
-	"Game",
 };
 CT_ASSERT(ARRAY_COUNT(EditorSelectedTypeName) == EditorSelectedType_Count);
 
