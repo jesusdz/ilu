@@ -37,6 +37,18 @@ inline PropertyType StringToPropertyType(const char *str)
 	return PropertyTypeCount;
 }
 
+inline PropertyType StringToPropertyType(const String str)
+{
+	for (u32 i = 0; i < PropertyTypeCount; ++i)
+	{
+		if (StrEq(str, PropertyTypeName[i])) {
+			PropertyType res = (PropertyType)i;
+			return res;
+		}
+	}
+	return PropertyTypeCount;
+}
+
 struct Property
 {
 	PropertyType type;

@@ -924,6 +924,16 @@ static GeometryType DParser_ConsumeGeometryType( DParser &parser )
 	return res;
 }
 
+static PropertyType DParser_ConsumePropertyType( DParser &parser )
+{
+	const String strPropertyType = DParser_ConsumeLexeme(parser);
+	const PropertyType res = StringToPropertyType(strPropertyType);
+	if (res == PropertyTypeCount) {
+		LOG(Warning, "DParser_ConsumeGeometryType: unrecognized geometry type %.*s\n", strPropertyType.size, strPropertyType.str);
+	}
+	return res;
+}
+
 static i32 DParser_ConsumeI32( DParser &parser )
 {
 	const bool neg = DParser_TryConsume(parser, TOKEN_MINUS);
@@ -1101,6 +1111,30 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
+static void DParser_ConsumeScriptProperties( DParser &parser, ScriptDesc &script)
+{
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+	script.propertyCount = 0;
+
+	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
+	{
+		ScriptPropertyDesc propertyDesc = {};
+		propertyDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
+		DParser_TryConsume(parser, TOKEN_COMMA);
+		propertyDesc.value.type = DParser_ConsumePropertyType(parser);
+		DParser_TryConsume(parser, TOKEN_COMMA);
+		propertyDesc.value.uValue = DParser_ConsumeU32(parser);
+		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+		DParser_TryConsume(parser, TOKEN_COMMA);
+
+		if ( script.propertyCount < MAX_SCRIPT_PROPERTIES ) {
+			script.properties[script.propertyCount++] = propertyDesc;
+		}
+	}
+
+	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+}
+
 static void DParser_ConsumeUntil( DParser &parser, DTokenId tokenId )
 {
 	while ( !DParser_IsNextToken( parser, tokenId ) && !DParser_HasFinished( parser ) )
@@ -1120,6 +1154,7 @@ static const String sEntityStr = MakeString("Entity");
 static const String sRoomStr = MakeString("Room");
 static const String sAudioClipStr = MakeString("AudioClip");
 static const String sMusicFileStr = MakeString("MusicFile");
+static const String sScriptStr = MakeString("Script");
 
 const char *StringToCStr( String str )
 {
@@ -1166,7 +1201,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 			// Texture
 			else if ( StrEq(type, sTextureStr) ) {
 
-				const uint index = descriptors.textureDescCount++;
+				const u32 index = descriptors.textureDescCount++;
 				if ( countOnly ) goto parse_descriptors_continue;
 
 				TextureDesc &desc = descriptors.textureDescs[index];
@@ -1202,7 +1237,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 			// Material
 			} else if ( StrEq(type, sMaterialStr) ) {
 
-				const uint index = descriptors.materialDescCount++;
+				const u32 index = descriptors.materialDescCount++;
 				if ( countOnly ) goto parse_descriptors_continue;
 
 				MaterialDesc &desc = descriptors.materialDescs[index];
@@ -1242,7 +1277,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 			// Sprite
 			} else if ( StrEq(type, sSpriteStr) ) {
 
-				const uint index = descriptors.spriteDescCount++;
+				const u32 index = descriptors.spriteDescCount++;
 				if ( countOnly ) goto parse_descriptors_continue;
 
 				SpriteDesc &desc = descriptors.spriteDescs[index];
@@ -1291,7 +1326,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 			// Entity
 			} else if ( StrEq(type, sEntityStr) ) {
 
-				const uint index = descriptors.entityDescCount++;
+				const u32 index = descriptors.entityDescCount++;
 				if ( countOnly ) goto parse_descriptors_continue;
 
 				EntityDesc &desc = descriptors.entityDescs[index];
@@ -1337,7 +1372,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 			// Room
 			} else if ( StrEq(type, sRoomStr) ) {
 
-				const uint index = descriptors.roomDescCount++;
+				const u32 index = descriptors.roomDescCount++;
 				if ( countOnly ) goto parse_descriptors_continue;
 
 				RoomDesc &desc = descriptors.roomDescs[index];
@@ -1371,7 +1406,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 			// AudioClip
 			} else if ( StrEq(type, sAudioClipStr) ) {
 
-				const uint index = descriptors.audioClipDescCount++;
+				const u32 index = descriptors.audioClipDescCount++;
 				if ( countOnly ) goto parse_descriptors_continue;
 
 				AudioClipDesc &desc = descriptors.audioClipDescs[index];
@@ -1401,7 +1436,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 			// MusicFile
 			} else if ( StrEq(type, sMusicFileStr) ) {
 
-				const uint index = descriptors.musicFileDescCount++;
+				const u32 index = descriptors.musicFileDescCount++;
 				if ( countOnly ) goto parse_descriptors_continue;
 
 				MusicFileDesc &desc = descriptors.musicFileDescs[index];
@@ -1423,6 +1458,40 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
+					}
+
+					DParser_TryConsume( parser, TOKEN_COMMA );
+				}
+
+			// Script
+			} else if ( StrEq(type, sScriptStr) ) {
+
+				const u32 index = descriptors.scriptDescCount++;
+				if ( countOnly ) goto parse_descriptors_continue;
+
+				ScriptDesc &desc = descriptors.scriptDescs[index];
+				const String name = DParser_ConsumeLexeme( parser );
+				desc.name = PushString(*parser.arena, name);
+				DParser_TryConsume( parser, TOKEN_EQUAL );
+				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
+				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				{
+					DParser_TryConsume( parser, TOKEN_DOT );
+
+					const String field = DParser_ConsumeLexeme( parser );
+
+					DParser_TryConsume( parser, TOKEN_EQUAL );
+
+					static const String sEntity = MakeString("entity");
+					static const String sProperties = MakeString("properties");
+
+					if ( StrEq( field, sEntity ) ) {
+						desc.entity = DParser_ConsumeID(parser);
+					} else if ( StrEq( field, sProperties ) ) {
+						DParser_ConsumeScriptProperties(parser, desc);
+					} else {
+						LOG(Warning, "Unknown Script field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
 
 					DParser_TryConsume( parser, TOKEN_COMMA );
@@ -1460,20 +1529,22 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 			if (!parser.hasErrors)
 			{
 				// Reserve memory and reset counts
-				descriptors.textureDescs = PushArray(arena, TextureDesc, descriptors.textureDescCount);
+				descriptors.textureDescs = PushZeroArray(arena, TextureDesc, descriptors.textureDescCount);
 				descriptors.textureDescCount = 0;
-				descriptors.spriteDescs = PushArray(arena, SpriteDesc, descriptors.spriteDescCount + 1);
+				descriptors.spriteDescs = PushZeroArray(arena, SpriteDesc, descriptors.spriteDescCount + 1);
 				descriptors.spriteDescCount = 0;
-				descriptors.materialDescs = PushArray(arena, MaterialDesc, descriptors.materialDescCount);
+				descriptors.materialDescs = PushZeroArray(arena, MaterialDesc, descriptors.materialDescCount);
 				descriptors.materialDescCount = 0;
-				descriptors.entityDescs = PushArray(arena, EntityDesc, descriptors.entityDescCount);
+				descriptors.entityDescs = PushZeroArray(arena, EntityDesc, descriptors.entityDescCount);
 				descriptors.entityDescCount = 0;
 				descriptors.roomDescs = PushZeroArray(arena, RoomDesc, descriptors.roomDescCount);
 				descriptors.roomDescCount = 0;
-				descriptors.audioClipDescs = PushArray(arena, AudioClipDesc, descriptors.audioClipDescCount);
+				descriptors.audioClipDescs = PushZeroArray(arena, AudioClipDesc, descriptors.audioClipDescCount);
 				descriptors.audioClipDescCount = 0;
-				descriptors.musicFileDescs = PushArray(arena, MusicFileDesc, descriptors.musicFileDescCount);
+				descriptors.musicFileDescs = PushZeroArray(arena, MusicFileDesc, descriptors.musicFileDescCount);
 				descriptors.musicFileDescCount = 0;
+				descriptors.scriptDescs = PushZeroArray(arena, ScriptDesc, descriptors.scriptDescCount);
+				descriptors.scriptDescCount = 0;
 
 				parser = DParser_Init(tokenList, arena, descriptors);
 				DParseDescriptors(parser, false);
