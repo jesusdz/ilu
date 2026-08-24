@@ -1662,6 +1662,10 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		const u32 roomsSize = roomCount * sizeof(BinRoomDesc);
 		const u32 roomsOffset = PostIncrement(&offset, roomsSize);
 
+		const u32 scriptCount = descriptors.scriptDescCount;
+		const u32 scriptsSize = scriptCount * sizeof(BinScriptDesc);
+		const u32 scriptsOffset = PostIncrement(&offset, scriptsSize);
+
 		const u32 maxStringPoolSize = KB(128);
 		char *stringPoolBase = PushArray(tempArena, char, maxStringPoolSize);
 		DataStringPool stringPool = { stringPoolBase, 1 }; // offset 0 is reserved for nullptr
@@ -1675,6 +1679,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		BinSpriteDesc *binSpriteDescs = PushArray(tempArena, BinSpriteDesc, spriteCount);
 		BinEntityDesc *binEntityDescs = PushArray(tempArena, BinEntityDesc, entityCount);
 		BinRoomDesc *binRoomDescs = PushArray(tempArena, BinRoomDesc, roomCount);
+		BinScriptDesc *binScriptDescs = PushArray(tempArena, BinScriptDesc, scriptCount);
 
 		// Prepare asset descs and write asset payloads
 
@@ -1888,21 +1893,55 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			}
 		}
 
+		// Scripts (property payloads continue after the last written payload)
+		for (u32 i = 0; i < scriptCount; ++i)
+		{
+			const ScriptDesc &desc = descriptors.scriptDescs[i];
+
+			ASSERT(desc.propertyCount <= MAX_SCRIPT_PROPERTIES);
+
+			BinScriptPropertyDesc binProperties[MAX_SCRIPT_PROPERTIES];
+			for (u32 p = 0; p < desc.propertyCount; ++p)
+			{
+				const ScriptPropertyDesc &property = desc.properties[p];
+
+				BinScriptPropertyDesc &pd = binProperties[p];
+				pd.name  = DataInternString(stringPool, property.name);
+				pd.type  = property.value.type;
+				pd.value = property.value.uValue;
+			}
+
+			const u64 payloadSize = desc.propertyCount * sizeof(BinScriptPropertyDesc);
+
+			BinScriptDesc &d = binScriptDescs[i];
+			d.entity            = desc.entity;
+			d.name              = DataInternString(stringPool, desc.name);
+			d.properties.offset = PostIncrement(&offset, payloadSize);
+			d.properties.size   = U64ToU32(payloadSize);
+
+			if ( payloadSize > 0 ) {
+				fwrite(binProperties, payloadSize, 1, file);
+			}
+		}
+
 		// Write string pool after payloads
 		const u32 stringPoolOffset = offset;
 		const u32 stringPoolSize   = stringPool.size;
 		fwrite(stringPool.str, stringPoolSize, 1, file);
 
 		// Write asset descs
-		fseek(file, sizeof(BinAssetsHeader), SEEK_SET);
+		fseek(file, sceneOffset, SEEK_SET);
+		const BinSceneDesc binSceneDesc = { .projectionType = descriptors.sceneDesc.projectionType };
+		fwrite(&binSceneDesc,     sizeof(binSceneDesc),         1,              file);
 		fwrite(binShaderDescs,    sizeof(binShaderDescs[0]),    shaderCount,    file);
 		fwrite(binImageDescs,     sizeof(binImageDescs[0]),     imageCount,     file);
 		fwrite(binAudioClipDescs, sizeof(binAudioClipDescs[0]), audioClipCount, file);
 		fwrite(binMusicFileDescs, sizeof(binMusicFileDescs[0]), musicFileCount, file);
 		fwrite(binMaterialDescs,  sizeof(binMaterialDescs[0]),  materialCount,  file);
-		if (spriteCount) fwrite(binSpriteDescs, sizeof(binSpriteDescs[0]), spriteCount, file);
-		fwrite(binEntityDescs, sizeof(binEntityDescs[0]), entityCount, file);
-		if (roomCount) fwrite(binRoomDescs, sizeof(binRoomDescs[0]), roomCount, file);
+		fwrite(binSpriteDescs,    sizeof(binSpriteDescs[0]),    spriteCount,    file);
+		fwrite(binEntityDescs,    sizeof(binEntityDescs[0]),    entityCount,    file);
+		fwrite(binRoomDescs,      sizeof(binRoomDescs[0]),      roomCount,      file);
+		fwrite(binScriptDescs,    sizeof(binScriptDescs[0]),    scriptCount,    file);
 
 		// Write file header last (string pool offset is now known)
 		const BinAssetsHeader fileHeader = {
@@ -1925,6 +1964,8 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			.entityCount      = entityCount,
 			.roomsOffset      = roomsOffset,
 			.roomCount        = roomCount,
+			.scriptsOffset    = scriptsOffset,
+			.scriptCount      = scriptCount,
 			.stringPoolOffset = stringPoolOffset,
 			.stringPoolSize   = stringPoolSize,
 		};
@@ -1985,6 +2026,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	assets.sprites = PushArray(dataArena, BinSprite, assets.header.spriteCount + 1);
 	assets.entities = PushArray(dataArena, BinEntity, assets.header.entityCount);
 	assets.rooms = PushZeroArray(dataArena, BinRoom, assets.header.roomCount);
+	assets.scripts = PushZeroArray(dataArena, BinScript, assets.header.scriptCount);
 
 	const char *stringPool = (const char*)PushDataFromFile(
 		dataArena, file, assets.header.stringPoolOffset, assets.header.stringPoolSize);
@@ -2088,6 +2130,31 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 					assets.rooms[i].tiles[l] = (TileDesc*)PushDataFromFile(
 						dataArena, file, ld.tiles.offset, ld.tiles.size);
 				}
+			}
+		}
+	}
+
+	// Scripts
+	if (assets.header.scriptCount > 0)
+	{
+		BinScriptDesc *scriptDescs = (BinScriptDesc*)PushDataFromFile(
+			dataArena, file, assets.header.scriptsOffset, assets.header.scriptCount * sizeof(BinScriptDesc));
+		for (u32 i = 0; i < assets.header.scriptCount; ++i)
+		{
+			BinScriptDesc &d = scriptDescs[i];
+			d.name = DataGetString(stringPool, d.name);
+			assets.scripts[i].desc = &d;
+
+			if (d.properties.size > 0)
+			{
+				BinScriptPropertyDesc *properties = (BinScriptPropertyDesc*)PushDataFromFile(
+					dataArena, file, d.properties.offset, d.properties.size);
+				const u32 propertyCount = d.properties.size / sizeof(BinScriptPropertyDesc);
+				for (u32 p = 0; p < propertyCount; ++p)
+				{
+					properties[p].name = DataGetString(stringPool, properties[p].name);
+				}
+				assets.scripts[i].properties = properties;
 			}
 		}
 	}

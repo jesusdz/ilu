@@ -48,7 +48,7 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena);
 #endif // USE_DATA_BUILD
 
 
-constexpr u32 BinAssetsVersion = 10; // 10: materials name their pipeline again
+constexpr u32 BinAssetsVersion = 11; // 11: script instances, and the scene desc is actually written
 
 #pragma pack(push, 1)
 
@@ -73,6 +73,8 @@ struct BinAssetsHeader
 	u32 entityCount;
 	u32 roomsOffset;
 	u32 roomCount;
+	u32 scriptsOffset;
+	u32 scriptCount;
 	u32 stringPoolOffset;
 	u32 stringPoolSize;
 };
@@ -95,6 +97,7 @@ struct BinAssets
 	BinSprite *sprites;
 	BinEntity *entities;
 	BinRoom *rooms;
+	BinScript *scripts;
 };
 
 // Functions

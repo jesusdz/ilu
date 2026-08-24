@@ -53,6 +53,33 @@ struct ScriptInstance
 };
 
 ////////////////////////////////////////////////////////////////////////
+// Binary data
+
+#pragma pack(push, 1)
+
+struct BinScriptPropertyDesc
+{
+	const char *name;
+	PropertyType type;
+	u32 value; // Raw view of PropertyValue, whichever member the type selects
+};
+
+struct BinScriptDesc
+{
+	ID entity;
+	const char *name;
+	BinLocation properties;
+};
+
+struct BinScript
+{
+	BinScriptDesc *desc;
+	BinScriptPropertyDesc *properties;
+};
+
+#pragma pack(pop)
+
+////////////////////////////////////////////////////////////////////////
 // Registration
 
 #define SCRIPT_THUNK(StructName) \

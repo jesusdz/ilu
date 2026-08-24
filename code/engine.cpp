@@ -322,6 +322,33 @@ static void CreateScriptInstance(Game &game, const ScriptDesc &desc)
 	}
 }
 
+static void CreateScriptInstance(Game &game, const BinScript &binScript)
+{
+	const BinScriptDesc &binDesc = *binScript.desc;
+
+	ScriptDesc desc = {};
+	desc.entity = binDesc.entity;
+	desc.name = binDesc.name;
+	desc.propertyCount = binDesc.properties.size / sizeof(BinScriptPropertyDesc);
+
+	if ( desc.propertyCount > MAX_SCRIPT_PROPERTIES ) {
+		LOG(Warning, "Script <%s> carries %u properties, only %u fit.\n", desc.name, desc.propertyCount, MAX_SCRIPT_PROPERTIES);
+		desc.propertyCount = MAX_SCRIPT_PROPERTIES;
+	}
+
+	for (u32 i = 0; i < desc.propertyCount; ++i)
+	{
+		const BinScriptPropertyDesc &binProperty = binScript.properties[i];
+
+		ScriptPropertyDesc &propertyDesc = desc.properties[i];
+		propertyDesc.name = binProperty.name;
+		propertyDesc.value.type = binProperty.type;
+		propertyDesc.value.uValue = binProperty.value;
+	}
+
+	CreateScriptInstance(game, desc);
+}
+
 static void RemoveScript(Game &game, u32 scriptInstanceIndex)
 {
 	if ( scriptInstanceIndex >= game.scriptInstanceCount ) {
@@ -718,6 +745,8 @@ void LoadSceneFromBin(Engine &engine)
 		const FilePath filepath = MakePath(DataDir, "assets.dat");
 		engine.assets = OpenAssets(DataArena, filepath.str);
 
+		engine.scene.projectionType = engine.assets.scene.projectionType;
+
 		// Textures
 		for (u32 i = 0; i < engine.assets.header.imageCount; ++i)
 		{
@@ -761,6 +790,12 @@ void LoadSceneFromBin(Engine &engine)
 		for (u32 i = 0; i < engine.assets.header.musicFileCount; ++i)
 		{
 			CreateMusicFile(engine.audio, engine.assets.musicFiles[i]);
+		}
+
+		// Scripts (last: a script property can refer to any other asset kind by ID)
+		for (u32 i = 0; i < engine.assets.header.scriptCount; ++i)
+		{
+			CreateScriptInstance(engine.game, engine.assets.scripts[i]);
 		}
 
 		UploadMaterialData(engine.gfx);
