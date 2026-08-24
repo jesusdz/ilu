@@ -1212,35 +1212,43 @@ static void EditorUpdateUI_SpriteSheet()
 	UI_EndWindow(ui);
 }
 
+static const char *EditorPropertyIDName(PropertyType type, ID id)
+{
+	if ( !id ) {
+		return "<none>";
+	}
+
+	switch (type)
+	{
+		case Property_Entity:  return GetEntity(id).name;
+		case Property_Sprite:  return GetSprite(id).desc.name;
+		case Property_Texture: return GetTexture(id).desc.name;
+		default:;
+	}
+
+	return "<unknown>";
+}
+
 static void EditorUpdateUI_Property(const Property &property, void *data)
 {
 	UI &ui = GetEngine().ui;
 
 	PropertyValue value = GetPropertyValue(property, data);
 
-	switch (property.type)
+	if ( property.type == Property_U32 )
 	{
-		case Property_U32:
-		{
-			if ( UI_InputUInt(ui, property.name, &value.uValue) ) {
-				SetPropertyValue(property, data, value);
-			}
-			break;
+		if ( UI_InputUInt(ui, property.name, &value.uValue) ) {
+			SetPropertyValue(property, data, value);
 		}
-		case Property_ID:
+	}
+	else if ( IsIDProperty(property.type) )
+	{
+		UI_Text(ui, property.name, "%s", EditorPropertyIDName(property.type, value.idValue));
+
+		if ( UI_DragAndDropTarget(ui, PropertyTypeToString(property.type)) )
 		{
-			Entity *entity = nullptr;
-			if ( value.idValue )
-			{
-				entity = &GetEntity(value.idValue);
-			}
-			UI_Text(ui, property.name, "%s", entity ? entity->name : "<none>");
-			if ( UI_DragAndDropTarget(ui, "Sprite") )
-			{
-				value.idValue = { UI_DragAndDropPayload(ui).uvalue };
-				SetPropertyValue(property, data, value);
-			}
-			break;
+			value.idValue = { UI_DragAndDropPayload(ui).uvalue };
+			SetPropertyValue(property, data, value);
 		}
 	}
 }
@@ -1342,8 +1350,9 @@ static void EditorUpdateUI_Inspector()
 		{
 			UI_SeparatorLabel(ui, "Image");
 
+			const Texture &texture = GetTexture(inspector.tmpTextureId);
 			const ImageH imageH = GetTextureImage(engine.gfx, inspector.tmpTextureId, engine.gfx.grayImageH);
-			UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
+			UI_Image(ui, imageH, float2{(f32)texture.size.x, (f32)texture.size.y}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
 
 			if ( UI_Button(ui, "Import texture") )
 			{
@@ -1519,7 +1528,7 @@ static void EditorUpdateUI_Inspector()
 				}
 
 				const ImageH imageH = GetTextureImage(engine.gfx, desc.textureId, engine.gfx.grayImageH);
-				UI_Image(ui, imageH, float2{0, 0}, UIWidgetFlag_Expand);
+				UI_Image(ui, imageH, float2{32, 32}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
 
 				if (texture && UI_Button(ui, "Go to texture"))
 				{
@@ -1536,7 +1545,7 @@ static void EditorUpdateUI_Inspector()
 				UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
 
 				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.id, engine.gfx.grayImageH);
-				UI_Image(ui, imageH, float2{0,0}, UIWidgetFlag_Expand);
+				UI_Image(ui, imageH, float2{(f32)texture.size.x, (f32)texture.size.y}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
 
 				UI_SeparatorLabel(ui, "Sprite");
 				UI_BeginLayout(ui, UILayout_Horizontal);

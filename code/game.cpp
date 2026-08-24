@@ -11,10 +11,10 @@ void RegisterScripts(Game &game)
 
 	{
 		SCRIPT_BEGIN(ScriptPlayerController);
-		PROPERTY(ID, sprPlayerIdle);
-		PROPERTY(ID, sprPlayerRun);
-		PROPERTY(ID, sprPlayerJump);
-		PROPERTY(ID, sprPlayerFall);
+		PROPERTY(Sprite, sprPlayerIdle);
+		PROPERTY(Sprite, sprPlayerRun);
+		PROPERTY(Sprite, sprPlayerJump);
+		PROPERTY(Sprite, sprPlayerFall);
 		SCRIPT_END();
 	}
 }

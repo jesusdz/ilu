@@ -2480,7 +2480,7 @@ bool UI_Image(UI &ui, ImageH image, float2 proposedImageSize = float2{32, 32}, U
 		const UIWindow &window = UI_GetCurrentWindow(ui);
 		const f32 containerWidth = UI_GetContainerSize(window).x;
 		const f32 maxHeight = 0.7f * containerWidth;
-		const f32 aspect = proposedImageSize.x / proposedImageSize.y;
+		const f32 aspect = proposedImageSize.y == 0 ? 1.0 : proposedImageSize.x / proposedImageSize.y;
 		float2 size = { maxHeight * aspect, maxHeight };
 		if ( size.x > containerWidth ) {
 			size.y *= containerWidth / size.x;
