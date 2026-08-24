@@ -183,17 +183,21 @@ static void GatherEntityScripts(Game &game, EntityDesc &entityDesc, Arena &arena
 		const ScriptInstance & scriptInstance = game.scriptInstances[i];
 		if ( scriptInstance.entity == entityDesc.id )
 		{
-			const Script &script = game.scripts[scriptInstance.scriptIndex];
 			entityDesc.scriptCount++;
-			ScriptDesc &scriptDesc = *PushStruct(arena, ScriptDesc);
-			scriptDesc.name = script.name;
-			scriptDesc.propertyCount = script.propertyCount;
-			for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
+			ScriptDesc &scriptDesc = *PushZeroStruct(arena, ScriptDesc);
+			scriptDesc.name = scriptInstance.scriptName;
+
+			if ( scriptInstance.scriptIndex < game.scriptCount )
 			{
-				const Property &property = game.properties[script.propertyFirst + p];
-				ScriptPropertyDesc &propertyDesc = scriptDesc.properties[p];
-				propertyDesc.name = property.name;
-				propertyDesc.value = GetPropertyValue(property, game.scriptInstanceData + scriptInstance.offset);
+				const Script &script = game.scripts[scriptInstance.scriptIndex];
+				scriptDesc.propertyCount = script.propertyCount;
+				for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
+				{
+					const Property &property = game.properties[script.propertyFirst + p];
+					ScriptPropertyDesc &propertyDesc = scriptDesc.properties[p];
+					propertyDesc.name = property.name;
+					propertyDesc.value = GetPropertyValue(property, game.scriptInstanceData + scriptInstance.offset);
+				}
 			}
 		}
 	}

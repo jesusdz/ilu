@@ -338,10 +338,16 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		{
 			WriteLine(ctx, ".scripts = {");
 			PushIndent(ctx);
+
 			for (u32 s = 0; s < desc.scriptCount; ++s)
 			{
 				const ScriptDesc &scriptDesc = desc.scripts[s];
+
+				WriteLine(ctx, "{");
+				PushIndent(ctx);
+
 				WriteLine(ctx, ".name = \"%s\",", scriptDesc.name);
+
 				if ( scriptDesc.propertyCount > 0 )
 				{
 					WriteLine(ctx, ".properties = {");
@@ -350,12 +356,16 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 					{
 						const ScriptPropertyDesc &propDesc = scriptDesc.properties[p];
 						const char *typeStr = PropertyTypeToString(propDesc.value.type);
-						WriteLine(ctx, "{%s, %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
+						WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
 					}
 					PopIndent(ctx);
+					WriteLine(ctx, "},");
 				}
+
+				PopIndent(ctx);
 				WriteLine(ctx, "},");
 			}
+
 			PopIndent(ctx);
 			WriteLine(ctx, "},");
 		}

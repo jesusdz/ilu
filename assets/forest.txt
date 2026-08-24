@@ -232,12 +232,14 @@ Entity player = {
  .scale = 1.000000,
  .layerId = 1022,
  .scripts = {
-  .name = "ScriptPlayerController",
-  .properties = {
-   {sprPlayerIdle, ID, 1032},
-   {sprPlayerRun, ID, 1024},
-   {sprPlayerJump, ID, 1037},
-   {sprPlayerFall, ID, 1036},
+  {
+   .name = "ScriptPlayerController",
+   .properties = {
+    {"sprPlayerIdle", ID, 1032},
+    {"sprPlayerRun", ID, 1024},
+    {"sprPlayerJump", ID, 1037},
+    {"sprPlayerFall", ID, 1036},
+   },
   },
  },
 };
