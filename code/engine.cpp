@@ -173,6 +173,32 @@ static u32 CountEntityScripts(const Game &game, ID entity)
 	return count;
 }
 
+static void GatherEntityScripts(Game &game, EntityDesc &entityDesc, Arena &arena)
+{
+	entityDesc.scripts = (ScriptDesc*)(arena.base + arena.used);
+	entityDesc.scriptCount = 0;
+
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		const ScriptInstance & scriptInstance = game.scriptInstances[i];
+		if ( scriptInstance.entity == entityDesc.id )
+		{
+			const Script &script = game.scripts[scriptInstance.scriptIndex];
+			entityDesc.scriptCount++;
+			ScriptDesc &scriptDesc = *PushStruct(arena, ScriptDesc);
+			scriptDesc.name = script.name;
+			scriptDesc.propertyCount = script.propertyCount;
+			for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
+			{
+				const Property &property = game.properties[script.propertyFirst + p];
+				ScriptPropertyDesc &propertyDesc = scriptDesc.properties[p];
+				propertyDesc.name = property.name;
+				propertyDesc.value = GetPropertyValue(property, game.scriptInstanceData + scriptInstance.offset);
+			}
+		}
+	}
+}
+
 static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
 {
 	return game.scriptInstanceData + instance.offset;
@@ -422,7 +448,9 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	for (u16 i = 0; i < engine.scene.entityCount; ++i) {
 		const Entity &entity = engine.scene.entities[i];
 		if ( !entity.id ) { continue; }
-		entityDescs[entityCount++] = GetEntityDesc(entity.id);
+		EntityDesc &desc = entityDescs[entityCount++];
+		desc = GetEntityDesc(entity.id);
+		GatherEntityScripts(engine.game, desc, arena);
 	}
 
 	static RoomDesc roomDescs[MAX_ROOMS];

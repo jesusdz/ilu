@@ -11,7 +11,10 @@ void RegisterScripts(Game &game)
 
 	{
 		SCRIPT_BEGIN(ScriptPlayerController);
-		//PROPERTY(ID, entPlayer);
+		PROPERTY(ID, sprPlayerIdle);
+		PROPERTY(ID, sprPlayerRun);
+		PROPERTY(ID, sprPlayerJump);
+		PROPERTY(ID, sprPlayerFall);
 		SCRIPT_END();
 	}
 }
@@ -26,10 +29,10 @@ void Start(ScriptPlayerController &script)
 	player.speed = {};
 	player.accel = 50;
 
-	script.sprPlayerIdle = FindSprite("spr_playeridle");
-	script.sprPlayerRun = FindSprite("spr_playerrun");
-	script.sprPlayerJump = FindSprite("spr_playerjump");
-	script.sprPlayerFall = FindSprite("spr_playerfall");
+	//script.sprPlayerIdle = FindSprite("spr_playeridle");
+	//script.sprPlayerRun = FindSprite("spr_playerrun");
+	//script.sprPlayerJump = FindSprite("spr_playerjump");
+	//script.sprPlayerFall = FindSprite("spr_playerfall");
 	script.sndJump = GetAudioClip("snd_bell_wav");
 	script.modEquinox = GetMusic("mod_equinox_mod");
 	script.playingMusic = false;

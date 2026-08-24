@@ -1235,7 +1235,7 @@ static void EditorUpdateUI_Property(const Property &property, void *data)
 				entity = &GetEntity(value.idValue);
 			}
 			UI_Text(ui, property.name, "%s", entity ? entity->name : "<none>");
-			if ( UI_DragAndDropTarget(ui, "Entity") )
+			if ( UI_DragAndDropTarget(ui, "Sprite") )
 			{
 				value.idValue = { UI_DragAndDropPayload(ui).uvalue };
 				SetPropertyValue(property, data, value);

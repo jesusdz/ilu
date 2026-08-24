@@ -8,7 +8,34 @@ enum PropertyType : u8
 {
 	Property_U32,
 	Property_ID,
+	PropertyTypeCount,
 };
+
+constexpr const char *PropertyTypeName[] = {
+	"U32",
+	"ID",
+};
+
+CT_ASSERT(ARRAY_COUNT(PropertyTypeName) == PropertyTypeCount);
+
+inline const char *PropertyTypeToString(PropertyType type)
+{
+	ASSERT(type < PropertyTypeCount);
+	const char *str = PropertyTypeName[type];
+	return str;
+}
+
+inline PropertyType StringToPropertyType(const char *str)
+{
+	for (u32 i = 0; i < PropertyTypeCount; ++i)
+	{
+		if (StrEq(PropertyTypeName[i], str)) {
+			PropertyType res = (PropertyType)i;
+			return res;
+		}
+	}
+	return PropertyTypeCount;
+}
 
 struct Property
 {

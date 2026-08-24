@@ -61,6 +61,12 @@ inline bool operator==(ID a, ID b)
 	return res;
 }
 
+inline bool operator!=(ID a, ID b)
+{
+	const bool res = a.slot != b.slot;
+	return res;
+}
+
 void InitializeIDPool();
 
 ID NewID();

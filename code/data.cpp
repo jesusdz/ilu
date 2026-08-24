@@ -334,6 +334,31 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		if (desc.spriteId.slot != 0) {
 			WriteLine(ctx, ".layerId = %u,", desc.layerId.slot);
 		}
+		if ( desc.scriptCount > 0 )
+		{
+			WriteLine(ctx, ".scripts = {");
+			PushIndent(ctx);
+			for (u32 s = 0; s < desc.scriptCount; ++s)
+			{
+				const ScriptDesc &scriptDesc = desc.scripts[s];
+				WriteLine(ctx, ".name = \"%s\",", scriptDesc.name);
+				if ( scriptDesc.propertyCount > 0 )
+				{
+					WriteLine(ctx, ".properties = {");
+					PushIndent(ctx);
+					for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
+					{
+						const ScriptPropertyDesc &propDesc = scriptDesc.properties[p];
+						const char *typeStr = PropertyTypeToString(propDesc.value.type);
+						WriteLine(ctx, "{%s, %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
+					}
+					PopIndent(ctx);
+				}
+				WriteLine(ctx, "},");
+			}
+			PopIndent(ctx);
+			WriteLine(ctx, "},");
+		}
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
