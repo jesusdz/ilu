@@ -173,34 +173,39 @@ static u32 CountEntityScripts(const Game &game, ID entity)
 	return count;
 }
 
-static void GatherEntityScripts(Game &game, EntityDesc &entityDesc, Arena &arena)
+static ScriptDesc *GatherScriptDescs(Game &game, Arena &arena, u32 &scriptDescCount)
 {
-	entityDesc.scripts = (ScriptDesc*)(arena.base + arena.used);
-	entityDesc.scriptCount = 0;
+	ScriptDesc *scriptDescs = (ScriptDesc*)(arena.base + arena.used);
+	scriptDescCount = 0;
 
 	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
 	{
-		const ScriptInstance & scriptInstance = game.scriptInstances[i];
-		if ( scriptInstance.entity == entityDesc.id )
-		{
-			entityDesc.scriptCount++;
-			ScriptDesc &scriptDesc = *PushZeroStruct(arena, ScriptDesc);
-			scriptDesc.name = scriptInstance.scriptName;
+		const ScriptInstance &scriptInstance = game.scriptInstances[i];
 
-			if ( scriptInstance.scriptIndex < game.scriptCount )
+		if ( !scriptInstance.entity ) {
+			continue; // Marked for removal, so it is no longer part of the scene
+		}
+
+		scriptDescCount++;
+		ScriptDesc &scriptDesc = *PushZeroStruct(arena, ScriptDesc);
+		scriptDesc.entity = scriptInstance.entity;
+		scriptDesc.name = scriptInstance.scriptName; // Interned, so it outlives the script going away
+
+		if ( scriptInstance.scriptIndex < game.scriptCount )
+		{
+			const Script &script = game.scripts[scriptInstance.scriptIndex];
+			scriptDesc.propertyCount = script.propertyCount;
+			for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
 			{
-				const Script &script = game.scripts[scriptInstance.scriptIndex];
-				scriptDesc.propertyCount = script.propertyCount;
-				for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
-				{
-					const Property &property = game.properties[script.propertyFirst + p];
-					ScriptPropertyDesc &propertyDesc = scriptDesc.properties[p];
-					propertyDesc.name = property.name;
-					propertyDesc.value = GetPropertyValue(property, game.scriptInstanceData + scriptInstance.offset);
-				}
+				const Property &property = game.properties[script.propertyFirst + p];
+				ScriptPropertyDesc &propertyDesc = scriptDesc.properties[p];
+				propertyDesc.name = property.name;
+				propertyDesc.value = GetPropertyValue(property, game.scriptInstanceData + scriptInstance.offset);
 			}
 		}
 	}
+
+	return scriptDescs;
 }
 
 static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
@@ -454,8 +459,10 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		if ( !entity.id ) { continue; }
 		EntityDesc &desc = entityDescs[entityCount++];
 		desc = GetEntityDesc(entity.id);
-		GatherEntityScripts(engine.game, desc, arena);
 	}
+
+	u32 scriptCount = 0;
+	ScriptDesc *scriptDescs = GatherScriptDescs(engine.game, arena, scriptCount);
 
 	static RoomDesc roomDescs[MAX_ROOMS];
 	u32 roomCount = 0;
@@ -557,6 +564,8 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		.audioClipDescCount = audioClipCount,
 		.musicFileDescs = musicFileDescs,
 		.musicFileDescCount = musicFileCount,
+		.scriptDescs = scriptDescs,
+		.scriptDescCount = scriptCount,
 	};
 
 	return assetDescs;

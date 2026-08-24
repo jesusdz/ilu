@@ -33,6 +33,9 @@ struct AssetDescriptors
 
 	MusicFileDesc *musicFileDescs;
 	u32 musicFileDescCount;
+
+	ScriptDesc *scriptDescs;
+	u32 scriptDescCount;
 };
 
 // Functions

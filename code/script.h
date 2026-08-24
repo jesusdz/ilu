@@ -28,6 +28,7 @@ struct ScriptPropertyDesc
 
 struct ScriptDesc
 {
+	ID entity; // Owner entity
 	const char *name;
 	u32 propertyCount;
 	ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES];

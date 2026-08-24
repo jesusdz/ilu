@@ -228,20 +228,9 @@ Sprite spr_tilesheet_png_18 = {
 Entity player = {
  .id = 1027,
  .spriteId = 1032,
- .pos = {22.846113, 1.000000, 0.000000},
+ .pos = {31.040457, 1.000000, 0.000000},
  .scale = 1.000000,
  .layerId = 1022,
- .scripts = {
-  {
-   .name = "ScriptPlayerController",
-   .properties = {
-    {"sprPlayerIdle", ID, 1032},
-    {"sprPlayerRun", ID, 1024},
-    {"sprPlayerJump", ID, 1037},
-    {"sprPlayerFall", ID, 1036},
-   },
-  },
- },
 };
 
 
@@ -336,4 +325,17 @@ Room Room = {
 
 
 // Music files /////////////////////////////////////////////////////////
+
+
+// Scripts /////////////////////////////////////////////////////////////
+
+Script ScriptPlayerController = {
+ .entity = 1027,
+ .properties = {
+  {"sprPlayerIdle", ID, 1032},
+  {"sprPlayerRun", ID, 1024},
+  {"sprPlayerJump", ID, 1037},
+  {"sprPlayerFall", ID, 1036},
+ },
+};
 

@@ -334,41 +334,6 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		if (desc.spriteId.slot != 0) {
 			WriteLine(ctx, ".layerId = %u,", desc.layerId.slot);
 		}
-		if ( desc.scriptCount > 0 )
-		{
-			WriteLine(ctx, ".scripts = {");
-			PushIndent(ctx);
-
-			for (u32 s = 0; s < desc.scriptCount; ++s)
-			{
-				const ScriptDesc &scriptDesc = desc.scripts[s];
-
-				WriteLine(ctx, "{");
-				PushIndent(ctx);
-
-				WriteLine(ctx, ".name = \"%s\",", scriptDesc.name);
-
-				if ( scriptDesc.propertyCount > 0 )
-				{
-					WriteLine(ctx, ".properties = {");
-					PushIndent(ctx);
-					for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
-					{
-						const ScriptPropertyDesc &propDesc = scriptDesc.properties[p];
-						const char *typeStr = PropertyTypeToString(propDesc.value.type);
-						WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
-					}
-					PopIndent(ctx);
-					WriteLine(ctx, "},");
-				}
-
-				PopIndent(ctx);
-				WriteLine(ctx, "},");
-			}
-
-			PopIndent(ctx);
-			WriteLine(ctx, "},");
-		}
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -467,6 +432,39 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		PushIndent(ctx);
 		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		WriteLine(ctx, ".filename = \"%s\",", desc.filename);
+		PopIndent(ctx);
+
+		WriteLine(ctx, "};");
+		NewLine(ctx);
+	}
+
+	// Scripts are last because they can have references to previously declared objects
+	WriteSectionLine(ctx, "Scripts");
+
+	for (u32 i = 0; i < assets.scriptDescCount; ++i)
+	{
+		const ScriptDesc &desc = assets.scriptDescs[i];
+
+		// The identifier is the script type, the way an Entity's is its name
+		WriteLine(ctx, "Script %s = {", desc.name);
+
+		PushIndent(ctx);
+		WriteLine(ctx, ".entity = %u,", desc.entity.slot);
+
+		if ( desc.propertyCount > 0 )
+		{
+			WriteLine(ctx, ".properties = {");
+			PushIndent(ctx);
+			for (u32 p = 0; p < desc.propertyCount; ++p)
+			{
+				const ScriptPropertyDesc &propDesc = desc.properties[p];
+				const char *typeStr = PropertyTypeToString(propDesc.value.type);
+				WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
+			}
+			PopIndent(ctx);
+			WriteLine(ctx, "},");
+		}
+
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
