@@ -1587,8 +1587,24 @@ static void EditorUpdateUI_Inspector()
 				if (sprite.textureId)
 				{
 					const Texture &texture = GetTexture(sprite.textureId);
+
+					// Animation
+					f32 xoff = 0.0f;
+					if ( sprite.frameCount > 0  && sprite.fps > 0 )
+					{
+						static f32 accumSeconds = 0.0f;
+						accumSeconds += 1.0f / 60.0f;
+						const f32 frameSeconds = 1.0f / sprite.fps;
+						u32 frameIndex = (u32)( accumSeconds / frameSeconds );
+						if ( frameIndex >= sprite.frameCount ) {
+							accumSeconds = 0.0f;
+							frameIndex = 0;
+						}
+						xoff = frameIndex * (f32)sprite.size.x / texture.size.x;
+					}
+
 					const float4 uvRect = {
-						.xy = Float2(sprite.pos)/Float2(texture.size),
+						.xy = Float2(sprite.pos)/Float2(texture.size) + float2{xoff, 0.0f},
 						.zw = Float2(sprite.size)/Float2(texture.size),
 					};
 					UI_Text(ui, "Texture", texture.desc.name);
@@ -1599,7 +1615,7 @@ static void EditorUpdateUI_Inspector()
 							sprite.textureId = droppedId;
 						}
 					}
-					UI_Image(ui, texture.image, float2{0, 0}, UIWidgetFlag_Expand, uvRect);
+					UI_Image(ui, texture.image, float2{(f32)sprite.size.x, (f32)sprite.size.y}, UIWidgetFlag_Expand | UIWidgetFlag_Centered, uvRect);
 				}
 
 				int2 pos  = { (i32)sprite.pos.x,  (i32)sprite.pos.y  };

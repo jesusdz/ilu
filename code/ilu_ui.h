@@ -191,6 +191,12 @@ enum UIWidgetFlags
 	UIWidgetFlag_Centered = (1<<2),
 };
 
+inline UIWidgetFlags operator|(UIWidgetFlags a, UIWidgetFlags b)
+{
+	const u32 res = (u32)a | (u32)b;
+	return (UIWidgetFlags)res;
+}
+
 struct UIWidget
 {
 	float2 pos;
@@ -2473,7 +2479,15 @@ bool UI_Image(UI &ui, ImageH image, float2 proposedImageSize = float2{32, 32}, U
 	{
 		const UIWindow &window = UI_GetCurrentWindow(ui);
 		const f32 containerWidth = UI_GetContainerSize(window).x;
-		imageSize = float2{containerWidth, containerWidth} - 2.0f * borderSize;
+		const f32 maxHeight = 0.7f * containerWidth;
+		const f32 aspect = proposedImageSize.x / proposedImageSize.y;
+		float2 size = { maxHeight * aspect, maxHeight };
+		if ( size.x > containerWidth ) {
+			size.y *= containerWidth / size.x;
+			size.x = containerWidth;
+		}
+
+		imageSize = size - 2.0f * borderSize;
 	}
 
 	float2 pos = UI_GetCursorPos(ui);
