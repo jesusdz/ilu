@@ -84,6 +84,7 @@ struct BinLocation
 
 
 #include "property.h"
+#include "script.h"
 #include "audio.h"
 #include "graphics.h"
 #include "scene.h"
@@ -106,6 +107,7 @@ static constexpr bool sLoadShadersFromText = false;
 inline Plat &GetPlatform() { return *sPlatform; }
 inline Window &GetWindow() { return *sPlatform->window; }
 inline Engine &GetEngine() { return *sPlatform->engine; }
+inline Game &GetGame() { return sPlatform->engine->game; }
 #if USE_EDITOR
 inline Editor &GetEditor() { return sPlatform->engine->editor; }
 #endif
@@ -116,6 +118,262 @@ static const char * InternString(const char *str)
 	const char *intern = MakeStringIntern(sPlatform->stringInterning, str);
 	return intern;
 }
+
+
+////////////////////////////////////////////////////////////////////////
+// Scripts
+
+static Property& AllocateProperty(Game &game)
+{
+	ASSERT(game.propertyCount < ARRAY_COUNT(game.properties));
+	Property &property = game.properties[game.propertyCount++];
+	return property;
+}
+
+static Script& AllocateScript(Game &game)
+{
+	ASSERT(game.scriptCount < ARRAY_COUNT(game.scripts));
+	Script &script = game.scripts[game.scriptCount++];
+	return script;
+}
+
+static u32 FindScriptIndex(const Game &game, const char *scriptName)
+{
+	for (u32 i = 0; i < game.scriptCount; ++i)
+	{
+		if ( StrEq( game.scripts[i].name, scriptName ) ) {
+			return i;
+		}
+	}
+	return U32_MAX;
+}
+
+static bool HasScript(const Game &game, ID entity, const char *scriptName)
+{
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		const ScriptInstance &instance = game.scriptInstances[i];
+		if ( instance.entity == entity && StrEq( instance.scriptName, scriptName ) )
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static u32 CountEntityScripts(const Game &game, ID entity)
+{
+	u32 count = 0;
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		if ( game.scriptInstances[i].entity == entity ) {
+			count++;
+		}
+	}
+	return count;
+}
+
+static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
+{
+	return game.scriptInstanceData + instance.offset;
+}
+
+static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, ScriptHookType hook)
+{
+	if ( instance.scriptIndex >= game.scriptCount ) {
+		return;
+	}
+
+	const Script &script = game.scripts[instance.scriptIndex];
+
+	if ( ScriptHook hookFn = script.hooks[hook] )
+	{
+		const ID prevEntity = game.currentEntity;
+		game.currentEntity = instance.entity;
+
+		hookFn(GetScriptInstanceData(game, instance));
+
+		game.currentEntity = prevEntity;
+	}
+}
+
+static bool AddScript(Game &game, ID ownerEntityId, const char *scriptName)
+{
+	const u32 scriptIndex = FindScriptIndex(game, scriptName);
+	if ( scriptIndex == U32_MAX ) {
+		LOG(Warning, "AddScript: no script named <%s> is registered.\n", scriptName);
+		return false;
+	}
+
+	if ( game.scriptInstanceCount == MAX_SCRIPT_INSTANCES ) {
+		LOG(Warning, "AddScript: the script instance array is full (%u).\n", MAX_SCRIPT_INSTANCES);
+		return false;
+	}
+
+	const Script &script = game.scripts[scriptIndex];
+
+	if ( game.scriptInstanceDataUsed + script.instanceSize > ARRAY_COUNT(game.scriptInstanceData) ) {
+		LOG(Warning, "AddScript: out of script instance data, <%s> needs %u more bytes.\n", scriptName, script.instanceSize);
+		return false;
+	}
+
+	if ( HasScript(game, ownerEntityId, scriptName) ) {
+		LOG(Warning, "AddScript: script instance <%s> already added.\n", scriptName);
+		return false;
+	}
+
+	if ( CountEntityScripts(game, ownerEntityId) >= MAX_ENTITY_SCRIPTS ) {
+		LOG(Warning, "AddScript: the entity already hosts the maximum of %u scripts.\n", MAX_ENTITY_SCRIPTS);
+		return false;
+	}
+
+	const u32 dataOffset = game.scriptInstanceDataUsed;
+	game.scriptInstanceDataUsed += script.instanceSize;
+
+	ScriptInstance &instance = game.scriptInstances[game.scriptInstanceCount++];
+	instance = {
+		.entity = ownerEntityId,
+		.scriptName = InternString(scriptName),
+		.offset = dataOffset,
+		.size = script.instanceSize,
+		.scriptIndex = (u16)scriptIndex,
+	};
+
+	MemSet(GetScriptInstanceData(game, instance), script.instanceSize, 0);
+
+	if ( game.state == GameStateRunning ) {
+		RunScriptInstanceHook(game, instance, ScriptHook_Start);
+	}
+
+	return true;
+}
+
+static void RemoveScript(Game &game, u32 scriptInstanceIndex)
+{
+	if ( scriptInstanceIndex >= game.scriptInstanceCount ) {
+		LOG(Warning, "RemoveScript: script instance at index %u does not exist.", scriptInstanceIndex);
+		return;
+	}
+
+	ScriptInstance &instance = game.scriptInstances[scriptInstanceIndex];
+
+	if ( !instance.entity ) {
+		return; // Already marked this frame, and Stop must not run twice
+	}
+
+	if ( game.state == GameStateRunning ) {
+		RunScriptInstanceHook(game, instance, ScriptHook_Stop);
+	}
+
+	instance.entity = {};
+}
+
+static void RemoveEntityScripts(Game &game, ID entityID)
+{
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		if ( game.scriptInstances[i].entity == entityID ) {
+			RemoveScript(game, i);
+		}
+	}
+}
+
+static bool ScriptInstanceAlive(const ScriptInstance &instance)
+{
+	const bool alive = instance.entity;
+	return alive;
+}
+
+static void CompactScripts(Game &game)
+{
+	// Find the first hole
+	u32 writeIndex = U32_MAX;
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		if ( !ScriptInstanceAlive(game.scriptInstances[i]) ) {
+			writeIndex = i;
+			break;
+		}
+	}
+
+	if ( writeIndex == U32_MAX ) {
+		return; // No holes, so nothing moves
+	}
+
+	// Everything ahead of the first hole is already in place, and so is its data
+	u32 writeOffset = game.scriptInstances[writeIndex].offset;
+
+	for (u32 readIndex = writeIndex; readIndex < game.scriptInstanceCount; ++readIndex)
+	{
+		const ScriptInstance &instance = game.scriptInstances[readIndex];
+
+		if ( ScriptInstanceAlive(instance) )
+		{
+			MemCopy(game.scriptInstanceData + writeOffset, game.scriptInstanceData + instance.offset, instance.size);
+
+			ScriptInstance &survivor = game.scriptInstances[writeIndex++];
+			survivor = instance;
+			survivor.offset = writeOffset;
+
+			writeOffset += instance.size;
+		}
+	}
+
+	// Clear the part of the tail that's now unused
+	MemSet(game.scriptInstances + writeIndex, (game.scriptInstanceCount - writeIndex) * (u32)sizeof(ScriptInstance), 0);
+
+	game.scriptInstanceCount = writeIndex;
+	game.scriptInstanceDataUsed = writeOffset;
+}
+
+static void RemoveScriptInstances(Game &game)
+{
+	game.scriptInstanceCount = 0;
+	game.scriptInstanceDataUsed = 0;
+	ZeroArray(game.scriptInstances);
+}
+
+static void RebindScriptInstances(Game &game)
+{
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		ScriptInstance &instance = game.scriptInstances[i];
+
+		const u32 scriptIndex = FindScriptIndex(game, instance.scriptName);
+		if ( scriptIndex == U32_MAX ) {
+			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", instance.scriptName);
+			instance.scriptIndex = U16_MAX;
+			continue;
+		}
+
+		const Script &script = game.scripts[scriptIndex];
+		if ( script.instanceSize != instance.size ) {
+			LOG(Warning, "Script <%s> changed size across the reload (%u -> %u), its instance data is stale.\n",
+					instance.scriptName, instance.size, script.instanceSize);
+		}
+
+		instance.scriptIndex = (u16)scriptIndex;
+	}
+}
+
+static void RunScriptHooks(Game &game, ScriptHookType hook)
+{
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		RunScriptInstanceHook(game, game.scriptInstances[i], hook);
+	}
+}
+
+Entity &GetSelf()
+{
+	Game &game = GetGame();
+	Entity &entity = GetEntity(game.currentEntity);
+	return entity;
+}
+
+
+////////////////////////////////////////////////////////////////////////
+// Asset descriptors
 
 u32 U32FromChars(char a, char b, char c, char d)
 {
@@ -443,220 +701,6 @@ void BuildAssetsFromTxt(Engine &engine, const char *inTxtFilepath, const char *o
 	BuildAssets(assetDescriptors, outBinFilepath, scratch);
 }
 #endif // USE_DATA_BUILD
-
-
-////////////////////////////////////////////////////////////////////////
-// Scripts
-
-static u32 FindScriptIndex(const Game &game, const char *scriptName)
-{
-	for (u32 i = 0; i < game.scriptCount; ++i)
-	{
-		if ( StrEq( game.scripts[i].name, scriptName ) ) {
-			return i;
-		}
-	}
-	return U32_MAX;
-}
-
-static bool HasScript(const Game &game, ID entity, const char *scriptName)
-{
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		const ScriptInstance &instance = game.scriptInstances[i];
-		if ( instance.entity == entity && StrEq( instance.scriptName, scriptName ) )
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
-{
-	return game.scriptInstanceData + instance.offset;
-}
-
-static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, ScriptHookType hook)
-{
-	if ( instance.scriptIndex >= game.scriptCount ) {
-		return;
-	}
-
-	const Script &script = game.scripts[instance.scriptIndex];
-
-	if ( ScriptHook hookFn = script.hooks[hook] )
-	{
-		const ID prevEntity = game.currentEntity;
-		game.currentEntity = instance.entity;
-
-		hookFn(GetScriptInstanceData(game, instance));
-
-		game.currentEntity = prevEntity;
-	}
-}
-
-static bool AddScript(Game &game, ID ownerEntityId, const char *scriptName)
-{
-	const u32 scriptIndex = FindScriptIndex(game, scriptName);
-	if ( scriptIndex == U32_MAX ) {
-		LOG(Warning, "AddScript: no script named <%s> is registered.\n", scriptName);
-		return false;
-	}
-
-	if ( game.scriptInstanceCount == MAX_SCRIPT_INSTANCES ) {
-		LOG(Warning, "AddScript: the script instance array is full (%u).\n", MAX_SCRIPT_INSTANCES);
-		return false;
-	}
-
-	const Script &script = game.scripts[scriptIndex];
-
-	if ( game.scriptInstanceDataUsed + script.instanceSize > ARRAY_COUNT(game.scriptInstanceData) ) {
-		LOG(Warning, "AddScript: out of script instance data, <%s> needs %u more bytes.\n", scriptName, script.instanceSize);
-		return false;
-	}
-
-	if ( HasScript(game, ownerEntityId, scriptName) ) {
-		LOG(Warning, "AddScript: script instance <%s> already added.\n", scriptName);
-		return false;
-	}
-
-	const u32 dataOffset = game.scriptInstanceDataUsed;
-	game.scriptInstanceDataUsed += script.instanceSize;
-
-	ScriptInstance &instance = game.scriptInstances[game.scriptInstanceCount++];
-	instance = {
-		.entity = ownerEntityId,
-		.scriptName = InternString(scriptName),
-		.offset = dataOffset,
-		.size = script.instanceSize,
-		.scriptIndex = (u16)scriptIndex,
-	};
-
-	MemSet(GetScriptInstanceData(game, instance), script.instanceSize, 0);
-
-	if ( game.state == GameStateRunning ) {
-		RunScriptInstanceHook(game, instance, ScriptHook_Start);
-	}
-
-	return true;
-}
-
-static void RemoveScript(Game &game, u32 scriptInstanceIndex)
-{
-	if ( scriptInstanceIndex >= game.scriptInstanceCount ) {
-		LOG(Warning, "RemoveScript: script instance at index %u does not exist.", scriptInstanceIndex);
-		return;
-	}
-
-	ScriptInstance &instance = game.scriptInstances[scriptInstanceIndex];
-
-	if ( !instance.entity ) {
-		return; // Already marked this frame, and Stop must not run twice
-	}
-
-	if ( game.state == GameStateRunning ) {
-		RunScriptInstanceHook(game, instance, ScriptHook_Stop);
-	}
-
-	instance.entity = {};
-}
-
-static void RemoveEntityScripts(Game &game, ID entityID)
-{
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		if ( game.scriptInstances[i].entity == entityID ) {
-			RemoveScript(game, i);
-		}
-	}
-}
-
-static bool ScriptInstanceAlive(const ScriptInstance &instance)
-{
-	const bool alive = instance.entity;
-	return alive;
-}
-
-static void CompactScripts(Game &game)
-{
-	// Find the first hole
-	u32 writeIndex = U32_MAX;
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		if ( !ScriptInstanceAlive(game.scriptInstances[i]) ) {
-			writeIndex = i;
-			break;
-		}
-	}
-
-	if ( writeIndex == U32_MAX ) {
-		return; // No holes, so nothing moves
-	}
-
-	// Everything ahead of the first hole is already in place, and so is its data
-	u32 writeOffset = game.scriptInstances[writeIndex].offset;
-
-	for (u32 readIndex = writeIndex; readIndex < game.scriptInstanceCount; ++readIndex)
-	{
-		const ScriptInstance &instance = game.scriptInstances[readIndex];
-
-		if ( ScriptInstanceAlive(instance) )
-		{
-			MemCopy(game.scriptInstanceData + writeOffset, game.scriptInstanceData + instance.offset, instance.size);
-
-			ScriptInstance &survivor = game.scriptInstances[writeIndex++];
-			survivor = instance;
-			survivor.offset = writeOffset;
-
-			writeOffset += instance.size;
-		}
-	}
-
-	// Clear the part of the tail that's now unused
-	MemSet(game.scriptInstances + writeIndex, (game.scriptInstanceCount - writeIndex) * (u32)sizeof(ScriptInstance), 0);
-
-	game.scriptInstanceCount = writeIndex;
-	game.scriptInstanceDataUsed = writeOffset;
-}
-
-static void RemoveScriptInstances(Game &game)
-{
-	game.scriptInstanceCount = 0;
-	game.scriptInstanceDataUsed = 0;
-	ZeroArray(game.scriptInstances);
-}
-
-static void RebindScriptInstances(Game &game)
-{
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		ScriptInstance &instance = game.scriptInstances[i];
-
-		const u32 scriptIndex = FindScriptIndex(game, instance.scriptName);
-		if ( scriptIndex == U32_MAX ) {
-			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", instance.scriptName);
-			instance.scriptIndex = U16_MAX;
-			continue;
-		}
-
-		const Script &script = game.scripts[scriptIndex];
-		if ( script.instanceSize != instance.size ) {
-			LOG(Warning, "Script <%s> changed size across the reload (%u -> %u), its instance data is stale.\n",
-					instance.scriptName, instance.size, script.instanceSize);
-		}
-
-		instance.scriptIndex = (u16)scriptIndex;
-	}
-}
-
-static void RunScriptHooks(Game &game, ScriptHookType hook)
-{
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		RunScriptInstanceHook(game, game.scriptInstances[i], hook);
-	}
-}
 
 
 ////////////////////////////////////////////////////////////////////////

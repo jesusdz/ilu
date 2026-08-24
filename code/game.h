@@ -34,41 +34,6 @@ enum PlayerState
 	OnAir,
 };
 
-enum ScriptHookType
-{
-	ScriptHook_Start,
-	ScriptHook_Simulate,
-	ScriptHook_Update,
-	ScriptHook_Stop,
-	ScriptHook_Count,
-};
-
-typedef void (*ScriptHook)(void *instance);
-
-struct Script
-{
-	const char *name;
-	u32 propertyFirst;
-	u32 propertyCount;
-	u32 instanceSize;
-	ScriptHook hooks[ScriptHook_Count];
-};
-
-constexpr u32 MAX_SCRIPTS = 64;
-constexpr u32 MAX_PROPERTIES = MAX_SCRIPTS * 64;
-constexpr u32 MAX_SCRIPT_INSTANCES = 1024;
-constexpr u32 SCRIPT_INSTANCE_ALIGN = 16;
-constexpr u32 SCRIPT_INSTANCE_DATA_SIZE = MAX_SCRIPT_INSTANCES * 128; // 128K
-
-struct ScriptInstance
-{
-	ID entity; // Owner entity (invalid means remove the instance)
-	const char *scriptName;
-	u32 offset; // Offset into the data blob
-	u32 size; // To compare against new hot-reloaded data
-	u16 scriptIndex;
-};
-
 struct Game
 {
 	GameState state;

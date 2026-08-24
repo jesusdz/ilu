@@ -1,48 +1,5 @@
 
-static Property& AllocateProperty(Game &game)
-{
-	ASSERT(game.propertyCount < ARRAY_COUNT(game.properties));
-	Property &property = game.properties[game.propertyCount++];
-	return property;
-}
-
-static Script& AllocateScript(Game &game)
-{
-	ASSERT(game.scriptCount < ARRAY_COUNT(game.scripts));
-	Script &script = game.scripts[game.scriptCount++];
-	return script;
-}
-
-#define SCRIPT_THUNK(StructName) \
-	static void StructName##_Start(void *instance) { Start(*(StructName*)instance); } \
-	static void StructName##_Simulate(void *instance) { Simulate(*(StructName*)instance); } \
-	static void StructName##_Update(void *instance) { Update(*(StructName*)instance); } \
-	static void StructName##_Stop(void *instance) { Stop(*(StructName*)instance); }
-
 SCRIPT_THUNK(ScriptPlayerController)
-
-#define SCRIPT_BEGIN(StructName) \
-	typedef StructName ScriptType; \
-	Script &script = AllocateScript(game) = { \
-		.name = #StructName, \
-		.propertyFirst = game.propertyCount, \
-		.instanceSize = AlignUp((u32)sizeof(StructName), SCRIPT_INSTANCE_ALIGN), \
-		.hooks = { \
-			StructName##_Start, \
-			StructName##_Simulate, \
-			StructName##_Update, \
-			StructName##_Stop, \
-		}, \
-	}
-
-#define SCRIPT_END() script.propertyCount = game.propertyCount - script.propertyFirst
-
-#define PROPERTY(FieldType, Name) \
-	AllocateProperty(game) = { \
-		.type = Property_##FieldType, \
-		.name = #Name, \
-		.offset = OFFSET_OF(ScriptType, Name), \
-	};
 
 
 void RegisterScripts(Game &game)
@@ -57,19 +14,6 @@ void RegisterScripts(Game &game)
 		//PROPERTY(ID, entPlayer);
 		SCRIPT_END();
 	}
-}
-
-static Game &GetGame()
-{
-	Engine &engine = GetEngine();
-	return engine.game;
-}
-
-Entity &GetSelf()
-{
-	Game &game = GetGame();
-	Entity &entity = GetEntity(game.currentEntity);
-	return entity;
 }
 
 void Start(ScriptPlayerController &script)
