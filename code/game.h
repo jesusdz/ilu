@@ -34,19 +34,6 @@ enum PlayerState
 	OnAir,
 };
 
-enum PropertyType : u8
-{
-	Property_U32,
-	Property_ID,
-};
-
-struct Property
-{
-	PropertyType type;
-	const char *name;
-	u16 offset;
-};
-
 enum ScriptHookType
 {
 	ScriptHook_Start,

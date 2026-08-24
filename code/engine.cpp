@@ -83,6 +83,7 @@ struct BinLocation
 #pragma pack(pop)
 
 
+#include "property.h"
 #include "audio.h"
 #include "graphics.h"
 #include "scene.h"

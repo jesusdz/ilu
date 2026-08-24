@@ -1215,29 +1215,30 @@ static void EditorUpdateUI_SpriteSheet()
 static void EditorUpdateUI_Property(const Property &property, void *data)
 {
 	UI &ui = GetEngine().ui;
-	byte *base = (byte *)data;
+
+	PropertyValue value = GetPropertyValue(property, data);
 
 	switch (property.type)
 	{
 		case Property_U32:
 		{
-			u32 *value = (u32*)(base + property.offset);
-			UI_InputUInt(ui, property.name, value);
+			if ( UI_InputUInt(ui, property.name, &value.uValue) ) {
+				SetPropertyValue(property, data, value);
+			}
 			break;
 		}
 		case Property_ID:
 		{
-			ID *id = (ID*)(base + property.offset);
 			Entity *entity = nullptr;
-			if ( id && *id )
+			if ( value.idValue )
 			{
-				entity = &GetEntity(*id);
+				entity = &GetEntity(value.idValue);
 			}
 			UI_Text(ui, property.name, "%s", entity ? entity->name : "<none>");
 			if ( UI_DragAndDropTarget(ui, "Entity") )
 			{
-				const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
-				*id = droppedId;
+				value.idValue = { UI_DragAndDropPayload(ui).uvalue };
+				SetPropertyValue(property, data, value);
 			}
 			break;
 		}
