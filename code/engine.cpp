@@ -232,34 +232,34 @@ static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, Sc
 	}
 }
 
-static bool AddScript(Game &game, ID ownerEntityId, const char *scriptName)
+static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const char *scriptName)
 {
 	const u32 scriptIndex = FindScriptIndex(game, scriptName);
 	if ( scriptIndex == U32_MAX ) {
-		LOG(Warning, "AddScript: no script named <%s> is registered.\n", scriptName);
-		return false;
+		LOG(Warning, "CreateScriptInstance: no script named <%s> is registered.\n", scriptName);
+		return nullptr;
 	}
 
 	if ( game.scriptInstanceCount == MAX_SCRIPT_INSTANCES ) {
-		LOG(Warning, "AddScript: the script instance array is full (%u).\n", MAX_SCRIPT_INSTANCES);
-		return false;
+		LOG(Warning, "CreateScriptInstance: the script instance array is full (%u).\n", MAX_SCRIPT_INSTANCES);
+		return nullptr;
 	}
 
 	const Script &script = game.scripts[scriptIndex];
 
 	if ( game.scriptInstanceDataUsed + script.instanceSize > ARRAY_COUNT(game.scriptInstanceData) ) {
-		LOG(Warning, "AddScript: out of script instance data, <%s> needs %u more bytes.\n", scriptName, script.instanceSize);
-		return false;
+		LOG(Warning, "CreateScriptInstance: out of script instance data, <%s> needs %u more bytes.\n", scriptName, script.instanceSize);
+		return nullptr;
 	}
 
 	if ( HasScript(game, ownerEntityId, scriptName) ) {
-		LOG(Warning, "AddScript: script instance <%s> already added.\n", scriptName);
-		return false;
+		LOG(Warning, "CreateScriptInstance: script instance <%s> already added.\n", scriptName);
+		return nullptr;
 	}
 
 	if ( CountEntityScripts(game, ownerEntityId) >= MAX_ENTITY_SCRIPTS ) {
-		LOG(Warning, "AddScript: the entity already hosts the maximum of %u scripts.\n", MAX_ENTITY_SCRIPTS);
-		return false;
+		LOG(Warning, "CreateScriptInstance: the entity already hosts the maximum of %u scripts.\n", MAX_ENTITY_SCRIPTS);
+		return nullptr;
 	}
 
 	const u32 dataOffset = game.scriptInstanceDataUsed;
@@ -280,7 +280,46 @@ static bool AddScript(Game &game, ID ownerEntityId, const char *scriptName)
 		RunScriptInstanceHook(game, instance, ScriptHook_Start);
 	}
 
-	return true;
+	return &instance;
+}
+
+static void CreateScriptInstance(Game &game, const ScriptDesc &desc)
+{
+	if ( !desc.entity ) {
+		LOG(Warning, "Script <%s> refers to entity ID %u, which does not exist.\n", desc.name, desc.entity.slot);
+		return;
+	}
+
+	ScriptInstance *instance = CreateScriptInstance(game, desc.entity, desc.name);
+	if ( !instance ) {
+		return; // CreateScriptInstance already logged why
+	}
+
+	const Script &script = game.scripts[instance->scriptIndex];
+	void *instanceData = GetScriptInstanceData(game, *instance);
+
+	for (u32 i = 0; i < desc.propertyCount; ++i)
+	{
+		const ScriptPropertyDesc &propertyDesc = desc.properties[i];
+
+		const Property *property = nullptr;
+		for (u32 p = 0; p < script.propertyCount; ++p)
+		{
+			const Property &currProp = game.properties[script.propertyFirst + p];
+			if ( StrEq( currProp.name, propertyDesc.name ) ) {
+				property = &currProp;
+				break;
+			}
+		}
+
+		if ( !property ) {
+			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
+		} else if ( property->type != propertyDesc.value.type ) {
+			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
+		} else {
+			SetPropertyValue(*property, instanceData, propertyDesc.value);
+		}
+	}
 }
 
 static void RemoveScript(Game &game, u32 scriptInstanceIndex)
@@ -647,6 +686,12 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 			CreateMusicFile(engine.audio, assetDescriptors.musicFileDescs[i]);
 		}
 
+		// Scripts
+		for (u32 i = 0; i < assetDescriptors.scriptDescCount; ++i)
+		{
+			CreateScriptInstance(engine.game, assetDescriptors.scriptDescs[i]);
+		}
+
 		UploadMaterialData(engine.gfx);
 	}
 }
@@ -859,6 +904,27 @@ static void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mous
 	game.input.jump.pressed |= ButtonPressed(gamepad.a);
 }
 
+static void GameStop(Engine &engine)
+{
+	Game &game = engine.game;
+
+	if ( game.state != GameStateStopped )
+	{
+		// If starting never reached its Start hooks, there is nothing to stop
+		if ( game.state != GameStateStarting ) {
+			RunScriptHooks(game, ScriptHook_Stop);
+		}
+
+		AudioStopAll(engine.audio);
+
+		GfxWaitDeviceIdle(engine.gfx);
+		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
+		CreateRenderTargets(engine.gfx);
+
+		game.state = GameStateStopped;
+	}
+}
+
 void GameUpdate(Engine &engine, const Plat &platform)
 {
 	Game &game = engine.game;
@@ -909,15 +975,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 	if (game.state == GameStateStopping)
 	{
-		RunScriptHooks(game, ScriptHook_Stop);
-
-		AudioStopAll(engine.audio);
-
-		GfxWaitDeviceIdle(engine.gfx);
-		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
-		CreateRenderTargets(engine.gfx);
-
-		game.state = GameStateStopped;
+		GameStop(engine);
 	}
 }
 

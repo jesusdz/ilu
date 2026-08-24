@@ -1481,7 +1481,7 @@ static void EditorUpdateUI_Inspector()
 				if ( UI_DragAndDropTarget(ui, "Script") )
 				{
 					const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
-					AddScript(engine.game, inspector.selected.id, script.name);
+					CreateScriptInstance(engine.game, inspector.selected.id, script.name);
 				}
 			}
 		}
