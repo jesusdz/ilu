@@ -319,8 +319,8 @@ void RemoveEntity(Engine &engine, ID id)
 {
 	if (id)
 	{
-		// Marks only. The entity keeps its element until CompactEntities, so anything
-		// still drawing it this frame has something valid to read.
+		RemoveEntityScripts(engine.game, id);
+
 		GetEntity(id).id = {};
 		Invalidate(id);
 	}

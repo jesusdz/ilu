@@ -476,6 +476,25 @@ static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
 	return game.scriptInstanceData + instance.offset;
 }
 
+static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, ScriptHookType hook)
+{
+	if ( instance.scriptIndex >= game.scriptCount ) {
+		return;
+	}
+
+	const Script &script = game.scripts[instance.scriptIndex];
+
+	if ( ScriptHook hookFn = script.hooks[hook] )
+	{
+		const ID prevEntity = game.currentEntity;
+		game.currentEntity = instance.entity;
+
+		hookFn(GetScriptInstanceData(game, instance));
+
+		game.currentEntity = prevEntity;
+	}
+}
+
 static bool AddScript(Game &game, ID ownerEntityId, const char *scriptName)
 {
 	const u32 scriptIndex = FindScriptIndex(game, scriptName);
@@ -515,6 +534,10 @@ static bool AddScript(Game &game, ID ownerEntityId, const char *scriptName)
 
 	MemSet(GetScriptInstanceData(game, instance), script.instanceSize, 0);
 
+	if ( game.state == GameStateRunning ) {
+		RunScriptInstanceHook(game, instance, ScriptHook_Start);
+	}
+
 	return true;
 }
 
@@ -526,7 +549,26 @@ static void RemoveScript(Game &game, u32 scriptInstanceIndex)
 	}
 
 	ScriptInstance &instance = game.scriptInstances[scriptInstanceIndex];
+
+	if ( !instance.entity ) {
+		return; // Already marked this frame, and Stop must not run twice
+	}
+
+	if ( game.state == GameStateRunning ) {
+		RunScriptInstanceHook(game, instance, ScriptHook_Stop);
+	}
+
 	instance.entity = {};
+}
+
+static void RemoveEntityScripts(Game &game, ID entityID)
+{
+	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	{
+		if ( game.scriptInstances[i].entity == entityID ) {
+			RemoveScript(game, i);
+		}
+	}
 }
 
 static bool ScriptInstanceAlive(const ScriptInstance &instance)
@@ -607,28 +649,12 @@ static void RebindScriptInstances(Game &game)
 	}
 }
 
-static void RunScriptHook(Game &game, ScriptHookType hook)
+static void RunScriptHooks(Game &game, ScriptHookType hook)
 {
 	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
 	{
-		const ScriptInstance &instance = game.scriptInstances[i];
-
-		if ( instance.scriptIndex >= game.scriptCount ) {
-			continue; // Lost script on a reload
-		}
-
-		ID prevEntity = instance.entity;
-		game.currentEntity = instance.entity;
-
-		const Script &script = game.scripts[instance.scriptIndex];
-		if ( ScriptHook hookFn = script.hooks[hook] ) {
-			hookFn(GetScriptInstanceData(game, instance));
-		}
-
-		game.currentEntity = prevEntity;
+		RunScriptInstanceHook(game, game.scriptInstances[i], hook);
 	}
-
-	game.currentEntity = {};
 }
 
 
@@ -764,7 +790,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		accumulatedSeconds = 0.0f;
 		MemSet(sKeyPendingRelease, sizeof(sKeyPendingRelease), 0);
 
-		RunScriptHook(game, ScriptHook_Start);
+		RunScriptHooks(game, ScriptHook_Start);
 		game.state = GameStateRunning;
 	}
 
@@ -787,17 +813,17 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		{
 			game.deltaSeconds = fixedStepSeconds;
 			GameSetInput(game, accumulatedInput.keyboard, accumulatedInput.mouse, accumulatedInput.gamepad);
-			RunScriptHook(game, ScriptHook_Simulate);
+			RunScriptHooks(game, ScriptHook_Simulate);
 			InputConsume(accumulatedInput);
 			accumulatedSeconds -= fixedStepSeconds;
 		}
 
-		RunScriptHook(game, ScriptHook_Update);
+		RunScriptHooks(game, ScriptHook_Update);
 	}
 
 	if (game.state == GameStateStopping)
 	{
-		RunScriptHook(game, ScriptHook_Stop);
+		RunScriptHooks(game, ScriptHook_Stop);
 
 		AudioStopAll(engine.audio);
 
