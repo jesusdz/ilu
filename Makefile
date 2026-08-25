@@ -26,6 +26,7 @@ engine: directories
 	${CXX} ${CXXFLAGS} -fPIC -shared -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
 
 dll: directories
+	touch code/game.generated.h
 	${CXX} ${CXXFLAGS} -fPIC -shared -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
 
 game:

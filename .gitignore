@@ -43,3 +43,6 @@ android/Tools.keystore
 android/bin/
 android/obj/
 
+# Generated files
+*.generated.h
+

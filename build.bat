@@ -94,6 +94,7 @@ REM ######################################################
 
 call vcenv.bat
 pushd build
+copy nul ..\code\game.generated.h > nul
 set CommonCompilerFlags=%CommonCompilerFlags% -I %RootDir%\vulkan\include
 cl %CommonCompilerFlags% /LD ..\code\engine.cpp /Feengine.dll
 popd

@@ -1,4 +1,45 @@
 
+#include "game.generated.h"
+
+enum PlayerState
+{
+	OnFloor,
+	OnPlatform,
+	OnAir,
+};
+
+ILU_STRUCT()
+struct ScriptPlayerController
+{
+	PlayerState playerState;
+
+	ILU_PROPERTY()
+	ID sprPlayerIdle;
+
+	ILU_PROPERTY()
+	ID sprPlayerRun;
+
+	ILU_PROPERTY()
+	ID sprPlayerJump;
+
+	ILU_PROPERTY()
+	ID sprPlayerFall;
+
+	ID sndJump;
+	ID modEquinox;
+
+	bool playingMusic;
+
+	Camera camera;
+
+	ID roomId;
+};
+
+void Start(ScriptPlayerController &script);
+void Simulate(ScriptPlayerController &script);
+void Update(ScriptPlayerController &script);
+void Stop(ScriptPlayerController &script);
+
 SCRIPT_THUNK(ScriptPlayerController)
 
 

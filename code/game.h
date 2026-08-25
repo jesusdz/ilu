@@ -27,13 +27,6 @@ struct GameInput
 	InputButton jump;
 };
 
-enum PlayerState
-{
-	OnFloor,
-	OnPlatform,
-	OnAir,
-};
-
 struct Game
 {
 	GameState state;
@@ -65,33 +58,6 @@ struct Game
 // Registration
 
 void RegisterScripts(Game &game);
-
-////////////////////////////////////////////////////////////////////////
-// Game scripts
-
-struct ScriptPlayerController
-{
-	PlayerState playerState;
-
-	ID sprPlayerIdle;
-	ID sprPlayerRun;
-	ID sprPlayerJump;
-	ID sprPlayerFall;
-
-	ID sndJump;
-	ID modEquinox;
-
-	bool playingMusic;
-
-	Camera camera;
-
-	ID roomId;
-};
-
-void Start(ScriptPlayerController &script);
-void Simulate(ScriptPlayerController &script);
-void Update(ScriptPlayerController &script);
-void Stop(ScriptPlayerController &script);
 
 ////////////////////////////////////////////////////////////////////////
 // Game -> Engine interface
