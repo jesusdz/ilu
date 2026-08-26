@@ -78,6 +78,7 @@ REM ######################################################
 
 call vcenv.bat
 pushd build
+copy nul ..\code\game.generated.h > nul
 set CommonCompilerFlags=%CommonCompilerFlags% -I %RootDir%\vulkan\include
 set CommonLinkerFlags=%CommonLinkerFlags% user32.lib
 cl %CommonCompilerFlags% ..\code\platform.cpp /Feilu.exe /link %CommonLinkerFlags%
