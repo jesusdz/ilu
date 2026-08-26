@@ -65,7 +65,7 @@ call vcenv.bat
 pushd build
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags%
-cl %CommonCompilerFlags% ..\code\misc\reflex.cpp /link %CommonLinkerFlags%
+cl %CommonCompilerFlags% ..\code\reflex\reflex.cpp /link %CommonLinkerFlags%
 popd
 exit /b 0
 

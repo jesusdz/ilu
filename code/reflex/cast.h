@@ -18,9 +18,22 @@
  * Additionally `#define CAST_PRINT` may be added before including `cast.h` in
  * case we want to have functionality to print the AST.
  *
+ * Structs, struct fields and enums can be tagged with user-defined macros (a la
+ * Unreal's UCLASS/UPROPERTY). The names of these macros are not hardcoded, but
+ * provided by the user of this file through a `CastConfig` object:
+ *
+ * const CastConfig config = {
+ *   .structTag = "ILU_STRUCT", .fieldTag = "ILU_PROPERTY", .enumTag = "ILU_ENUM",
+ * };
+ * const Cast *cast = Cast_Create(arena, text, textSize, config);
+ *
+ * Tags are then available in `CastStructSpecifier::tag`, `CastStructDeclaration::tag`
+ * and `CastEnumSpecifier::tag`.
+ *
  * These are the main API functions used to create the C AST and start inspecting it:
  *
  * const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize);
+ * const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize, const CastConfig &config);
  * const char *Cast_GetError();
  * int Cast_EvaluateInt( const CastExpression *ast ); // And for all trivial types
  * void Cast_Print( const Cast *cast ); // Only if CAST_PRINT was defined
@@ -76,7 +89,8 @@
 #define CastStrEq StrEq
 #endif // #if CAST_USE_TOOLS
 
-#include <stdarg.h>
+#include <stdarg.h> // va_args
+#include <stdio.h> // printf
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -128,6 +142,7 @@ enum CastExpressionType
 
 // Cast struct forward declarations
 
+struct CastTag;
 struct CastStorageClassSpecifier;
 struct CastSpecifierQualifierList;
 struct CastStructDeclaratorList;
@@ -159,9 +174,30 @@ struct CastExternalDeclaration;
 struct CastTranslationUnit;
 struct Cast;
 
+// Cast tags
+
+// A tag is a user-defined macro placed right before a struct, a struct field or
+// an enum definition (e.g. ILU_STRUCT() / ILU_PROPERTY(...)). Its arguments, if
+// any, are captured verbatim and are not interpreted by the parser.
+struct CastTag
+{
+	CastString name;
+	CastString arguments;
+};
+
+// Names of the tag macros the parser has to look for. Tags whose name is NULL
+// (or empty) are simply not parsed, which is the default behaviour.
+struct CastConfig
+{
+	const char *structTag; // Tag preceding struct definitions
+	const char *fieldTag;  // Tag preceding struct field definitions
+	const char *enumTag;   // Tag preceding enum definitions
+};
+
 // Cast functions
 
 const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize );
+const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize, const CastConfig &config );
 const char *Cast_GetError();
 #ifdef CAST_PRINT
 void Cast_Print( const Cast *cast );
@@ -206,6 +242,7 @@ struct CastStructDeclaratorList
 
 struct CastStructDeclaration
 {
+	CastTag *tag; // optional
 	CastSpecifierQualifierList *specifierQualifierList;
 	CastStructDeclaratorList *structDeclaratorList;
 };
@@ -218,6 +255,7 @@ struct CastStructDeclarationList
 
 struct CastStructSpecifier
 {
+	CastTag *tag; // optional
 	CastString name;
 	CastStructDeclarationList *structDeclarationList;
 };
@@ -236,6 +274,7 @@ struct CastEnumeratorList
 
 struct CastEnumSpecifier
 {
+	CastTag *tag; // optional
 	CastString name;
 	CastEnumeratorList *enumeratorList;
 };
@@ -590,8 +629,10 @@ struct CParser
 {
 	const CTokenList *tokenList;
 	CastArena *arena;
+	CastConfig config;
 	cast_u32 nextToken;
 	cast_u32 lastToken;
+	cast_u32 structDepth;
 	bool hasErrors;
 	bool hasFinished;
 
@@ -1061,6 +1102,43 @@ static bool CParser_TryConsume( CParser &parser, CTokenId tokenId0, CTokenId tok
 	return false;
 }
 
+static bool CParser_IsNextTokenNamed( const CParser &parser, const char *name )
+{
+	if ( !name || *name == '\0' || !CParser_IsNextToken( parser, TOKEN_IDENTIFIER ) ) {
+		return false;
+	}
+	return CastStrEq( CParser_GetNextToken(parser).lexeme, name );
+}
+
+static bool CParser_SkipExternalDeclaration( CParser &parser )
+{
+	cast_u32 skippedTokens = 0;
+	cast_u32 braceDepth = 0;
+	while ( !CParser_HasFinished(parser) )
+	{
+		const CToken &token = CParser_Consume(parser);
+		skippedTokens++;
+
+		if ( token.id == TOKEN_LEFT_BRACE )
+		{
+			braceDepth++;
+		}
+		else if ( token.id == TOKEN_RIGHT_BRACE )
+		{
+			if ( braceDepth > 0 ) braceDepth--;
+			if ( braceDepth == 0 ) {
+				CParser_TryConsume(parser, TOKEN_SEMICOLON);
+				break;
+			}
+		}
+		else if ( token.id == TOKEN_SEMICOLON && braceDepth == 0 )
+		{
+			break;
+		}
+	}
+	return skippedTokens > 0;
+}
+
 static void CParser_AddIdentifier( CParser &parser, CastString identifier )
 {
 	CIdentifierList *previousFirst = parser.identifiers;
@@ -1188,6 +1266,51 @@ static bool Cast_IsTypedef( const CastExternalDeclaration *externalDeclaration, 
 
 #define CAST_NODE( TypeName ) \
 	CastPushZeroStruct( *parser.arena, TypeName )
+
+static CastTag *Cast_ParseTag( CParser &parser, const char *tagName )
+{
+	if ( !tagName || *tagName == '\0' ) {
+		return NULL;
+	}
+	if ( !CParser_IsNextToken( parser, TOKEN_IDENTIFIER ) ) {
+		return NULL;
+	}
+	const CastString name = CParser_GetNextToken(parser).lexeme;
+	if ( !CastStrEq( name, tagName ) ) {
+		return NULL;
+	}
+
+	CAST_BACKUP();
+	CParser_Consume(parser);
+
+	CastString arguments = {};
+	if ( CParser_TryConsume(parser, TOKEN_LEFT_PAREN) )
+	{
+		const char *argumentsBegin = CParser_GetNextToken(parser).lexeme.str;
+		const char *argumentsEnd = argumentsBegin;
+		cast_u32 depth = 1;
+		while ( depth > 0 )
+		{
+			if ( CParser_HasFinished(parser) ) { // Unterminated tag
+				CAST_RESTORE();
+				return NULL;
+			}
+			const CToken &token = CParser_Consume(parser);
+			if ( token.id == TOKEN_LEFT_PAREN ) depth++;
+			else if ( token.id == TOKEN_RIGHT_PAREN ) depth--;
+			if ( depth > 0 ) {
+				argumentsEnd = token.lexeme.str + token.lexeme.size;
+			}
+		}
+		arguments.str = argumentsBegin;
+		arguments.size = (cast_u32)(argumentsEnd - argumentsBegin);
+	}
+
+	CastTag *tag = CAST_NODE( CastTag );
+	tag->name = name;
+	tag->arguments = arguments;
+	return tag;
+}
 
 static CastStorageClassSpecifier *Cast_ParseStorageClassSpecifier( CParser &parser, CTokenList &tokenList )
 {
@@ -1378,6 +1501,7 @@ static CastStructDeclaration *Cast_ParseStructDeclaration( CParser &parser, CTok
 {
 	CAST_BACKUP();
 	CastStructDeclaration *structDeclaration = NULL;
+	CastTag *tag = Cast_ParseTag(parser, parser.config.fieldTag);
 	CastSpecifierQualifierList *specifierQualifierList = Cast_ParseSpecifierQualifierList(parser, tokenList);
 	if ( specifierQualifierList )
 	{
@@ -1385,6 +1509,7 @@ static CastStructDeclaration *Cast_ParseStructDeclaration( CParser &parser, CTok
 		if ( structDeclaratorList ) {
 			if (CParser_TryConsume(parser, TOKEN_SEMICOLON)) {
 				structDeclaration = CAST_NODE( CastStructDeclaration );
+				structDeclaration->tag = tag;
 				structDeclaration->specifierQualifierList = specifierQualifierList;
 				structDeclaration->structDeclaratorList = structDeclaratorList;
 			}
@@ -1439,7 +1564,9 @@ static CastStructSpecifier *Cast_ParseStructSpecifier( CParser &parser, CTokenLi
 	CastStructDeclarationList* structDeclarationList = NULL;
 	if ( CParser_TryConsume(parser, TOKEN_LEFT_BRACE) )
 	{
+		parser.structDepth++;
 		structDeclarationList = Cast_ParseStructDeclarationList(parser, tokenList);
+		parser.structDepth--;
 
 		if ( !CParser_TryConsume(parser, TOKEN_RIGHT_BRACE) )
 		{
@@ -1514,6 +1641,15 @@ static CastEnumSpecifier *Cast_ParseEnumSpecifier( CParser &parser, CTokenList &
 		name = identifier;
 	}
 
+	// Ignore the underlying type after the colon token (e.g. enum Foo : u8)
+	if ( CParser_TryConsume(parser, TOKEN_COLON) ) {
+		while ( !CParser_IsNextToken(parser, TOKEN_LEFT_BRACE) &&
+			!CParser_IsNextToken(parser, TOKEN_SEMICOLON) &&
+			!CParser_HasFinished(parser) ) {
+			CParser_Consume(parser);
+		}
+	}
+
 	CastEnumeratorList *enumeratorList = NULL;
 	if ( CParser_TryConsume(parser, TOKEN_LEFT_BRACE) )
 	{
@@ -1541,7 +1677,33 @@ static CastTypeSpecifier *Cast_ParseTypeSpecifier( CParser &parser, CTokenList &
 	CastString identifier = {};
 	CastStructSpecifier *structSpecifier = NULL;
 	CastEnumSpecifier *enumSpecifier = NULL;
-	if ( CParser_TryConsume(parser, TOKEN_VOID) ) type = CAST_VOID;
+	CastTag *structTag = Cast_ParseTag(parser, parser.config.structTag);
+	CastTag *enumTag = structTag ? NULL : Cast_ParseTag(parser, parser.config.enumTag);
+	if ( structTag )
+	{
+		// A struct tag was found, so a struct specifier must follow
+		type = CAST_STRUCT;
+		structSpecifier = Cast_ParseStructSpecifier(parser, tokenList);
+		if ( structSpecifier ) {
+			structSpecifier->tag = structTag;
+		} else {
+			CAST_RESTORE();
+			match = false;
+		}
+	}
+	else if ( enumTag )
+	{
+		// An enum tag was found, so an enum specifier must follow
+		type = CAST_ENUM;
+		enumSpecifier = Cast_ParseEnumSpecifier(parser, tokenList);
+		if ( enumSpecifier ) {
+			enumSpecifier->tag = enumTag;
+		} else {
+			CAST_RESTORE();
+			match = false;
+		}
+	}
+	else if ( CParser_TryConsume(parser, TOKEN_VOID) ) type = CAST_VOID;
 	else if ( CParser_TryConsume(parser, TOKEN_BOOL) ) type = CAST_BOOL;
 	else if ( CParser_TryConsume(parser, TOKEN_CHAR) ) type = CAST_CHAR;
 	else if ( CParser_TryConsume(parser, TOKEN_INT) ) type = CAST_INT;
@@ -1555,7 +1717,13 @@ static CastTypeSpecifier *Cast_ParseTypeSpecifier( CParser &parser, CTokenList &
 	{
 		const CToken &tokenIdentifier = CParser_GetPreviousToken(parser);
 		identifier = tokenIdentifier.lexeme;
-		if ( CParser_FindIdentifier(parser, identifier) ) {
+		const bool isKnownIdentifier = CParser_FindIdentifier(parser, identifier);
+		// Types declared in other files are unknown to the parser. Within a struct
+		// body, though, `identifier identifier` and `identifier *identifier` can
+		// only be member declarations, so unknown types are accepted there.
+		const bool isMemberType = parser.structDepth > 0 &&
+			( CParser_IsNextToken(parser, TOKEN_IDENTIFIER) || CParser_IsNextToken(parser, TOKEN_STAR) );
+		if ( isKnownIdentifier || isMemberType ) {
 			type = CAST_IDENTIFIER;
 		} else {
 			CAST_RESTORE();
@@ -1862,9 +2030,10 @@ static CastDeclaration *Cast_ParseDeclaration( CParser &parser, CTokenList &toke
 	CastInitDeclaratorList *initDeclaratorList = Cast_ParseInitDeclaratorList(parser, tokenList);
 	// initDeclaratorList may be null (e.g. typedef statements only need declarationSpecifiers).
 
-	CastDeclaration *declaration = CAST_NODE( CastDeclaration );
+	CastDeclaration *declaration = NULL;
 	if ( CParser_TryConsume(parser, TOKEN_SEMICOLON) )
 	{
+		declaration = CAST_NODE( CastDeclaration );
 		declaration->declarationSpecifiers = declarationSpecifiers;
 		declaration->initDeclaratorList = initDeclaratorList;
 	}
@@ -1920,11 +2089,25 @@ static CastTranslationUnit *Cast_ParseTranslationUnit( CParser &parser, CTokenLi
 		else
 		{
 			CToken token = CParser_GetNextToken(parser);
-			CToken lastToken = CParser_GetLastToken(parser);
-			Cast_SetError("Invalid grammar between lines: %u-%u\n", token.line, lastToken.line);
-			firstTranslationUnit = NULL;
-			break;
+
+			// Tagged definitions are explicitly requested by the user, so failing
+			// to parse one is an error rather than something to silently skip.
+			const bool isTagged =
+				CParser_IsNextTokenNamed(parser, parser.config.structTag) ||
+				CParser_IsNextTokenNamed(parser, parser.config.enumTag);
+
+			if ( isTagged || !CParser_SkipExternalDeclaration(parser) )
+			{
+				CToken lastToken = CParser_GetLastToken(parser);
+				Cast_SetError("Invalid grammar between lines: %u-%u\n", token.line, lastToken.line);
+				firstTranslationUnit = NULL;
+				break;
+			}
 		}
+	}
+	if ( !firstTranslationUnit && !parser.hasErrors && !*gCastError )
+	{
+		Cast_SetError("No declarations could be parsed\n");
 	}
 	return firstTranslationUnit;
 }
@@ -1941,8 +2124,10 @@ static Cast *Cast_Create( CParser &parser, CTokenList &tokenList )
 	return cast;
 }
 
-const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize)
+const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize, const CastConfig &config )
 {
+	gCastError[0] = '\0';
+
 	CTokenList tokenList = CScan(arena, text, textSize);
 
 	if ( tokenList.valid )
@@ -1950,11 +2135,18 @@ const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize)
 		CParser parser = {};
 		parser.tokenList = &tokenList;
 		parser.arena = &arena;
+		parser.config = config;
 		Cast *cast = Cast_Create(parser, tokenList);
 		return cast;
 	}
 
 	return NULL;
+}
+
+const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize)
+{
+	const CastConfig config = {}; // No tags are parsed by default
+	return Cast_Create(arena, text, textSize, config);
 }
 
 
@@ -2041,6 +2233,11 @@ static const char *Indentation()
 
 ////////////////////////////////////////////////////////////////////////
 // Print functions
+
+static void Cast_Print( const CastTag *ast )
+{
+	CastPrintfN("Tag -> %.*s(%.*s)", ast->name.size, ast->name.str, ast->arguments.size, ast->arguments.str);
+}
 
 static void Cast_Print( const CastExpression *ast )
 {
@@ -2141,6 +2338,9 @@ static void Cast_Print( const CastStructDeclaratorList *ast )
 static void Cast_Print( const CastStructDeclaration *ast )
 {
 	CastPrintBeginScope("StructDeclaration");
+	if (ast->tag) {
+		Cast_Print(ast->tag);
+	}
 	if (ast->specifierQualifierList) {
 		Cast_Print(ast->specifierQualifierList);
 	}
@@ -2166,6 +2366,9 @@ static void Cast_Print( const CastStructDeclarationList *ast )
 static void Cast_Print( const CastStructSpecifier *ast )
 {
 	CastPrintBeginScope("StructSpecifier -> %.*s", ast->name.size, ast->name.str);
+	if (ast->tag) {
+		Cast_Print(ast->tag);
+	}
 	Cast_Print(ast->structDeclarationList);
 	CastPrintEndScope();
 }
@@ -2193,6 +2396,9 @@ static void Cast_Print( const CastEnumeratorList *ast )
 static void Cast_Print( const CastEnumSpecifier *ast )
 {
 	CastPrintBeginScope("EnumSpecifier -> %.*s", ast->name.size, ast->name.str);
+	if (ast->tag) {
+		Cast_Print(ast->tag);
+	}
 	if (ast->enumeratorList)
 	{
 		Cast_Print(ast->enumeratorList);

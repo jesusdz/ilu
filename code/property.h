@@ -6,6 +6,7 @@
 
 #define ILU_STRUCT(...)
 #define ILU_PROPERTY(...)
+#define ILU_ENUM(...)
 
 enum PropertyType : u8
 {

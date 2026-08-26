@@ -4,6 +4,13 @@
 
 #define StringPrintfArgs(string) string.size, string.str
 
+// Macros used in the parsed files to tag reflected structs, properties and enums
+static const CastConfig castConfig = {
+	.structTag = "ILU_STRUCT",
+	.fieldTag = "ILU_PROPERTY",
+	.enumTag = "ILU_ENUM",
+};
+
 void GenerateReflex(const Cast *cast)
 {
 	printf("\n");
@@ -20,7 +27,8 @@ void GenerateReflex(const Cast *cast)
 	const CastEnumSpecifier *enums[128];
 	u32 enumCount = 0;
 
-	// Get all the global struct and enum specifiers from the AST
+	// Get all the global struct and enum specifiers from the AST.
+	// Only structs and enums tagged with their tag macro are reflected.
 	const CastTranslationUnit *translationUnit = cast->translationUnit;
 	while (translationUnit)
 	{
@@ -32,10 +40,10 @@ void GenerateReflex(const Cast *cast)
 			const CastTypeSpecifier *typeSpecifier =
 				translationUnit->externalDeclaration->declaration->declarationSpecifiers->typeSpecifier;
 
-			if (typeSpecifier->type == CAST_STRUCT && typeSpecifier->structSpecifier) {
+			if (typeSpecifier->type == CAST_STRUCT && typeSpecifier->structSpecifier && typeSpecifier->structSpecifier->tag) {
 				ASSERT(structCount < ARRAY_COUNT(structs));
 				structs[structCount++] = typeSpecifier->structSpecifier;
-			} else if (typeSpecifier->type == CAST_ENUM && typeSpecifier->enumSpecifier) {
+			} else if (typeSpecifier->type == CAST_ENUM && typeSpecifier->enumSpecifier && typeSpecifier->enumSpecifier->tag) {
 				ASSERT(enumCount < ARRAY_COUNT(enums));
 				enums[enumCount++] = typeSpecifier->enumSpecifier;
 			}
@@ -93,18 +101,23 @@ void GenerateReflex(const Cast *cast)
 		printf("////////////////////////////////////////////////////////////////////////\n");
 		printf("// struct %.*s\n", StringPrintfArgs(cstruct->name));
 
-		printf("\n");
-		printf("// ReflexMember info\n");
-		printf("static const ReflexMember reflexMembers_%.*s[] = {\n", StringPrintfArgs(cstruct->name));
-
+		// Only members tagged with the field tag macro are reflected
 		structDeclarationCount = 0;
 		const CastStructDeclarationList *structDeclarationList = cstruct->structDeclarationList;
 		while (structDeclarationList) {
-			if (structDeclarationList->structDeclaration) {
+			const CastStructDeclaration *structDeclaration = structDeclarationList->structDeclaration;
+			if (structDeclaration && structDeclaration->tag) {
 				ASSERT(structDeclarationCount < ARRAY_COUNT(structDeclarations));
-				structDeclarations[structDeclarationCount++] = structDeclarationList->structDeclaration;
+				structDeclarations[structDeclarationCount++] = structDeclaration;
 			}
 			structDeclarationList = structDeclarationList->next;
+		}
+
+		if (structDeclarationCount > 0)
+		{
+			printf("\n");
+			printf("// ReflexMember info\n");
+			printf("static const ReflexMember reflexMembers_%.*s[] = {\n", StringPrintfArgs(cstruct->name));
 		}
 
 		for ( u32 memberIndex = 0; memberIndex < structDeclarationCount; ++memberIndex)
@@ -251,15 +264,25 @@ void GenerateReflex(const Cast *cast)
 			printf(".offset = offsetof(%.*s, %.*s) ", StringPrintfArgs(cstruct->name), StringPrintfArgs(memberName));
 			printf("},\n");
 		}
-		printf("};\n");
+
+		if (structDeclarationCount > 0)
+		{
+			printf("};\n");
+		}
 
 		printf("\n");
 		printf("// ReflexStruct info\n");
 		printf("static const ReflexStruct reflexStruct_%.*s =\n", StringPrintfArgs(cstruct->name));
 		printf("{\n");
 		printf("  .name = \"%.*s\",\n", StringPrintfArgs(cstruct->name));
-		printf("  .members = reflexMembers_%.*s,\n", StringPrintfArgs(cstruct->name));
-		printf("  .memberCount = ARRAY_COUNT(reflexMembers_%.*s),\n", StringPrintfArgs(cstruct->name));
+		if (structDeclarationCount > 0) {
+			printf("  .members = reflexMembers_%.*s,\n", StringPrintfArgs(cstruct->name));
+			printf("  .memberCount = ARRAY_COUNT(reflexMembers_%.*s),\n", StringPrintfArgs(cstruct->name));
+		} else {
+			// A tagged struct with no tagged members: an empty array is not valid C++
+			printf("  .members = NULL,\n");
+			printf("  .memberCount = 0,\n");
+		}
 		printf("  .size = sizeof(%.*s),\n", StringPrintfArgs(cstruct->name));
 		printf("};\n");
 
@@ -292,7 +315,7 @@ int main(int argc, char **argv)
 		{
 			bytes[fileSize] = 0;
 
-			const Cast *cast = Cast_Create(globalArena, bytes, fileSize);
+			const Cast *cast = Cast_Create(globalArena, bytes, fileSize, castConfig);
 			if (cast)
 			{
 				GenerateReflex(cast);
