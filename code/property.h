@@ -57,13 +57,6 @@ inline PropertyType StringToPropertyType(const String str)
 	return PropertyTypeCount;
 }
 
-struct Property
-{
-	PropertyType type;
-	const char *name;
-	u16 offset;
-};
-
 struct PropertyValue
 {
 	PropertyType type;
@@ -74,13 +67,38 @@ struct PropertyValue
 	};
 };
 
-inline PropertyValue GetPropertyValue(const Property &property, const void *base)
+// Which kind of property a reflected member is, if any. The C++ type is not
+// enough: sprites, textures and entities are all IDs, and only the hint in the
+// tag macro (e.g. ILU_PROPERTY(Sprite)) tells them apart.
+inline PropertyType MemberPropertyType(const ReflexMember &member)
 {
-	const byte *field = (const byte *)base + property.offset;
+	if ( member.pointerCount > 0 || member.isArray ) {
+		return PropertyTypeCount;
+	}
 
-	PropertyValue value = { .type = property.type };
+	if ( member.hint ) {
+		const PropertyType type = StringToPropertyType(member.hint);
+		if ( type != PropertyTypeCount ) {
+			return type;
+		}
+	}
 
-	switch (property.type)
+	if ( member.reflexId == ReflexID_UnsignedInt ) {
+		return Property_U32;
+	}
+
+	return PropertyTypeCount;
+}
+
+inline PropertyValue GetPropertyValue(const ReflexMember &member, const void *base)
+{
+	const PropertyType type = MemberPropertyType(member);
+
+	const byte *field = (const byte *)base + member.offset;
+
+	PropertyValue value = { .type = type };
+
+	switch (type)
 	{
 		case Property_U32: value.uValue = *(const u32*)field; break;
 		case Property_Entity:
@@ -93,15 +111,15 @@ inline PropertyValue GetPropertyValue(const Property &property, const void *base
 	return value;
 }
 
-inline void SetPropertyValue(const Property &property, void *base, PropertyValue value)
+inline void SetPropertyValue(const ReflexMember &member, void *base, PropertyValue value)
 {
-	if ( value.type != property.type ) {
+	if ( value.type != MemberPropertyType(member) ) {
 		return;
 	}
 
-	byte *field = (byte *)base + property.offset;
+	byte *field = (byte *)base + member.offset;
 
-	switch (property.type)
+	switch (value.type)
 	{
 		case Property_U32: *(u32*)field = value.uValue; break;
 		case Property_Entity:

@@ -6,7 +6,7 @@
 #ifndef TOOLS_REFLEX_H
 #define TOOLS_REFLEX_H
 
-#define REFLEX_MAX_STRUCTS 64
+#define REFLEX_MAX_STRUCTS 256
 #define REFLEX_MAX_ENUMS 32
 
 typedef u16 ReflexID;

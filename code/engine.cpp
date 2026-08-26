@@ -125,36 +125,57 @@ static const char * InternString(const char *str)
 ////////////////////////////////////////////////////////////////////////
 // Scripts
 
-struct Reflection
+// Reflected type information lives in the reflex registry, generated from the
+// tagged structs. This one only binds the hooks reflex cannot see to those types.
+struct ScriptRegistry
 {
-	u32 propertyCount;
-	Property properties[MAX_PROPERTIES];
-
-	u32 structCount;
-	Script structs[MAX_SCRIPTS];
+	u32 scriptCount;
+	Script scripts[MAX_SCRIPTS];
 };
 
-static Reflection reflection = {};
+static ScriptRegistry scriptRegistry = {};
 
-static Property& AllocateProperty()
+static void RegisterScript(const char *name, ScriptHook start, ScriptHook simulate, ScriptHook update, ScriptHook stop)
 {
-	ASSERT(reflection.propertyCount < ARRAY_COUNT(reflection.properties));
-	Property &property = reflection.properties[reflection.propertyCount++];
-	return property;
-}
+	const ReflexStruct *type = ReflexGetStructFromName(name);
 
-static Script& AllocateScript()
-{
-	ASSERT(reflection.structCount < ARRAY_COUNT(reflection.structs));
-	Script &script = reflection.structs[reflection.structCount++];
-	return script;
-}
+	if ( !type ) {
+		LOG(Warning, "RegisterScript: <%s> is not reflected, is it tagged with ILU_STRUCT(%s)?\n", name, SCRIPT_HINT);
+		return;
+	}
 
-static u32 FindStructIndex(const char *name)
-{
-	for (u32 i = 0; i < reflection.structCount; ++i)
+	if ( !type->hint || !StrEq(type->hint, SCRIPT_HINT) ) {
+		LOG(Warning, "RegisterScript: <%s> is reflected, but not tagged as ILU_STRUCT(%s).\n", name, SCRIPT_HINT);
+		return;
+	}
+
+	if ( scriptRegistry.scriptCount == ARRAY_COUNT(scriptRegistry.scripts) ) {
+		LOG(Warning, "RegisterScript: the script registry is full (%u), <%s> is dropped.\n", MAX_SCRIPTS, name);
+		return;
+	}
+
+	// Every reflected member was tagged on purpose, so one the engine cannot make
+	// sense of is a mistake worth reporting instead of silently dropping it
+	for (u32 i = 0; i < type->memberCount; ++i)
 	{
-		if ( StrEq( reflection.structs[i].name, name ) ) {
+		const ReflexMember &member = type->members[i];
+		if ( MemberPropertyType(member) == PropertyTypeCount ) {
+			LOG(Warning, "RegisterScript: <%s> property <%s> has no usable type, does its tag need a hint (e.g. ILU_PROPERTY(Sprite))?\n", name, member.name);
+		}
+	}
+
+	Script &script = scriptRegistry.scripts[scriptRegistry.scriptCount++];
+	script = {
+		.type = type,
+		.hooks = { start, simulate, update, stop },
+	};
+}
+
+static u32 FindScriptIndex(const char *name)
+{
+	for (u32 i = 0; i < scriptRegistry.scriptCount; ++i)
+	{
+		if ( StrEq( ScriptName(scriptRegistry.scripts[i]), name ) ) {
 			return i;
 		}
 	}
@@ -204,16 +225,22 @@ static ScriptDesc *GatherScriptDescs(Game &game, Arena &arena, u32 &scriptDescCo
 		scriptDesc.entity = scriptInstance.entity;
 		scriptDesc.name = scriptInstance.scriptName; // Interned, so it outlives the script going away
 
-		if ( scriptInstance.structIndex < reflection.structCount )
+		if ( scriptInstance.structIndex < scriptRegistry.scriptCount )
 		{
-			const Script &script = reflection.structs[scriptInstance.structIndex];
-			scriptDesc.propertyCount = script.propertyCount;
-			for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
+			const ReflexStruct *type = scriptRegistry.scripts[scriptInstance.structIndex].type;
+			for (u32 p = 0; p < type->memberCount; ++p)
 			{
-				const Property &property = reflection.properties[script.propertyFirst + p];
-				ScriptPropertyDesc &propertyDesc = scriptDesc.properties[p];
-				propertyDesc.name = property.name;
-				propertyDesc.value = GetPropertyValue(property, game.scriptInstanceData + scriptInstance.offset);
+				const ReflexMember &member = type->members[p];
+				if ( MemberPropertyType(member) == PropertyTypeCount ) {
+					continue; // Not a kind of property that can be stored
+				}
+				if ( scriptDesc.propertyCount == MAX_SCRIPT_PROPERTIES ) {
+					LOG(Warning, "Script <%s> has more than %u properties, the rest are dropped.\n", scriptDesc.name, MAX_SCRIPT_PROPERTIES);
+					break;
+				}
+				ScriptPropertyDesc &propertyDesc = scriptDesc.properties[scriptDesc.propertyCount++];
+				propertyDesc.name = member.name;
+				propertyDesc.value = GetPropertyValue(member, game.scriptInstanceData + scriptInstance.offset);
 			}
 		}
 	}
@@ -228,11 +255,11 @@ static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
 
 static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, ScriptHookType hook)
 {
-	if ( instance.structIndex >= reflection.structCount ) {
+	if ( instance.structIndex >= scriptRegistry.scriptCount ) {
 		return;
 	}
 
-	const Script &script = reflection.structs[instance.structIndex];
+	const Script &script = scriptRegistry.scripts[instance.structIndex];
 
 	if ( ScriptHook hookFn = script.hooks[hook] )
 	{
@@ -247,7 +274,7 @@ static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, Sc
 
 static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const char *scriptName)
 {
-	const u32 structIndex = FindStructIndex(scriptName);
+	const u32 structIndex = FindScriptIndex(scriptName);
 	if ( structIndex == U32_MAX ) {
 		LOG(Warning, "CreateScriptInstance: no script named <%s> is registered.\n", scriptName);
 		return nullptr;
@@ -258,10 +285,11 @@ static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const 
 		return nullptr;
 	}
 
-	const Script &script = reflection.structs[structIndex];
+	const Script &script = scriptRegistry.scripts[structIndex];
+	const u32 instanceSize = ScriptInstanceSize(script);
 
-	if ( game.scriptInstanceDataUsed + script.instanceSize > ARRAY_COUNT(game.scriptInstanceData) ) {
-		LOG(Warning, "CreateScriptInstance: out of script instance data, <%s> needs %u more bytes.\n", scriptName, script.instanceSize);
+	if ( game.scriptInstanceDataUsed + instanceSize > ARRAY_COUNT(game.scriptInstanceData) ) {
+		LOG(Warning, "CreateScriptInstance: out of script instance data, <%s> needs %u more bytes.\n", scriptName, instanceSize);
 		return nullptr;
 	}
 
@@ -276,18 +304,18 @@ static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const 
 	}
 
 	const u32 dataOffset = game.scriptInstanceDataUsed;
-	game.scriptInstanceDataUsed += script.instanceSize;
+	game.scriptInstanceDataUsed += instanceSize;
 
 	ScriptInstance &instance = game.scriptInstances[game.scriptInstanceCount++];
 	instance = {
 		.entity = ownerEntityId,
 		.scriptName = InternString(scriptName),
 		.offset = dataOffset,
-		.size = script.instanceSize,
+		.size = instanceSize,
 		.structIndex = (u16)structIndex,
 	};
 
-	MemSet(GetScriptInstanceData(game, instance), script.instanceSize, 0);
+	MemSet(GetScriptInstanceData(game, instance), instanceSize, 0);
 
 	if ( game.state == GameStateRunning ) {
 		RunScriptInstanceHook(game, instance, ScriptHook_Start);
@@ -308,29 +336,29 @@ static void CreateScriptInstance(Game &game, const ScriptDesc &desc)
 		return; // CreateScriptInstance already logged why
 	}
 
-	const Script &script = reflection.structs[instance->structIndex];
+	const ReflexStruct *type = scriptRegistry.scripts[instance->structIndex].type;
 	void *instanceData = GetScriptInstanceData(game, *instance);
 
 	for (u32 i = 0; i < desc.propertyCount; ++i)
 	{
 		const ScriptPropertyDesc &propertyDesc = desc.properties[i];
 
-		const Property *property = nullptr;
-		for (u32 p = 0; p < script.propertyCount; ++p)
+		const ReflexMember *member = nullptr;
+		for (u32 p = 0; p < type->memberCount; ++p)
 		{
-			const Property &currProp = reflection.properties[script.propertyFirst + p];
-			if ( StrEq( currProp.name, propertyDesc.name ) ) {
-				property = &currProp;
+			const ReflexMember &currMember = type->members[p];
+			if ( StrEq( currMember.name, propertyDesc.name ) ) {
+				member = &currMember;
 				break;
 			}
 		}
 
-		if ( !property ) {
+		if ( !member ) {
 			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else if ( property->type != propertyDesc.value.type ) {
+		} else if ( MemberPropertyType(*member) != propertyDesc.value.type ) {
 			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
 		} else {
-			SetPropertyValue(*property, instanceData, propertyDesc.value);
+			SetPropertyValue(*member, instanceData, propertyDesc.value);
 		}
 	}
 }
@@ -453,17 +481,17 @@ static void RebindScriptInstances(Game &game)
 	{
 		ScriptInstance &instance = game.scriptInstances[i];
 
-		const u32 structIndex = FindStructIndex(instance.scriptName);
+		const u32 structIndex = FindScriptIndex(instance.scriptName);
 		if ( structIndex == U32_MAX ) {
 			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", instance.scriptName);
 			instance.structIndex = U16_MAX;
 			continue;
 		}
 
-		const Script &script = reflection.structs[structIndex];
-		if ( script.instanceSize != instance.size ) {
+		const u32 instanceSize = ScriptInstanceSize(scriptRegistry.scripts[structIndex]);
+		if ( instanceSize != instance.size ) {
 			LOG(Warning, "Script <%s> changed size across the reload (%u -> %u), its instance data is stale.\n",
-					instance.scriptName, instance.size, script.instanceSize);
+					instance.scriptName, instance.size, instanceSize);
 		}
 
 		instance.structIndex = (u16)structIndex;

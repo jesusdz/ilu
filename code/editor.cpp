@@ -932,10 +932,10 @@ static void EditorUpdateUI_Outliner()
 
 	if ( UI_Section(ui, "Scripts") )
 	{
-		for (u32 i = 0; i < reflection.structCount; ++i)
+		for (u32 i = 0; i < scriptRegistry.scriptCount; ++i)
 		{
-			const Script &script = reflection.structs[i];
-			UI_TreeNode(ui, script.name, nullptr, nullptr, UITreeNodeFlag_Leaf);
+			const Script &script = scriptRegistry.scripts[i];
+			UI_TreeNode(ui, ScriptName(script), nullptr, nullptr, UITreeNodeFlag_Leaf);
 			UI_DragAndDropSource(ui, "Script", UI_Payload((void*)&script), editor.iconAsset );
 		}
 	}
@@ -1229,41 +1229,43 @@ static const char *EditorPropertyIDName(PropertyType type, ID id)
 	return "<unknown>";
 }
 
-static void EditorUpdateUI_Property(const Property &property, void *data)
+static void EditorUpdateUI_Property(const ReflexMember &member, void *data)
 {
 	UI &ui = GetEngine().ui;
 
-	PropertyValue value = GetPropertyValue(property, data);
+	const PropertyType type = MemberPropertyType(member);
 
-	if ( property.type == Property_U32 )
+	PropertyValue value = GetPropertyValue(member, data);
+
+	if ( type == Property_U32 )
 	{
-		if ( UI_InputUInt(ui, property.name, &value.uValue) ) {
-			SetPropertyValue(property, data, value);
+		if ( UI_InputUInt(ui, member.name, &value.uValue) ) {
+			SetPropertyValue(member, data, value);
 		}
 	}
-	else if ( IsIDProperty(property.type) )
+	else if ( IsIDProperty(type) )
 	{
-		UI_Text(ui, property.name, "%s", EditorPropertyIDName(property.type, value.idValue));
+		UI_Text(ui, member.name, "%s", EditorPropertyIDName(type, value.idValue));
 
-		if ( UI_DragAndDropTarget(ui, PropertyTypeToString(property.type)) )
+		if ( UI_DragAndDropTarget(ui, PropertyTypeToString(type)) )
 		{
 			value.idValue = { UI_DragAndDropPayload(ui).uvalue };
-			SetPropertyValue(property, data, value);
+			SetPropertyValue(member, data, value);
 		}
 	}
 }
 
-static void EditorUpdateUI_InspectorProperties(const char *scriptName, const Property *properties, u32 propertyCount, void *base)
+static void EditorUpdateUI_InspectorProperties(const char *scriptName, const ReflexMember *members, u32 memberCount, void *base)
 {
 	UI &ui = GetEngine().ui;
 
 	UI_SeparatorLabel(ui, scriptName);
 
-	for (u32 i = 0; i < propertyCount; ++i)
+	for (u32 i = 0; i < memberCount; ++i)
 	{
-		const Property &property = properties[i];
+		const ReflexMember &member = members[i];
 
-		EditorUpdateUI_Property(property, base);
+		EditorUpdateUI_Property(member, base);
 	}
 }
 
@@ -1466,17 +1468,15 @@ static void EditorUpdateUI_Inspector()
 				for (u32 i = 0; i < engine.game.scriptInstanceCount; ++i) 
 				{
 					const ScriptInstance &instance = engine.game.scriptInstances[i];
-					if ( instance.structIndex >= reflection.structCount ) {
+					if ( instance.structIndex >= scriptRegistry.scriptCount ) {
 						continue;
 					}
 
 					if ( instance.entity == inspector.selected.id )
 					{
-						const Script &script = reflection.structs[instance.structIndex];
-						const Property *properties = reflection.properties + script.propertyFirst;
-						const u32 propertyCount = script.propertyCount;
+						const Script &script = scriptRegistry.scripts[instance.structIndex];
 						void * base = engine.game.scriptInstanceData + instance.offset;
-						EditorUpdateUI_InspectorProperties(instance.scriptName, properties, propertyCount, base);
+						EditorUpdateUI_InspectorProperties(instance.scriptName, script.type->members, script.type->memberCount, base);
 						if (UI_Button(ui, "Remove"))
 						{
 							RemoveScript(engine.game, i);
@@ -1490,7 +1490,7 @@ static void EditorUpdateUI_Inspector()
 				if ( UI_DragAndDropTarget(ui, "Script") )
 				{
 					const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
-					CreateScriptInstance(engine.game, inspector.selected.id, script.name);
+					CreateScriptInstance(engine.game, inspector.selected.id, ScriptName(script));
 				}
 			}
 		}

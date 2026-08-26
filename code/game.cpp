@@ -43,14 +43,7 @@ SCRIPT_THUNK(ScriptPlayerController)
 
 void RegisterScripts()
 {
-	{
-		SCRIPT_BEGIN(ScriptPlayerController);
-		PROPERTY(Sprite, sprPlayerIdle);
-		PROPERTY(Sprite, sprPlayerRun);
-		PROPERTY(Sprite, sprPlayerJump);
-		PROPERTY(Sprite, sprPlayerFall);
-		SCRIPT_END();
-	}
+	SCRIPT_REGISTER(ScriptPlayerController);
 }
 
 void Start(ScriptPlayerController &script)
