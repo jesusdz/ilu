@@ -57,6 +57,7 @@ struct ReflexEnumerator
 struct ReflexEnum
 {
 	const char *name;
+	const char *hint; // Optional arguments in the tag macro
 	const ReflexEnumerator *enumerators;
 	u16 enumeratorCount;
 };
@@ -64,6 +65,7 @@ struct ReflexEnum
 struct ReflexMember
 {
 	const char *name;
+	const char *hint; // Optional arguments in the tag macro
 	u16 isConst : 1;
 	u16 pointerCount : 2;
 	u16 isArray : 1;
@@ -75,6 +77,7 @@ struct ReflexMember
 struct ReflexStruct
 {
 	const char *name;
+	const char *hint; // Optional arguments in the tag macro
 	const ReflexMember *members;
 	u16 memberCount;
 	u16 size;

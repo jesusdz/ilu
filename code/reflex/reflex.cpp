@@ -143,6 +143,7 @@ void GenerateReflex(const Cast *cast)
 			printf("static const ReflexStruct reflexStruct_%.*s =\n", StringPrintfArgs(typeName));
 			printf("{\n");
 			printf("  .name = \"%.*s\",\n", StringPrintfArgs(typeName));
+			printf("  .hint = NULL,\n"); // Not tagged, so there is no hint
 			printf("  .members = NULL,\n");
 			printf("  .memberCount = 0,\n");
 			if (externalTypeIsValue[index]) {
@@ -192,6 +193,11 @@ void GenerateReflex(const Cast *cast)
 		printf("static const ReflexEnum reflexEnum_%.*s =\n", StringPrintfArgs(cenum->name));
 		printf("{\n");
 		printf("  .name = \"%.*s\",\n", StringPrintfArgs(cenum->name));
+		if (cenum->tag && cenum->tag->arguments.size > 0) {
+			printf("  .hint = \"%.*s\",\n", StringPrintfArgs(cenum->tag->arguments));
+		} else {
+			printf("  .hint = NULL,\n");
+		}
 		printf("  .enumerators = reflexEnumerators_%.*s,\n", StringPrintfArgs(cenum->name));
 		printf("  .enumeratorCount = ARRAY_COUNT(reflexEnumerators_%.*s),\n", StringPrintfArgs(cenum->name));
 		printf("};\n");
@@ -363,8 +369,16 @@ void GenerateReflex(const Cast *cast)
 				arrayDim = expression ? Cast_EvaluateInt(expression) : 0;
 			}
 
+			const CastTag *memberTag = structDeclaration->tag;
+			const bool hasHint = memberTag && memberTag->arguments.size > 0;
+
 			printf("  { ");
 			printf(".name = \"%.*s\", ", StringPrintfArgs(memberName));
+			if (hasHint) {
+				printf(".hint = \"%.*s\", ", StringPrintfArgs(memberTag->arguments));
+			} else {
+				printf(".hint = NULL, ");
+			}
 			printf(".isConst = %s, ", isConst ? "true" : "false");
 			printf(".pointerCount = %u, ", pointerCount);
 			printf(".isArray = %s, ", isArray ? "true" : "false");
@@ -384,6 +398,11 @@ void GenerateReflex(const Cast *cast)
 		printf("static const ReflexStruct reflexStruct_%.*s =\n", StringPrintfArgs(cstruct->name));
 		printf("{\n");
 		printf("  .name = \"%.*s\",\n", StringPrintfArgs(cstruct->name));
+		if (cstruct->tag && cstruct->tag->arguments.size > 0) {
+			printf("  .hint = \"%.*s\",\n", StringPrintfArgs(cstruct->tag->arguments));
+		} else {
+			printf("  .hint = NULL,\n");
+		}
 		if (structDeclarationCount > 0) {
 			printf("  .members = reflexMembers_%.*s,\n", StringPrintfArgs(cstruct->name));
 			printf("  .memberCount = ARRAY_COUNT(reflexMembers_%.*s),\n", StringPrintfArgs(cstruct->name));

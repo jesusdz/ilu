@@ -6,21 +6,21 @@ enum PlayerState
 	OnAir,
 };
 
-ILU_STRUCT()
+ILU_STRUCT(Script)
 struct ScriptPlayerController
 {
 	PlayerState playerState;
 
-	ILU_PROPERTY()
+	ILU_PROPERTY(Sprite)
 	ID sprPlayerIdle;
 
-	ILU_PROPERTY()
+	ILU_PROPERTY(Sprite)
 	ID sprPlayerRun;
 
-	ILU_PROPERTY()
+	ILU_PROPERTY(Sprite)
 	ID sprPlayerJump;
 
-	ILU_PROPERTY()
+	ILU_PROPERTY(Sprite)
 	ID sprPlayerFall;
 
 	ID sndJump;
