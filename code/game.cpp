@@ -23,7 +23,12 @@ struct ScriptPlayerController
 	ILU_PROPERTY(Sprite)
 	ID sprPlayerFall;
 
+	ILU_PROPERTY(SoundClip)
 	ID sndJump;
+
+	ILU_PROPERTY(U32)
+	u32 randomProperty;
+
 	ID modEquinox;
 
 	bool playingMusic;

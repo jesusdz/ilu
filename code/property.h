@@ -11,9 +11,13 @@
 enum PropertyType : u8
 {
 	Property_U32,
-	Property_Entity,
+	Property_IDBegin,
+	Property_Entity = Property_IDBegin,
 	Property_Sprite,
 	Property_Texture,
+	Property_SoundClip,
+	Property_MusicFile,
+	Property_IDEnd = Property_MusicFile,
 	PropertyTypeCount,
 };
 
@@ -22,6 +26,8 @@ constexpr const char *PropertyTypeName[] = {
 	"Entity",
 	"Sprite",
 	"Texture",
+	"SoundClip",
+	"MusicFile",
 };
 
 CT_ASSERT(ARRAY_COUNT(PropertyTypeName) == PropertyTypeCount);
@@ -132,7 +138,7 @@ inline void SetPropertyValue(const ReflexMember &member, void *base, PropertyVal
 
 inline bool IsIDProperty(PropertyType type)
 {
-	const bool res = type >= Property_Entity && type <= Property_Texture;
+	const bool res = type >= Property_IDBegin && type <= Property_IDEnd;
 	return res;
 }
 
