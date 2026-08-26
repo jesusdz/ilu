@@ -11,6 +11,30 @@ static const CastConfig castConfig = {
 	.enumTag = "ILU_ENUM",
 };
 
+// Returns the type name of a struct member when its type is an identifier
+// (as opposed to a trivial type or an inline struct/enum), or an empty string.
+static String GetMemberTypeName(const CastStructDeclaration *structDeclaration)
+{
+	const CastSpecifierQualifierList *specifierList = CAST_CHILD(structDeclaration, specifierQualifierList);
+	while (specifierList)
+	{
+		const CastTypeSpecifier *typeSpecifier = specifierList->typeSpecifier;
+		if (typeSpecifier && typeSpecifier->type == CAST_IDENTIFIER) {
+			return typeSpecifier->identifier;
+		}
+		specifierList = specifierList->next;
+	}
+	return MakeString("");
+}
+
+static bool IsPointerMember(const CastStructDeclaration *structDeclaration)
+{
+	const CastStructDeclaratorList *structDeclaratorList = CAST_CHILD(structDeclaration, structDeclaratorList);
+	const CastDeclarator *declarator = CAST_CHILD(structDeclaratorList, structDeclarator);
+	const CastPointer *pointer = CAST_CHILD(declarator, pointer);
+	return pointer != NULL;
+}
+
 void GenerateReflex(const Cast *cast)
 {
 	printf("\n");
@@ -49,6 +73,91 @@ void GenerateReflex(const Cast *cast)
 			}
 		}
 		translationUnit = translationUnit->next;
+	}
+
+	// Reflected members can point to types declared in other files, which are
+	// therefore not reflected here. They still need a ReflexID to be referred to,
+	// so they get registered as opaque types (no members, just name and size).
+	String externalTypes[128];
+	bool externalTypeIsValue[128];
+	u32 externalTypeCount = 0;
+
+	for (u32 index = 0; index < structCount; ++index)
+	{
+		const CastStructDeclarationList *structDeclarationList = structs[index]->structDeclarationList;
+		while (structDeclarationList)
+		{
+			const CastStructDeclaration *structDeclaration = structDeclarationList->structDeclaration;
+			structDeclarationList = structDeclarationList->next;
+
+			if (!structDeclaration || !structDeclaration->tag) {
+				continue;
+			}
+
+			const String typeName = GetMemberTypeName(structDeclaration);
+			if (typeName.size == 0) {
+				continue;
+			}
+
+			// Types reflected in this file already have a ReflexID
+			bool isReflected = false;
+			for (u32 i = 0; i < structCount && !isReflected; ++i) {
+				isReflected = StrEq(structs[i]->name, typeName);
+			}
+			for (u32 i = 0; i < enumCount && !isReflected; ++i) {
+				isReflected = StrEq(enums[i]->name, typeName);
+			}
+			if (isReflected) {
+				continue;
+			}
+
+			const bool isValue = !IsPointerMember(structDeclaration);
+
+			u32 externalIndex = 0;
+			while (externalIndex < externalTypeCount && !StrEq(externalTypes[externalIndex], typeName)) {
+				externalIndex++;
+			}
+			if (externalIndex == externalTypeCount) {
+				ASSERT(externalTypeCount < ARRAY_COUNT(externalTypes));
+				externalTypes[externalTypeCount] = typeName;
+				externalTypeIsValue[externalTypeCount] = false;
+				externalTypeCount++;
+			}
+			externalTypeIsValue[externalIndex] = externalTypeIsValue[externalIndex] || isValue;
+		}
+	}
+
+	if (externalTypeCount > 0)
+	{
+		printf("\n");
+		printf("\n");
+		printf("////////////////////////////////////////////////////////////////////////\n");
+		printf("// Types used by reflected members but not reflected themselves\n");
+
+		for (u32 index = 0; index < externalTypeCount; ++index)
+		{
+			const String typeName = externalTypes[index];
+
+			printf("\n");
+			printf("// ReflexStruct info\n");
+			printf("static const ReflexStruct reflexStruct_%.*s =\n", StringPrintfArgs(typeName));
+			printf("{\n");
+			printf("  .name = \"%.*s\",\n", StringPrintfArgs(typeName));
+			printf("  .members = NULL,\n");
+			printf("  .memberCount = 0,\n");
+			if (externalTypeIsValue[index]) {
+				printf("  .size = sizeof(%.*s),\n", StringPrintfArgs(typeName));
+			} else {
+				// Only used through pointers, so the type could be incomplete here
+				printf("  .size = 0,\n");
+			}
+			printf("};\n");
+
+			printf("\n");
+			printf("// ReflexStruct registration\n");
+			printf("static const ReflexID ReflexID_%.*s = ReflexRegisterStruct(&reflexStruct_%.*s);\n", StringPrintfArgs(typeName), StringPrintfArgs(typeName));
+			printf("\n");
+		}
 	}
 
 	// ReflexID enum

@@ -1,6 +1,4 @@
 
-#include "game.generated.h"
-
 enum PlayerState
 {
 	OnFloor,

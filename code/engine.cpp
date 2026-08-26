@@ -84,6 +84,7 @@ struct BinLocation
 #pragma pack(pop)
 
 
+#include "reflex\reflex.h"
 #include "property.h"
 #include "script.h"
 #include "audio.h"
@@ -1526,6 +1527,9 @@ void PlayMusic(ID musicId)
 #define ILU_ID_POOL GetEngine().idPool
 #define ILU_ID_IMPLEMENTATION
 #include "ilu_id.h"
+
+// Reflection declarations are put at the end of the engine so information about all types is available
+#include "reflex.generated.h"
 
 // TODO:
 // - [ ] Instead of binding descriptors per entity, group entities by material and perform a multi draw call for each material group.
