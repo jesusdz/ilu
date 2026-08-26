@@ -43,13 +43,8 @@ void Stop(ScriptPlayerController &script);
 SCRIPT_THUNK(ScriptPlayerController)
 
 
-void RegisterScripts(Game &game)
+void RegisterScripts()
 {
-	game.scriptCount = 0;
-	ZeroArray(game.scripts);
-	game.propertyCount = 0;
-	ZeroArray(game.properties);
-
 	{
 		SCRIPT_BEGIN(ScriptPlayerController);
 		PROPERTY(Sprite, sprPlayerIdle);

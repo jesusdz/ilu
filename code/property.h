@@ -4,6 +4,9 @@
 ////////////////////////////////////////////////////////////////////////
 // Reflected properties
 
+#define ILU_STRUCT(...)
+#define ILU_PROPERTY(...)
+
 enum PropertyType : u8
 {
 	Property_U32,

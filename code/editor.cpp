@@ -932,9 +932,9 @@ static void EditorUpdateUI_Outliner()
 
 	if ( UI_Section(ui, "Scripts") )
 	{
-		for (u32 i = 0; i < game.scriptCount; ++i)
+		for (u32 i = 0; i < reflection.structCount; ++i)
 		{
-			const Script &script = game.scripts[i];
+			const Script &script = reflection.structs[i];
 			UI_TreeNode(ui, script.name, nullptr, nullptr, UITreeNodeFlag_Leaf);
 			UI_DragAndDropSource(ui, "Script", UI_Payload((void*)&script), editor.iconAsset );
 		}
@@ -1466,14 +1466,14 @@ static void EditorUpdateUI_Inspector()
 				for (u32 i = 0; i < engine.game.scriptInstanceCount; ++i) 
 				{
 					const ScriptInstance &instance = engine.game.scriptInstances[i];
-					if ( instance.scriptIndex >= engine.game.scriptCount ) {
+					if ( instance.structIndex >= reflection.structCount ) {
 						continue;
 					}
 
 					if ( instance.entity == inspector.selected.id )
 					{
-						const Script &script = engine.game.scripts[instance.scriptIndex];
-						const Property *properties = engine.game.properties + script.propertyFirst;
+						const Script &script = reflection.structs[instance.structIndex];
+						const Property *properties = reflection.properties + script.propertyFirst;
 						const u32 propertyCount = script.propertyCount;
 						void * base = engine.game.scriptInstanceData + instance.offset;
 						EditorUpdateUI_InspectorProperties(instance.scriptName, properties, propertyCount, base);

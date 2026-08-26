@@ -52,12 +52,6 @@ struct ImagePixels
 
 
 ////////////////////////////////////////////////////////////////////////
-// Reflection macros
-
-#define ILU_STRUCT(...)
-#define ILU_PROPERTY(...)
-
-////////////////////////////////////////////////////////////////////////
 // Asset flags
 
 enum AssetFlags
@@ -130,25 +124,36 @@ static const char * InternString(const char *str)
 ////////////////////////////////////////////////////////////////////////
 // Scripts
 
-static Property& AllocateProperty(Game &game)
+struct Reflection
 {
-	ASSERT(game.propertyCount < ARRAY_COUNT(game.properties));
-	Property &property = game.properties[game.propertyCount++];
+	u32 propertyCount;
+	Property properties[MAX_PROPERTIES];
+
+	u32 structCount;
+	Script structs[MAX_SCRIPTS];
+};
+
+static Reflection reflection = {};
+
+static Property& AllocateProperty()
+{
+	ASSERT(reflection.propertyCount < ARRAY_COUNT(reflection.properties));
+	Property &property = reflection.properties[reflection.propertyCount++];
 	return property;
 }
 
-static Script& AllocateScript(Game &game)
+static Script& AllocateScript()
 {
-	ASSERT(game.scriptCount < ARRAY_COUNT(game.scripts));
-	Script &script = game.scripts[game.scriptCount++];
+	ASSERT(reflection.structCount < ARRAY_COUNT(reflection.structs));
+	Script &script = reflection.structs[reflection.structCount++];
 	return script;
 }
 
-static u32 FindScriptIndex(const Game &game, const char *scriptName)
+static u32 FindStructIndex(const char *name)
 {
-	for (u32 i = 0; i < game.scriptCount; ++i)
+	for (u32 i = 0; i < reflection.structCount; ++i)
 	{
-		if ( StrEq( game.scripts[i].name, scriptName ) ) {
+		if ( StrEq( reflection.structs[i].name, name ) ) {
 			return i;
 		}
 	}
@@ -198,13 +203,13 @@ static ScriptDesc *GatherScriptDescs(Game &game, Arena &arena, u32 &scriptDescCo
 		scriptDesc.entity = scriptInstance.entity;
 		scriptDesc.name = scriptInstance.scriptName; // Interned, so it outlives the script going away
 
-		if ( scriptInstance.scriptIndex < game.scriptCount )
+		if ( scriptInstance.structIndex < reflection.structCount )
 		{
-			const Script &script = game.scripts[scriptInstance.scriptIndex];
+			const Script &script = reflection.structs[scriptInstance.structIndex];
 			scriptDesc.propertyCount = script.propertyCount;
 			for (u32 p = 0; p < scriptDesc.propertyCount; ++p)
 			{
-				const Property &property = game.properties[script.propertyFirst + p];
+				const Property &property = reflection.properties[script.propertyFirst + p];
 				ScriptPropertyDesc &propertyDesc = scriptDesc.properties[p];
 				propertyDesc.name = property.name;
 				propertyDesc.value = GetPropertyValue(property, game.scriptInstanceData + scriptInstance.offset);
@@ -222,11 +227,11 @@ static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
 
 static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, ScriptHookType hook)
 {
-	if ( instance.scriptIndex >= game.scriptCount ) {
+	if ( instance.structIndex >= reflection.structCount ) {
 		return;
 	}
 
-	const Script &script = game.scripts[instance.scriptIndex];
+	const Script &script = reflection.structs[instance.structIndex];
 
 	if ( ScriptHook hookFn = script.hooks[hook] )
 	{
@@ -241,8 +246,8 @@ static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, Sc
 
 static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const char *scriptName)
 {
-	const u32 scriptIndex = FindScriptIndex(game, scriptName);
-	if ( scriptIndex == U32_MAX ) {
+	const u32 structIndex = FindStructIndex(scriptName);
+	if ( structIndex == U32_MAX ) {
 		LOG(Warning, "CreateScriptInstance: no script named <%s> is registered.\n", scriptName);
 		return nullptr;
 	}
@@ -252,7 +257,7 @@ static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const 
 		return nullptr;
 	}
 
-	const Script &script = game.scripts[scriptIndex];
+	const Script &script = reflection.structs[structIndex];
 
 	if ( game.scriptInstanceDataUsed + script.instanceSize > ARRAY_COUNT(game.scriptInstanceData) ) {
 		LOG(Warning, "CreateScriptInstance: out of script instance data, <%s> needs %u more bytes.\n", scriptName, script.instanceSize);
@@ -278,7 +283,7 @@ static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const 
 		.scriptName = InternString(scriptName),
 		.offset = dataOffset,
 		.size = script.instanceSize,
-		.scriptIndex = (u16)scriptIndex,
+		.structIndex = (u16)structIndex,
 	};
 
 	MemSet(GetScriptInstanceData(game, instance), script.instanceSize, 0);
@@ -302,7 +307,7 @@ static void CreateScriptInstance(Game &game, const ScriptDesc &desc)
 		return; // CreateScriptInstance already logged why
 	}
 
-	const Script &script = game.scripts[instance->scriptIndex];
+	const Script &script = reflection.structs[instance->structIndex];
 	void *instanceData = GetScriptInstanceData(game, *instance);
 
 	for (u32 i = 0; i < desc.propertyCount; ++i)
@@ -312,7 +317,7 @@ static void CreateScriptInstance(Game &game, const ScriptDesc &desc)
 		const Property *property = nullptr;
 		for (u32 p = 0; p < script.propertyCount; ++p)
 		{
-			const Property &currProp = game.properties[script.propertyFirst + p];
+			const Property &currProp = reflection.properties[script.propertyFirst + p];
 			if ( StrEq( currProp.name, propertyDesc.name ) ) {
 				property = &currProp;
 				break;
@@ -447,20 +452,20 @@ static void RebindScriptInstances(Game &game)
 	{
 		ScriptInstance &instance = game.scriptInstances[i];
 
-		const u32 scriptIndex = FindScriptIndex(game, instance.scriptName);
-		if ( scriptIndex == U32_MAX ) {
+		const u32 structIndex = FindStructIndex(instance.scriptName);
+		if ( structIndex == U32_MAX ) {
 			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", instance.scriptName);
-			instance.scriptIndex = U16_MAX;
+			instance.structIndex = U16_MAX;
 			continue;
 		}
 
-		const Script &script = game.scripts[scriptIndex];
+		const Script &script = reflection.structs[structIndex];
 		if ( script.instanceSize != instance.size ) {
 			LOG(Warning, "Script <%s> changed size across the reload (%u -> %u), its instance data is stale.\n",
 					instance.scriptName, instance.size, script.instanceSize);
 		}
 
-		instance.scriptIndex = (u16)scriptIndex;
+		instance.structIndex = (u16)structIndex;
 	}
 }
 
@@ -1131,7 +1136,7 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 
 	Engine &engine = GetEngine();
 
-	RegisterScripts(engine.game);
+	RegisterScripts();
 	RebindScriptInstances(engine.game);
 
 	if ( !firstLoad )

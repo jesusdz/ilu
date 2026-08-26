@@ -35,12 +35,6 @@ struct Game
 	f32 deltaSeconds;
 	f32 accumulatedSeconds;
 
-	u32 propertyCount;
-	Property properties[MAX_PROPERTIES];
-
-	u32 scriptCount;
-	Script scripts[MAX_SCRIPTS];
-
 	u32 scriptInstanceCount;
 	ScriptInstance scriptInstances[MAX_SCRIPT_INSTANCES];
 
@@ -57,7 +51,7 @@ struct Game
 ////////////////////////////////////////////////////////////////////////
 // Registration
 
-void RegisterScripts(Game &game);
+void RegisterScripts();
 
 ////////////////////////////////////////////////////////////////////////
 // Game -> Engine interface

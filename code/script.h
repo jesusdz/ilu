@@ -49,7 +49,7 @@ struct ScriptInstance
 	const char *scriptName;
 	u32 offset; // Offset into the data blob
 	u32 size; // To compare against new hot-reloaded data
-	u16 scriptIndex;
+	u16 structIndex;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -90,9 +90,9 @@ struct BinScript
 
 #define SCRIPT_BEGIN(StructName) \
 	typedef StructName ScriptType; \
-	Script &script = AllocateScript(game) = { \
+	Script &script = AllocateScript() = { \
 		.name = #StructName, \
-		.propertyFirst = game.propertyCount, \
+		.propertyFirst = reflection.propertyCount, \
 		.instanceSize = AlignUp((u32)sizeof(StructName), SCRIPT_INSTANCE_ALIGN), \
 		.hooks = { \
 			StructName##_Start, \
@@ -103,14 +103,14 @@ struct BinScript
 	}
 
 #define PROPERTY(FieldType, Name) \
-	AllocateProperty(game) = { \
+	AllocateProperty() = { \
 		.type = Property_##FieldType, \
 		.name = #Name, \
 		.offset = OFFSET_OF(ScriptType, Name), \
 	};
 
 #define SCRIPT_END() { \
-	script.propertyCount = game.propertyCount - script.propertyFirst; \
+	script.propertyCount = reflection.propertyCount - script.propertyFirst; \
 	ASSERT(script.propertyCount <= MAX_SCRIPT_PROPERTIES); \
 }
 
