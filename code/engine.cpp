@@ -83,8 +83,13 @@ struct BinLocation
 
 #pragma pack(pop)
 
+// List of custom types for reflex
+#define REFLEX_ID_CUSTOM_TYPES \
+	ReflexID_ID, \
+	ReflexID_u32,
 
 #include "reflex\reflex.h"
+
 #include "property.h"
 #include "script.h"
 #include "audio.h"

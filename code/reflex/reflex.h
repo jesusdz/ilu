@@ -6,8 +6,23 @@
 #ifndef TOOLS_REFLEX_H
 #define TOOLS_REFLEX_H
 
-#define REFLEX_MAX_STRUCTS 256
-#define REFLEX_MAX_ENUMS 32
+// If user code is going to allow reflecting members of types which are not
+// refected themselves, these types are unknown to the reflection system.
+// You need to provide an ID in advance for every custom type in reflected
+// as in the following example:
+// #define REFLEX_ID_CUSTOM_TYPES \
+//	ReflexID_ID, \
+//	ReflexID_u32,
+
+// If this macro is not declared by the user before including this file
+// then it's defined as empty
+#ifndef REFLEX_ID_CUSTOM_TYPES
+#define REFLEX_ID_CUSTOM_TYPES
+#endif // REFLEX_ID_CUSTOM_TYPES
+
+#define REFLEX_MAX_STRUCTS 64
+#define REFLEX_MAX_ENUMS 64
+#define REFLEX_MAX_CUSTOMS 64
 
 typedef u16 ReflexID;
 
@@ -40,6 +55,10 @@ enum // ReflexID
 	ReflexID_EnumCount = REFLEX_MAX_ENUMS,
 	ReflexID_EnumBegin = ReflexID_StructEnd,
 	ReflexID_EnumEnd = ReflexID_EnumBegin + ReflexID_EnumCount,
+	// Custom type IDs range
+	ReflexID_CustomBegin = ReflexID_EnumEnd,
+	REFLEX_ID_CUSTOM_TYPES
+	ReflexID_CustomEnd
 };
 
 struct ReflexTrivial
@@ -83,9 +102,16 @@ struct ReflexStruct
 	u16 size;
 };
 
+struct ReflexCustom
+{
+	const char *name;
+	u16 size;
+};
+
 
 static const ReflexStruct *gReflexStructs[REFLEX_MAX_STRUCTS] = {};
 static const ReflexEnum *gReflexEnums[REFLEX_MAX_ENUMS] = {};
+static const ReflexCustom *gReflexCustoms[REFLEX_MAX_CUSTOMS] = {};
 
 
 static bool ReflexIsTrivial(ReflexID id)
@@ -106,12 +132,26 @@ static bool ReflexIsEnum(ReflexID id)
 	return isEnum;
 }
 
+static bool ReflexIsCustom(ReflexID id)
+{
+	const bool isCustom = id >= ReflexID_CustomBegin && id < ReflexID_CustomEnd;
+	return isCustom;
+}
+
 static const ReflexStruct* ReflexGetStruct(ReflexID id)
 {
 	ASSERT(ReflexIsStruct(id));
 	ReflexID index = id - ReflexID_StructBegin;
 	const ReflexStruct *reflexStruct = gReflexStructs[index];
 	return reflexStruct;
+}
+
+static const ReflexCustom* ReflexGetCustom(ReflexID id)
+{
+	ASSERT(ReflexIsCustom(id));
+	ReflexID index = id - ReflexID_CustomBegin;
+	const ReflexCustom *reflexCustom = gReflexCustoms[index];
+	return reflexCustom;
 }
 
 static const ReflexStruct* ReflexGetStructFromName(const char *name)
@@ -151,6 +191,13 @@ static ReflexID ReflexRegisterEnum(const ReflexEnum *reflexEnum)
 	gReflexEnums[sReflexIdCounter] = reflexEnum;
 	ReflexID reflexId = ReflexID_EnumBegin + sReflexIdCounter++;
 	return reflexId;
+}
+
+static ReflexID ReflexRegisterCustom(const ReflexCustom *reflexCustom, ReflexID reflexID)
+{
+	ASSERT(reflexID >= ReflexID_CustomBegin && reflexID < ReflexID_CustomEnd);
+	gReflexCustoms[reflexID] = reflexCustom;
+	return reflexID;
 }
 
 static i32 ReflexGetEnumValue(const ReflexEnum *reflexEnum, const char *enumeratorName)
@@ -211,6 +258,12 @@ static u32 ReflexGetTypeSize(ReflexID id)
 	{
 		// TODO: Enums can specify their base type which may vary its size
 		return sizeof(int);
+	}
+	else if (ReflexIsCustom(id))
+	{
+		const ReflexCustom* rcustom = ReflexGetCustom(id);
+		const u32 size = rcustom->size;
+		return size;
 	}
 	else
 	{

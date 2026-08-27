@@ -75,12 +75,11 @@ void GenerateReflex(const Cast *cast)
 		translationUnit = translationUnit->next;
 	}
 
-	// Reflected members can point to types declared in other files, which are
-	// therefore not reflected here. They still need a ReflexID to be referred to,
-	// so they get registered as opaque types (no members, just name and size).
-	String externalTypes[128];
-	bool externalTypeIsValue[128];
-	u32 externalTypeCount = 0;
+	// Reflected members can point to not reflected types declared in other files.
+	// These are opaque and we call them custom types
+	String customTypes[128];
+	bool customTypeIsValue[128];
+	u32 customTypeCount = 0;
 
 	for (u32 index = 0; index < structCount; ++index)
 	{
@@ -113,50 +112,42 @@ void GenerateReflex(const Cast *cast)
 
 			const bool isValue = !IsPointerMember(structDeclaration);
 
-			u32 externalIndex = 0;
-			while (externalIndex < externalTypeCount && !StrEq(externalTypes[externalIndex], typeName)) {
-				externalIndex++;
+			u32 customIndex = 0;
+			while (customIndex < customTypeCount && !StrEq(customTypes[customIndex], typeName)) {
+				customIndex++;
 			}
-			if (externalIndex == externalTypeCount) {
-				ASSERT(externalTypeCount < ARRAY_COUNT(externalTypes));
-				externalTypes[externalTypeCount] = typeName;
-				externalTypeIsValue[externalTypeCount] = false;
-				externalTypeCount++;
+			if (customIndex == customTypeCount) {
+				ASSERT(customTypeCount < ARRAY_COUNT(customTypes));
+				customTypes[customTypeCount] = typeName;
+				customTypeIsValue[customTypeCount] = false;
+				customTypeCount++;
 			}
-			externalTypeIsValue[externalIndex] = externalTypeIsValue[externalIndex] || isValue;
+			customTypeIsValue[customIndex] = customTypeIsValue[customIndex] || isValue;
 		}
 	}
 
-	if (externalTypeCount > 0)
+	if (customTypeCount > 0)
 	{
 		printf("\n");
 		printf("\n");
 		printf("////////////////////////////////////////////////////////////////////////\n");
-		printf("// Types used by reflected members but not reflected themselves\n");
+		printf("// Custom Types: used by reflected members but not reflected themselves\n");
 
-		for (u32 index = 0; index < externalTypeCount; ++index)
+		for (u32 index = 0; index < customTypeCount; ++index)
 		{
-			const String typeName = externalTypes[index];
+			const String typeName = customTypes[index];
 
 			printf("\n");
-			printf("// ReflexStruct info\n");
-			printf("static const ReflexStruct reflexStruct_%.*s =\n", StringPrintfArgs(typeName));
+			printf("// ReflexCustom info\n");
+			printf("static const ReflexCustom reflexCustom_%.*s =\n", StringPrintfArgs(typeName));
 			printf("{\n");
 			printf("  .name = \"%.*s\",\n", StringPrintfArgs(typeName));
-			printf("  .hint = NULL,\n"); // Not tagged, so there is no hint
-			printf("  .members = NULL,\n");
-			printf("  .memberCount = 0,\n");
-			if (externalTypeIsValue[index]) {
-				printf("  .size = sizeof(%.*s),\n", StringPrintfArgs(typeName));
-			} else {
-				// Only used through pointers, so the type could be incomplete here
-				printf("  .size = 0,\n");
-			}
+			printf("  .size = sizeof(%.*s),\n", StringPrintfArgs(typeName));
 			printf("};\n");
 
 			printf("\n");
-			printf("// ReflexStruct registration\n");
-			printf("static const ReflexID ReflexID_%.*s = ReflexRegisterStruct(&reflexStruct_%.*s);\n", StringPrintfArgs(typeName), StringPrintfArgs(typeName));
+			printf("// ReflexCustom registration\n");
+			printf("static const ReflexID ReflexIDStub_%.*s = ReflexRegisterCustom(&reflexCustom_%.*s, ReflexID_%.*s);\n", StringPrintfArgs(typeName), StringPrintfArgs(typeName), StringPrintfArgs(typeName));
 			printf("\n");
 		}
 	}
