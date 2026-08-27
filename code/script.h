@@ -69,7 +69,7 @@ struct ScriptInstance
 struct BinScriptPropertyDesc
 {
 	const char *name;
-	PropertyType type;
+	ReflexID type;
 	u32 value; // Raw view of PropertyValue, whichever member the type selects
 };
 

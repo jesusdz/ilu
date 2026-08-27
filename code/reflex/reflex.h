@@ -58,11 +58,13 @@ enum // ReflexID
 	// Custom type IDs range
 	ReflexID_CustomBegin = ReflexID_EnumEnd,
 	REFLEX_ID_CUSTOM_TYPES
-	ReflexID_CustomEnd
+	ReflexID_CustomEnd,
+	ReflexID_Null,
 };
 
 struct ReflexTrivial
 {
+	const char *name;
 	u8 reflexId : 4;
 	u8 size : 4;
 };
@@ -134,7 +136,7 @@ static bool ReflexIsEnum(ReflexID id)
 
 static bool ReflexIsCustom(ReflexID id)
 {
-	const bool isCustom = id >= ReflexID_CustomBegin && id < ReflexID_CustomEnd;
+	const bool isCustom = id > ReflexID_CustomBegin && id < ReflexID_CustomEnd;
 	return isCustom;
 }
 
@@ -149,7 +151,7 @@ static const ReflexStruct* ReflexGetStruct(ReflexID id)
 static const ReflexCustom* ReflexGetCustom(ReflexID id)
 {
 	ASSERT(ReflexIsCustom(id));
-	ReflexID index = id - ReflexID_CustomBegin;
+	ReflexID index = id - ReflexID_CustomBegin - 1; // -1 because the first custom ID comes right after Begin
 	const ReflexCustom *reflexCustom = gReflexCustoms[index];
 	return reflexCustom;
 }
@@ -195,8 +197,10 @@ static ReflexID ReflexRegisterEnum(const ReflexEnum *reflexEnum)
 
 static ReflexID ReflexRegisterCustom(const ReflexCustom *reflexCustom, ReflexID reflexID)
 {
-	ASSERT(reflexID >= ReflexID_CustomBegin && reflexID < ReflexID_CustomEnd);
-	gReflexCustoms[reflexID] = reflexCustom;
+	ASSERT(ReflexIsCustom(reflexID));
+	const u32 index = reflexID - ReflexID_CustomBegin - 1;
+	ASSERT(index < REFLEX_MAX_CUSTOMS);
+	gReflexCustoms[index] = reflexCustom;
 	return reflexID;
 }
 
@@ -221,23 +225,72 @@ static const ReflexTrivial* ReflexGetTrivial(ReflexID id)
 {
 	ASSERT(ReflexIsTrivial(id));
 	static const ReflexTrivial trivials[] = {
-		{ .reflexId = ReflexID_Void, .size = 0 },
-		{ .reflexId = ReflexID_Bool, .size = sizeof(bool) },
-		{ .reflexId = ReflexID_Char, .size = sizeof(char) },
-		{ .reflexId = ReflexID_UnsignedChar, .size = sizeof(unsigned char) },
-		{ .reflexId = ReflexID_Int, .size = sizeof(int) },
-		{ .reflexId = ReflexID_ShortInt, .size = sizeof(short int) },
-		{ .reflexId = ReflexID_LongInt, .size = sizeof(long int) },
-		{ .reflexId = ReflexID_LongLongInt, .size = sizeof(long long int) },
-		{ .reflexId = ReflexID_UnsignedInt, .size = sizeof(unsigned int) },
-		{ .reflexId = ReflexID_UnsignedShortInt, .size = sizeof(unsigned short int) },
-		{ .reflexId = ReflexID_UnsignedLongInt, .size = sizeof(unsigned long int) },
-		{ .reflexId = ReflexID_UnsignedLongLongInt, .size = sizeof(unsigned long long int) },
-		{ .reflexId = ReflexID_Float, .size = sizeof(float) },
-		{ .reflexId = ReflexID_Double, .size = sizeof(double) },
+		{ .name = "void", .reflexId = ReflexID_Void, .size = 0 },
+		{ .name = "bool", .reflexId = ReflexID_Bool, .size = sizeof(bool) },
+		{ .name = "char", .reflexId = ReflexID_Char, .size = sizeof(char) },
+		{ .name = "unsigned char", .reflexId = ReflexID_UnsignedChar, .size = sizeof(unsigned char) },
+		{ .name = "int", .reflexId = ReflexID_Int, .size = sizeof(int) },
+		{ .name = "short int", .reflexId = ReflexID_ShortInt, .size = sizeof(short int) },
+		{ .name = "long int", .reflexId = ReflexID_LongInt, .size = sizeof(long int) },
+		{ .name = "long long int", .reflexId = ReflexID_LongLongInt, .size = sizeof(long long int) },
+		{ .name = "unsigned int", .reflexId = ReflexID_UnsignedInt, .size = sizeof(unsigned int) },
+		{ .name = "unsigned short int", .reflexId = ReflexID_UnsignedShortInt, .size = sizeof(unsigned short int) },
+		{ .name = "unsigned long int", .reflexId = ReflexID_UnsignedLongInt, .size = sizeof(unsigned long int) },
+		{ .name = "unsigned long long int", .reflexId = ReflexID_UnsignedLongLongInt, .size = sizeof(unsigned long long int) },
+		{ .name = "float", .reflexId = ReflexID_Float, .size = sizeof(float) },
+		{ .name = "double", .reflexId = ReflexID_Double, .size = sizeof(double) },
 	};
 	CT_ASSERT(ARRAY_COUNT(trivials) == ReflexID_TrivialCount);
 	return &trivials[id];
+}
+
+static const char *ReflexGetTypeName(ReflexID id)
+{
+	// Unregistered slots read back as null, so callers can name any ID safely
+	const char *name = 0;
+	if (ReflexIsTrivial(id)) {
+		name = ReflexGetTrivial(id)->name;
+	} else if (ReflexIsStruct(id)) {
+		const ReflexStruct *r = ReflexGetStruct(id);
+		name = r ? r->name : 0;
+	} else if (ReflexIsEnum(id)) {
+		const ReflexEnum *r = ReflexGetEnum(id);
+		name = r ? r->name : 0;
+	} else if (ReflexIsCustom(id)) {
+		const ReflexCustom *r = ReflexGetCustom(id);
+		name = r ? r->name : 0;
+	}
+	return name ? name : "<unknown>";
+}
+
+static ReflexID ReflexGetTypeFromName(const char *str)
+{
+	ReflexID id = ReflexID_Null;
+	for (u32 i = ReflexID_TrivialBegin; i < ReflexID_TrivialEnd; ++i) {
+		const ReflexTrivial *r = ReflexGetTrivial(i);
+		if ( r && r->name && StrEq(str, r->name) ) {
+			return i;
+		}
+	}
+	for (u32 i = ReflexID_StructBegin; i < ReflexID_StructEnd; ++i) {
+		const ReflexStruct *r = ReflexGetStruct(i);
+		if ( r && r->name && StrEq(str, r->name) ) {
+			return i;
+		}
+	}
+	for (u32 i = ReflexID_EnumBegin; i < ReflexID_EnumEnd; ++i) {
+		const ReflexEnum *r = ReflexGetEnum(i);
+		if ( r && r->name && StrEq(str, r->name) ) {
+			return i;
+		}
+	}
+	for (u32 i = ReflexID_CustomBegin + 1; i < ReflexID_CustomEnd; ++i) {
+		const ReflexCustom *r = ReflexGetCustom(i);
+		if ( r && r->name && StrEq(str, r->name) ) {
+			return i;
+		}
+	}
+	return id;
 }
 
 static u32 ReflexGetTypeSize(ReflexID id)

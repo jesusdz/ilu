@@ -83,13 +83,6 @@ struct BinLocation
 
 #pragma pack(pop)
 
-// List of custom types for reflex
-#define REFLEX_ID_CUSTOM_TYPES \
-	ReflexID_ID, \
-	ReflexID_u32,
-
-#include "reflex\reflex.h"
-
 #include "property.h"
 #include "script.h"
 #include "audio.h"
@@ -159,13 +152,13 @@ static void RegisterScript(const char *name, ScriptHook start, ScriptHook simula
 		return;
 	}
 
-	// Every reflected member was tagged on purpose, so one the engine cannot make
-	// sense of is a mistake worth reporting instead of silently dropping it
+	// Every reflected member was tagged on purpose, so one the engine cannot
+	// store is a mistake worth reporting instead of silently dropping it
 	for (u32 i = 0; i < type->memberCount; ++i)
 	{
 		const ReflexMember &member = type->members[i];
-		if ( MemberPropertyType(member) == PropertyTypeCount ) {
-			LOG(Warning, "RegisterScript: <%s> property <%s> has no usable type, does its tag need a hint (e.g. ILU_PROPERTY(Sprite))?\n", name, member.name);
+		if ( !IsStorableProperty(member) ) {
+			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> cannot be stored, does its tag need a hint (e.g. ILU_PROPERTY(Sprite))?\n", name, member.name, PropertyTypeToString(member.reflexId));
 		}
 	}
 
@@ -236,8 +229,8 @@ static ScriptDesc *GatherScriptDescs(Game &game, Arena &arena, u32 &scriptDescCo
 			for (u32 p = 0; p < type->memberCount; ++p)
 			{
 				const ReflexMember &member = type->members[p];
-				if ( MemberPropertyType(member) == PropertyTypeCount ) {
-					continue; // Not a kind of property that can be stored
+				if ( !IsStorableProperty(member) ) {
+					continue; // Not storable, already reported at registration time
 				}
 				if ( scriptDesc.propertyCount == MAX_SCRIPT_PROPERTIES ) {
 					LOG(Warning, "Script <%s> has more than %u properties, the rest are dropped.\n", scriptDesc.name, MAX_SCRIPT_PROPERTIES);
@@ -360,7 +353,7 @@ static void CreateScriptInstance(Game &game, const ScriptDesc &desc)
 
 		if ( !member ) {
 			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else if ( MemberPropertyType(*member) != propertyDesc.value.type ) {
+		} else if ( member->reflexId != propertyDesc.value.type ) {
 			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
 		} else {
 			SetPropertyValue(*member, instanceData, propertyDesc.value);

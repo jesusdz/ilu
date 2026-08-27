@@ -35,7 +35,7 @@ static bool IsPointerMember(const CastStructDeclaration *structDeclaration)
 	return pointer != NULL;
 }
 
-void GenerateReflex(const Cast *cast)
+void GenerateReflex(const Cast *cast, Arena arena)
 {
 	printf("\n");
 	printf("////////////////////////////////////////////////////////////////////////\n");
@@ -112,13 +112,19 @@ void GenerateReflex(const Cast *cast)
 
 			const bool isValue = !IsPointerMember(structDeclaration);
 
+			const String tagName = structDeclaration->tag->arguments;
+
+			char customTypeName[128];
+			SPrintf(customTypeName, "%.*s%.*s", StringPrintfArgs(typeName), StringPrintfArgs(tagName));
+
 			u32 customIndex = 0;
-			while (customIndex < customTypeCount && !StrEq(customTypes[customIndex], typeName)) {
+			while (customIndex < customTypeCount && !StrEq(customTypes[customIndex], customTypeName)) {
 				customIndex++;
 			}
 			if (customIndex == customTypeCount) {
 				ASSERT(customTypeCount < ARRAY_COUNT(customTypes));
-				customTypes[customTypeCount] = typeName;
+				const char *str = PushString(arena, customTypeName);
+				customTypes[customTypeCount] = MakeString(str);
 				customTypeIsValue[customTypeCount] = false;
 				customTypeCount++;
 			}
@@ -374,7 +380,7 @@ void GenerateReflex(const Cast *cast)
 			printf(".pointerCount = %u, ", pointerCount);
 			printf(".isArray = %s, ", isArray ? "true" : "false");
 			printf(".arrayDim = %u, ", arrayDim);
-			printf(".reflexId = %.*s, ", StringPrintfArgs(typeName));
+			printf(".reflexId = %.*s%.*s, ", StringPrintfArgs(typeName), StringPrintfArgs(memberTag->arguments));
 			printf(".offset = offsetof(%.*s, %.*s) ", StringPrintfArgs(cstruct->name), StringPrintfArgs(memberName));
 			printf("},\n");
 		}
@@ -437,7 +443,7 @@ int main(int argc, char **argv)
 			const Cast *cast = Cast_Create(globalArena, bytes, fileSize, castConfig);
 			if (cast)
 			{
-				GenerateReflex(cast);
+				GenerateReflex(cast, globalArena);
 			}
 			else
 			{

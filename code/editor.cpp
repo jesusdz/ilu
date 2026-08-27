@@ -856,7 +856,7 @@ static void EditorUpdateUI_Outliner()
 				selectedSprite = spriteId;
 			}
 
-			UI_DragAndDropSource(ui, "Sprite", UI_Payload(spriteId.slot), texture.image, uvRect );
+			UI_DragAndDropSource(ui, "IDSprite", UI_Payload(spriteId.slot), texture.image, uvRect );
 
 			EditorAssetContextMenu("SpriteContext", EditorSelectedType_Sprite, spriteId);
 		}
@@ -1220,9 +1220,9 @@ static const char *EditorPropertyIDName(PropertyType type, ID id)
 
 	switch (type)
 	{
-		case Property_Entity:  return GetEntity(id).name;
-		case Property_Sprite:  return GetSprite(id).desc.name;
-		case Property_Texture: return GetTexture(id).desc.name;
+		case ReflexID_IDEntity:  return GetEntity(id).name;
+		case ReflexID_IDSprite:  return GetSprite(id).desc.name;
+		case ReflexID_IDTexture: return GetTexture(id).desc.name;
 		default:;
 	}
 
@@ -1233,11 +1233,11 @@ static void EditorUpdateUI_Property(const ReflexMember &member, void *data)
 {
 	UI &ui = GetEngine().ui;
 
-	const PropertyType type = MemberPropertyType(member);
+	const PropertyType type = member.reflexId;
 
 	PropertyValue value = GetPropertyValue(member, data);
 
-	if ( type == Property_U32 )
+	if ( type == ReflexID_u32 )
 	{
 		if ( UI_InputUInt(ui, member.name, &value.uValue) ) {
 			SetPropertyValue(member, data, value);
@@ -1452,7 +1452,7 @@ static void EditorUpdateUI_Inspector()
 
 				const SpriteDesc *sprite = entity.spriteId ? &GetSprite(entity.spriteId).desc : nullptr;
 				UI_Text(ui, "Name", "%s", sprite ? sprite->name : "<none>");
-				if ( UI_DragAndDropTarget(ui, "Sprite") )
+				if ( UI_DragAndDropTarget(ui, "IDSprite") )
 				{
 					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 					if ( droppedId ) {
@@ -1896,7 +1896,7 @@ static void EditorUpdateUI_DragAndDropLost()
 	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 
-	if ( UI_DragAndDropTargetLost(ui, "Sprite") )
+	if ( UI_DragAndDropTargetLost(ui, "IDSprite") )
 	{
 		const ID spriteId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( spriteId ) {

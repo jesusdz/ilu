@@ -48,7 +48,7 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena);
 #endif // USE_DATA_BUILD
 
 
-constexpr u32 BinAssetsVersion = 11; // 11: script instances, and the scene desc is actually written
+constexpr u32 BinAssetsVersion = 12; // 12: script property types are ReflexIDs, not the old PropertyType enum
 
 #pragma pack(push, 1)
 

@@ -188,7 +188,7 @@ Sprite spr_tilesheet_png_18 = {
 Entity player = {
  .id = 1027,
  .spriteId = 1032,
- .pos = {1.000000, 1.000000, 0.000000},
+ .pos = {20.608994, 5.000000, 0.000000},
  .scale = 1.000000,
  .layerId = 1022,
 };
@@ -291,10 +291,12 @@ Room Room = {
 Script ScriptPlayerController = {
  .entity = 1027,
  .properties = {
-  {"sprPlayerIdle", Sprite, 1032},
-  {"sprPlayerRun", Sprite, 1024},
-  {"sprPlayerJump", Sprite, 1037},
-  {"sprPlayerFall", Sprite, 1036},
+  {"sprPlayerIdle", IDSprite, 1032},
+  {"sprPlayerRun", IDSprite, 1024},
+  {"sprPlayerJump", IDSprite, 1037},
+  {"sprPlayerFall", IDSprite, 1036},
+  {"sndJump", IDSoundClip, 0},
+  {"randomProperty", u32, 0},
  },
 };
 

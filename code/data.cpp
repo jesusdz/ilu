@@ -928,7 +928,7 @@ static PropertyType DParser_ConsumePropertyType( DParser &parser )
 {
 	const String strPropertyType = DParser_ConsumeLexeme(parser);
 	const PropertyType res = StringToPropertyType(strPropertyType);
-	if (res == PropertyTypeCount) {
+	if (res == ReflexID_Null) {
 		LOG(Warning, "DParser_ConsumeGeometryType: unrecognized geometry type %.*s\n", strPropertyType.size, strPropertyType.str);
 	}
 	return res;
