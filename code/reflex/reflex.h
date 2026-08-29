@@ -23,6 +23,7 @@
 #define REFLEX_MAX_STRUCTS 64
 #define REFLEX_MAX_ENUMS 64
 #define REFLEX_MAX_CUSTOMS 64
+#define REFLEX_MAX_FUNCTIONS (REFLEX_MAX_STRUCTS * 4)
 
 typedef u16 ReflexID;
 
@@ -110,10 +111,20 @@ struct ReflexCustom
 	u16 size;
 };
 
+typedef void (*ReflexFunctor)(void *instance);
+
+struct ReflexFunction
+{
+	const char *structName;
+	const char *functionName;
+	ReflexFunctor functor;
+};
+
 
 static const ReflexStruct *gReflexStructs[REFLEX_MAX_STRUCTS] = {};
 static const ReflexEnum *gReflexEnums[REFLEX_MAX_ENUMS] = {};
 static const ReflexCustom *gReflexCustoms[REFLEX_MAX_CUSTOMS] = {};
+static const ReflexFunction *gReflexFunctions[REFLEX_MAX_FUNCTIONS] = {};
 
 
 static bool ReflexIsTrivial(ReflexID id)
@@ -202,6 +213,14 @@ static ReflexID ReflexRegisterCustom(const ReflexCustom *reflexCustom, ReflexID 
 	ASSERT(index < REFLEX_MAX_CUSTOMS);
 	gReflexCustoms[index] = reflexCustom;
 	return reflexID;
+}
+
+static ReflexID ReflexRegisterFunction(const ReflexFunction *function)
+{
+	static ReflexID sReflexIdCounter = 0;
+	ASSERT(sReflexIdCounter < REFLEX_MAX_FUNCTIONS);
+	gReflexFunctions[sReflexIdCounter++] = function;
+	return 0;
 }
 
 static i32 ReflexGetEnumValue(const ReflexEnum *reflexEnum, const char *enumeratorName)
@@ -349,6 +368,22 @@ static u32 ReflexGetElemCount( const void *data, const ReflexStruct *rstruct, co
 		}
 	}
 	return 0;
+}
+
+static ReflexFunctor ReflexGetFunctor(const char *structName, const char *functionName)
+{
+	for (u32 i = 0; i < ARRAY_COUNT(gReflexFunctions); ++i)
+	{
+		const ReflexFunction *function = gReflexFunctions[i];
+		if (function)
+		{
+			if (StrEq(function->structName, structName) && StrEq(function->functionName, functionName))
+			{
+				return function->functor;
+			}
+		}
+	}
+	return nullptr;
 }
 
 #endif // #ifndef TOOLS_REFLEX_H

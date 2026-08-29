@@ -161,6 +161,9 @@ struct CastExpression;
 struct CastDirectDeclarator;
 struct CastPointer;
 struct CastDeclarator;
+struct CastParameterDeclaration;
+struct CastParameterList;
+struct CastParameterTypeList;
 struct CastDesignator;
 struct CastDesignatorList;
 struct CastDesignation;
@@ -328,8 +331,9 @@ struct CastDirectDeclarator
 {
 	CastString name;
 	CastExpression *expression;
+	CastParameterTypeList *parameterTypeList; // present when isFunction is set
 	bool isArray : 1;
-	// TODO could be a function as well
+	bool isFunction : 1;
 };
 
 struct CastPointer
@@ -340,8 +344,26 @@ struct CastPointer
 
 struct CastDeclarator
 {
+	bool isReference; // Incomplete, but it works for the simple case object references
 	CastPointer *pointer;
 	CastDirectDeclarator *directDeclarator;
+};
+
+struct CastParameterDeclaration
+{
+	CastDeclarationSpecifiers *declarationSpecifiers;
+	CastDeclarator *declarator; // optional (e.g. unnamed parameter, or "void")
+};
+
+struct CastParameterList
+{
+	CastParameterDeclaration *parameterDeclaration;
+	CastParameterList *next;
+};
+
+struct CastParameterTypeList
+{
+	CastParameterList *parameterList;
 };
 
 struct CastDesignator
@@ -396,7 +418,8 @@ struct CastDeclaration
 
 struct CastFunctionDefinition
 {
-	// TODO
+	CastDeclarationSpecifiers *declarationSpecifiers;
+	CastDeclarator *declarator;
 };
 
 struct CastExternalDeclaration
@@ -1427,6 +1450,67 @@ static CastExpression *Cast_ParseExpression( CParser &parser, CTokenList &tokenL
 	return expression;
 }
 
+static CastDeclarationSpecifiers *Cast_ParseDeclarationSpecifiers( CParser &parser, CTokenList &tokenList );
+static CastDeclarator *Cast_ParseDeclarator( CParser &parser, CTokenList &tokenList );
+
+static CastParameterDeclaration *Cast_ParseParameterDeclaration( CParser &parser, CTokenList &tokenList )
+{
+	CAST_BACKUP();
+	CastParameterDeclaration *parameterDeclaration = NULL;
+	CastDeclarationSpecifiers *declarationSpecifiers = Cast_ParseDeclarationSpecifiers(parser, tokenList);
+	if (declarationSpecifiers)
+	{
+		// The declarator is optional (e.g. an unnamed parameter, or "void").
+		CastDeclarator *declarator = Cast_ParseDeclarator(parser, tokenList);
+
+		parameterDeclaration = CAST_NODE( CastParameterDeclaration );
+		parameterDeclaration->declarationSpecifiers = declarationSpecifiers;
+		parameterDeclaration->declarator = declarator;
+	}
+	if (!parameterDeclaration) {
+		CAST_RESTORE();
+	}
+	return parameterDeclaration;
+}
+
+static CastParameterList *Cast_ParseParameterList( CParser &parser, CTokenList &tokenList )
+{
+	bool comma = false;
+	CastParameterDeclaration *parameterDeclaration = NULL;
+	CastParameterList *firstParameterList = NULL;
+	CastParameterList *prevParameterList = NULL;
+	do
+	{
+		parameterDeclaration = Cast_ParseParameterDeclaration(parser, tokenList);
+		if (parameterDeclaration)
+		{
+			CastParameterList *parameterList = CAST_NODE( CastParameterList );
+			parameterList->parameterDeclaration = parameterDeclaration;
+			if (!firstParameterList) {
+				firstParameterList = parameterList;
+			}
+			if (prevParameterList) {
+				prevParameterList->next = parameterList;
+			}
+			prevParameterList = parameterList;
+			comma = CParser_TryConsume(parser, TOKEN_COMMA);
+		}
+	} while (parameterDeclaration && comma);
+	return firstParameterList;
+}
+
+static CastParameterTypeList *Cast_ParseParameterTypeList( CParser &parser, CTokenList &tokenList )
+{
+	CastParameterTypeList *parameterTypeList = NULL;
+	CastParameterList *parameterList = Cast_ParseParameterList(parser, tokenList);
+	if (parameterList)
+	{
+		parameterTypeList = CAST_NODE( CastParameterTypeList );
+		parameterTypeList->parameterList = parameterList;
+	}
+	return parameterTypeList;
+}
+
 static CastDirectDeclarator *Cast_ParseDirectDeclarator( CParser &parser, CTokenList &tokenList )
 {
 	CAST_BACKUP();
@@ -1436,7 +1520,9 @@ static CastDirectDeclarator *Cast_ParseDirectDeclarator( CParser &parser, CToken
 	const CToken &token = CParser_GetPreviousToken(parser);
 
 	bool isArray = false;
+	bool isFunction = false;
 	CastExpression *expression = NULL;
+	CastParameterTypeList *parameterTypeList = NULL;
 	if ( CParser_TryConsume(parser, TOKEN_LEFT_BRACKET) )
 	{
 		isArray = true;
@@ -1446,11 +1532,22 @@ static CastDirectDeclarator *Cast_ParseDirectDeclarator( CParser &parser, CToken
 			return NULL;
 		}
 	}
+	else if ( CParser_TryConsume(parser, TOKEN_LEFT_PAREN) )
+	{
+		isFunction = true;
+		parameterTypeList = Cast_ParseParameterTypeList(parser, tokenList);
+		if (!CParser_TryConsume(parser, TOKEN_RIGHT_PAREN)) {
+			CAST_RESTORE();
+			return NULL;
+		}
+	}
 
 	CastDirectDeclarator *directDeclarator = CAST_NODE( CastDirectDeclarator );
 	directDeclarator->name = token.lexeme;
 	directDeclarator->expression = expression;
+	directDeclarator->parameterTypeList = parameterTypeList;
 	directDeclarator->isArray = isArray;
+	directDeclarator->isFunction = isFunction;
 	return directDeclarator;
 }
 
@@ -1458,10 +1555,12 @@ static CastDeclarator *Cast_ParseDeclarator( CParser &parser, CTokenList &tokenL
 {
 	CAST_BACKUP();
 	CastDeclarator *declarator =  NULL;
+	const bool isReference = CParser_TryConsume(parser, TOKEN_AND);
 	CastPointer *pointer = Cast_ParsePointer(parser, tokenList);
 	CastDirectDeclarator *directDeclarator = Cast_ParseDirectDeclarator(parser, tokenList);
 	if (directDeclarator) {
 		declarator = CAST_NODE( CastDeclarator );
+		declarator->isReference = isReference;
 		declarator->pointer = pointer;
 		declarator->directDeclarator = directDeclarator;
 	}
@@ -2046,7 +2145,38 @@ static CastDeclaration *Cast_ParseDeclaration( CParser &parser, CTokenList &toke
 
 static CastFunctionDefinition *Cast_ParseFunctionDefinition( CParser &parser, CTokenList &tokenList )
 {
-	return NULL;
+	CAST_BACKUP();
+	CastFunctionDefinition *functionDefinition = NULL;
+	
+	CastDeclarationSpecifiers *declarationSpecifiers = Cast_ParseDeclarationSpecifiers(parser, tokenList);
+	if (declarationSpecifiers)
+	{
+		CastDeclarator *declarator = Cast_ParseDeclarator(parser, tokenList);
+		if ( declarator && declarator->directDeclarator && declarator->directDeclarator->isFunction && CParser_TryConsume(parser, TOKEN_LEFT_BRACE) )
+		{
+			// Function bodies (compound statements) aren't represented in the AST yet;
+			// skip over the tokens up to (and including) the matching closing brace.
+			cast_u32 braceDepth = 1;
+			while ( braceDepth > 0 && !CParser_HasFinished(parser) )
+			{
+				const CToken &token = CParser_Consume(parser);
+				if ( token.id == TOKEN_LEFT_BRACE ) braceDepth++;
+				else if ( token.id == TOKEN_RIGHT_BRACE ) braceDepth--;
+			}
+
+			if ( braceDepth == 0 )
+			{
+				functionDefinition = CAST_NODE( CastFunctionDefinition );
+				functionDefinition->declarationSpecifiers = declarationSpecifiers;
+				functionDefinition->declarator = declarator;
+			}
+		}
+	}
+
+	if (!functionDefinition) {
+		CAST_RESTORE();
+	}
+	return functionDefinition;
 }
 
 static CastExternalDeclaration *Cast_ParseExternalDeclaration( CParser &parser, CTokenList &tokenList )
@@ -2057,6 +2187,15 @@ static CastExternalDeclaration *Cast_ParseExternalDeclaration( CParser &parser, 
 	{
 		externalDeclaration = CAST_NODE( CastExternalDeclaration );
 		externalDeclaration->declaration = declaration;
+	}
+	else
+	{
+		CastFunctionDefinition *functionDefinition = Cast_ParseFunctionDefinition(parser, tokenList);
+		if (functionDefinition)
+		{
+			externalDeclaration = CAST_NODE( CastExternalDeclaration );
+			externalDeclaration->functionDefinition = functionDefinition;
+		}
 	}
 	return externalDeclaration;
 }
@@ -2445,10 +2584,17 @@ static void Cast_Print( const CastFunctionSpecifier *ast )
 	CastPrintEndScope();
 }
 
+static void Cast_Print( const CastDeclarationSpecifiers *ast );
+
 static void Cast_Print( const CastFunctionDefinition *ast )
 {
 	CastPrintBeginScope("FunctionDefinition");
-	// TODO
+	if (ast->declarationSpecifiers) {
+		Cast_Print(ast->declarationSpecifiers);
+	}
+	if (ast->declarator) {
+		Cast_Print(ast->declarator);
+	}
 	CastPrintEndScope();
 }
 
@@ -2499,11 +2645,45 @@ static void Cast_Print( const CastPointer *ast )
 	CastPrintEndScope();
 }
 
+static void Cast_Print( const CastParameterDeclaration *ast )
+{
+	CastPrintBeginScope("ParameterDeclaration");
+	if (ast->declarationSpecifiers) {
+		Cast_Print(ast->declarationSpecifiers);
+	}
+	if (ast->declarator) {
+		Cast_Print(ast->declarator);
+	}
+	CastPrintEndScope();
+}
+
+static void Cast_Print( const CastParameterList *ast )
+{
+	CastPrintBeginScope("ParameterList");
+	while (ast) {
+		Cast_Print(ast->parameterDeclaration);
+		ast = ast->next;
+	}
+	CastPrintEndScope();
+}
+
+static void Cast_Print( const CastParameterTypeList *ast )
+{
+	CastPrintBeginScope("ParameterTypeList");
+	if (ast->parameterList) {
+		Cast_Print(ast->parameterList);
+	}
+	CastPrintEndScope();
+}
+
 static void Cast_Print( const CastDirectDeclarator *ast )
 {
-	CastPrintBeginScope("DirectDeclarator -> %.*s%s",ast->name.size, ast->name.str,ast->isArray?"[]":"");
+	CastPrintBeginScope("DirectDeclarator -> %.*s%s",ast->name.size, ast->name.str,ast->isArray?"[]":(ast->isFunction?"()":""));
 	if (ast->expression) {
 		Cast_Print(ast->expression);
+	}
+	if (ast->parameterTypeList) {
+		Cast_Print(ast->parameterTypeList);
 	}
 	CastPrintEndScope();
 }

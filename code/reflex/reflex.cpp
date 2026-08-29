@@ -51,25 +51,63 @@ void GenerateReflex(const Cast *cast, Arena arena)
 	const CastEnumSpecifier *enums[128];
 	u32 enumCount = 0;
 
+	String functions[128];
+	String functionScripts[128];
+	u32 functionCount = 0;
+
 	// Get all the global struct and enum specifiers from the AST.
 	// Only structs and enums tagged with their tag macro are reflected.
 	const CastTranslationUnit *translationUnit = cast->translationUnit;
 	while (translationUnit)
 	{
-		if (translationUnit->externalDeclaration &&
-			translationUnit->externalDeclaration->declaration &&
-			translationUnit->externalDeclaration->declaration->declarationSpecifiers &&
-			translationUnit->externalDeclaration->declaration->declarationSpecifiers->typeSpecifier)
+		if (translationUnit->externalDeclaration)
 		{
-			const CastTypeSpecifier *typeSpecifier =
-				translationUnit->externalDeclaration->declaration->declarationSpecifiers->typeSpecifier;
+			if (translationUnit->externalDeclaration->declaration &&
+				translationUnit->externalDeclaration->declaration->declarationSpecifiers &&
+				translationUnit->externalDeclaration->declaration->declarationSpecifiers->typeSpecifier)
+			{
+				const CastTypeSpecifier *typeSpecifier =
+					translationUnit->externalDeclaration->declaration->declarationSpecifiers->typeSpecifier;
 
-			if (typeSpecifier->type == CAST_STRUCT && typeSpecifier->structSpecifier && typeSpecifier->structSpecifier->tag) {
-				ASSERT(structCount < ARRAY_COUNT(structs));
-				structs[structCount++] = typeSpecifier->structSpecifier;
-			} else if (typeSpecifier->type == CAST_ENUM && typeSpecifier->enumSpecifier && typeSpecifier->enumSpecifier->tag) {
-				ASSERT(enumCount < ARRAY_COUNT(enums));
-				enums[enumCount++] = typeSpecifier->enumSpecifier;
+				if (typeSpecifier->type == CAST_STRUCT && typeSpecifier->structSpecifier && typeSpecifier->structSpecifier->tag) {
+					ASSERT(structCount < ARRAY_COUNT(structs));
+					structs[structCount++] = typeSpecifier->structSpecifier;
+				} else if (typeSpecifier->type == CAST_ENUM && typeSpecifier->enumSpecifier && typeSpecifier->enumSpecifier->tag) {
+					ASSERT(enumCount < ARRAY_COUNT(enums));
+					enums[enumCount++] = typeSpecifier->enumSpecifier;
+				}
+			}
+			else if (translationUnit->externalDeclaration->functionDefinition)
+			{
+				const CastFunctionDefinition *func = translationUnit->externalDeclaration->functionDefinition;
+				const bool isVoid = func->declarationSpecifiers &&
+					func->declarationSpecifiers->typeSpecifier &&
+					func->declarationSpecifiers->typeSpecifier->type == CAST_VOID;
+
+				const CastParameterTypeList *parameterTypeList = func->declarator->directDeclarator->parameterTypeList;
+				const CastParameterDeclaration *parameterDeclaration = (parameterTypeList && parameterTypeList->parameterList) ?
+					parameterTypeList->parameterList->parameterDeclaration : NULL;
+				const CastTypeSpecifier *paramTypeSpecifier = (parameterDeclaration && parameterDeclaration->declarationSpecifiers) ?
+					parameterDeclaration->declarationSpecifiers->typeSpecifier : NULL;
+
+				// A script parameter is a struct previously tagged with ILU_STRUCT(Script)
+				bool hasScriptParameter = false;
+				if (paramTypeSpecifier && paramTypeSpecifier->type == CAST_IDENTIFIER)
+				{
+					const String paramTypeName = paramTypeSpecifier->identifier;
+					for (u32 i = 0; i < structCount && !hasScriptParameter; ++i) {
+						hasScriptParameter = StrEq(structs[i]->name, paramTypeName) &&
+							structs[i]->tag && StrEq(structs[i]->tag->arguments, "Script");
+					}
+				}
+
+				if (isVoid && hasScriptParameter)
+				{
+					ASSERT(functionCount < ARRAY_COUNT(functions));
+					const u32 functionIndex = functionCount++;
+					functions[functionIndex] = func->declarator->directDeclarator->name;
+					functionScripts[functionIndex] = paramTypeSpecifier->identifier;
+				}
 			}
 		}
 		translationUnit = translationUnit->next;
@@ -158,7 +196,7 @@ void GenerateReflex(const Cast *cast, Arena arena)
 		}
 	}
 
-	// ReflexID enum
+	// Enums
 	printf("\n");
 	for (u32 index = 0; index < enumCount; ++index)
 	{
@@ -205,6 +243,7 @@ void GenerateReflex(const Cast *cast, Arena arena)
 		printf("\n");
 	}
 
+	// Structs
 	for (u32 index = 0; index < structCount; ++index)
 	{
 		const CastStructSpecifier *cstruct = structs[index];
@@ -415,6 +454,28 @@ void GenerateReflex(const Cast *cast, Arena arena)
 		printf("// ReflexStruct registration\n");
 		printf("static const ReflexID ReflexID_%.*s = ReflexRegisterStruct(&reflexStruct_%.*s);\n", StringPrintfArgs(cstruct->name), StringPrintfArgs(cstruct->name));
 		printf("\n");
+	}
+
+	// Functions
+	printf("\n");
+	printf("////////////////////////////////////////////////////////////////////////\n");
+	printf("// Functions\n");
+
+	for (u32 index = 0; index < functionCount; ++index)
+	{
+		String functionName = functions[index];
+		String scriptName = functionScripts[index];
+		printf("\n");
+		printf("static void %.*s_%.*s(void *instance) {\n", StringPrintfArgs(scriptName), StringPrintfArgs(functionName));
+		printf("	%.*s(*(%.*s*)instance);\n", StringPrintfArgs(functionName), StringPrintfArgs(scriptName));
+		printf("}\n");
+		printf("static const ReflexFunction reflexFunction_%.*s_%.*s = { \"%.*s\", \"%.*s\", %.*s_%.*s };\n",
+				StringPrintfArgs(scriptName), StringPrintfArgs(functionName),
+				StringPrintfArgs(scriptName), StringPrintfArgs(functionName),
+				StringPrintfArgs(scriptName), StringPrintfArgs(functionName));
+		printf("static const ReflexID ReflexIDStub_%.*s_%.*s = ReflexRegisterFunction(&reflexFunction_%.*s_%.*s);\n",
+				StringPrintfArgs(scriptName), StringPrintfArgs(functionName),
+				StringPrintfArgs(scriptName), StringPrintfArgs(functionName));
 	}
 }
 

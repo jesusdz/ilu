@@ -133,22 +133,10 @@ struct ScriptRegistry
 
 static ScriptRegistry scriptRegistry = {};
 
-static void RegisterScript(const char *name, ScriptHook start, ScriptHook simulate, ScriptHook update, ScriptHook stop)
+static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHook simulate, ScriptHook update, ScriptHook stop)
 {
-	const ReflexStruct *type = ReflexGetStructFromName(name);
-
-	if ( !type ) {
-		LOG(Warning, "RegisterScript: <%s> is not reflected, is it tagged with ILU_STRUCT(%s)?\n", name, SCRIPT_HINT);
-		return;
-	}
-
-	if ( !type->hint || !StrEq(type->hint, SCRIPT_HINT) ) {
-		LOG(Warning, "RegisterScript: <%s> is reflected, but not tagged as ILU_STRUCT(%s).\n", name, SCRIPT_HINT);
-		return;
-	}
-
 	if ( scriptRegistry.scriptCount == ARRAY_COUNT(scriptRegistry.scripts) ) {
-		LOG(Warning, "RegisterScript: the script registry is full (%u), <%s> is dropped.\n", MAX_SCRIPTS, name);
+		LOG(Warning, "RegisterScript: the script registry is full (%u), <%s> is dropped.\n", MAX_SCRIPTS, type->name);
 		return;
 	}
 
@@ -158,7 +146,7 @@ static void RegisterScript(const char *name, ScriptHook start, ScriptHook simula
 	{
 		const ReflexMember &member = type->members[i];
 		if ( !IsStorableProperty(member) ) {
-			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> cannot be stored, does its tag need a hint (e.g. ILU_PROPERTY(Sprite))?\n", name, member.name, PropertyTypeToString(member.reflexId));
+			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> cannot be stored, does its tag need a hint (e.g. ILU_PROPERTY(Sprite))?\n", type->name, member.name, PropertyTypeToString(member.reflexId));
 		}
 	}
 
@@ -167,6 +155,22 @@ static void RegisterScript(const char *name, ScriptHook start, ScriptHook simula
 		.type = type,
 		.hooks = { start, simulate, update, stop },
 	};
+}
+
+static void RegisterScripts()
+{
+	for (u32 i = ReflexID_StructBegin; i < ReflexID_StructEnd; ++i)
+	{
+		const ReflexStruct* rstruct = ReflexGetStruct(i);
+		if (rstruct && rstruct->hint && StrEq(rstruct->hint, SCRIPT_HINT))
+		{
+			ScriptHook start = ReflexGetFunctor(rstruct->name, "Start");
+			ScriptHook simulate = ReflexGetFunctor(rstruct->name, "Simulate");
+			ScriptHook update = ReflexGetFunctor(rstruct->name, "Update");
+			ScriptHook stop = ReflexGetFunctor(rstruct->name, "Stop");
+			RegisterScript(rstruct, start, simulate, update, stop);
+		}
+	}
 }
 
 static u32 FindScriptIndex(const char *name)

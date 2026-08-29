@@ -20,7 +20,7 @@ enum ScriptHookType
 	ScriptHook_Count,
 };
 
-typedef void (*ScriptHook)(void *instance);
+typedef ReflexFunctor ScriptHook;
 
 struct ScriptPropertyDesc
 {
@@ -87,22 +87,5 @@ struct BinScript
 };
 
 #pragma pack(pop)
-
-////////////////////////////////////////////////////////////////////////
-// Registration
-
-#define SCRIPT_THUNK(StructName) \
-	static void StructName##_Start(void *instance) { Start(*(StructName*)instance); } \
-	static void StructName##_Simulate(void *instance) { Simulate(*(StructName*)instance); } \
-	static void StructName##_Update(void *instance) { Update(*(StructName*)instance); } \
-	static void StructName##_Stop(void *instance) { Stop(*(StructName*)instance); }
-
-// The property list comes from the reflected struct, only the hooks are bound here
-#define SCRIPT_REGISTER(StructName) \
-	RegisterScript(#StructName, \
-		StructName##_Start, \
-		StructName##_Simulate, \
-		StructName##_Update, \
-		StructName##_Stop)
 
 #endif // SCRIPT_H

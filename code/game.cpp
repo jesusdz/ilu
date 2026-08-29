@@ -38,19 +38,6 @@ struct ScriptPlayerController
 	ID roomId;
 };
 
-void Start(ScriptPlayerController &script);
-void Simulate(ScriptPlayerController &script);
-void Update(ScriptPlayerController &script);
-void Stop(ScriptPlayerController &script);
-
-SCRIPT_THUNK(ScriptPlayerController)
-
-
-void RegisterScripts()
-{
-	SCRIPT_REGISTER(ScriptPlayerController);
-}
-
 void Start(ScriptPlayerController &script)
 {
 	script.playerState = OnAir;
