@@ -40,6 +40,23 @@ struct EntityDesc
 	f32 accel;
 };
 
+#define MAX_PREFAB_ENTITIES 16
+
+struct PrefabEntityDesc
+{
+	EntityDesc entity;
+	ScriptDesc scripts[MAX_ENTITY_SCRIPTS];
+	u32 scriptCount;
+};
+
+struct PrefabDesc
+{
+	ID id;
+	const char *name;
+	PrefabEntityDesc entities[MAX_PREFAB_ENTITIES];
+	u32 entityCount;
+};
+
 struct TileDesc
 {
 	u16 x;
@@ -156,9 +173,20 @@ struct Room
 	u32 layerCount;
 };
 
+// A named, instantiable template: a fixed set of EntityDescs spawned together and
+// offset by a world position. No hierarchy links between them yet, matching Entity's.
+struct Prefab
+{
+	ID id;
+	const char *name;
+	PrefabEntityDesc entities[MAX_PREFAB_ENTITIES];
+	u32 entityCount;
+};
+
 #define MAX_ENTITIES 4092
 #define MAX_SPRITES 4092
 #define MAX_ROOMS 256
+#define MAX_PREFABS 256
 #define MAX_TILES 16 * 16 * 8 * MAX_ROOMS
 
 constexpr u32 SCENE_WIDTH = 320;
@@ -177,6 +205,9 @@ struct Scene
 	u32 spriteCount;
 	Sprite sprites[MAX_SPRITES];
 	SpriteAnimState spriteAnimStates[MAX_SPRITES]; // Parallel to sprites
+
+	u32 prefabCount;
+	Prefab prefabs[MAX_PREFABS];
 };
 
 #pragma pack(push, 1)
@@ -231,6 +262,28 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
+struct BinPrefabScriptDesc
+{
+	const char *name;
+	u32 propertyCount;
+	BinScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES];
+};
+
+struct BinPrefabEntityDesc
+{
+	BinEntityDesc entity;
+	u32 scriptCount;
+	BinPrefabScriptDesc scripts[MAX_ENTITY_SCRIPTS];
+};
+
+struct BinPrefabDesc
+{
+	ID id;
+	const char *name;
+	u32 entityCount;
+	BinPrefabEntityDesc entities[MAX_PREFAB_ENTITIES];
+};
+
 struct BinSprite
 {
 	BinSpriteDesc *desc;
@@ -239,6 +292,11 @@ struct BinSprite
 struct BinEntity
 {
 	BinEntityDesc *desc;
+};
+
+struct BinPrefab
+{
+	BinPrefabDesc *desc;
 };
 
 struct BinRoom
@@ -280,6 +338,19 @@ void CompactEntities(Scene &scene);
 
 u32 EntityDrawId(const Scene &scene, ID entityId);
 ID EntityFromDrawId(u32 drawId);
+
+
+////////////////////////////////////////////////////////////////////////
+// Prefab management
+
+Prefab &GetPrefab(ID prefabId);
+u16 GetPrefabIndex(const Scene &scene, ID prefabId);
+ID FindPrefab(const Scene &scene, const char *name);
+ID CreatePrefab(Engine &engine, const PrefabDesc &desc);
+ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc);
+void RemovePrefab(Scene &scene, ID prefabId);
+void CompactPrefabs(Scene &scene);
+ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition);
 
 
 ////////////////////////////////////////////////////////////////////////

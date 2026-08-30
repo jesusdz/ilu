@@ -330,7 +330,179 @@ ID DuplicateEntity(Engine &engine, ID entityId)
 {
 	EntityDesc desc = GetEntityDesc(entityId);
 	desc.id = {}; // The copy is a new entity, so let the pool hand it its own ID
-	return CreateEntity(engine, desc);
+	const ID newEntityId = CreateEntity(engine, desc);
+
+	ScriptDesc scripts[MAX_ENTITY_SCRIPTS];
+	const u32 scriptCount = GatherEntityScriptDescs(engine.game, entityId, scripts, MAX_ENTITY_SCRIPTS);
+	for (u32 i = 0; i < scriptCount; ++i)
+	{
+		scripts[i].entity = newEntityId;
+		CreateScriptInstance(engine.game, scripts[i]);
+	}
+
+	return newEntityId;
+}
+
+
+////////////////////////////////////////////////////////////////////////
+// Prefab management
+
+Prefab &GetPrefab(ID id)
+{
+	ASSERT( Valid(id) );
+	Prefab &prefab = *((Prefab*)GetObject(id));
+	return prefab;
+}
+
+u16 GetPrefabIndex(const Scene &scene, ID id)
+{
+	const Prefab &prefab = GetPrefab(id);
+	const u16 index = (u16)(&prefab - scene.prefabs);
+	ASSERT( index < scene.prefabCount );
+	return index;
+}
+
+ID FindPrefab(const Scene &scene, const char *name)
+{
+	if (!name) return {};
+	for (u32 i = 0; i < scene.prefabCount; ++i)
+	{
+		if (StrEq(scene.prefabs[i].name, name)) return scene.prefabs[i].id;
+	}
+	return {};
+}
+
+// Appends a prefab and gives it its ID. Null when the array is full. Prefabs do not
+// keep their descriptor around, so the ID comes in on its own.
+static Prefab *PushPrefab(Scene &scene, ID id)
+{
+	if ( scene.prefabCount == MAX_PREFABS )
+	{
+		LOG(Warning, "Could not create prefab, the prefab array is full.\n");
+		return nullptr;
+	}
+
+	Prefab &prefab = scene.prefabs[scene.prefabCount++];
+	prefab = { .id = id };
+
+	BindID(&prefab.id, &prefab);
+
+	return &prefab;
+}
+
+ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
+{
+	if ( desc.entityCount > MAX_PREFAB_ENTITIES )
+	{
+		LOG(Warning, "Could not create prefab <%s>, it has %u entities, more than the %u max.\n",
+				desc.name, desc.entityCount, MAX_PREFAB_ENTITIES);
+		return {};
+	}
+
+	Prefab *prefabPtr = PushPrefab(engine.scene, desc.id);
+	if ( !prefabPtr ) {
+		return {};
+	}
+
+	Prefab &prefab = *prefabPtr;
+	prefab.name = InternString(desc.name);
+	prefab.entityCount = desc.entityCount;
+	for (u32 i = 0; i < desc.entityCount; ++i) {
+		prefab.entities[i] = desc.entities[i];
+	}
+
+	return prefab.id;
+}
+
+ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
+{
+	PrefabDesc prefabDesc = {};
+	prefabDesc.id = desc.id;
+	prefabDesc.name = desc.name;
+	prefabDesc.entityCount = Min(desc.entityCount, (u32)ARRAY_COUNT(prefabDesc.entities));
+
+	for (u32 i = 0; i < prefabDesc.entityCount; ++i)
+	{
+		const BinPrefabEntityDesc &be = desc.entities[i];
+		PrefabEntityDesc &pe = prefabDesc.entities[i];
+
+		const BinEntityDesc &e = be.entity;
+		pe.entity = {
+			.id = e.id,
+			.name = e.name,
+			.pos = e.pos,
+			.scale = e.scale,
+			.materialId = e.materialId,
+			.geometryType = e.geometryType,
+			.spriteId = e.spriteId,
+			.layerId = e.layerId,
+		};
+
+		pe.scriptCount = Min(be.scriptCount, (u32)ARRAY_COUNT(pe.scripts));
+		for (u32 s = 0; s < pe.scriptCount; ++s)
+		{
+			const BinPrefabScriptDesc &bs = be.scripts[s];
+			ScriptDesc &sd = pe.scripts[s];
+			sd = {};
+			sd.name = bs.name;
+			sd.propertyCount = Min(bs.propertyCount, (u32)ARRAY_COUNT(sd.properties));
+			for (u32 p = 0; p < sd.propertyCount; ++p)
+			{
+				const BinScriptPropertyDesc &bp = bs.properties[p];
+				sd.properties[p].name = bp.name;
+				sd.properties[p].value.type = bp.type;
+				sd.properties[p].value.uValue = bp.value;
+			}
+		}
+	}
+
+	return CreatePrefab(engine, prefabDesc);
+}
+
+void RemovePrefab(Scene &scene, ID id)
+{
+	if (id)
+	{
+		// Marks only, see RemoveSprite
+		GetPrefab(id).id = {};
+		Invalidate(id);
+	}
+}
+
+void CompactPrefabs(Scene &scene)
+{
+	COMPACT_ARRAY_BY_ID(Prefab, scene.prefabs, scene.prefabCount, id, nullptr, nullptr, nullptr);
+}
+
+// Spawns every entity in the prefab, offset by atPosition, as freshly created entities
+// unrelated to the template. Returns the first one, since there is no hierarchy yet to
+// name a single root.
+ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition)
+{
+	const Prefab &prefab = GetPrefab(prefabId);
+
+	ID firstEntityId = {};
+	for (u32 i = 0; i < prefab.entityCount; ++i)
+	{
+		const PrefabEntityDesc &prefabEntity = prefab.entities[i];
+
+		EntityDesc entityDesc = prefabEntity.entity;
+		entityDesc.id = {}; // Each instance is a new entity, not the template's own
+		entityDesc.pos = entityDesc.pos + atPosition;
+
+		const ID entityId = CreateEntity(engine, entityDesc);
+		if (i == 0) {
+			firstEntityId = entityId;
+		}
+
+		for (u32 s = 0; s < prefabEntity.scriptCount; ++s)
+		{
+			ScriptDesc scriptDesc = prefabEntity.scripts[s];
+			scriptDesc.entity = entityId;
+			CreateScriptInstance(engine.game, scriptDesc);
+		}
+	}
+	return firstEntityId;
 }
 
 
@@ -708,6 +880,9 @@ void CleanScene(Engine &engine)
 	for (u16 i = 0; i < scene.spriteCount; ++i) {
 		RemoveSprite(scene, scene.sprites[i].desc.id);
 	}
+	for (u16 i = 0; i < scene.prefabCount; ++i) {
+		RemovePrefab(scene, scene.prefabs[i].id);
+	}
 	for (u16 i = 0; i < audio.clipCount; ++i) {
 		RemoveAudioClip(audio.clips[i].desc.id);
 	}
@@ -719,6 +894,7 @@ void CleanScene(Engine &engine)
 	CompactRooms(engine.scene);
 	CompactEntities(engine.scene);
 	CompactSprites(engine.scene);
+	CompactPrefabs(engine.scene);
 	CompactMaterials(engine.gfx);
 	CompactTextures(engine.gfx);
 	// The audio pools are not compacted here: only the mixing thread may move that

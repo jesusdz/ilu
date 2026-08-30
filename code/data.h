@@ -25,6 +25,9 @@ struct AssetDescriptors
 	EntityDesc *entityDescs;
 	u32 entityDescCount;
 
+	PrefabDesc *prefabDescs;
+	u32 prefabDescCount;
+
 	RoomDesc *roomDescs;
 	u32 roomDescCount;
 
@@ -48,7 +51,7 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena);
 #endif // USE_DATA_BUILD
 
 
-constexpr u32 BinAssetsVersion = 12; // 12: script property types are ReflexIDs, not the old PropertyType enum
+constexpr u32 BinAssetsVersion = 13; // 13: added prefabs
 
 #pragma pack(push, 1)
 
@@ -71,6 +74,8 @@ struct BinAssetsHeader
 	u32 spriteCount;
 	u32 entitiesOffset;
 	u32 entityCount;
+	u32 prefabsOffset;
+	u32 prefabCount;
 	u32 roomsOffset;
 	u32 roomCount;
 	u32 scriptsOffset;
@@ -96,6 +101,7 @@ struct BinAssets
 	BinMaterial *materials;
 	BinSprite *sprites;
 	BinEntity *entities;
+	BinPrefab *prefabs;
 	BinRoom *rooms;
 	BinScript *scripts;
 };

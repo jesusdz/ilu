@@ -14,6 +14,7 @@
 	ReflexID_IDEntity, \
 	ReflexID_IDTexture, \
 	ReflexID_IDSprite, \
+	ReflexID_IDPrefab, \
 	ReflexID_IDSoundClip, \
 	ReflexID_IDMusicFile, \
 	ReflexID_IDEnd, \
@@ -26,6 +27,7 @@ typedef ReflexID PropertyType;
 typedef ID IDEntity;
 typedef ID IDTexture;
 typedef ID IDSprite;
+typedef ID IDPrefab;
 typedef ID IDSoundClip;
 typedef ID IDMusicFile;
 

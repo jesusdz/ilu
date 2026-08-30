@@ -255,6 +255,43 @@ static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
 	return game.scriptInstanceData + instance.offset;
 }
 
+// Snapshots up to maxScripts of entityId's live script instances into outScripts, each
+// left with .entity = entityId (callers retarget it when copying onto another entity).
+// Same value walk as GatherScriptDescs, scoped to one entity and needing no arena since
+// MAX_ENTITY_SCRIPTS bounds the result.
+static u32 GatherEntityScriptDescs(Game &game, ID entityId, ScriptDesc *outScripts, u32 maxScripts)
+{
+	u32 count = 0;
+
+	for (u32 i = 0; i < game.scriptInstanceCount && count < maxScripts; ++i)
+	{
+		const ScriptInstance &instance = game.scriptInstances[i];
+		if ( instance.entity != entityId || instance.structIndex >= scriptRegistry.scriptCount ) {
+			continue;
+		}
+
+		ScriptDesc &scriptDesc = outScripts[count++];
+		scriptDesc = {};
+		scriptDesc.entity = entityId;
+		scriptDesc.name = instance.scriptName;
+
+		const ReflexStruct *type = scriptRegistry.scripts[instance.structIndex].type;
+		const void *instanceData = GetScriptInstanceData(game, instance);
+		for (u32 p = 0; p < type->memberCount && scriptDesc.propertyCount < MAX_SCRIPT_PROPERTIES; ++p)
+		{
+			const ReflexMember &member = type->members[p];
+			if ( !IsStorableProperty(member) ) {
+				continue;
+			}
+			ScriptPropertyDesc &propertyDesc = scriptDesc.properties[scriptDesc.propertyCount++];
+			propertyDesc.name = member.name;
+			propertyDesc.value = GetPropertyValue(member, instanceData);
+		}
+	}
+
+	return count;
+}
+
 static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, ScriptHookType hook)
 {
 	if ( instance.structIndex >= scriptRegistry.scriptCount ) {
@@ -570,6 +607,20 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		desc = GetEntityDesc(entity.id);
 	}
 
+	static PrefabDesc prefabDescs[MAX_PREFABS];
+	u32 prefabCount = 0;
+	for (u32 i = 0; i < engine.scene.prefabCount; ++i) {
+		const Prefab &prefab = engine.scene.prefabs[i];
+		if ( !prefab.id ) { continue; }
+		PrefabDesc &desc = prefabDescs[prefabCount++];
+		desc.id = prefab.id;
+		desc.name = prefab.name;
+		desc.entityCount = prefab.entityCount;
+		for (u32 e = 0; e < prefab.entityCount; ++e) {
+			desc.entities[e] = prefab.entities[e];
+		}
+	}
+
 	u32 scriptCount = 0;
 	ScriptDesc *scriptDescs = GatherScriptDescs(engine.game, arena, scriptCount);
 
@@ -667,6 +718,8 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		.materialDescCount = materialCount,
 		.entityDescs = entityDescs,
 		.entityDescCount = entityCount,
+		.prefabDescs = prefabDescs,
+		.prefabDescCount = prefabCount,
 		.roomDescs = roomDescs,
 		.roomDescCount = roomCount,
 		.audioClipDescs = audioClipDescs,
@@ -733,6 +786,12 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 		for (u32 i = 0; i < assetDescriptors.entityDescCount; ++i)
 		{
 			CreateEntity(engine, assetDescriptors.entityDescs[i]);
+		}
+
+		// Prefabs
+		for (u32 i = 0; i < assetDescriptors.prefabDescCount; ++i)
+		{
+			CreatePrefab(engine, assetDescriptors.prefabDescs[i]);
 		}
 
 		// Rooms
@@ -812,6 +871,12 @@ void LoadSceneFromBin(Engine &engine)
 		for (u32 i = 0; i < engine.assets.header.entityCount; ++i)
 		{
 			CreateEntity(engine, *engine.assets.entities[i].desc);
+		}
+
+		// Prefabs
+		for (u32 i = 0; i < engine.assets.header.prefabCount; ++i)
+		{
+			CreatePrefab(engine, *engine.assets.prefabs[i].desc);
 		}
 
 		// Rooms

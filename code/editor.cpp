@@ -398,6 +398,13 @@ static void EditorSelectSprite(ID spriteId)
 	editor.inspector.nextSelected.type = EditorSelectedType_Sprite;
 }
 
+static void EditorSelectPrefab(ID prefabId)
+{
+	Editor &editor = GetEditor();
+	editor.inspector.nextSelected.id = prefabId;
+	editor.inspector.nextSelected.type = EditorSelectedType_Prefab;
+}
+
 static void EditorUnselectSprite(ID spriteId)
 {
 	Editor &editor = GetEditor();
@@ -591,6 +598,10 @@ static void EditorRemoveSelection()
 			RemoveSprite(engine.scene, assetId);
 			break;
 
+		case EditorSelectedType_Prefab:
+			RemovePrefab(engine.scene, assetId);
+			break;
+
 		default:
 			break;
 	}
@@ -622,6 +633,26 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 	UI_PushID(ui, assetId.slot);
 	if (UI_BeginContextMenu(ui, name))
 	{
+		if (type == EditorSelectedType_Entity && UI_MenuItem(ui, "Create prefab"))
+		{
+			EntityDesc entityDesc = GetEntityDesc(assetId);
+			entityDesc.id = {}; // The prefab holds a template, not this entity's own identity
+
+			PrefabEntityDesc prefabEntityDesc = {};
+			prefabEntityDesc.entity = entityDesc;
+			prefabEntityDesc.scriptCount = GatherEntityScriptDescs(
+					engine.game, assetId, prefabEntityDesc.scripts, MAX_ENTITY_SCRIPTS);
+			for (u32 i = 0; i < prefabEntityDesc.scriptCount; ++i) {
+				prefabEntityDesc.scripts[i].entity = {}; // Template holds no entity until instantiated
+			}
+
+			PrefabDesc prefabDesc = {};
+			prefabDesc.name = entityDesc.name;
+			prefabDesc.entityCount = 1;
+			prefabDesc.entities[0] = prefabEntityDesc;
+
+			CreatePrefab(engine, prefabDesc);
+		}
 		if (UI_MenuItem(ui, "Delete"))
 		{
 			EditorRemoveAsset(type, assetId);
@@ -862,6 +893,22 @@ static void EditorUpdateUI_Outliner()
 		}
 
 		UI_EndLayout(ui);
+	}
+
+	if ( UI_Section(ui, "Prefabs") )
+	{
+		for (u32 i = 0; i < scene.prefabCount; ++i)
+		{
+			const Prefab &prefab = scene.prefabs[i];
+
+			if ( UI_Button(ui, prefab.name) ) {
+				EditorSelectPrefab(prefab.id);
+			}
+
+			UI_DragAndDropSource(ui, "IDPrefab", UI_Payload(prefab.id.slot), editor.iconAsset );
+
+			EditorAssetContextMenu("PrefabContext", EditorSelectedType_Prefab, prefab.id);
+		}
 	}
 
 	if ( UI_Section(ui, "Materials") )
@@ -1891,6 +1938,23 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 	return CreateEntity(engine, entityDesc);
 }
 
+static ID EditorInstantiatePrefabAtMouse(ID prefabId)
+{
+	Engine &engine = GetEngine();
+
+	if ( !EditorMode2D() )
+	{
+		LOG(Debug, "Drag and Drop not implemented in 3D mode.\n");
+		return {};
+	}
+
+	const Mouse &mouse = GetWindow().mouse;
+	const Camera &camera = engine.editor.camera[ProjectionOrthographic];
+	const float2 worldPos = Floor(GetWorld2DCoord(engine, camera, mouse.pos));
+
+	return InstantiatePrefab(engine, prefabId, Float3(worldPos, 0.0));
+}
+
 static void EditorUpdateUI_DragAndDropLost()
 {
 	Engine &engine = GetEngine();
@@ -1901,6 +1965,14 @@ static void EditorUpdateUI_DragAndDropLost()
 		const ID spriteId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( spriteId ) {
 			EditorSpawnEntityAtMouse(spriteId);
+		}
+	}
+
+	if ( UI_DragAndDropTargetLost(ui, "IDPrefab") )
+	{
+		const ID prefabId = { UI_DragAndDropPayload(ui).uvalue };
+		if ( prefabId ) {
+			EditorInstantiatePrefabAtMouse(prefabId);
 		}
 	}
 
