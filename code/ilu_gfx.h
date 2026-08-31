@@ -35,6 +35,7 @@
  * - CopyBufferToImage
  * - Blit
  * - TransitionImageLayout
+ * - TransitionBufferState
  * - (Begin/End)RenderPass
  * - SetViewport
  * - SetScissor
@@ -193,6 +194,20 @@ enum ImageState
 	ImageStateTransferDst,
 	ImageStateShaderInput,
 	ImageStateRenderTarget,
+};
+
+enum BufferState
+{
+	BufferStateInitial,
+	BufferStateTransferSrc,
+	BufferStateTransferDst,
+	BufferStateVertexInput,
+	BufferStateIndexInput,
+	BufferStateIndirectArgs,
+	BufferStateVertexRead,
+	BufferStateFragmentRead,
+	BufferStateComputeRead,
+	BufferStateComputeWrite,
 };
 
 enum PipelineStage
@@ -758,6 +773,7 @@ typedef void FN_CopyBufferToBuffer(const CommandList &commandBuffer, BufferH src
 typedef void FN_CopyBufferToImage(const CommandList &commandBuffer, BufferH bufferH, u32 bufferOffset, ImageH imageH);
 typedef void FN_Blit(const CommandList &commandBuffer, const Image &srcImage, const BlitRegion &srcRegion, const Image &dstImage, const BlitRegion &dstRegion);
 typedef void FN_TransitionImageLayout(const CommandList &commandBuffer, ImageH imageH, ImageState oldState, ImageState newState, u32 baseMipLevel, u32 levelCount);
+typedef void FN_TransitionBufferState(const CommandList &commandBuffer, BufferH bufferH, BufferState oldState, BufferState newState);
 typedef void FN_BeginRenderPass(const CommandList &commandList, const Framebuffer &framebuffer);
 typedef void FN_SetViewport(const CommandList &commandList, rect viewport);
 typedef void FN_SetScissor(const CommandList &commandList, rect scissor);
@@ -852,6 +868,7 @@ typedef const char* FN_FormatName(Format format);
 	EXPAND_MACRO(CopyBufferToImage) \
 	EXPAND_MACRO(Blit) \
 	EXPAND_MACRO(TransitionImageLayout) \
+	EXPAND_MACRO(TransitionBufferState) \
 	EXPAND_MACRO(BeginRenderPass) \
 	EXPAND_MACRO(SetViewport) \
 	EXPAND_MACRO(SetScissor) \
@@ -4326,6 +4343,91 @@ void TransitionImageLayout(const CommandList &commandBuffer, ImageH imageH, Imag
 		0, NULL,    // Memory barriers
 		0, NULL,    // Buffer barriers
 		1, &barrier // Image barriers
+		);
+}
+
+static void BufferStateToVulkan(BufferState state, VkAccessFlags &access, VkPipelineStageFlags &stage)
+{
+	switch (state)
+	{
+		case BufferStateInitial:
+			access = 0;
+			stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			break;
+		case BufferStateTransferSrc:
+			access = VK_ACCESS_TRANSFER_READ_BIT;
+			stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			break;
+		case BufferStateTransferDst:
+			access = VK_ACCESS_TRANSFER_WRITE_BIT;
+			stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			break;
+		case BufferStateVertexInput:
+			access = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+			stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+			break;
+		case BufferStateIndexInput:
+			access = VK_ACCESS_INDEX_READ_BIT;
+			stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+			break;
+		case BufferStateIndirectArgs:
+			access = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+			stage = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+			break;
+		case BufferStateVertexRead:
+			access = VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+			stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+			break;
+		case BufferStateFragmentRead:
+			access = VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+			stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			break;
+		case BufferStateComputeRead:
+			access = VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+			stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+			break;
+		case BufferStateComputeWrite:
+			// Storage buffers are bound read-write, so a write state covers reads too
+			access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+			stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+			break;
+		default:
+			INVALID_CODE_PATH();
+	}
+}
+
+void TransitionBufferState(const CommandList &commandBuffer, BufferH bufferH, BufferState oldState, BufferState newState)
+{
+	ASSERT(newState != BufferStateInitial);
+
+	const Buffer &buffer = GetBufferConst(GetDevice(commandBuffer), bufferH);
+
+	VkAccessFlags srcAccess = 0;
+	VkAccessFlags dstAccess = 0;
+	VkPipelineStageFlags srcStage = 0;
+	VkPipelineStageFlags dstStage = 0;
+
+	BufferStateToVulkan(oldState, srcAccess, srcStage);
+	BufferStateToVulkan(newState, dstAccess, dstStage);
+
+	const VkBufferMemoryBarrier barrier = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+		.srcAccessMask = srcAccess,
+		.dstAccessMask = dstAccess,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.buffer = buffer.handle,
+		.offset = 0,
+		.size = VK_WHOLE_SIZE,
+	};
+
+	vkCmdPipelineBarrier(commandBuffer.handle,
+		srcStage,
+		dstStage,
+		0,           // 0 or VK_DEPENDENCY_BY_REGION_BIT
+		0, NULL,     // Memory barriers
+		1, &barrier, // Buffer barriers
+		0, NULL      // Image barriers
 		);
 }
 
