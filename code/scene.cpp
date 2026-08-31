@@ -193,6 +193,51 @@ u16 GetEntityIndex(const Scene &scene, ID id)
 	return index;
 }
 
+bool HasComponents(const Scene &scene, ID id, ComponentFlags components)
+{
+	if ( !Valid(id) ) {
+		return false;
+	}
+	const u16 index = GetEntityIndex(scene, id);
+	return ( scene.entityComponents[index] & components ) == components;
+}
+
+LightComponent &AddLight(Scene &scene, ID id)
+{
+	const u16 index = GetEntityIndex(scene, id);
+	scene.entityComponents[index] |= Component_Light;
+
+	LightComponent &light = scene.entityLights[index];
+	light = {
+		.type = LightType_Point,
+		.color = Float3(1.0f),
+		.intensity = 1.0f,
+		.radius = 5.0f,
+	};
+	return light;
+}
+
+void RemoveLight(Scene &scene, ID id)
+{
+	const u16 index = GetEntityIndex(scene, id);
+	scene.entityComponents[index] &= ~(ComponentFlags)Component_Light;
+	scene.entityLights[index] = {};
+}
+
+LightComponent &GetLight(Scene &scene, ID id)
+{
+	const u16 index = GetEntityIndex(scene, id);
+	ASSERT( scene.entityComponents[index] & Component_Light );
+	return scene.entityLights[index];
+}
+
+const LightComponent &GetLight(const Scene &scene, ID id)
+{
+	const u16 index = GetEntityIndex(scene, id);
+	ASSERT( scene.entityComponents[index] & Component_Light );
+	return scene.entityLights[index];
+}
+
 // The high half indexes the GPU entity buffer, the low half is the entity's ID slot.
 // The shaders pull the index back out with a >>16 and compare the whole value against
 // globals.selectedEntity, so both halves have to stay where they are.
@@ -214,9 +259,23 @@ ID EntityFromDrawId(u32 drawId)
 	return Valid(id) ? id : ID{};
 }
 
+static COMPACT_MOVE(MoveEntity)
+{
+	Scene &scene = *(Scene*)data;
+	scene.entityComponents[dstIndex] = scene.entityComponents[srcIndex];
+	scene.entityLights[dstIndex] = scene.entityLights[srcIndex];
+}
+
+static COMPACT_REMOVE(ClearEntityComponents)
+{
+	Scene &scene = *(Scene*)data;
+	scene.entityComponents[index] = 0;
+}
+
 void CompactEntities(Scene &scene)
 {
-	COMPACT_ARRAY_BY_ID(Entity, scene.entities, scene.entityCount, id, nullptr, nullptr, nullptr);
+	COMPACT_ARRAY_BY_ID(Entity, scene.entities, scene.entityCount, id,
+			MoveEntity, ClearEntityComponents, &scene);
 }
 
 void EntitySetPosition(Entity &entity, float3 position)
@@ -240,6 +299,11 @@ EntityDesc GetEntityDesc(Engine &engine, ID id)
 		entityDesc.materialId = entity.materialId;
 		entityDesc.geometryType = entity.geometryType;
 	}
+	if ( HasComponents(engine.scene, id, Component_Light) )
+	{
+		entityDesc.components |= Component_Light;
+		entityDesc.light = GetLight(engine.scene, id);
+	}
 	entityDesc.scriptCount = GatherEntityScriptDescs(
 			engine.game, id, entityDesc.scripts, (u32)ARRAY_COUNT(entityDesc.scripts));
 	return entityDesc;
@@ -255,8 +319,12 @@ static Entity *PushEntity(Scene &scene, ID id)
 		return nullptr;
 	}
 
-	Entity &entity = scene.entities[scene.entityCount++];
+	const u32 index = scene.entityCount++;
+	Entity &entity = scene.entities[index];
 	entity = { .id = id };
+
+	scene.entityComponents[index] = 0;
+	scene.entityLights[index] = {};
 
 	BindID(&entity.id, &entity);
 
@@ -302,6 +370,12 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	for (u32 i = 0; i < desc.scriptCount; ++i)
 	{
 		CreateScriptInstance(engine.game, entity->id, desc.scripts[i]);
+	}
+
+	if ( desc.components & Component_Light )
+	{
+		LightComponent &light = AddLight(engine.scene, entity->id);
+		light = desc.light;
 	}
 
 	return entity->id;

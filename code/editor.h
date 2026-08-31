@@ -189,6 +189,10 @@ struct Editor
 	bool showSettings;
 	bool showQuit;
 
+	// World position the scene view was right-clicked at, captured when the menu opens
+	// because lastMouseClickPos moves to the menu item as soon as it is clicked
+	float2 contextMenuWorldPos;
+
 	bool selectEntity;
 
 	bool isTranslating;

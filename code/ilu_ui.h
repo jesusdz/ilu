@@ -2328,6 +2328,34 @@ void UI_Combo(UI &ui, const char *text, const char **items, u32 itemCount, u32 *
 	UI_CursorAdvance(ui, widgetSize);
 }
 
+bool UI_ColorButton(UI &ui, const char *label, float4 color)
+{
+	const float2 padding = UI_GetPadding(ui);
+	const f32 side = UI_ControlHeight(ui);
+
+	const float2 widgetPos = UI_GetCursorPos(ui);
+	const float2 widgetSize = float2{UI_GetAlignedWidgetWidth(ui), side};
+
+	UI_BeginWidget(ui, widgetPos, widgetSize);
+
+	const float4 hoveredColor = Lerp(color, UiColorWhite, 0.2f);
+	UI_PushElemColor(ui, UIElementButton, {color, hoveredColor});
+	UI_PushColor(ui, UIElementButton);
+	UI_AddRectangle(ui, widgetPos, widgetSize);
+	UI_PopColor(ui);
+	UI_PopElemColor(ui, UIElementButton);
+
+	const bool clicked = UI_WidgetClicked(ui);
+
+	UI_EndWidget(ui);
+	UI_CursorAdvance(ui, widgetSize);
+
+	const float2 labelPos = widgetPos + float2{widgetSize.x + ui.style.itemSpacing, padding.y};
+	UI_AddText(ui, labelPos, label);
+
+	return clicked;
+}
+
 static float4 RGB0(const float4 rgba)
 {
 	const float4 res = {rgba.r, rgba.g, rgba.b, 0.0f};

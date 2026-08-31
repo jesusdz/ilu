@@ -8,6 +8,39 @@ struct SceneDesc
 	ProjectionType projectionType;
 };
 
+////////////////////////////////////////////////////////////////////////
+// Components
+
+enum ComponentTypes
+{
+	ComponentType_Light,
+	ComponentType_Count,
+};
+
+enum ComponentBits
+{
+	Component_Light = 1<<ComponentType_Light,
+};
+
+typedef u32 ComponentFlags;
+
+static const char *ComponentNames[] = { "Light" };
+
+CT_ASSERT(ARRAY_COUNT(ComponentNames) == ComponentType_Count);
+
+enum LightType
+{
+	LightType_Point,
+};
+
+struct LightComponent
+{
+	LightType type;
+	float3 color;
+	f32 intensity;
+	f32 radius;
+};
+
 struct SpriteDesc
 {
 	ID id;
@@ -41,6 +74,9 @@ struct EntityDesc
 	// Scripts
 	ScriptDesc scripts[MAX_ENTITY_SCRIPTS];
 	u32 scriptCount;
+	// Components
+	ComponentFlags components;
+	LightComponent light;
 };
 
 #define MAX_PREFAB_ENTITIES 16
@@ -197,6 +233,8 @@ struct Scene
 
 	u32 entityCount;
 	Entity entities[MAX_ENTITIES];
+	ComponentFlags entityComponents[MAX_ENTITIES];
+	LightComponent entityLights[MAX_ENTITIES];
 
 	u32 spriteCount;
 	Sprite sprites[MAX_SPRITES];
@@ -322,6 +360,16 @@ void CompactEntities(Scene &scene);
 
 u32 EntityDrawId(const Scene &scene, ID entityId);
 ID EntityFromDrawId(u32 drawId);
+
+
+////////////////////////////////////////////////////////////////////////
+// Entity components
+
+bool HasComponents(const Scene &scene, ID entityId, ComponentFlags components);
+LightComponent &AddLight(Scene &scene, ID entityId);
+void RemoveLight(Scene &scene, ID entityId);
+LightComponent &GetLight(Scene &scene, ID entityId);
+const LightComponent &GetLight(const Scene &scene, ID entityId);
 
 
 ////////////////////////////////////////////////////////////////////////

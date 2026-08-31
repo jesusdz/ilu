@@ -1504,6 +1504,40 @@ static void EditorUpdateUI_Inspector()
 					EditorSelectSprite(entity.spriteId);
 				}
 
+				if ( HasComponents(engine.scene, inspector.selected.id, Component_Light) )
+				{
+					UI_SeparatorLabel(ui, "Light");
+
+					LightComponent &light = GetLight(engine.scene, inspector.selected.id);
+
+					static float4 lightColorToEdit = {};
+					static ID lightColorEntity = {};
+
+					if ( UI_ColorButton(ui, "Color", Float4(light.color, 1.0f)) )
+					{
+						lightColorToEdit = Float4(light.color, 1.0f);
+						lightColorEntity = inspector.selected.id;
+					}
+
+					if ( lightColorEntity == inspector.selected.id )
+					{
+						bool isOpen = true;
+						UI_ColorPicker(ui, &lightColorToEdit, &isOpen);
+						light.color = lightColorToEdit.xyz;
+						if ( !isOpen ) {
+							lightColorEntity = {};
+						}
+					}
+
+					UI_InputFloat(ui, "Intensity", &light.intensity);
+					UI_InputFloat(ui, "Radius", &light.radius);
+
+					if (UI_Button(ui, "Remove"))
+					{
+						RemoveLight(engine.scene, inspector.selected.id);
+					}
+				}
+
 				for (u32 i = 0; i < engine.game.scriptInstanceCount; ++i) 
 				{
 					const ScriptInstance &instance = engine.game.scriptInstances[i];
@@ -1530,6 +1564,40 @@ static void EditorUpdateUI_Inspector()
 				{
 					const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
 					CreateScriptInstance(engine.game, inspector.selected.id, ScriptName(script));
+				}
+
+				static const char *componentNames[] = { "Light" };
+				static const ComponentFlags componentBits[] = { Component_Light };
+				CT_ASSERT(ARRAY_COUNT(componentNames) == ARRAY_COUNT(componentBits));
+
+				const char *availableNames[ARRAY_COUNT(componentNames)];
+				ComponentFlags availableBits[ARRAY_COUNT(componentBits)];
+				u32 availableCount = 0;
+				for (u32 i = 0; i < ARRAY_COUNT(componentNames); ++i)
+				{
+					if ( !HasComponents(engine.scene, inspector.selected.id, componentBits[i]) )
+					{
+						availableNames[availableCount] = componentNames[i];
+						availableBits[availableCount] = componentBits[i];
+						availableCount++;
+					}
+				}
+
+				if ( availableCount > 0 )
+				{
+					UI_SeparatorLabel(ui, "Add component");
+
+					static u32 componentEnum = 0;
+					componentEnum = Min(componentEnum, availableCount - 1);
+					UI_Combo(ui, "Component", availableNames, availableCount, &componentEnum);
+
+					if ( UI_Button(ui, "Add") )
+					{
+						switch ( availableBits[componentEnum] )
+						{
+							case Component_Light: AddLight(engine.scene, inspector.selected.id); break;
+						}
+					}
 				}
 			}
 		}
@@ -2051,10 +2119,23 @@ static void EditorUpdateUI_ContextMenu()
 	UI_SetNextWindowDisplacement(ui, pos);
 	if ( UI_BeginMenu(ui, "Context", &engine.editor.showContextMenu) )
 	{
-		UI_MenuItem(ui, "Option 1");
-		UI_MenuItem(ui, "Option 2");
-		UI_MenuItem(ui, "Option 3");
-		UI_MenuItem(ui, "Option 4");
+		if ( UI_MenuItem(ui, "Add entity") )
+		{
+			if ( EditorMode2D() )
+			{
+				const EntityDesc entityDesc = {
+					.name = InternString("entity"),
+					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
+					.scale = 1.0f,
+				};
+				const ID entityId = CreateEntity(engine, entityDesc);
+				EditorSelectEntity(entityId);
+			}
+			else
+			{
+				LOG(Debug, "Add entity not implemented in 3D mode.\n");
+			}
+		}
 		UI_EndMenu(ui);
 	}
 }
@@ -2963,6 +3044,9 @@ void EditorUpdate(Engine &engine)
 	{
 		if ( UI_IsMousePress(engine.ui, MOUSE_BUTTON_RIGHT) )
 		{
+			const Mouse &mouse = GetWindow().mouse;
+			const Camera &camera = engine.editor.camera[ProjectionOrthographic];
+			engine.editor.contextMenuWorldPos = Floor(GetWorld2DCoord(engine, camera, mouse.pos));
 			engine.editor.showContextMenu = true;
 		}
 	}
