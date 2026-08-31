@@ -36,9 +36,6 @@ struct AssetDescriptors
 
 	MusicFileDesc *musicFileDescs;
 	u32 musicFileDescCount;
-
-	ScriptDesc *scriptDescs;
-	u32 scriptDescCount;
 };
 
 // Functions
@@ -51,7 +48,7 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena);
 #endif // USE_DATA_BUILD
 
 
-constexpr u32 BinAssetsVersion = 13; // 13: added prefabs
+constexpr u32 BinAssetsVersion = 14; // 14: scripts nested in their entity
 
 #pragma pack(push, 1)
 
@@ -78,8 +75,6 @@ struct BinAssetsHeader
 	u32 prefabCount;
 	u32 roomsOffset;
 	u32 roomCount;
-	u32 scriptsOffset;
-	u32 scriptCount;
 	u32 stringPoolOffset;
 	u32 stringPoolSize;
 };
@@ -103,7 +98,6 @@ struct BinAssets
 	BinEntity *entities;
 	BinPrefab *prefabs;
 	BinRoom *rooms;
-	BinScript *scripts;
 };
 
 // Functions

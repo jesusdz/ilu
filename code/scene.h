@@ -38,22 +38,18 @@ struct EntityDesc
 	// Physics
 	float2 speed;
 	f32 accel;
-};
-
-#define MAX_PREFAB_ENTITIES 16
-
-struct PrefabEntityDesc
-{
-	EntityDesc entity;
+	// Scripts
 	ScriptDesc scripts[MAX_ENTITY_SCRIPTS];
 	u32 scriptCount;
 };
+
+#define MAX_PREFAB_ENTITIES 16
 
 struct PrefabDesc
 {
 	ID id;
 	const char *name;
-	PrefabEntityDesc entities[MAX_PREFAB_ENTITIES];
+	EntityDesc entities[MAX_PREFAB_ENTITIES];
 	u32 entityCount;
 };
 
@@ -179,7 +175,7 @@ struct Prefab
 {
 	ID id;
 	const char *name;
-	PrefabEntityDesc entities[MAX_PREFAB_ENTITIES];
+	EntityDesc entities[MAX_PREFAB_ENTITIES];
 	u32 entityCount;
 };
 
@@ -240,6 +236,8 @@ struct BinEntityDesc
 	float3 pos;
 	float scale;
 	GeometryType geometryType;
+	u32 scriptCount;
+	BinScriptDesc scripts[MAX_ENTITY_SCRIPTS];
 };
 
 struct BinLayerDesc
@@ -262,26 +260,12 @@ struct BinRoomDesc
 	BinLayerDesc layers[MAX_LAYERS];
 };
 
-struct BinPrefabScriptDesc
-{
-	const char *name;
-	u32 propertyCount;
-	BinScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES];
-};
-
-struct BinPrefabEntityDesc
-{
-	BinEntityDesc entity;
-	u32 scriptCount;
-	BinPrefabScriptDesc scripts[MAX_ENTITY_SCRIPTS];
-};
-
 struct BinPrefabDesc
 {
 	ID id;
 	const char *name;
 	u32 entityCount;
-	BinPrefabEntityDesc entities[MAX_PREFAB_ENTITIES];
+	BinEntityDesc entities[MAX_PREFAB_ENTITIES];
 };
 
 struct BinSprite
@@ -329,7 +313,7 @@ void CompactSprites(Scene &scene);
 Entity &GetEntity(ID entityId);
 u16 GetEntityIndex(const Scene &scene, ID entityId);
 void EntitySetPosition(Entity &entity, float3 position);
-EntityDesc GetEntityDesc(ID entityId);
+EntityDesc GetEntityDesc(Engine &engine, ID entityId);
 ID CreateEntity(Engine &engine, const EntityDesc &desc);
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc);
 void RemoveEntity(Engine &engine, ID entityId);

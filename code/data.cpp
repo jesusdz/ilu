@@ -225,6 +225,59 @@ static GeometryType StrToGeometryType(String str)
 	return GeometryTypeCube;
 }
 
+static void WriteScriptDescs(WriteContext &ctx, const ScriptDesc *scripts, u32 scriptCount)
+{
+	if (scriptCount == 0) {
+		return;
+	}
+
+	WriteLine(ctx, ".scripts = {");
+	PushIndent(ctx);
+
+	for (u32 s = 0; s < scriptCount; ++s)
+	{
+		const ScriptDesc &script = scripts[s];
+
+		// The identifier is the script type, the way an Entity's is its name
+		WriteLine(ctx, "%s = {", script.name);
+		PushIndent(ctx);
+		if (script.propertyCount > 0)
+		{
+			WriteLine(ctx, ".properties = {");
+			PushIndent(ctx);
+			for (u32 p = 0; p < script.propertyCount; ++p)
+			{
+				const ScriptPropertyDesc &propDesc = script.properties[p];
+				const char *typeStr = PropertyTypeToString(propDesc.value.type);
+				WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
+			}
+			PopIndent(ctx);
+			WriteLine(ctx, "},");
+		}
+		PopIndent(ctx);
+		WriteLine(ctx, "},");
+	}
+
+	PopIndent(ctx);
+	WriteLine(ctx, "},");
+}
+
+static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
+{
+	if (desc.spriteId.slot != 0) {
+		WriteLine(ctx, ".spriteId = %u,", desc.spriteId.slot);
+	} else if (desc.materialId.slot != 0) {
+		WriteLine(ctx, ".materialId = %u,", desc.materialId.slot);
+		WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(desc.geometryType));
+	}
+	WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
+	WriteLine(ctx, ".scale = %f,", desc.scale);
+	if (desc.spriteId.slot != 0) {
+		WriteLine(ctx, ".layerId = %u,", desc.layerId.slot);
+	}
+	WriteScriptDescs(ctx, desc.scripts, desc.scriptCount);
+}
+
 void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 {
 	Scratch scratch(MB(16)); // room tile lists can make the text large
@@ -323,17 +376,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 		PushIndent(ctx);
 		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		if (desc.spriteId.slot != 0) {
-			WriteLine(ctx, ".spriteId = %u,", desc.spriteId.slot);
-		} else if (desc.materialId.slot != 0) {
-			WriteLine(ctx, ".materialId = %u,", desc.materialId.slot);
-			WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(desc.geometryType));
-		}
-		WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
-		WriteLine(ctx, ".scale = %f,", desc.scale);
-		if (desc.spriteId.slot != 0) {
-			WriteLine(ctx, ".layerId = %u,", desc.layerId.slot);
-		}
+		WriteEntityDescBody(ctx, desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -355,54 +398,12 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 		for (u32 e = 0; e < desc.entityCount; ++e)
 		{
-			const PrefabEntityDesc &prefabEntity = desc.entities[e];
-			const EntityDesc &entity = prefabEntity.entity;
+			const EntityDesc &entity = desc.entities[e];
 
 			WriteLine(ctx, "{");
 			PushIndent(ctx);
 			WriteLine(ctx, ".name = \"%s\",", entity.name);
-			if (entity.spriteId.slot != 0) {
-				WriteLine(ctx, ".spriteId = %u,", entity.spriteId.slot);
-			} else if (entity.materialId.slot != 0) {
-				WriteLine(ctx, ".materialId = %u,", entity.materialId.slot);
-				WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(entity.geometryType));
-			}
-			WriteLine(ctx, ".pos = {%f, %f, %f},", entity.pos.x, entity.pos.y, entity.pos.z);
-			WriteLine(ctx, ".scale = %f,", entity.scale);
-			if (entity.spriteId.slot != 0) {
-				WriteLine(ctx, ".layerId = %u,", entity.layerId.slot);
-			}
-
-			if (prefabEntity.scriptCount > 0)
-			{
-				WriteLine(ctx, ".scripts = {");
-				PushIndent(ctx);
-				for (u32 s = 0; s < prefabEntity.scriptCount; ++s)
-				{
-					const ScriptDesc &script = prefabEntity.scripts[s];
-
-					WriteLine(ctx, "%s = {", script.name);
-					PushIndent(ctx);
-					if (script.propertyCount > 0)
-					{
-						WriteLine(ctx, ".properties = {");
-						PushIndent(ctx);
-						for (u32 p = 0; p < script.propertyCount; ++p)
-						{
-							const ScriptPropertyDesc &propDesc = script.properties[p];
-							const char *typeStr = PropertyTypeToString(propDesc.value.type);
-							WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
-						}
-						PopIndent(ctx);
-						WriteLine(ctx, "},");
-					}
-					PopIndent(ctx);
-					WriteLine(ctx, "},");
-				}
-				PopIndent(ctx);
-				WriteLine(ctx, "},");
-			}
-
+			WriteEntityDescBody(ctx, entity);
 			PopIndent(ctx);
 			WriteLine(ctx, "},");
 		}
@@ -507,39 +508,6 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		PushIndent(ctx);
 		WriteLine(ctx, ".id = %u,", desc.id.slot);
 		WriteLine(ctx, ".filename = \"%s\",", desc.filename);
-		PopIndent(ctx);
-
-		WriteLine(ctx, "};");
-		NewLine(ctx);
-	}
-
-	// Scripts are last because they can have references to previously declared objects
-	WriteSectionLine(ctx, "Scripts");
-
-	for (u32 i = 0; i < assets.scriptDescCount; ++i)
-	{
-		const ScriptDesc &desc = assets.scriptDescs[i];
-
-		// The identifier is the script type, the way an Entity's is its name
-		WriteLine(ctx, "Script %s = {", desc.name);
-
-		PushIndent(ctx);
-		WriteLine(ctx, ".entity = %u,", desc.entity.slot);
-
-		if ( desc.propertyCount > 0 )
-		{
-			WriteLine(ctx, ".properties = {");
-			PushIndent(ctx);
-			for (u32 p = 0; p < desc.propertyCount; ++p)
-			{
-				const ScriptPropertyDesc &propDesc = desc.properties[p];
-				const char *typeStr = PropertyTypeToString(propDesc.value.type);
-				WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
-			}
-			PopIndent(ctx);
-			WriteLine(ctx, "},");
-		}
-
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -1132,11 +1100,9 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-// Forward declared: defined further down, alongside the top-level Script parsing it
-// also serves; a prefab entity's nested scripts reuse it verbatim.
 static void DParser_ConsumeScriptProperties( DParser &parser, ScriptDesc &script);
 
-static void DParser_ConsumePrefabEntityScripts( DParser &parser, PrefabEntityDesc &prefabEntity )
+static void DParser_ConsumeEntityScripts( DParser &parser, EntityDesc &entity )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
@@ -1169,12 +1135,49 @@ static void DParser_ConsumePrefabEntityScripts( DParser &parser, PrefabEntityDes
 		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 		DParser_TryConsume(parser, TOKEN_COMMA);
 
-		if ( prefabEntity.scriptCount < ARRAY_COUNT(prefabEntity.scripts) ) {
-			prefabEntity.scripts[prefabEntity.scriptCount++] = scriptDesc;
+		if ( entity.scriptCount < ARRAY_COUNT(entity.scripts) ) {
+			entity.scripts[entity.scriptCount++] = scriptDesc;
 		}
 	}
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+}
+
+static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDesc &entity )
+{
+	static const String sId = MakeString("id");
+	static const String sName = MakeString("name");
+	static const String sMaterialId = MakeString("materialId");
+	static const String sSpriteId = MakeString("spriteId");
+	static const String sPos = MakeString("pos");
+	static const String sScale = MakeString("scale");
+	static const String sLayerId = MakeString("layerId");
+	static const String sGeometryType = MakeString("geometryType");
+	static const String sScripts = MakeString("scripts");
+
+	if ( StrEq( field, sId ) ) {
+		entity.id = DParser_ConsumeID(parser);
+	} else if ( StrEq( field, sName ) ) {
+		entity.name = PushString(*parser.arena, DParser_ConsumeString(parser));
+	} else if ( StrEq( field, sMaterialId ) ) {
+		entity.materialId = DParser_ConsumeID(parser);
+	} else if ( StrEq( field, sSpriteId ) ) {
+		entity.spriteId = DParser_ConsumeID(parser);
+	} else if ( StrEq( field, sPos ) ) {
+		entity.pos = DParser_ConsumeFloat3(parser);
+	} else if ( StrEq( field, sScale ) ) {
+		entity.scale = DParser_ConsumeF32(parser);
+	} else if ( StrEq( field, sLayerId ) ) {
+		entity.layerId = DParser_ConsumeID(parser);
+	} else if ( StrEq( field, sGeometryType ) ) {
+		entity.geometryType = DParser_ConsumeGeometryType(parser);
+	} else if ( StrEq( field, sScripts ) ) {
+		DParser_ConsumeEntityScripts(parser, entity);
+	} else {
+		return false;
+	}
+
+	return true;
 }
 
 static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
@@ -1183,8 +1186,7 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 
 	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
 	{
-		PrefabEntityDesc prefabEntityDesc = {};
-		EntityDesc &entityDesc = prefabEntityDesc.entity;
+		EntityDesc entityDesc = {};
 
 		while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 		{
@@ -1194,31 +1196,9 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 
 			DParser_TryConsume(parser, TOKEN_EQUAL);
 
-			static const String sName = MakeString("name");
-			static const String sMaterialId = MakeString("materialId");
-			static const String sSpriteId = MakeString("spriteId");
-			static const String sPos = MakeString("pos");
-			static const String sScale = MakeString("scale");
-			static const String sLayerId = MakeString("layerId");
-			static const String sGeometryType = MakeString("geometryType");
-			static const String sScripts = MakeString("scripts");
-
-			if ( StrEq( field, sName ) ) {
-				entityDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
-			} else if ( StrEq( field, sMaterialId ) ) {
-				entityDesc.materialId = DParser_ConsumeID(parser);
-			} else if ( StrEq( field, sSpriteId ) ) {
-				entityDesc.spriteId = DParser_ConsumeID(parser);
-			} else if ( StrEq( field, sPos ) ) {
-				entityDesc.pos = DParser_ConsumeFloat3(parser);
-			} else if ( StrEq( field, sScale ) ) {
-				entityDesc.scale = DParser_ConsumeF32(parser);
-			} else if ( StrEq( field, sLayerId ) ) {
-				entityDesc.layerId = DParser_ConsumeID(parser);
-			} else if ( StrEq( field, sGeometryType ) ) {
-				entityDesc.geometryType = DParser_ConsumeGeometryType(parser);
-			} else if ( StrEq( field, sScripts ) ) {
-				DParser_ConsumePrefabEntityScripts(parser, prefabEntityDesc);
+			if ( !DParser_ConsumeEntityField(parser, field, entityDesc) ) {
+				LOG(Warning, "Unknown prefab entity field <%.*s>.\n", field.size, field.str);
+				DParser_SkipFieldValue(parser);
 			}
 
 			DParser_TryConsume(parser, TOKEN_COMMA);
@@ -1228,7 +1208,7 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 		DParser_TryConsume(parser, TOKEN_COMMA);
 
 		if ( prefab.entityCount < ARRAY_COUNT(prefab.entities) ) {
-			prefab.entities[prefab.entityCount++] = prefabEntityDesc;
+			prefab.entities[prefab.entityCount++] = entityDesc;
 		}
 	}
 
@@ -1333,7 +1313,6 @@ static const String sPrefabStr = MakeString("Prefab");
 static const String sRoomStr = MakeString("Room");
 static const String sAudioClipStr = MakeString("AudioClip");
 static const String sMusicFileStr = MakeString("MusicFile");
-static const String sScriptStr = MakeString("Script");
 
 const char *StringToCStr( String str )
 {
@@ -1521,28 +1500,8 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
-					static const String sId = MakeString("id");
-					static const String sMaterialId = MakeString("materialId");
-					static const String sSpriteId = MakeString("spriteId");
-					static const String sPos = MakeString("pos");
-					static const String sScale = MakeString("scale");
-					static const String sLayerId = MakeString("layerId");
-					static const String sGeometryType = MakeString("geometryType");
-
-					if ( StrEq( field, sId ) ) {
-						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sMaterialId ) ) {
-						desc.materialId = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sSpriteId ) ) {
-						desc.spriteId = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sPos ) ) {
-						desc.pos = DParser_ConsumeFloat3(parser);
-					} else if ( StrEq( field, sScale ) ) {
-						desc.scale = DParser_ConsumeF32(parser);
-					} else if ( StrEq( field, sLayerId ) ) {
-						desc.layerId = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sGeometryType ) ) {
-						desc.geometryType = DParser_ConsumeGeometryType(parser);
+					if ( !DParser_ConsumeEntityField( parser, field, desc ) ) {
+						LOG(Warning, "Unknown Entity field <%.*s>.\n", field.size, field.str);
 					}
 
 					DParser_ConsumeUntil( parser, TOKEN_COMMA );
@@ -1673,40 +1632,6 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					DParser_TryConsume( parser, TOKEN_COMMA );
 				}
 
-			// Script
-			} else if ( StrEq(type, sScriptStr) ) {
-
-				const u32 index = descriptors.scriptDescCount++;
-				if ( countOnly ) goto parse_descriptors_continue;
-
-				ScriptDesc &desc = descriptors.scriptDescs[index];
-				const String name = DParser_ConsumeLexeme( parser );
-				desc.name = PushString(*parser.arena, name);
-				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
-				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
-					static const String sEntity = MakeString("entity");
-					static const String sProperties = MakeString("properties");
-
-					if ( StrEq( field, sEntity ) ) {
-						desc.entity = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sProperties ) ) {
-						DParser_ConsumeScriptProperties(parser, desc);
-					} else {
-						LOG(Warning, "Unknown Script field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
-					}
-
-					DParser_TryConsume( parser, TOKEN_COMMA );
-				}
-
 			// Unknown
 			} else {
 				LOG(Warning, "Unexpected descriptor\n");
@@ -1755,8 +1680,6 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 				descriptors.audioClipDescCount = 0;
 				descriptors.musicFileDescs = PushZeroArray(arena, MusicFileDesc, descriptors.musicFileDescCount);
 				descriptors.musicFileDescCount = 0;
-				descriptors.scriptDescs = PushZeroArray(arena, ScriptDesc, descriptors.scriptDescCount);
-				descriptors.scriptDescCount = 0;
 
 				parser = DParser_Init(tokenList, arena, descriptors);
 				DParseDescriptors(parser, false);
@@ -1829,6 +1752,41 @@ static const char *DataGetString( const char *stringPool, const char *offsetPtr 
 	return str;
 }
 
+static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStringPool &stringPool)
+{
+	d = {};
+	d.id           = desc.id;
+	d.name         = DataInternString(stringPool, desc.name);
+	d.materialId   = desc.materialId;
+	d.spriteId     = desc.spriteId;
+	d.pos          = desc.pos;
+	d.scale        = desc.scale;
+	d.layerId      = desc.layerId;
+	d.geometryType = desc.geometryType;
+
+	ASSERT(desc.scriptCount <= ARRAY_COUNT(d.scripts));
+	d.scriptCount = desc.scriptCount;
+	for (u32 s = 0; s < desc.scriptCount; ++s)
+	{
+		const ScriptDesc &script = desc.scripts[s];
+
+		BinScriptDesc &bs = d.scripts[s];
+		bs.name = DataInternString(stringPool, script.name);
+
+		ASSERT(script.propertyCount <= ARRAY_COUNT(bs.properties));
+		bs.propertyCount = script.propertyCount;
+		for (u32 p = 0; p < script.propertyCount; ++p)
+		{
+			const ScriptPropertyDesc &property = script.properties[p];
+
+			BinScriptPropertyDesc &pd = bs.properties[p];
+			pd.name  = DataInternString(stringPool, property.name);
+			pd.type  = property.value.type;
+			pd.value = property.value.uValue;
+		}
+	}
+}
+
 void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Arena tempArena)
 {
 	LOG(Info, "Build assets: %s\n", filepath);
@@ -1878,10 +1836,6 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		const u32 roomsSize = roomCount * sizeof(BinRoomDesc);
 		const u32 roomsOffset = PostIncrement(&offset, roomsSize);
 
-		const u32 scriptCount = descriptors.scriptDescCount;
-		const u32 scriptsSize = scriptCount * sizeof(BinScriptDesc);
-		const u32 scriptsOffset = PostIncrement(&offset, scriptsSize);
-
 		const u32 maxStringPoolSize = KB(128);
 		char *stringPoolBase = PushArray(tempArena, char, maxStringPoolSize);
 		DataStringPool stringPool = { stringPoolBase, 1 }; // offset 0 is reserved for nullptr
@@ -1896,7 +1850,6 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		BinEntityDesc *binEntityDescs = PushArray(tempArena, BinEntityDesc, entityCount);
 		BinPrefabDesc *binPrefabDescs = PushArray(tempArena, BinPrefabDesc, prefabCount);
 		BinRoomDesc *binRoomDescs = PushArray(tempArena, BinRoomDesc, roomCount);
-		BinScriptDesc *binScriptDescs = PushArray(tempArena, BinScriptDesc, scriptCount);
 
 		// Prepare asset descs and write asset payloads
 
@@ -2064,17 +2017,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		// Entities
 		for (u32 i = 0; i < entityCount; ++i)
 		{
-			const EntityDesc &desc = descriptors.entityDescs[i];
-
-			BinEntityDesc &d = binEntityDescs[i];
-			d.id           = desc.id;
-			d.name         = DataInternString(stringPool, desc.name);
-			d.materialId   = desc.materialId;
-			d.spriteId     = desc.spriteId;
-			d.pos          = desc.pos;
-			d.scale        = desc.scale;
-			d.layerId      = desc.layerId;
-			d.geometryType = desc.geometryType;
+			BuildBinEntityDesc(binEntityDescs[i], descriptors.entityDescs[i], stringPool);
 		}
 
 		// Prefabs
@@ -2090,39 +2033,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 			for (u32 e = 0; e < desc.entityCount; ++e)
 			{
-				const PrefabEntityDesc &prefabEntity = desc.entities[e];
-				const EntityDesc &entity = prefabEntity.entity;
-
-				BinPrefabEntityDesc &bpe = d.entities[e];
-				bpe = {};
-				bpe.entity.id           = entity.id;
-				bpe.entity.name         = DataInternString(stringPool, entity.name);
-				bpe.entity.materialId   = entity.materialId;
-				bpe.entity.spriteId     = entity.spriteId;
-				bpe.entity.pos          = entity.pos;
-				bpe.entity.scale        = entity.scale;
-				bpe.entity.layerId      = entity.layerId;
-				bpe.entity.geometryType = entity.geometryType;
-
-				bpe.scriptCount = prefabEntity.scriptCount;
-				for (u32 s = 0; s < prefabEntity.scriptCount; ++s)
-				{
-					const ScriptDesc &script = prefabEntity.scripts[s];
-
-					BinPrefabScriptDesc &bs = bpe.scripts[s];
-					bs = {};
-					bs.name = DataInternString(stringPool, script.name);
-					bs.propertyCount = script.propertyCount;
-					for (u32 p = 0; p < script.propertyCount; ++p)
-					{
-						const ScriptPropertyDesc &property = script.properties[p];
-
-						BinScriptPropertyDesc &pd = bs.properties[p];
-						pd.name  = DataInternString(stringPool, property.name);
-						pd.type  = property.value.type;
-						pd.value = property.value.uValue;
-					}
-				}
+				BuildBinEntityDesc(d.entities[e], desc.entities[e], stringPool);
 			}
 		}
 
@@ -2159,37 +2070,6 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			}
 		}
 
-		// Scripts (property payloads continue after the last written payload)
-		for (u32 i = 0; i < scriptCount; ++i)
-		{
-			const ScriptDesc &desc = descriptors.scriptDescs[i];
-
-			ASSERT(desc.propertyCount <= MAX_SCRIPT_PROPERTIES);
-
-			BinScriptPropertyDesc binProperties[MAX_SCRIPT_PROPERTIES];
-			for (u32 p = 0; p < desc.propertyCount; ++p)
-			{
-				const ScriptPropertyDesc &property = desc.properties[p];
-
-				BinScriptPropertyDesc &pd = binProperties[p];
-				pd.name  = DataInternString(stringPool, property.name);
-				pd.type  = property.value.type;
-				pd.value = property.value.uValue;
-			}
-
-			const u64 payloadSize = desc.propertyCount * sizeof(BinScriptPropertyDesc);
-
-			BinScriptDesc &d = binScriptDescs[i];
-			d.entity            = desc.entity;
-			d.name              = DataInternString(stringPool, desc.name);
-			d.properties.offset = PostIncrement(&offset, payloadSize);
-			d.properties.size   = U64ToU32(payloadSize);
-
-			if ( payloadSize > 0 ) {
-				fwrite(binProperties, payloadSize, 1, file);
-			}
-		}
-
 		// Write string pool after payloads
 		const u32 stringPoolOffset = offset;
 		const u32 stringPoolSize   = stringPool.size;
@@ -2208,7 +2088,6 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		fwrite(binEntityDescs,    sizeof(binEntityDescs[0]),    entityCount,    file);
 		fwrite(binPrefabDescs,    sizeof(binPrefabDescs[0]),    prefabCount,    file);
 		fwrite(binRoomDescs,      sizeof(binRoomDescs[0]),      roomCount,      file);
-		fwrite(binScriptDescs,    sizeof(binScriptDescs[0]),    scriptCount,    file);
 
 		// Write file header last (string pool offset is now known)
 		const BinAssetsHeader fileHeader = {
@@ -2233,8 +2112,6 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			.prefabCount      = prefabCount,
 			.roomsOffset      = roomsOffset,
 			.roomCount        = roomCount,
-			.scriptsOffset    = scriptsOffset,
-			.scriptCount      = scriptCount,
 			.stringPoolOffset = stringPoolOffset,
 			.stringPoolSize   = stringPoolSize,
 		};
@@ -2258,6 +2135,20 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 ////////////////////////////////////////////////////////////////////////
 // Binary loading
+
+static void ResolveBinEntityStrings(BinEntityDesc &d, const char *stringPool)
+{
+	d.name = DataGetString(stringPool, d.name);
+
+	for (u32 s = 0; s < d.scriptCount && s < ARRAY_COUNT(d.scripts); ++s)
+	{
+		BinScriptDesc &bs = d.scripts[s];
+		bs.name = DataGetString(stringPool, bs.name);
+		for (u32 p = 0; p < bs.propertyCount && p < ARRAY_COUNT(bs.properties); ++p) {
+			bs.properties[p].name = DataGetString(stringPool, bs.properties[p].name);
+		}
+	}
+}
 
 BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 {
@@ -2296,7 +2187,6 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	assets.entities = PushArray(dataArena, BinEntity, assets.header.entityCount);
 	assets.prefabs = PushArray(dataArena, BinPrefab, assets.header.prefabCount);
 	assets.rooms = PushZeroArray(dataArena, BinRoom, assets.header.roomCount);
-	assets.scripts = PushZeroArray(dataArena, BinScript, assets.header.scriptCount);
 
 	const char *stringPool = (const char*)PushDataFromFile(
 		dataArena, file, assets.header.stringPoolOffset, assets.header.stringPoolSize);
@@ -2377,7 +2267,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	for (u32 i = 0; i < assets.header.entityCount; ++i)
 	{
 		BinEntityDesc &d = entityDescs[i];
-		d.name         = DataGetString(stringPool, d.name);
+		ResolveBinEntityStrings(d, stringPool);
 		assets.entities[i].desc = &d;
 	}
 
@@ -2392,16 +2282,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 			d.name = DataGetString(stringPool, d.name);
 			for (u32 e = 0; e < d.entityCount && e < ARRAY_COUNT(d.entities); ++e)
 			{
-				BinPrefabEntityDesc &pe = d.entities[e];
-				pe.entity.name = DataGetString(stringPool, pe.entity.name);
-				for (u32 s = 0; s < pe.scriptCount && s < ARRAY_COUNT(pe.scripts); ++s)
-				{
-					BinPrefabScriptDesc &ps = pe.scripts[s];
-					ps.name = DataGetString(stringPool, ps.name);
-					for (u32 p = 0; p < ps.propertyCount && p < ARRAY_COUNT(ps.properties); ++p) {
-						ps.properties[p].name = DataGetString(stringPool, ps.properties[p].name);
-					}
-				}
+				ResolveBinEntityStrings(d.entities[e], stringPool);
 			}
 			assets.prefabs[i].desc = &d;
 		}
@@ -2426,31 +2307,6 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 					assets.rooms[i].tiles[l] = (TileDesc*)PushDataFromFile(
 						dataArena, file, ld.tiles.offset, ld.tiles.size);
 				}
-			}
-		}
-	}
-
-	// Scripts
-	if (assets.header.scriptCount > 0)
-	{
-		BinScriptDesc *scriptDescs = (BinScriptDesc*)PushDataFromFile(
-			dataArena, file, assets.header.scriptsOffset, assets.header.scriptCount * sizeof(BinScriptDesc));
-		for (u32 i = 0; i < assets.header.scriptCount; ++i)
-		{
-			BinScriptDesc &d = scriptDescs[i];
-			d.name = DataGetString(stringPool, d.name);
-			assets.scripts[i].desc = &d;
-
-			if (d.properties.size > 0)
-			{
-				BinScriptPropertyDesc *properties = (BinScriptPropertyDesc*)PushDataFromFile(
-					dataArena, file, d.properties.offset, d.properties.size);
-				const u32 propertyCount = d.properties.size / sizeof(BinScriptPropertyDesc);
-				for (u32 p = 0; p < propertyCount; ++p)
-				{
-					properties[p].name = DataGetString(stringPool, properties[p].name);
-				}
-				assets.scripts[i].properties = properties;
 			}
 		}
 	}

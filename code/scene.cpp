@@ -224,7 +224,7 @@ void EntitySetPosition(Entity &entity, float3 position)
 	entity.position = position;
 }
 
-EntityDesc GetEntityDesc(ID id)
+EntityDesc GetEntityDesc(Engine &engine, ID id)
 {
 	const Entity &entity = GetEntity(id);
 	EntityDesc entityDesc = {
@@ -240,6 +240,8 @@ EntityDesc GetEntityDesc(ID id)
 		entityDesc.materialId = entity.materialId;
 		entityDesc.geometryType = entity.geometryType;
 	}
+	entityDesc.scriptCount = GatherEntityScriptDescs(
+			engine.game, id, entityDesc.scripts, (u32)ARRAY_COUNT(entityDesc.scripts));
 	return entityDesc;
 }
 
@@ -297,12 +299,17 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 		entity->spriteId = {};
 	}
 
+	for (u32 i = 0; i < desc.scriptCount; ++i)
+	{
+		CreateScriptInstance(engine.game, entity->id, desc.scripts[i]);
+	}
+
 	return entity->id;
 }
 
-ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
+static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
 {
-	const EntityDesc entityDesc = {
+	EntityDesc entityDesc = {
 		.id = desc.id,
 		.name = desc.name,
 		.pos = desc.pos,
@@ -312,7 +319,30 @@ ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 		.spriteId = desc.spriteId,
 		.layerId = desc.layerId,
 	};
-	return CreateEntity(engine, entityDesc);
+
+	entityDesc.scriptCount = Min(desc.scriptCount, (u32)ARRAY_COUNT(entityDesc.scripts));
+	for (u32 s = 0; s < entityDesc.scriptCount; ++s)
+	{
+		const BinScriptDesc &binScript = desc.scripts[s];
+		ScriptDesc &script = entityDesc.scripts[s];
+
+		script.name = binScript.name;
+		script.propertyCount = Min(binScript.propertyCount, (u32)ARRAY_COUNT(script.properties));
+		for (u32 p = 0; p < script.propertyCount; ++p)
+		{
+			const BinScriptPropertyDesc &binProperty = binScript.properties[p];
+			script.properties[p].name = binProperty.name;
+			script.properties[p].value.type = binProperty.type;
+			script.properties[p].value.uValue = binProperty.value;
+		}
+	}
+
+	return entityDesc;
+}
+
+ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
+{
+	return CreateEntity(engine, EntityDescFromBin(desc));
 }
 
 void RemoveEntity(Engine &engine, ID id)
@@ -328,19 +358,9 @@ void RemoveEntity(Engine &engine, ID id)
 
 ID DuplicateEntity(Engine &engine, ID entityId)
 {
-	EntityDesc desc = GetEntityDesc(entityId);
+	EntityDesc desc = GetEntityDesc(engine, entityId);
 	desc.id = {}; // The copy is a new entity, so let the pool hand it its own ID
-	const ID newEntityId = CreateEntity(engine, desc);
-
-	ScriptDesc scripts[MAX_ENTITY_SCRIPTS];
-	const u32 scriptCount = GatherEntityScriptDescs(engine.game, entityId, scripts, MAX_ENTITY_SCRIPTS);
-	for (u32 i = 0; i < scriptCount; ++i)
-	{
-		scripts[i].entity = newEntityId;
-		CreateScriptInstance(engine.game, scripts[i]);
-	}
-
-	return newEntityId;
+	return CreateEntity(engine, desc);
 }
 
 
@@ -423,37 +443,7 @@ ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
 
 	for (u32 i = 0; i < prefabDesc.entityCount; ++i)
 	{
-		const BinPrefabEntityDesc &be = desc.entities[i];
-		PrefabEntityDesc &pe = prefabDesc.entities[i];
-
-		const BinEntityDesc &e = be.entity;
-		pe.entity = {
-			.id = e.id,
-			.name = e.name,
-			.pos = e.pos,
-			.scale = e.scale,
-			.materialId = e.materialId,
-			.geometryType = e.geometryType,
-			.spriteId = e.spriteId,
-			.layerId = e.layerId,
-		};
-
-		pe.scriptCount = Min(be.scriptCount, (u32)ARRAY_COUNT(pe.scripts));
-		for (u32 s = 0; s < pe.scriptCount; ++s)
-		{
-			const BinPrefabScriptDesc &bs = be.scripts[s];
-			ScriptDesc &sd = pe.scripts[s];
-			sd = {};
-			sd.name = bs.name;
-			sd.propertyCount = Min(bs.propertyCount, (u32)ARRAY_COUNT(sd.properties));
-			for (u32 p = 0; p < sd.propertyCount; ++p)
-			{
-				const BinScriptPropertyDesc &bp = bs.properties[p];
-				sd.properties[p].name = bp.name;
-				sd.properties[p].value.type = bp.type;
-				sd.properties[p].value.uValue = bp.value;
-			}
-		}
+		prefabDesc.entities[i] = EntityDescFromBin(desc.entities[i]);
 	}
 
 	return CreatePrefab(engine, prefabDesc);
@@ -484,22 +474,13 @@ ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition)
 	ID firstEntityId = {};
 	for (u32 i = 0; i < prefab.entityCount; ++i)
 	{
-		const PrefabEntityDesc &prefabEntity = prefab.entities[i];
-
-		EntityDesc entityDesc = prefabEntity.entity;
+		EntityDesc entityDesc = prefab.entities[i];
 		entityDesc.id = {}; // Each instance is a new entity, not the template's own
 		entityDesc.pos = entityDesc.pos + atPosition;
 
 		const ID entityId = CreateEntity(engine, entityDesc);
 		if (i == 0) {
 			firstEntityId = entityId;
-		}
-
-		for (u32 s = 0; s < prefabEntity.scriptCount; ++s)
-		{
-			ScriptDesc scriptDesc = prefabEntity.scripts[s];
-			scriptDesc.entity = entityId;
-			CreateScriptInstance(engine.game, scriptDesc);
 		}
 	}
 	return firstEntityId;

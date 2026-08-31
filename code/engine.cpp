@@ -209,56 +209,13 @@ static u32 CountEntityScripts(const Game &game, ID entity)
 	return count;
 }
 
-static ScriptDesc *GatherScriptDescs(Game &game, Arena &arena, u32 &scriptDescCount)
-{
-	ScriptDesc *scriptDescs = (ScriptDesc*)(arena.base + arena.used);
-	scriptDescCount = 0;
-
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		const ScriptInstance &scriptInstance = game.scriptInstances[i];
-
-		if ( !scriptInstance.entity ) {
-			continue; // Marked for removal, so it is no longer part of the scene
-		}
-
-		scriptDescCount++;
-		ScriptDesc &scriptDesc = *PushZeroStruct(arena, ScriptDesc);
-		scriptDesc.entity = scriptInstance.entity;
-		scriptDesc.name = scriptInstance.scriptName; // Interned, so it outlives the script going away
-
-		if ( scriptInstance.structIndex < scriptRegistry.scriptCount )
-		{
-			const ReflexStruct *type = scriptRegistry.scripts[scriptInstance.structIndex].type;
-			for (u32 p = 0; p < type->memberCount; ++p)
-			{
-				const ReflexMember &member = type->members[p];
-				if ( !IsStorableProperty(member) ) {
-					continue; // Not storable, already reported at registration time
-				}
-				if ( scriptDesc.propertyCount == MAX_SCRIPT_PROPERTIES ) {
-					LOG(Warning, "Script <%s> has more than %u properties, the rest are dropped.\n", scriptDesc.name, MAX_SCRIPT_PROPERTIES);
-					break;
-				}
-				ScriptPropertyDesc &propertyDesc = scriptDesc.properties[scriptDesc.propertyCount++];
-				propertyDesc.name = member.name;
-				propertyDesc.value = GetPropertyValue(member, game.scriptInstanceData + scriptInstance.offset);
-			}
-		}
-	}
-
-	return scriptDescs;
-}
-
 static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
 {
 	return game.scriptInstanceData + instance.offset;
 }
 
-// Snapshots up to maxScripts of entityId's live script instances into outScripts, each
-// left with .entity = entityId (callers retarget it when copying onto another entity).
-// Same value walk as GatherScriptDescs, scoped to one entity and needing no arena since
-// MAX_ENTITY_SCRIPTS bounds the result.
+// Snapshots up to maxScripts of entityId's live script instances into outScripts. Needs
+// no arena since MAX_ENTITY_SCRIPTS bounds the result.
 static u32 GatherEntityScriptDescs(Game &game, ID entityId, ScriptDesc *outScripts, u32 maxScripts)
 {
 	u32 count = 0;
@@ -272,7 +229,6 @@ static u32 GatherEntityScriptDescs(Game &game, ID entityId, ScriptDesc *outScrip
 
 		ScriptDesc &scriptDesc = outScripts[count++];
 		scriptDesc = {};
-		scriptDesc.entity = entityId;
 		scriptDesc.name = instance.scriptName;
 
 		const ReflexStruct *type = scriptRegistry.scripts[instance.structIndex].type;
@@ -363,14 +319,14 @@ static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const 
 	return &instance;
 }
 
-static void CreateScriptInstance(Game &game, const ScriptDesc &desc)
+static void CreateScriptInstance(Game &game, ID entityId, const ScriptDesc &desc)
 {
-	if ( !desc.entity ) {
-		LOG(Warning, "Script <%s> refers to entity ID %u, which does not exist.\n", desc.name, desc.entity.slot);
+	if ( !entityId ) {
+		LOG(Warning, "Script <%s> refers to entity ID %u, which does not exist.\n", desc.name, entityId.slot);
 		return;
 	}
 
-	ScriptInstance *instance = CreateScriptInstance(game, desc.entity, desc.name);
+	ScriptInstance *instance = CreateScriptInstance(game, entityId, desc.name);
 	if ( !instance ) {
 		return; // CreateScriptInstance already logged why
 	}
@@ -400,33 +356,6 @@ static void CreateScriptInstance(Game &game, const ScriptDesc &desc)
 			SetPropertyValue(*member, instanceData, propertyDesc.value);
 		}
 	}
-}
-
-static void CreateScriptInstance(Game &game, const BinScript &binScript)
-{
-	const BinScriptDesc &binDesc = *binScript.desc;
-
-	ScriptDesc desc = {};
-	desc.entity = binDesc.entity;
-	desc.name = binDesc.name;
-	desc.propertyCount = binDesc.properties.size / sizeof(BinScriptPropertyDesc);
-
-	if ( desc.propertyCount > MAX_SCRIPT_PROPERTIES ) {
-		LOG(Warning, "Script <%s> carries %u properties, only %u fit.\n", desc.name, desc.propertyCount, MAX_SCRIPT_PROPERTIES);
-		desc.propertyCount = MAX_SCRIPT_PROPERTIES;
-	}
-
-	for (u32 i = 0; i < desc.propertyCount; ++i)
-	{
-		const BinScriptPropertyDesc &binProperty = binScript.properties[i];
-
-		ScriptPropertyDesc &propertyDesc = desc.properties[i];
-		propertyDesc.name = binProperty.name;
-		propertyDesc.value.type = binProperty.type;
-		propertyDesc.value.uValue = binProperty.value;
-	}
-
-	CreateScriptInstance(game, desc);
 }
 
 static void RemoveScript(Game &game, u32 scriptInstanceIndex)
@@ -604,7 +533,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		const Entity &entity = engine.scene.entities[i];
 		if ( !entity.id ) { continue; }
 		EntityDesc &desc = entityDescs[entityCount++];
-		desc = GetEntityDesc(entity.id);
+		desc = GetEntityDesc(engine, entity.id);
 	}
 
 	static PrefabDesc prefabDescs[MAX_PREFABS];
@@ -620,9 +549,6 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 			desc.entities[e] = prefab.entities[e];
 		}
 	}
-
-	u32 scriptCount = 0;
-	ScriptDesc *scriptDescs = GatherScriptDescs(engine.game, arena, scriptCount);
 
 	static RoomDesc roomDescs[MAX_ROOMS];
 	u32 roomCount = 0;
@@ -726,8 +652,6 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		.audioClipDescCount = audioClipCount,
 		.musicFileDescs = musicFileDescs,
 		.musicFileDescCount = musicFileCount,
-		.scriptDescs = scriptDescs,
-		.scriptDescCount = scriptCount,
 	};
 
 	return assetDescs;
@@ -815,12 +739,6 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 			CreateMusicFile(engine.audio, assetDescriptors.musicFileDescs[i]);
 		}
 
-		// Scripts
-		for (u32 i = 0; i < assetDescriptors.scriptDescCount; ++i)
-		{
-			CreateScriptInstance(engine.game, assetDescriptors.scriptDescs[i]);
-		}
-
 		UploadMaterialData(engine.gfx);
 	}
 }
@@ -898,12 +816,6 @@ void LoadSceneFromBin(Engine &engine)
 		for (u32 i = 0; i < engine.assets.header.musicFileCount; ++i)
 		{
 			CreateMusicFile(engine.audio, engine.assets.musicFiles[i]);
-		}
-
-		// Scripts (last: a script property can refer to any other asset kind by ID)
-		for (u32 i = 0; i < engine.assets.header.scriptCount; ++i)
-		{
-			CreateScriptInstance(engine.game, engine.assets.scripts[i]);
 		}
 
 		UploadMaterialData(engine.gfx);

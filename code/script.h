@@ -2,7 +2,7 @@
 #define SCRIPT_H
 
 constexpr u32 MAX_SCRIPTS = 64;
-constexpr u32 MAX_SCRIPT_PROPERTIES = 32;
+constexpr u32 MAX_SCRIPT_PROPERTIES = 16;
 constexpr u32 MAX_ENTITY_SCRIPTS = 4;
 
 // Structs tagged ILU_STRUCT(Script) are the ones that can be registered as scripts
@@ -30,7 +30,6 @@ struct ScriptPropertyDesc
 
 struct ScriptDesc
 {
-	ID entity; // Owner entity
 	const char *name;
 	u32 propertyCount;
 	ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES];
@@ -75,15 +74,9 @@ struct BinScriptPropertyDesc
 
 struct BinScriptDesc
 {
-	ID entity;
 	const char *name;
-	BinLocation properties;
-};
-
-struct BinScript
-{
-	BinScriptDesc *desc;
-	BinScriptPropertyDesc *properties;
+	u32 propertyCount;
+	BinScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES];
 };
 
 #pragma pack(pop)

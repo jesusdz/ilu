@@ -191,6 +191,18 @@ Entity player = {
  .pos = {20.608994, 5.000000, 0.000000},
  .scale = 1.000000,
  .layerId = 1022,
+ .scripts = {
+  ScriptPlayerController = {
+   .properties = {
+    {"sprPlayerIdle", IDSprite, 1032},
+    {"sprPlayerRun", IDSprite, 1024},
+    {"sprPlayerJump", IDSprite, 1037},
+    {"sprPlayerFall", IDSprite, 1036},
+    {"sndJump", IDSoundClip, 0},
+    {"randomProperty", u32, 0},
+   },
+  },
+ },
 };
 
 
@@ -284,19 +296,3 @@ Room Room = {
 
 
 // Music files /////////////////////////////////////////////////////////
-
-
-// Scripts /////////////////////////////////////////////////////////////
-
-Script ScriptPlayerController = {
- .entity = 1027,
- .properties = {
-  {"sprPlayerIdle", IDSprite, 1032},
-  {"sprPlayerRun", IDSprite, 1024},
-  {"sprPlayerJump", IDSprite, 1037},
-  {"sprPlayerFall", IDSprite, 1036},
-  {"sndJump", IDSoundClip, 0},
-  {"randomProperty", u32, 0},
- },
-};
-

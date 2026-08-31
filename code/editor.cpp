@@ -635,21 +635,13 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 	{
 		if (type == EditorSelectedType_Entity && UI_MenuItem(ui, "Create prefab"))
 		{
-			EntityDesc entityDesc = GetEntityDesc(assetId);
+			EntityDesc entityDesc = GetEntityDesc(engine, assetId);
 			entityDesc.id = {}; // The prefab holds a template, not this entity's own identity
-
-			PrefabEntityDesc prefabEntityDesc = {};
-			prefabEntityDesc.entity = entityDesc;
-			prefabEntityDesc.scriptCount = GatherEntityScriptDescs(
-					engine.game, assetId, prefabEntityDesc.scripts, MAX_ENTITY_SCRIPTS);
-			for (u32 i = 0; i < prefabEntityDesc.scriptCount; ++i) {
-				prefabEntityDesc.scripts[i].entity = {}; // Template holds no entity until instantiated
-			}
 
 			PrefabDesc prefabDesc = {};
 			prefabDesc.name = entityDesc.name;
 			prefabDesc.entityCount = 1;
-			prefabDesc.entities[0] = prefabEntityDesc;
+			prefabDesc.entities[0] = entityDesc;
 
 			CreatePrefab(engine, prefabDesc);
 		}
