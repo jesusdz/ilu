@@ -325,8 +325,7 @@ static bool InitializeAudioDevice(Platform &platform)
 			{
 				LOG(Info, "- AAudioStream is playing...\n");
 				audioStream = stream;
-				audio.initialized = true;
-				audio.isPlaying = true;
+				audio.state = AudioStatePlaying;
 			}
 			else
 			{
@@ -345,7 +344,7 @@ static bool InitializeAudioDevice(Platform &platform)
 		LOG(Error, "- Error creating an AAudioStreamBuilder\n");
 	}
 
-	return audio.initialized;
+	return audio.state != AudioStateUninitialized;
 }
 
 static void WaitForAudioDevice(Platform &platform)

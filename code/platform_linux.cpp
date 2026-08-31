@@ -1005,9 +1005,7 @@ static bool InitializeAudioDevice(Platform &platform)
 					(unsigned long)actualPeriodFrames, (unsigned long)actualBufferFrames);
 
 				LOG(Info, "- PCM is playing...\n");
-				audio.initialized = true;
-				audio.isPlaying = true;
-				audio.soundIsValid = false;
+				audio.state = AudioStatePlaying;
 			}
 			else
 			{
@@ -1027,7 +1025,7 @@ static bool InitializeAudioDevice(Platform &platform)
 		LOG(Error, "- Error loading libasound.so\n");
 	}
 
-	return audio.initialized;
+	return audio.state != AudioStateUninitialized;
 }
 
 // Blocks until the device has at least one period of free space (or timeout)

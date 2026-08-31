@@ -616,17 +616,16 @@ static LRESULT CALLBACK Win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
 
 				if (param == SC_MINIMIZE)
 				{
-					if ( audio.initialized && audio.isPlaying ) {
+					if ( audio.state >= AudioStatePlaying ) {
+						audio.state = AudioStateStopped;
 						audioBuffer->Stop();
-						audio.isPlaying = false;
 					}
 				}
 				else if (param == SC_RESTORE)
 				{
-					if ( audio.initialized && !audio.isPlaying ) {
+					if ( audio.state == AudioStateStopped ) {
 						audioBuffer->Play(0, 0, DSBPLAY_LOOPING);
-						audio.isPlaying = true;
-						platform.audio.soundIsValid = false;
+						audio.state = AudioStateResync;
 					}
 				}
 
@@ -1030,7 +1029,7 @@ static void UpdateGamepad(Platform &platform)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audio
 
-static void Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD writeSize, const i16 *audioSamples)
+static bool Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD writeSize, const i16 *audioSamples)
 {
 	ASSERT(writeSize <= audio.bufferSize);
 
@@ -1047,8 +1046,7 @@ static void Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD wr
 		if (SUCCEEDED(audioBuffer->Restore())) {
 			audioBuffer->Play(0, 0, DSBPLAY_LOOPING);
 		}
-		audio.soundIsValid = false;
-		return;
+		return false;
 	}
 
 	if (lockRes == DS_OK)
@@ -1078,8 +1076,10 @@ static void Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD wr
 	else
 	{
 		LOG(Warning, "Failed to Lock sound buffer (hr=0x%08x).\n", (u32)lockRes);
-		audio.soundIsValid = false;
+		return false;
 	}
+
+	return true;
 }
 
 static bool InitializeAudioDevice(Platform &platform)
@@ -1145,9 +1145,7 @@ static bool InitializeAudioDevice(Platform &platform)
 							if (SUCCEEDED(audioBuffer->Play(0, 0, DSBPLAY_LOOPING)))
 							{
 								LOG(Info, "- Secondary buffer is playing...\n");
-								audio.initialized = true;
-								audio.isPlaying = true;
-								audio.soundIsValid = false;
+								audio.state = AudioStateResync;
 							}
 							else
 							{
@@ -1184,7 +1182,7 @@ static bool InitializeAudioDevice(Platform &platform)
 		LOG(Error, "- Error loading dsound.dll\n");
 	}
 
-	return audio.initialized;
+	return audio.state != AudioStateUninitialized;
 }
 
 // DirectSound exposes no readiness primitive to block on, so this backend is still paced by a
@@ -1206,10 +1204,10 @@ static void UpdateAudioDevice(Platform &platform)
 		const u32 frameSize = audio.bytesPerSample * audio.channelCount;
 
 		// Audio just started playing, or we lost track of where the device is
-		if (!audio.soundIsValid) {
+		if (audio.state == AudioStateResync) {
 			// Rounded up so the resynced index never lands before the write cursor.
 			audio.runningSampleIndex = (writeCursor + frameSize - 1) / frameSize;
-			audio.soundIsValid = true;
+			audio.state = AudioStatePlaying;
 		}
 
 		// The multiply is done in 64 bits: runningSampleIndex * frameSize overflows a u32 after
@@ -1221,7 +1219,7 @@ static void UpdateAudioDevice(Platform &platform)
 		const DWORD writeAheadBytes = (byteToLock + audio.bufferSize - writeCursor) % audio.bufferSize;
 		if (writeAheadBytes > audio.bufferSize / 2) {
 			LOG(Warning, "Audio write position fell behind the device. Resyncing.\n");
-			audio.soundIsValid = false;
+			audio.state = AudioStateResync;
 			return;
 		}
 
@@ -1271,7 +1269,9 @@ static void UpdateAudioDevice(Platform &platform)
 		soundBuffer.samples = audio.outputSamples;
 		platform.OnPlatformRenderAudio(platform.pub, soundBuffer);
 
-		Win32FillAudioBuffer(audio, byteToLock, bytesToWrite, soundBuffer.samples);
+		if ( !Win32FillAudioBuffer(audio, byteToLock, bytesToWrite, soundBuffer.samples) ) {
+			audio.state = AudioStateResync;
+		}
 	}
 	else
 	{
