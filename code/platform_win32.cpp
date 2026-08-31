@@ -1039,7 +1039,19 @@ static void Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD wr
 	void *region2;
 	DWORD region2Size;
 
-	if (audioBuffer->Lock(writeOffset, writeSize, &region1, &region1Size, &region2, &region2Size, 0) == DS_OK)
+	const HRESULT lockRes = audioBuffer->Lock(writeOffset, writeSize, &region1, &region1Size, &region2, &region2Size, 0);
+
+	if (lockRes == DSERR_BUFFERLOST)
+	{
+		LOG(Warning, "Sound buffer lost. Restoring...\n");
+		if (SUCCEEDED(audioBuffer->Restore())) {
+			audioBuffer->Play(0, 0, DSBPLAY_LOOPING);
+		}
+		audio.soundIsValid = false;
+		return;
+	}
+
+	if (lockRes == DS_OK)
 	{
 		const i16 *srcSample = audioSamples;
 
@@ -1065,7 +1077,7 @@ static void Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD wr
 	}
 	else
 	{
-		LOG(Warning, "Failed to Lock sound buffer.\n");
+		LOG(Warning, "Failed to Lock sound buffer (hr=0x%08x).\n", (u32)lockRes);
 		audio.soundIsValid = false;
 	}
 }
@@ -1114,9 +1126,10 @@ static bool InitializeAudioDevice(Platform &platform)
 						// After setting the primary buffer format, we create the secondary buffer where we will be actually writing to
 						DSBUFFERDESC secondaryBufferDesc = {};
 						secondaryBufferDesc.dwSize = sizeof(secondaryBufferDesc);
-						// TODO(jesus): Set the DSBCAPS_GETCURRENTPOSITION2 flag?
-						// TODO(jesus): Set the DSBCAPS_GLOBALFOCUS flag?
-						secondaryBufferDesc.dwFlags = 0;
+						// GETCURRENTPOSITION2: on emulated/WDM paths the write cursor returned by GetCurrentPosition is only accurate with this flag,
+						// and the target cursor computed in UpdateAudioDevice is built on it.
+						// GLOBALFOCUS: keep playing, and stay less prone to invalidation, while the window does not have the focus.
+						secondaryBufferDesc.dwFlags = DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_GLOBALFOCUS;
 						secondaryBufferDesc.dwBufferBytes = audio.bufferSize;
 						secondaryBufferDesc.lpwfxFormat = &waveFormat;
 						LPDIRECTSOUNDBUFFER secondaryBuffer;
@@ -1190,13 +1203,27 @@ static void UpdateAudioDevice(Platform &platform)
 	DWORD writeCursor;
 	if (audioBuffer->GetCurrentPosition(&playCursor, &writeCursor) == DS_OK)
 	{
-		// Audio just started playing
+		const u32 frameSize = audio.bytesPerSample * audio.channelCount;
+
+		// Audio just started playing, or we lost track of where the device is
 		if (!audio.soundIsValid) {
-			audio.runningSampleIndex = writeCursor / (audio.bytesPerSample * audio.channelCount);
+			// Rounded up so the resynced index never lands before the write cursor.
+			audio.runningSampleIndex = (writeCursor + frameSize - 1) / frameSize;
 			audio.soundIsValid = true;
 		}
 
-		const DWORD byteToLock = (audio.runningSampleIndex * audio.bytesPerSample * audio.channelCount) % audio.bufferSize;
+		// The multiply is done in 64 bits: runningSampleIndex * frameSize overflows a u32 after
+		// roughly six hours of playback, which would make the write position jump.
+		const DWORD byteToLock = (DWORD)(((u64)audio.runningSampleIndex * frameSize) % audio.bufferSize);
+
+		// If the byteToLock is more than half buffer size away from the write cursor, this means we
+		// fell behind (some kind of stall, long frame, etc) so we resync instead of rendering audio.
+		const DWORD writeAheadBytes = (byteToLock + audio.bufferSize - writeCursor) % audio.bufferSize;
+		if (writeAheadBytes > audio.bufferSize / 2) {
+			LOG(Warning, "Audio write position fell behind the device. Resyncing.\n");
+			audio.soundIsValid = false;
+			return;
+		}
 
 		// Bytes of audio the device consumes during one write-ahead window.
 		const DWORD bytesPerSecond = audio.samplesPerSecond * audio.channelCount * audio.bytesPerSample;
