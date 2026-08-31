@@ -692,7 +692,7 @@ static void EditorUpdateUI_Outliner()
 	Audio &audio = engine.audio;
 	Game &game = engine.game;
 
-	constexpr uint2 size = {200, 500};
+	constexpr uint2 size = {250, 500};
 	UI_SetNextWindowDefaultSize(ui, size);
 	UI_SetNextWindowAnchor(ui, {0,0});
 	UI_SetNextWindowDefaultDisplacement(ui, {10, 50});
@@ -1364,7 +1364,7 @@ static void EditorUpdateUI_Inspector()
 	EditorInspector &inspector = editor.inspector;
 	EditorContext &context = editor.context;
 
-	constexpr uint2 size = {200, 500};
+	constexpr uint2 size = {250, 500};
 	constexpr float2 displacement = {-10, 50};
 	UI_SetNextWindowDefaultSize(ui, size);
 	UI_SetNextWindowDefaultDisplacement(ui, displacement);
