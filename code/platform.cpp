@@ -7,6 +7,14 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Platform types
 
+enum AudioState : u32
+{
+	AudioStateUninitialized,
+	AudioStateStopped,
+	AudioStatePlaying,
+	AudioStateResync,
+};
+
 struct AudioDevice
 {
 	// Config
@@ -24,9 +32,7 @@ struct AudioDevice
 	u32 runningSampleIndex;
 	u32 bufferSize;
 
-	bool initialized;
-	bool isPlaying;
-	bool soundIsValid;
+	volatile_u32 state;
 
 	i16 *outputSamples;
 };
@@ -484,7 +490,7 @@ static bool InitializeAudio(Platform &platform)
 
 	InitializeAudioDevice(platform);
 
-	return audio.initialized;
+	return audio.state != AudioStateUninitialized;
 }
 
 #if USE_AUDIO_THREAD
@@ -494,7 +500,7 @@ static THREAD_FUNCTION(AudioThread) // void *WorkQueueThread(void* arguments)
 
 	while ( platform.keepRunning )
 	{
-		if ( platform.audio.isPlaying )
+		if ( platform.audio.state >= AudioStatePlaying )
 		{
 			UpdateAudio(platform);
 
@@ -521,7 +527,7 @@ static THREAD_FUNCTION(AudioThread) // void *WorkQueueThread(void* arguments)
 
 static bool InitializeAudioThread(AudioDevice &audio)
 {
-	if ( audio.initialized )
+	if ( audio.state != AudioStateUninitialized )
 	{
 		if ( !CreateSemaphore( platform.audioThreadFinishSemaphore, 0, 1 ) )
 		{
@@ -538,11 +544,11 @@ static bool InitializeAudioThread(AudioDevice &audio)
 		};
 		if ( !CreateDetachedThread(AudioThread, threadInfo) )
 		{
-			audio.initialized = false;
+			audio.state = AudioStateUninitialized;
 		}
 	}
 
-	return audio.initialized;
+	return audio.state != AudioStateUninitialized;
 }
 #endif // USE_AUDIO_THREAD
 
@@ -1229,7 +1235,7 @@ static bool Run(Platform &platform)
 #endif // !USE_UPDATE_THREAD
 
 #if !USE_AUDIO_THREAD
-		if ( platform.audio.isPlaying )
+		if ( platform.audio.state >= AudioStatePlaying )
 		{
 			UpdateAudio(platform);
 		}
