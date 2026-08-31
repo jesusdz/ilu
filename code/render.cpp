@@ -466,6 +466,45 @@ bool RenderGraphics(Engine &engine)
 	const u32 selectedEntityDrawId = selectedEntity
 		? EntityDrawId(scene, selectedEntity) : 0xFFFFFFFF;
 
+	// Gather visible lights
+	const uint2 sceneSize = GetFramebufferSize(gfx.renderTargets.sceneFramebuffer);
+	const uint2 lightGridSize = {
+		(sceneSize.x + LIGHT_TILE_SIZE - 1) / LIGHT_TILE_SIZE,
+		(sceneSize.y + LIGHT_TILE_SIZE - 1) / LIGHT_TILE_SIZE,
+	};
+	ASSERT( lightGridSize.x * lightGridSize.y <= MAX_LIGHT_GRID_CELLS );
+
+	const bool cullLights = camera.projectionType == ProjectionOrthographic;
+
+	SLight lightData[MAX_VISIBLE_LIGHTS];
+	u32 lightCount = 0;
+	for (u32 i = 0; i < scene.entityCount && lightCount < MAX_VISIBLE_LIGHTS; ++i)
+	{
+		const Entity &entity = scene.entities[i];
+
+		if ( !entity.visible ) continue;
+		if ( !HasComponents(scene, entity.id, Component_Light) ) continue;
+
+		const LightComponent &light = GetLight(scene, entity.id);
+
+		if ( cullLights )
+		{
+			const float2 lightMin = { entity.position.x - light.radius, entity.position.y - light.radius };
+			const float2 lightMax = { entity.position.x + light.radius, entity.position.y + light.radius };
+			if ( !Intersects(lightMin, lightMax, cameraMinMaxRect.xy, cameraMinMaxRect.zw) ) {
+				continue;
+			}
+		}
+
+		lightData[lightCount].positionWs = entity.position;
+		lightData[lightCount].radius = Max(light.radius, 0.0001f);
+		lightData[lightCount].color = light.color;
+		lightData[lightCount].intensity = light.intensity;
+		lightCount++;
+	}
+
+	MemCopy(GetBufferPtr(gfx.device, gfx.lightBuffer[frameIndex]), lightData, lightCount * sizeof(SLight));
+
 	// Update globals struct
 	const Globals globals = {
 		.cameraView = viewMatrix,
@@ -479,10 +518,14 @@ bool RenderGraphics(Engine &engine)
 		.sunProj = sunProjMatrix,
 		.sunDir = Float4(sunDir, 0.0f),
 		.eyePosition = Float4(camera.position, 1.0f),
+		.ambientLight = Float4(scene.ambientLight, 1.0f),
 		.shadowmapDepthBias = 0.005,
 		.time = totalSeconds,
+		.lightGridSize = lightGridSize,
 		.sceneResolution = GetFramebufferSize(gfx.renderTargets.sceneFramebuffer),
 		.mousePosition = window.mouse.pos,
+		.lightCount = lightCount,
+		.projectionType = (uint)camera.projectionType,
 #if USE_EDITOR
 		.selectedEntity = selectedEntityDrawId,
 #endif
@@ -753,6 +796,34 @@ bool RenderGraphics(Engine &engine)
 	const Format depthFormat = gfx.device.defaultDepthFormat;
 	const ImageH shadowmapImage = gfx.renderTargets.shadowmapImage;
 	TransitionImageLayout(commandList, shadowmapImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
+
+	// Light binning
+	{
+		PROFILE_GFX_BLOCK(commandList, LightBinning);
+
+		BeginDebugGroup(commandList, "Light binning", ColorBlack);
+
+		const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_LightBinning]);
+
+		SetPipeline(commandList, gfx.pipelines[Pipeline_LightBinning]);
+		SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+
+		const BindGroupDesc bindGroupDesc = {
+			.layout = pipeline.layout.bindGroupLayouts[3],
+			.bindings = {
+				{ .index = 0, .buffer = gfx.lightGridBuffer[frameIndex] },
+			},
+		};
+		const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);
+
+		SetBindGroup(commandList, 3, bindGroup);
+
+		Dispatch(commandList, (lightGridSize.x + 7) / 8, (lightGridSize.y + 7) / 8, 1);
+
+		TransitionBufferState(commandList, gfx.lightGridBuffer[frameIndex], BufferStateComputeWrite, BufferStateFragmentRead);
+
+		EndDebugGroup(commandList);
+	}
 
 	// Scene
 	{

@@ -109,6 +109,10 @@ constexpr const char *ProjectionTypeStr[] = {
 };
 CT_ASSERT(ARRAY_COUNT(ProjectionTypeStr) == ProjectionTypeCount);
 
+// The light culling shader branches on globals.projectionType
+CT_ASSERT(ProjectionPerspective == PROJECTION_PERSPECTIVE);
+CT_ASSERT(ProjectionOrthographic == PROJECTION_ORTHOGRAPHIC);
+
 inline const char *ProjectionTypeToStr(ProjectionType type)
 {
 	if ( type < ProjectionTypeCount ) {
@@ -160,6 +164,7 @@ enum PipelineIndex
 	Pipeline_DebugDraw,
 	Pipeline_Fog,
 	Pipeline_ComputeSelect,
+	Pipeline_LightBinning,
 	Pipeline_Count,
 };
 
@@ -236,6 +241,8 @@ struct Graphics
 
 	BufferH spriteDataBuffer[MAX_FRAMES_IN_FLIGHT];
 	BufferH tileDataBuffer[MAX_FRAMES_IN_FLIGHT];
+	BufferH lightBuffer[MAX_FRAMES_IN_FLIGHT];
+	BufferH lightGridBuffer[MAX_FRAMES_IN_FLIGHT];
 
 	SamplerH pointSamplerH;
 	SamplerH linearSamplerH;

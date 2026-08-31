@@ -583,6 +583,7 @@ struct CommandList
 
 	const GraphicsDevice *device;
 	PipelineH pipeline;
+	VkPipelineBindPoint bindPoint;
 
 	// State
 	union
@@ -4515,6 +4516,17 @@ void SetPipeline(CommandList &commandList, PipelineH pipelineH)
 	{
 		commandList.pipeline = pipelineH;
 		const Pipeline &pipeline = GetPipeline(GetDevice(commandList), pipelineH);
+
+		// Descriptor sets are bound per bind point, but the handles cached here are not. A
+		// graphics pass following a dispatch would ask for the same set it just used, see no
+		// change, and never bind it for graphics. Forget them so the next SetBindGroup binds.
+		if ( commandList.bindPoint != pipeline.bindPoint )
+		{
+			commandList.bindPoint = pipeline.bindPoint;
+			MemSet(commandList.descriptorSetHandles, sizeof(commandList.descriptorSetHandles), 0);
+			commandList.descriptorSetDirtyMask = 0;
+		}
+
 		vkCmdBindPipeline( commandList.handle, pipeline.bindPoint, pipeline.handle );
 	}
 }

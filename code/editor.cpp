@@ -1317,6 +1317,21 @@ static void EditorUpdateUI_InspectorScene(Scene &scene)
 	UI_Text(ui, "Sprites", "%u", scene.spriteCount);
 
 	UI_Combo(ui, "Projection", (const char **)ProjectionTypeStr, ProjectionTypeCount, (u32*)&scene.projectionType);
+
+	static float4 ambientToEdit = {};
+	static bool ambientPickerOpen = false;
+
+	if ( UI_ColorButton(ui, "Ambient", Float4(scene.ambientLight, 1.0f)) )
+	{
+		ambientToEdit = Float4(scene.ambientLight, 1.0f);
+		ambientPickerOpen = true;
+	}
+
+	if ( ambientPickerOpen )
+	{
+		UI_ColorPicker(ui, &ambientToEdit, &ambientPickerOpen);
+		scene.ambientLight = ambientToEdit.xyz;
+	}
 }
 
 static void EditorUpdateUI_InspectorRoom(Room &room)

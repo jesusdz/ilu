@@ -1,5 +1,6 @@
 #include "defines.hlsl"
 #include "globals.hlsl"
+#include "lighting.hlsl"
 
 Texture2D<float4> spriteTexture : REGISTER_T(2, 0);
 
@@ -15,6 +16,7 @@ struct Interpolators
 	float4 position : SV_Position;
 	float2 texCoord : TEXCOORD0;
 	float depth : POSITION0;
+	float3 positionWs : POSITION1;
 #if USE_ENTITY_SELECTION
 	nointerpolation bool isSelected : POSITION2;
 #endif
@@ -65,6 +67,7 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 	OUT.position = mul(globals.cameraProj, mul(globals.cameraView, posWs));
 	OUT.texCoord = sprite.uvOffset + texCoord * sprite.uvSize;
 	OUT.depth = posWs.z;
+	OUT.positionWs = posWs.xyz;
 
 	return OUT;
 }
@@ -75,6 +78,9 @@ float4 PSMain(PixelInput IN) : SV_Target
 
 	if (albedo.a == 0.0)
 		discard;
+
+	const float3 lighting = globals.ambientLight.rgb + AccumulateLights2D(IN.positionWs, IN.position);
+	albedo.rgb *= lighting;
 
 #if USE_ENTITY_SELECTION
 	if (IN.isSelected)

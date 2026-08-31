@@ -120,6 +120,7 @@ static ShaderSourceDesc shaderSourceDescs[] = {
 	{ .type = ShaderTypeVertex,   .filename = "id_sprite.hlsl",      .entryPoint = "VSMain",      .name = "vs_id_sprite" },
 	{ .type = ShaderTypeFragment, .filename = "id_sprite.hlsl",      .entryPoint = "PSMain",      .name = "fs_id_sprite" },
 	{ .type = ShaderTypeCompute,  .filename = "compute_select.hlsl", .entryPoint = "CSMain",      .name = "compute_select" },
+	{ .type = ShaderTypeCompute,  .filename = "light_binning.hlsl",  .entryPoint = "CSMain",      .name = "light_binning" },
 	{ .type = ShaderTypeCompute,  .filename = "compute.hlsl",        .entryPoint = "main_clear",  .name = "compute_clear" },
 	{ .type = ShaderTypeCompute,  .filename = "compute.hlsl",        .entryPoint = "main_update", .name = "compute_update" },
 	{ .type = ShaderTypeVertex,   .filename = "debug_draw.hlsl",     .entryPoint = "VSMain",      .name = "vs_debug_draw" },
@@ -1319,6 +1320,14 @@ static const ShaderAndComputeDesc computeDescs[] =
 			.function = "CSMain"
 		},
 	},
+	{
+		.csName = "light_binning",
+		.index = Pipeline_LightBinning,
+		.desc = {
+			.name = "light_binning",
+			.function = "CSMain"
+		},
+	},
 };
 
 PipelineIndex FindPipelineIndex(const char *name)
@@ -1596,6 +1605,28 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			HeapType_Dynamic);
 	}
 
+	// Create light buffers
+	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		const u32 lightBufferSize = MAX_VISIBLE_LIGHTS * sizeof(SLight);
+		gfx.lightBuffer[i] = CreateBuffer(
+			gfx.device,
+			lightBufferSize,
+			BufferUsageStorageBuffer,
+			HeapType_Dynamic);
+	}
+
+	// Create light grid buffers. GPU only: the culling compute writes them, shading reads them.
+	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		const u32 lightGridBufferSize = MAX_LIGHT_GRID_CELLS * LIGHT_CELL_STRIDE;
+		gfx.lightGridBuffer[i] = CreateBuffer(
+			gfx.device,
+			lightGridBufferSize,
+			BufferUsageStorageBuffer,
+			HeapType_General);
+	}
+
 
 	// Create material buffer
 	const u32 materialBufferSize = MAX_MATERIALS * AlignUp( sizeof(SMaterial), gfx.device.alignment.uniformBufferOffset );
@@ -1619,7 +1650,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			.name = "GlobalBindGroup",
 			.counts = {
 				.uniformBufferCount = MAX_FRAMES_IN_FLIGHT,
-				.storageBufferCount = MAX_FRAMES_IN_FLIGHT * 3,
+				.storageBufferCount = MAX_FRAMES_IN_FLIGHT * 5,
 				.textureCount = 1000,
 				.samplerCount = MAX_FRAMES_IN_FLIGHT * 5,
 				.groupCount = MAX_FRAMES_IN_FLIGHT,
@@ -1670,6 +1701,8 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		{ .set = 0, .binding = BINDING_SPRITE_DATA, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsVertexBit },
 		{ .set = 0, .binding = BINDING_TILE_DATA, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsVertexBit },
 		{ .set = 0, .binding = BINDING_NOISE2D, .type = SpvTypeImage, .stageFlags = SpvStageFlagsFragmentBit },
+		{ .set = 0, .binding = BINDING_LIGHTS, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsFragmentBit | SpvStageFlagsComputeBit },
+		{ .set = 0, .binding = BINDING_LIGHT_GRID, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsFragmentBit },
 	};
 	gfx.globalBindGroupLayout = CreateBindGroupLayout(gfx.device, globalShaderBindings, ARRAY_COUNT(globalShaderBindings));
 
@@ -1806,6 +1839,8 @@ BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameIndex)
 			{ .index = BINDING_SPRITE_DATA, .buffer = gfx.spriteDataBuffer[frameIndex] },
 			{ .index = BINDING_TILE_DATA, .buffer = gfx.tileDataBuffer[frameIndex] },
 			{ .index = BINDING_NOISE2D, .image = gfx.noiseImageH },
+			{ .index = BINDING_LIGHTS, .buffer = gfx.lightBuffer[frameIndex] },
+			{ .index = BINDING_LIGHT_GRID, .buffer = gfx.lightGridBuffer[frameIndex] },
 		},
 	};
 	return bindGroupDesc;

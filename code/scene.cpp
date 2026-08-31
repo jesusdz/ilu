@@ -392,6 +392,8 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
 		.geometryType = desc.geometryType,
 		.spriteId = desc.spriteId,
 		.layerId = desc.layerId,
+		.components = desc.components,
+		.light = desc.light,
 	};
 
 	entityDesc.scriptCount = Min(desc.scriptCount, (u32)ARRAY_COUNT(entityDesc.scripts));
@@ -896,6 +898,7 @@ void RemoveRoom(Engine &engine, ID id)
 
 void CreateScene(Engine &engine)
 {
+	engine.scene.ambientLight = Float3(1.0f);
 	CreateRoom(engine);
 }
 

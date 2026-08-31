@@ -630,6 +630,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	const SceneDesc sceneDesc = {
 		.projectionType = engine.scene.projectionType,
+		.ambientLight = engine.scene.ambientLight,
 	};
 
 	const AssetDescriptors assetDescs = {
@@ -687,6 +688,7 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 		AssetDescriptors assetDescriptors = ParseDescriptors(filepath, dataArena);
 
 		engine.scene.projectionType = assetDescriptors.sceneDesc.projectionType;
+		engine.scene.ambientLight = assetDescriptors.sceneDesc.ambientLight;
 
 		// Textures
 		for (u32 i = 0; i < assetDescriptors.textureDescCount; ++i)
@@ -766,6 +768,7 @@ void LoadSceneFromBin(Engine &engine)
 		engine.assets = OpenAssets(DataArena, filepath.str);
 
 		engine.scene.projectionType = engine.assets.scene.projectionType;
+		engine.scene.ambientLight = engine.assets.scene.ambientLight;
 
 		// Textures
 		for (u32 i = 0; i < engine.assets.header.imageCount; ++i)

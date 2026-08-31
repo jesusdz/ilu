@@ -12,6 +12,8 @@
 #define BINDING_SPRITE_DATA       6
 #define BINDING_TILE_DATA         7
 #define BINDING_NOISE2D           8
+#define BINDING_LIGHTS            9
+#define BINDING_LIGHT_GRID        10
 
 #define BINDING_MATERIAL 0
 #define BINDING_ALBEDO   1

@@ -1,5 +1,6 @@
 #include "defines.hlsl"
 #include "globals.hlsl"
+#include "lighting.hlsl"
 
 struct VertexInput
 {
@@ -112,6 +113,8 @@ float4 PSMain(PixelInput IN) : SV_Target
 	float specular = BlinnPhong(H, N) * Luminance(albedo) * sunVisibility;
 
 	float3 shadedColor = ((ambient + diffuse) * albedo + specular) * attenuationFactor;
+
+	shadedColor += albedo * AccumulateLights3D(IN.positionWs.xyz, N, IN.position);
 
 #if USE_ENTITY_SELECTION
 	if (IN.isSelected)

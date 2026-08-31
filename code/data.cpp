@@ -275,6 +275,11 @@ static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
 	if (desc.spriteId.slot != 0) {
 		WriteLine(ctx, ".layerId = %u,", desc.layerId.slot);
 	}
+	if (desc.components & Component_Light) {
+		WriteLine(ctx, ".lightColor = {%f, %f, %f},", desc.light.color.x, desc.light.color.y, desc.light.color.z);
+		WriteLine(ctx, ".lightIntensity = %f,", desc.light.intensity);
+		WriteLine(ctx, ".lightRadius = %f,", desc.light.radius);
+	}
 	WriteScriptDescs(ctx, desc.scripts, desc.scriptCount);
 }
 
@@ -297,6 +302,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 	PushIndent(ctx);
 	WriteLine(ctx, ".projectionType = \"%s\",", ProjectionTypeToStr(desc.projectionType));
+	WriteLine(ctx, ".ambientLight = {%f, %f, %f},", desc.ambientLight.x, desc.ambientLight.y, desc.ambientLight.z);
 	PopIndent(ctx);
 
 	WriteLine(ctx, "};");
@@ -1153,6 +1159,9 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	static const String sScale = MakeString("scale");
 	static const String sLayerId = MakeString("layerId");
 	static const String sGeometryType = MakeString("geometryType");
+	static const String sLightColor = MakeString("lightColor");
+	static const String sLightIntensity = MakeString("lightIntensity");
+	static const String sLightRadius = MakeString("lightRadius");
 	static const String sScripts = MakeString("scripts");
 
 	if ( StrEq( field, sId ) ) {
@@ -1171,6 +1180,15 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 		entity.layerId = DParser_ConsumeID(parser);
 	} else if ( StrEq( field, sGeometryType ) ) {
 		entity.geometryType = DParser_ConsumeGeometryType(parser);
+	} else if ( StrEq( field, sLightColor ) ) {
+		entity.components |= Component_Light;
+		entity.light.color = DParser_ConsumeFloat3(parser);
+	} else if ( StrEq( field, sLightIntensity ) ) {
+		entity.components |= Component_Light;
+		entity.light.intensity = DParser_ConsumeF32(parser);
+	} else if ( StrEq( field, sLightRadius ) ) {
+		entity.components |= Component_Light;
+		entity.light.radius = DParser_ConsumeF32(parser);
 	} else if ( StrEq( field, sScripts ) ) {
 		DParser_ConsumeEntityScripts(parser, entity);
 	} else {
@@ -1349,9 +1367,12 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
 					static const String sProjectionType = MakeString("projectionType");
+					static const String sAmbientLight = MakeString("ambientLight");
 					if ( StrEq( field, sProjectionType ) ) {
 						const char *cstr = StringToCStr( DParser_ConsumeString(parser) );
 						desc.projectionType = StrToProjectionType( cstr );
+					} else if ( StrEq( field, sAmbientLight ) ) {
+						desc.ambientLight = DParser_ConsumeFloat3(parser);
 					}
 				}
 			}
@@ -1651,6 +1672,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 {
 	AssetDescriptors descriptors = {};
+	descriptors.sceneDesc.ambientLight = Float3(1.0f); // a file without the field predates it
 	DataChunk *chunk = PushFile( arena, filepath );
 
 	if ( chunk )
@@ -1763,6 +1785,8 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 	d.scale        = desc.scale;
 	d.layerId      = desc.layerId;
 	d.geometryType = desc.geometryType;
+	d.components   = desc.components;
+	d.light        = desc.light;
 
 	ASSERT(desc.scriptCount <= ARRAY_COUNT(d.scripts));
 	d.scriptCount = desc.scriptCount;
@@ -2077,7 +2101,10 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 		// Write asset descs
 		fseek(file, sceneOffset, SEEK_SET);
-		const BinSceneDesc binSceneDesc = { .projectionType = descriptors.sceneDesc.projectionType };
+		const BinSceneDesc binSceneDesc = {
+			.projectionType = descriptors.sceneDesc.projectionType,
+			.ambientLight = descriptors.sceneDesc.ambientLight,
+		};
 		fwrite(&binSceneDesc,     sizeof(binSceneDesc),         1,              file);
 		fwrite(binShaderDescs,    sizeof(binShaderDescs[0]),    shaderCount,    file);
 		fwrite(binImageDescs,     sizeof(binImageDescs[0]),     imageCount,     file);
@@ -2195,6 +2222,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	BinSceneDesc *binSceneDesc = (BinSceneDesc*)PushDataFromFile(
 		dataArena, file, assets.header.sceneOffset, sizeof(BinSceneDesc));
 	assets.scene.projectionType = binSceneDesc->projectionType;
+	assets.scene.ambientLight = binSceneDesc->ambientLight;
 
 	// Shaders
 	BinShaderDesc *binShaderDescs = (BinShaderDesc*)PushDataFromFile(

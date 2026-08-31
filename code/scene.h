@@ -6,6 +6,7 @@ struct Engine;
 struct SceneDesc
 {
 	ProjectionType projectionType;
+	float3 ambientLight;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -227,6 +228,7 @@ constexpr u32 SCENE_HEIGHT = 180;
 struct Scene
 {
 	ProjectionType projectionType;
+	float3 ambientLight;
 
 	u32 roomCount;
 	Room rooms[MAX_ROOMS];
@@ -249,6 +251,7 @@ struct Scene
 struct BinSceneDesc
 {
 	ProjectionType projectionType;
+	float3 ambientLight;
 };
 
 struct BinSpriteDesc
@@ -276,6 +279,8 @@ struct BinEntityDesc
 	GeometryType geometryType;
 	u32 scriptCount;
 	BinScriptDesc scripts[MAX_ENTITY_SCRIPTS];
+	ComponentFlags components;
+	LightComponent light;
 };
 
 struct BinLayerDesc
