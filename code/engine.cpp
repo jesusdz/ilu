@@ -140,6 +140,13 @@ static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHoo
 		return;
 	}
 
+	const u32 instanceSize = AlignUp((u32)type->size, SCRIPT_INSTANCE_ALIGN);
+	if ( instanceSize > MAX_SCRIPT_INSTANCE_SIZE ) {
+		LOG(Warning, "RegisterScript: <%s> needs %u bytes but a script component holds %u, it is dropped.\n",
+				type->name, instanceSize, MAX_SCRIPT_INSTANCE_SIZE);
+		return;
+	}
+
 	// Every reflected member was tagged on purpose, so one the engine cannot
 	// store is a mistake worth reporting instead of silently dropping it
 	for (u32 i = 0; i < type->memberCount; ++i)
@@ -184,155 +191,100 @@ static u32 FindScriptIndex(const char *name)
 	return U32_MAX;
 }
 
-static bool HasScript(const Game &game, ID entity, const char *scriptName)
+static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &component, ScriptHookType hook)
 {
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		const ScriptInstance &instance = game.scriptInstances[i];
-		if ( instance.entity == entity && StrEq( instance.scriptName, scriptName ) )
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-static u32 CountEntityScripts(const Game &game, ID entity)
-{
-	u32 count = 0;
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		if ( game.scriptInstances[i].entity == entity ) {
-			count++;
-		}
-	}
-	return count;
-}
-
-static void *GetScriptInstanceData(Game &game, const ScriptInstance &instance)
-{
-	return game.scriptInstanceData + instance.offset;
-}
-
-// Snapshots up to maxScripts of entityId's live script instances into outScripts. Needs
-// no arena since MAX_ENTITY_SCRIPTS bounds the result.
-static u32 GatherEntityScriptDescs(Game &game, ID entityId, ScriptDesc *outScripts, u32 maxScripts)
-{
-	u32 count = 0;
-
-	for (u32 i = 0; i < game.scriptInstanceCount && count < maxScripts; ++i)
-	{
-		const ScriptInstance &instance = game.scriptInstances[i];
-		if ( instance.entity != entityId || instance.structIndex >= scriptRegistry.scriptCount ) {
-			continue;
-		}
-
-		ScriptDesc &scriptDesc = outScripts[count++];
-		scriptDesc = {};
-		scriptDesc.name = instance.scriptName;
-
-		const ReflexStruct *type = scriptRegistry.scripts[instance.structIndex].type;
-		const void *instanceData = GetScriptInstanceData(game, instance);
-		for (u32 p = 0; p < type->memberCount && scriptDesc.propertyCount < MAX_SCRIPT_PROPERTIES; ++p)
-		{
-			const ReflexMember &member = type->members[p];
-			if ( !IsStorableProperty(member) ) {
-				continue;
-			}
-			ScriptPropertyDesc &propertyDesc = scriptDesc.properties[scriptDesc.propertyCount++];
-			propertyDesc.name = member.name;
-			propertyDesc.value = GetPropertyValue(member, instanceData);
-		}
-	}
-
-	return count;
-}
-
-static void RunScriptInstanceHook(Game &game, const ScriptInstance &instance, ScriptHookType hook)
-{
-	if ( instance.structIndex >= scriptRegistry.scriptCount ) {
+	if ( component.structIndex >= scriptRegistry.scriptCount ) {
 		return;
 	}
 
-	const Script &script = scriptRegistry.scripts[instance.structIndex];
+	const Script &script = scriptRegistry.scripts[component.structIndex];
 
 	if ( ScriptHook hookFn = script.hooks[hook] )
 	{
+		Game &game = engine.game;
 		const ID prevEntity = game.currentEntity;
-		game.currentEntity = instance.entity;
+		game.currentEntity = entityId;
 
-		hookFn(GetScriptInstanceData(game, instance));
+		hookFn(component.data);
 
 		game.currentEntity = prevEntity;
 	}
 }
 
-static ScriptInstance *CreateScriptInstance(Game &game, ID ownerEntityId, const char *scriptName)
+// Attaches a script component with nothing assigned to it yet. Hooks skip it and the
+// inspector offers a drop target until SetScript points it at a script.
+static ScriptComponent *AddScript(Engine &engine, ID entityId)
 {
-	const u32 structIndex = FindScriptIndex(scriptName);
-	if ( structIndex == U32_MAX ) {
-		LOG(Warning, "CreateScriptInstance: no script named <%s> is registered.\n", scriptName);
+	Scene &scene = engine.scene;
+
+	if ( !Valid(entityId) ) {
+		LOG(Warning, "AddScript: entity ID %u does not exist.\n", entityId.slot);
 		return nullptr;
 	}
 
-	if ( game.scriptInstanceCount == MAX_SCRIPT_INSTANCES ) {
-		LOG(Warning, "CreateScriptInstance: the script instance array is full (%u).\n", MAX_SCRIPT_INSTANCES);
+	if ( HasComponents(scene, entityId, Component_Script) ) {
+		LOG(Warning, "AddScript: the entity already has a script component.\n");
 		return nullptr;
 	}
 
-	const Script &script = scriptRegistry.scripts[structIndex];
-	const u32 instanceSize = ScriptInstanceSize(script);
+	const u16 index = GetEntityIndex(scene, entityId);
+	scene.entityComponents[index] |= Component_Script;
 
-	if ( game.scriptInstanceDataUsed + instanceSize > ARRAY_COUNT(game.scriptInstanceData) ) {
-		LOG(Warning, "CreateScriptInstance: out of script instance data, <%s> needs %u more bytes.\n", scriptName, instanceSize);
-		return nullptr;
-	}
+	ScriptComponent &component = scene.entityScripts[index];
+	component = {};
+	component.structIndex = U16_MAX;
 
-	if ( HasScript(game, ownerEntityId, scriptName) ) {
-		LOG(Warning, "CreateScriptInstance: script instance <%s> already added.\n", scriptName);
-		return nullptr;
-	}
-
-	if ( CountEntityScripts(game, ownerEntityId) >= MAX_ENTITY_SCRIPTS ) {
-		LOG(Warning, "CreateScriptInstance: the entity already hosts the maximum of %u scripts.\n", MAX_ENTITY_SCRIPTS);
-		return nullptr;
-	}
-
-	const u32 dataOffset = game.scriptInstanceDataUsed;
-	game.scriptInstanceDataUsed += instanceSize;
-
-	ScriptInstance &instance = game.scriptInstances[game.scriptInstanceCount++];
-	instance = {
-		.entity = ownerEntityId,
-		.scriptName = InternString(scriptName),
-		.offset = dataOffset,
-		.size = instanceSize,
-		.structIndex = (u16)structIndex,
-	};
-
-	MemSet(GetScriptInstanceData(game, instance), instanceSize, 0);
-
-	if ( game.state == GameStateRunning ) {
-		RunScriptInstanceHook(game, instance, ScriptHook_Start);
-	}
-
-	return &instance;
+	return &component;
 }
 
-static void CreateScriptInstance(Game &game, ID entityId, const ScriptDesc &desc)
+// Points the entity's script component at scriptName, adding the component if it has none
+// and starting the instance over if it was already running something.
+static ScriptComponent *SetScript(Engine &engine, ID entityId, const char *scriptName)
 {
-	if ( !entityId ) {
-		LOG(Warning, "Script <%s> refers to entity ID %u, which does not exist.\n", desc.name, entityId.slot);
+	Scene &scene = engine.scene;
+
+	if ( !Valid(entityId) ) {
+		LOG(Warning, "SetScript: script <%s> refers to entity ID %u, which does not exist.\n", scriptName, entityId.slot);
+		return nullptr;
+	}
+
+	const u32 structIndex = FindScriptIndex(scriptName);
+	if ( structIndex == U32_MAX ) {
+		LOG(Warning, "SetScript: no script named <%s> is registered.\n", scriptName);
+		return nullptr;
+	}
+
+	if ( !HasComponents(scene, entityId, Component_Script) && !AddScript(engine, entityId) ) {
+		return nullptr;
+	}
+
+	const u16 index = GetEntityIndex(scene, entityId);
+	ScriptComponent &component = scene.entityScripts[index];
+
+	if ( engine.game.state == GameStateRunning ) {
+		RunScriptHook(engine, entityId, component, ScriptHook_Stop);
+	}
+
+	component = {};
+	component.name = InternString(scriptName);
+	component.structIndex = (u16)structIndex;
+
+	if ( engine.game.state == GameStateRunning ) {
+		RunScriptHook(engine, entityId, component, ScriptHook_Start);
+	}
+
+	return &component;
+}
+
+// Writes the saved property values over the instance data, skipping any that no longer
+// match the script's reflected members.
+static void ApplyScriptDesc(ScriptComponent &component, const ScriptDesc &desc)
+{
+	if ( component.structIndex >= scriptRegistry.scriptCount ) {
 		return;
 	}
 
-	ScriptInstance *instance = CreateScriptInstance(game, entityId, desc.name);
-	if ( !instance ) {
-		return; // CreateScriptInstance already logged why
-	}
-
-	const ReflexStruct *type = scriptRegistry.scripts[instance->structIndex].type;
-	void *instanceData = GetScriptInstanceData(game, *instance);
+	const ReflexStruct *type = scriptRegistry.scripts[component.structIndex].type;
 
 	for (u32 i = 0; i < desc.propertyCount; ++i)
 	{
@@ -353,124 +305,106 @@ static void CreateScriptInstance(Game &game, ID entityId, const ScriptDesc &desc
 		} else if ( member->reflexId != propertyDesc.value.type ) {
 			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
 		} else {
-			SetPropertyValue(*member, instanceData, propertyDesc.value);
+			SetPropertyValue(*member, component.data, propertyDesc.value);
 		}
 	}
 }
 
-static void RemoveScript(Game &game, u32 scriptInstanceIndex)
+static void SetScript(Engine &engine, ID entityId, const ScriptDesc &desc)
 {
-	if ( scriptInstanceIndex >= game.scriptInstanceCount ) {
-		LOG(Warning, "RemoveScript: script instance at index %u does not exist.", scriptInstanceIndex);
+	ScriptComponent *component = SetScript(engine, entityId, desc.name);
+	if ( component ) {
+		ApplyScriptDesc(*component, desc);
+	}
+}
+
+// Snapshots entityId's live script into outScript. False when it has none.
+static bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptDesc &outScript)
+{
+	outScript = {};
+
+	if ( !HasComponents(scene, entityId, Component_Script) ) {
+		return false;
+	}
+
+	const ScriptComponent &component = GetScript(scene, entityId);
+	if ( component.structIndex >= scriptRegistry.scriptCount ) {
+		return false;
+	}
+
+	outScript.name = component.name;
+
+	const ReflexStruct *type = scriptRegistry.scripts[component.structIndex].type;
+	for (u32 p = 0; p < type->memberCount && outScript.propertyCount < MAX_SCRIPT_PROPERTIES; ++p)
+	{
+		const ReflexMember &member = type->members[p];
+		if ( !IsStorableProperty(member) ) {
+			continue;
+		}
+		ScriptPropertyDesc &propertyDesc = outScript.properties[outScript.propertyCount++];
+		propertyDesc.name = member.name;
+		propertyDesc.value = GetPropertyValue(member, component.data);
+	}
+
+	return true;
+}
+
+static void RemoveScript(Engine &engine, ID entityId)
+{
+	Scene &scene = engine.scene;
+
+	if ( !HasComponents(scene, entityId, Component_Script) ) {
 		return;
 	}
 
-	ScriptInstance &instance = game.scriptInstances[scriptInstanceIndex];
+	const u16 index = GetEntityIndex(scene, entityId);
+	ScriptComponent &component = scene.entityScripts[index];
 
-	if ( !instance.entity ) {
-		return; // Already marked this frame, and Stop must not run twice
+	if ( engine.game.state == GameStateRunning ) {
+		RunScriptHook(engine, entityId, component, ScriptHook_Stop);
 	}
 
-	if ( game.state == GameStateRunning ) {
-		RunScriptInstanceHook(game, instance, ScriptHook_Stop);
-	}
-
-	instance.entity = {};
+	scene.entityComponents[index] &= ~(ComponentFlags)Component_Script;
+	component = {};
 }
 
-static void RemoveEntityScripts(Game &game, ID entityID)
+// A reload rebuilds the registry, so every component re-resolves its index by name. The
+// instance data stays where it is, which is only sound while the struct keeps its layout.
+static void RebindScripts(Engine &engine)
 {
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	Scene &scene = engine.scene;
+	for (u32 i = 0; i < scene.entityCount; ++i)
 	{
-		if ( game.scriptInstances[i].entity == entityID ) {
-			RemoveScript(game, i);
-		}
-	}
-}
-
-static bool ScriptInstanceAlive(const ScriptInstance &instance)
-{
-	const bool alive = instance.entity;
-	return alive;
-}
-
-static void CompactScripts(Game &game)
-{
-	// Find the first hole
-	u32 writeIndex = U32_MAX;
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		if ( !ScriptInstanceAlive(game.scriptInstances[i]) ) {
-			writeIndex = i;
-			break;
-		}
-	}
-
-	if ( writeIndex == U32_MAX ) {
-		return; // No holes, so nothing moves
-	}
-
-	// Everything ahead of the first hole is already in place, and so is its data
-	u32 writeOffset = game.scriptInstances[writeIndex].offset;
-
-	for (u32 readIndex = writeIndex; readIndex < game.scriptInstanceCount; ++readIndex)
-	{
-		const ScriptInstance &instance = game.scriptInstances[readIndex];
-
-		if ( ScriptInstanceAlive(instance) )
-		{
-			MemCopy(game.scriptInstanceData + writeOffset, game.scriptInstanceData + instance.offset, instance.size);
-
-			ScriptInstance &survivor = game.scriptInstances[writeIndex++];
-			survivor = instance;
-			survivor.offset = writeOffset;
-
-			writeOffset += instance.size;
-		}
-	}
-
-	// Clear the part of the tail that's now unused
-	MemSet(game.scriptInstances + writeIndex, (game.scriptInstanceCount - writeIndex) * (u32)sizeof(ScriptInstance), 0);
-
-	game.scriptInstanceCount = writeIndex;
-	game.scriptInstanceDataUsed = writeOffset;
-}
-
-static void RemoveScriptInstances(Game &game)
-{
-	game.scriptInstanceCount = 0;
-	game.scriptInstanceDataUsed = 0;
-	ZeroArray(game.scriptInstances);
-}
-
-static void RebindScriptInstances(Game &game)
-{
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
-	{
-		ScriptInstance &instance = game.scriptInstances[i];
-
-		const u32 structIndex = FindScriptIndex(instance.scriptName);
-		if ( structIndex == U32_MAX ) {
-			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", instance.scriptName);
-			instance.structIndex = U16_MAX;
+		if ( !(scene.entityComponents[i] & Component_Script) ) {
 			continue;
 		}
 
-		const u32 instanceSize = ScriptInstanceSize(scriptRegistry.scripts[structIndex]);
-		if ( instanceSize != instance.size ) {
-			LOG(Warning, "Script <%s> changed size across the reload (%u -> %u), its instance data is stale.\n",
-					instance.scriptName, instance.size, instanceSize);
+		ScriptComponent &component = scene.entityScripts[i];
+
+		if ( !component.name ) { // Added, but no script dropped on it yet
+			continue;
 		}
 
-		instance.structIndex = (u16)structIndex;
+		const u32 structIndex = FindScriptIndex(component.name);
+		if ( structIndex == U32_MAX ) {
+			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", component.name);
+			component.structIndex = U16_MAX;
+			continue;
+		}
+
+		component.structIndex = (u16)structIndex;
 	}
 }
 
-static void RunScriptHooks(Game &game, ScriptHookType hook)
+static void RunScriptHooks(Engine &engine, ScriptHookType hook)
 {
-	for (u32 i = 0; i < game.scriptInstanceCount; ++i)
+	Scene &scene = engine.scene;
+	for (u32 i = 0; i < scene.entityCount; ++i)
 	{
-		RunScriptInstanceHook(game, game.scriptInstances[i], hook);
+		if ( !(scene.entityComponents[i] & Component_Script) ) {
+			continue;
+		}
+		RunScriptHook(engine, scene.entities[i].id, scene.entityScripts[i], hook);
 	}
 }
 
@@ -970,7 +904,7 @@ static void GameStop(Engine &engine)
 	{
 		// If starting never reached its Start hooks, there is nothing to stop
 		if ( game.state != GameStateStarting ) {
-			RunScriptHooks(game, ScriptHook_Stop);
+			RunScriptHooks(engine, ScriptHook_Stop);
 		}
 
 		AudioStopAll(engine.audio);
@@ -1000,7 +934,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		accumulatedSeconds = 0.0f;
 		MemSet(sKeyPendingRelease, sizeof(sKeyPendingRelease), 0);
 
-		RunScriptHooks(game, ScriptHook_Start);
+		RunScriptHooks(engine, ScriptHook_Start);
 		game.state = GameStateRunning;
 	}
 
@@ -1023,12 +957,12 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		{
 			game.deltaSeconds = fixedStepSeconds;
 			GameSetInput(game, accumulatedInput.keyboard, accumulatedInput.mouse, accumulatedInput.gamepad);
-			RunScriptHooks(game, ScriptHook_Simulate);
+			RunScriptHooks(engine, ScriptHook_Simulate);
 			InputConsume(accumulatedInput);
 			accumulatedSeconds -= fixedStepSeconds;
 		}
 
-		RunScriptHooks(game, ScriptHook_Update);
+		RunScriptHooks(engine, ScriptHook_Update);
 	}
 
 	if (game.state == GameStateStopping)
@@ -1148,7 +1082,7 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 	Engine &engine = GetEngine();
 
 	RegisterScripts();
-	RebindScriptInstances(engine.game);
+	RebindScripts(engine);
 
 	if ( !firstLoad )
 	{
@@ -1310,7 +1244,6 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 	CompactSprites(engine.scene);
 	CompactMaterials(engine.gfx);
 	CompactTextures(engine.gfx);
-	CompactScripts(engine.game);
 }
 
 ENGINE_API void OnPlatformRenderGraphics(Plat &platform)

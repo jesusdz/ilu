@@ -15,17 +15,19 @@ struct SceneDesc
 enum ComponentTypes
 {
 	ComponentType_Light,
+	ComponentType_Script,
 	ComponentType_Count,
 };
 
 enum ComponentBits
 {
 	Component_Light = 1<<ComponentType_Light,
+	Component_Script = 1<<ComponentType_Script,
 };
 
 typedef u32 ComponentFlags;
 
-static const char *ComponentNames[] = { "Light" };
+static const char *ComponentNames[] = { "Light", "Script" };
 
 CT_ASSERT(ARRAY_COUNT(ComponentNames) == ComponentType_Count);
 
@@ -73,8 +75,7 @@ struct EntityDesc
 	float2 speed;
 	f32 accel;
 	// Scripts
-	ScriptDesc scripts[MAX_ENTITY_SCRIPTS];
-	u32 scriptCount;
+	ScriptDesc script;
 	// Components
 	ComponentFlags components;
 	LightComponent light;
@@ -237,6 +238,7 @@ struct Scene
 	Entity entities[MAX_ENTITIES];
 	ComponentFlags entityComponents[MAX_ENTITIES];
 	LightComponent entityLights[MAX_ENTITIES];
+	ScriptComponent entityScripts[MAX_ENTITIES];
 
 	u32 spriteCount;
 	Sprite sprites[MAX_SPRITES];
@@ -277,8 +279,7 @@ struct BinEntityDesc
 	float3 pos;
 	float scale;
 	GeometryType geometryType;
-	u32 scriptCount;
-	BinScriptDesc scripts[MAX_ENTITY_SCRIPTS];
+	BinScriptDesc script;
 	ComponentFlags components;
 	LightComponent light;
 };
@@ -375,6 +376,8 @@ LightComponent &AddLight(Scene &scene, ID entityId);
 void RemoveLight(Scene &scene, ID entityId);
 LightComponent &GetLight(Scene &scene, ID entityId);
 const LightComponent &GetLight(const Scene &scene, ID entityId);
+ScriptComponent &GetScript(Scene &scene, ID entityId);
+const ScriptComponent &GetScript(const Scene &scene, ID entityId);
 
 
 ////////////////////////////////////////////////////////////////////////

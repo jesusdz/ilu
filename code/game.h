@@ -35,12 +35,6 @@ struct Game
 	f32 deltaSeconds;
 	f32 accumulatedSeconds;
 
-	u32 scriptInstanceCount;
-	ScriptInstance scriptInstances[MAX_SCRIPT_INSTANCES];
-
-	u32 scriptInstanceDataUsed;
-	alignas(SCRIPT_INSTANCE_ALIGN) byte scriptInstanceData[SCRIPT_INSTANCE_DATA_SIZE];
-
 	ID currentEntity;
 };
 

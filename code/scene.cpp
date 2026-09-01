@@ -238,6 +238,20 @@ const LightComponent &GetLight(const Scene &scene, ID id)
 	return scene.entityLights[index];
 }
 
+ScriptComponent &GetScript(Scene &scene, ID id)
+{
+	const u16 index = GetEntityIndex(scene, id);
+	ASSERT( scene.entityComponents[index] & Component_Script );
+	return scene.entityScripts[index];
+}
+
+const ScriptComponent &GetScript(const Scene &scene, ID id)
+{
+	const u16 index = GetEntityIndex(scene, id);
+	ASSERT( scene.entityComponents[index] & Component_Script );
+	return scene.entityScripts[index];
+}
+
 // The high half indexes the GPU entity buffer, the low half is the entity's ID slot.
 // The shaders pull the index back out with a >>16 and compare the whole value against
 // globals.selectedEntity, so both halves have to stay where they are.
@@ -264,6 +278,7 @@ static COMPACT_MOVE(MoveEntity)
 	Scene &scene = *(Scene*)data;
 	scene.entityComponents[dstIndex] = scene.entityComponents[srcIndex];
 	scene.entityLights[dstIndex] = scene.entityLights[srcIndex];
+	scene.entityScripts[dstIndex] = scene.entityScripts[srcIndex];
 }
 
 static COMPACT_REMOVE(ClearEntityComponents)
@@ -304,8 +319,10 @@ EntityDesc GetEntityDesc(Engine &engine, ID id)
 		entityDesc.components |= Component_Light;
 		entityDesc.light = GetLight(engine.scene, id);
 	}
-	entityDesc.scriptCount = GatherEntityScriptDescs(
-			engine.game, id, entityDesc.scripts, (u32)ARRAY_COUNT(entityDesc.scripts));
+	if ( GatherEntityScriptDesc(engine.scene, id, entityDesc.script) )
+	{
+		entityDesc.components |= Component_Script;
+	}
 	return entityDesc;
 }
 
@@ -325,6 +342,7 @@ static Entity *PushEntity(Scene &scene, ID id)
 
 	scene.entityComponents[index] = 0;
 	scene.entityLights[index] = {};
+	scene.entityScripts[index] = {};
 
 	BindID(&entity.id, &entity);
 
@@ -367,15 +385,15 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 		entity->spriteId = {};
 	}
 
-	for (u32 i = 0; i < desc.scriptCount; ++i)
-	{
-		CreateScriptInstance(engine.game, entity->id, desc.scripts[i]);
-	}
-
 	if ( desc.components & Component_Light )
 	{
 		LightComponent &light = AddLight(engine.scene, entity->id);
 		light = desc.light;
+	}
+
+	if ( desc.components & Component_Script )
+	{
+		SetScript(engine, entity->id, desc.script);
 	}
 
 	return entity->id;
@@ -396,11 +414,10 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
 		.light = desc.light,
 	};
 
-	entityDesc.scriptCount = Min(desc.scriptCount, (u32)ARRAY_COUNT(entityDesc.scripts));
-	for (u32 s = 0; s < entityDesc.scriptCount; ++s)
+	if ( desc.components & Component_Script )
 	{
-		const BinScriptDesc &binScript = desc.scripts[s];
-		ScriptDesc &script = entityDesc.scripts[s];
+		const BinScriptDesc &binScript = desc.script;
+		ScriptDesc &script = entityDesc.script;
 
 		script.name = binScript.name;
 		script.propertyCount = Min(binScript.propertyCount, (u32)ARRAY_COUNT(script.properties));
@@ -425,7 +442,7 @@ void RemoveEntity(Engine &engine, ID id)
 {
 	if (id)
 	{
-		RemoveEntityScripts(engine.game, id);
+		RemoveScript(engine, id);
 
 		GetEntity(id).id = {};
 		Invalidate(id);
@@ -956,8 +973,6 @@ void CleanScene(Engine &engine)
 	CompactMaterials(engine.gfx);
 	CompactTextures(engine.gfx);
 	// The audio pools are not compacted here: only the mixing thread may move that
-
-	RemoveScriptInstances(engine.game);
 
 	CloseAssets(engine.assets);
 

@@ -280,7 +280,7 @@ static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
 		WriteLine(ctx, ".lightIntensity = %f,", desc.light.intensity);
 		WriteLine(ctx, ".lightRadius = %f,", desc.light.radius);
 	}
-	WriteScriptDescs(ctx, desc.scripts, desc.scriptCount);
+	WriteScriptDescs(ctx, &desc.script, (desc.components & Component_Script) ? 1 : 0);
 }
 
 void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
@@ -1141,8 +1141,12 @@ static void DParser_ConsumeEntityScripts( DParser &parser, EntityDesc &entity )
 		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 		DParser_TryConsume(parser, TOKEN_COMMA);
 
-		if ( entity.scriptCount < ARRAY_COUNT(entity.scripts) ) {
-			entity.scripts[entity.scriptCount++] = scriptDesc;
+		if ( entity.components & Component_Script ) {
+			LOG(Warning, "Entity <%s> lists more than one script, only <%s> is kept.\n",
+					entity.name ? entity.name : "?", entity.script.name);
+		} else {
+			entity.components |= Component_Script;
+			entity.script = scriptDesc;
 		}
 	}
 
@@ -1788,13 +1792,11 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 	d.components   = desc.components;
 	d.light        = desc.light;
 
-	ASSERT(desc.scriptCount <= ARRAY_COUNT(d.scripts));
-	d.scriptCount = desc.scriptCount;
-	for (u32 s = 0; s < desc.scriptCount; ++s)
+	if (desc.components & Component_Script)
 	{
-		const ScriptDesc &script = desc.scripts[s];
+		const ScriptDesc &script = desc.script;
 
-		BinScriptDesc &bs = d.scripts[s];
+		BinScriptDesc &bs = d.script;
 		bs.name = DataInternString(stringPool, script.name);
 
 		ASSERT(script.propertyCount <= ARRAY_COUNT(bs.properties));
@@ -2167,9 +2169,9 @@ static void ResolveBinEntityStrings(BinEntityDesc &d, const char *stringPool)
 {
 	d.name = DataGetString(stringPool, d.name);
 
-	for (u32 s = 0; s < d.scriptCount && s < ARRAY_COUNT(d.scripts); ++s)
+	if (d.components & Component_Script)
 	{
-		BinScriptDesc &bs = d.scripts[s];
+		BinScriptDesc &bs = d.script;
 		bs.name = DataGetString(stringPool, bs.name);
 		for (u32 p = 0; p < bs.propertyCount && p < ARRAY_COUNT(bs.properties); ++p) {
 			bs.properties[p].name = DataGetString(stringPool, bs.properties[p].name);

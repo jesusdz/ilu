@@ -3,13 +3,14 @@
 
 constexpr u32 MAX_SCRIPTS = 64;
 constexpr u32 MAX_SCRIPT_PROPERTIES = 16;
-constexpr u32 MAX_ENTITY_SCRIPTS = 4;
 
 // Structs tagged ILU_STRUCT(Script) are the ones that can be registered as scripts
 #define SCRIPT_HINT "Script"
-constexpr u32 MAX_SCRIPT_INSTANCES = 1024;
 constexpr u32 SCRIPT_INSTANCE_ALIGN = 16;
-constexpr u32 SCRIPT_INSTANCE_DATA_SIZE = MAX_SCRIPT_INSTANCES * 128; // 128K
+
+// A script component carries its instance data inline, so this bounds how large a
+// registered script struct may be. RegisterScript refuses anything above it.
+constexpr u32 MAX_SCRIPT_INSTANCE_SIZE = 256;
 
 enum ScriptHookType
 {
@@ -51,13 +52,11 @@ inline u32 ScriptInstanceSize(const Script &script)
 	return AlignUp((u32)script.type->size, SCRIPT_INSTANCE_ALIGN);
 }
 
-struct ScriptInstance
+struct ScriptComponent
 {
-	ID entity; // Owner entity (invalid means remove the instance)
-	const char *scriptName;
-	u32 offset; // Offset into the data blob
-	u32 size; // To compare against new hot-reloaded data
-	u16 structIndex;
+	const char *name; // Interned, and what a reload re-resolves structIndex from
+	u16 structIndex;  // U16_MAX once the script is gone after a reload
+	alignas(SCRIPT_INSTANCE_ALIGN) byte data[MAX_SCRIPT_INSTANCE_SIZE];
 };
 
 ////////////////////////////////////////////////////////////////////////

@@ -1553,47 +1553,51 @@ static void EditorUpdateUI_Inspector()
 					}
 				}
 
-				for (u32 i = 0; i < engine.game.scriptInstanceCount; ++i) 
+				if ( HasComponents(engine.scene, inspector.selected.id, Component_Script) )
 				{
-					const ScriptInstance &instance = engine.game.scriptInstances[i];
-					if ( instance.structIndex >= scriptRegistry.scriptCount ) {
-						continue;
-					}
+					ScriptComponent &component = GetScript(engine.scene, inspector.selected.id);
 
-					if ( instance.entity == inspector.selected.id )
+					if ( component.structIndex < scriptRegistry.scriptCount )
 					{
-						const Script &script = scriptRegistry.scripts[instance.structIndex];
-						void * base = engine.game.scriptInstanceData + instance.offset;
-						EditorUpdateUI_InspectorProperties(instance.scriptName, script.type->members, script.type->memberCount, base);
-						if (UI_Button(ui, "Remove"))
+						const Script &script = scriptRegistry.scripts[component.structIndex];
+						EditorUpdateUI_InspectorProperties(component.name, script.type->members, script.type->memberCount, component.data);
+					}
+					else
+					{
+						UI_SeparatorLabel(ui, "Script");
+
+						// No name means the component was added but never assigned. A name
+						// with no index is a script that a reload took away, and dropping
+						// another one here replaces it.
+						UI_Text(ui, "Script", component.name ? component.name : "<drag here>");
+						if ( UI_DragAndDropTarget(ui, "Script") )
 						{
-							RemoveScript(engine.game, i);
+							const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
+							SetScript(engine, inspector.selected.id, ScriptName(script));
+						}
+
+						if ( component.name ) {
+							UI_Text(ui, "Status", "<not registered>");
 						}
 					}
-				}
 
-				UI_SeparatorLabel(ui, "New script");
-
-				UI_Text(ui, "Script", "<drag here>");
-				if ( UI_DragAndDropTarget(ui, "Script") )
-				{
-					const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
-					CreateScriptInstance(engine.game, inspector.selected.id, ScriptName(script));
-				}
-
-				static const char *componentNames[] = { "Light" };
-				static const ComponentFlags componentBits[] = { Component_Light };
-				CT_ASSERT(ARRAY_COUNT(componentNames) == ARRAY_COUNT(componentBits));
-
-				const char *availableNames[ARRAY_COUNT(componentNames)];
-				ComponentFlags availableBits[ARRAY_COUNT(componentBits)];
-				u32 availableCount = 0;
-				for (u32 i = 0; i < ARRAY_COUNT(componentNames); ++i)
-				{
-					if ( !HasComponents(engine.scene, inspector.selected.id, componentBits[i]) )
+					if (UI_Button(ui, "Remove"))
 					{
-						availableNames[availableCount] = componentNames[i];
-						availableBits[availableCount] = componentBits[i];
+						RemoveScript(engine, inspector.selected.id);
+					}
+				}
+
+				const char *availableNames[ComponentType_Count];
+				ComponentFlags availableBits[ComponentType_Count];
+				u32 availableCount = 0;
+				for (u32 i = 0; i < ComponentType_Count; ++i)
+				{
+					const ComponentFlags bit = 1 << i;
+
+					if ( !HasComponents(engine.scene, inspector.selected.id, bit) )
+					{
+						availableNames[availableCount] = ComponentNames[i];
+						availableBits[availableCount] = bit;
 						availableCount++;
 					}
 				}
@@ -1611,6 +1615,7 @@ static void EditorUpdateUI_Inspector()
 						switch ( availableBits[componentEnum] )
 						{
 							case Component_Light: AddLight(engine.scene, inspector.selected.id); break;
+							case Component_Script: AddScript(engine, inspector.selected.id); break;
 						}
 					}
 				}
