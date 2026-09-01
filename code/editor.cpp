@@ -2141,12 +2141,12 @@ static void EditorUpdateUI_ContextMenu()
 	UI_SetNextWindowDisplacement(ui, pos);
 	if ( UI_BeginMenu(ui, "Context", &engine.editor.showContextMenu) )
 	{
-		if ( UI_MenuItem(ui, "Add entity") )
+		if ( UI_MenuItem(ui, "Add empty") )
 		{
 			if ( EditorMode2D() )
 			{
 				const EntityDesc entityDesc = {
-					.name = InternString("entity"),
+					.name = InternString("empty"),
 					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
@@ -2156,6 +2156,42 @@ static void EditorUpdateUI_ContextMenu()
 			else
 			{
 				LOG(Debug, "Add entity not implemented in 3D mode.\n");
+			}
+		}
+		if ( UI_MenuItem(ui, "Add light") )
+		{
+			if ( EditorMode2D() )
+			{
+				const EntityDesc entityDesc = {
+					.name = InternString("light"),
+					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
+					.scale = 1.0f,
+				};
+				const ID entityId = CreateEntity(engine, entityDesc);
+				AddLight(engine.scene, entityId);
+				EditorSelectEntity(entityId);
+			}
+			else
+			{
+				LOG(Debug, "Add light not implemented in 3D mode.\n");
+			}
+		}
+		if ( UI_MenuItem(ui, "Add script") )
+		{
+			if ( EditorMode2D() )
+			{
+				const EntityDesc entityDesc = {
+					.name = InternString("script"),
+					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
+					.scale = 1.0f,
+				};
+				const ID entityId = CreateEntity(engine, entityDesc);
+				AddScript(engine, entityId);
+				EditorSelectEntity(entityId);
+			}
+			else
+			{
+				LOG(Debug, "Add script not implemented in 3D mode.\n");
 			}
 		}
 		UI_EndMenu(ui);
@@ -3068,7 +3104,7 @@ void EditorUpdate(Engine &engine)
 		{
 			const Mouse &mouse = GetWindow().mouse;
 			const Camera &camera = engine.editor.camera[ProjectionOrthographic];
-			engine.editor.contextMenuWorldPos = Floor(GetWorld2DCoord(engine, camera, mouse.pos));
+			engine.editor.contextMenuWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
 			engine.editor.showContextMenu = true;
 		}
 	}

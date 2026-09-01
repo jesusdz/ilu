@@ -4008,6 +4008,10 @@ bool UI_BeginMenu(UI &ui, const char *name, bool *isOpen = nullptr)
 	const UIID windowId = UI_MakeID(ui, name);
 	UIWindow &window = UI_FindOrCreateWindow(ui, windowId, name);
 
+	if ( window.wasMenuOpen ) {
+		ui.nextWindow.setMask &= ~UINextWindow_Displacement;
+	}
+
 	if ( ui.menuBarBegan )
 	{
 		constexpr float2 margin = {8.0f, 3.0f};
@@ -4112,6 +4116,7 @@ bool UI_BeginContextMenu(UI &ui, const char *name, bool *isOpen = nullptr)
 	if (UI_IsMousePress(ui, MOUSE_BUTTON_RIGHT) && UI_MouseInArea(ui, ui.lastWidgetPos, ui.lastWidgetSize))
 	{
 		ui.activeMenu = &window;
+		window.wasMenuOpen = false;
 		const float2 pos = Float2(ui.input.lastMouseClickPos);
 		UI_SetNextWindowDisplacement(ui, pos);
 	}
