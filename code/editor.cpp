@@ -1957,6 +1957,8 @@ static void EditorUpdateUI_Profiler()
 		UI_Text(ui, "Frame Arena", "%u / %u %s", FrameArena.used / unitsSize, FrameArena.size / unitsSize, unitsStr);
 		UI_Text(ui, "String Arena", "%u / %u %s", StringArena.used / unitsSize, StringArena.size / unitsSize, unitsStr);
 		UI_Text(ui, "Data Arena", "%u / %u %s", DataArena.used / unitsSize, DataArena.size / unitsSize, unitsStr);
+		const Arena &scriptArena = engine.scriptData.arena;
+		UI_Text(ui, "Script Arena", "%u / %u %s", scriptArena.used / unitsSize, scriptArena.size / unitsSize, unitsStr);
 	}
 
 	UI_EndWindow(ui);

@@ -6,11 +6,11 @@ constexpr u32 MAX_SCRIPT_PROPERTIES = 16;
 
 // Structs tagged ILU_STRUCT(Script) are the ones that can be registered as scripts
 #define SCRIPT_HINT "Script"
-constexpr u32 SCRIPT_INSTANCE_ALIGN = 16;
+constexpr u32 SCRIPT_DATA_ALIGN = 16;
 
-// A script component carries its instance data inline, so this bounds how large a
-// registered script struct may be. RegisterScript refuses anything above it.
-constexpr u32 MAX_SCRIPT_INSTANCE_SIZE = 256;
+constexpr u32 SCRIPT_SIZE_CLASS_COUNT = 64;
+constexpr u32 MAX_POOLED_SCRIPT_DATA_SIZE = SCRIPT_SIZE_CLASS_COUNT * SCRIPT_DATA_ALIGN;
+constexpr u32 SCRIPT_DATA_MEMORY = MB(1);
 
 enum ScriptHookType
 {
@@ -47,16 +47,31 @@ inline const char *ScriptName(const Script &script)
 	return script.type->name;
 }
 
-inline u32 ScriptInstanceSize(const Script &script)
+inline u32 ScriptDataSize(const Script &script)
 {
-	return AlignUp((u32)script.type->size, SCRIPT_INSTANCE_ALIGN);
+	return AlignUp((u32)script.type->size, SCRIPT_DATA_ALIGN);
 }
 
 struct ScriptComponent
 {
 	const char *name; // Interned, and what a reload re-resolves structIndex from
-	u16 structIndex;  // U16_MAX once the script is gone after a reload
-	alignas(SCRIPT_INSTANCE_ALIGN) byte data[MAX_SCRIPT_INSTANCE_SIZE];
+	u16 structIndex;  // U16_MAX until a script is assigned, and again if a reload drops it
+	u32 dataSize;     // Which bucket data returns to, still known once the script is gone
+	byte *data;
+};
+
+struct ScriptDataBlock
+{
+	ScriptDataBlock *next;
+};
+
+// a block is never smaller than the link it has to store while it waits in a bucket.
+CT_ASSERT(SCRIPT_DATA_ALIGN >= sizeof(void*));
+
+struct ScriptDataPool
+{
+	Arena arena;
+	ScriptDataBlock *freeLists[SCRIPT_SIZE_CLASS_COUNT];
 };
 
 ////////////////////////////////////////////////////////////////////////

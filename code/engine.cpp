@@ -140,13 +140,6 @@ static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHoo
 		return;
 	}
 
-	const u32 instanceSize = AlignUp((u32)type->size, SCRIPT_INSTANCE_ALIGN);
-	if ( instanceSize > MAX_SCRIPT_INSTANCE_SIZE ) {
-		LOG(Warning, "RegisterScript: <%s> needs %u bytes but a script component holds %u, it is dropped.\n",
-				type->name, instanceSize, MAX_SCRIPT_INSTANCE_SIZE);
-		return;
-	}
-
 	// Every reflected member was tagged on purpose, so one the engine cannot
 	// store is a mistake worth reporting instead of silently dropping it
 	for (u32 i = 0; i < type->memberCount; ++i)
@@ -189,6 +182,53 @@ static u32 FindScriptIndex(const char *name)
 		}
 	}
 	return U32_MAX;
+}
+
+static u32 ScriptSizeClass(u32 size)
+{
+	ASSERT( size > 0 && size % SCRIPT_DATA_ALIGN == 0 );
+	return size / SCRIPT_DATA_ALIGN - 1;
+}
+
+// Hands back a zeroed block of exactly `size` bytes, reusing a freed one when the bucket
+// has any. Blocks past the last bucket come straight from the arena and never return.
+static byte *AllocScriptData(Engine &engine, u32 size)
+{
+	ScriptDataPool &pool = engine.scriptData;
+
+	if ( size <= MAX_POOLED_SCRIPT_DATA_SIZE )
+	{
+		const u32 sizeClass = ScriptSizeClass(size);
+		if ( ScriptDataBlock *block = pool.freeLists[sizeClass] )
+		{
+			pool.freeLists[sizeClass] = block->next;
+			MemSet(block, size, 0);
+			return (byte*)block;
+		}
+	}
+
+	// PushSize is a plain bump, so the alignment the script data needs is taken here
+	const u32 misalignment = (u32)( (u64)(pool.arena.base + pool.arena.used) % SCRIPT_DATA_ALIGN );
+	if ( misalignment ) {
+		PushSize(pool.arena, SCRIPT_DATA_ALIGN - misalignment);
+	}
+
+	return PushZeroSize(pool.arena, size);
+}
+
+// The freed block holds the link to the next one, so a bucket costs nothing but its head
+static void FreeScriptData(Engine &engine, byte *data, u32 size)
+{
+	if ( !data || size > MAX_POOLED_SCRIPT_DATA_SIZE ) {
+		return;
+	}
+
+	ScriptDataPool &pool = engine.scriptData;
+	const u32 sizeClass = ScriptSizeClass(size);
+
+	ScriptDataBlock *block = (ScriptDataBlock*)data;
+	block->next = pool.freeLists[sizeClass];
+	pool.freeLists[sizeClass] = block;
 }
 
 static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &component, ScriptHookType hook)
@@ -265,9 +305,15 @@ static ScriptComponent *SetScript(Engine &engine, ID entityId, const char *scrip
 		RunScriptHook(engine, entityId, component, ScriptHook_Stop);
 	}
 
+	FreeScriptData(engine, component.data, component.dataSize);
+
+	const u32 dataSize = ScriptDataSize(scriptRegistry.scripts[structIndex]);
+
 	component = {};
 	component.name = InternString(scriptName);
 	component.structIndex = (u16)structIndex;
+	component.dataSize = dataSize;
+	component.data = AllocScriptData(engine, dataSize);
 
 	if ( engine.game.state == GameStateRunning ) {
 		RunScriptHook(engine, entityId, component, ScriptHook_Start);
@@ -276,7 +322,7 @@ static ScriptComponent *SetScript(Engine &engine, ID entityId, const char *scrip
 	return &component;
 }
 
-// Writes the saved property values over the instance data, skipping any that no longer
+// Writes the saved property values over the script data, skipping any that no longer
 // match the script's reflected members.
 static void ApplyScriptDesc(ScriptComponent &component, const ScriptDesc &desc)
 {
@@ -365,11 +411,13 @@ static void RemoveScript(Engine &engine, ID entityId)
 	}
 
 	scene.entityComponents[index] &= ~(ComponentFlags)Component_Script;
+	FreeScriptData(engine, component.data, component.dataSize);
 	component = {};
 }
 
-// A reload rebuilds the registry, so every component re-resolves its index by name. The
-// instance data stays where it is, which is only sound while the struct keeps its layout.
+// A reload rebuilds the registry, so every component re-resolves its index by name. A
+// struct whose size changed gets a fresh block, but one that only moved its members
+// around keeps its data and reads it back under the new layout.
 static void RebindScripts(Engine &engine)
 {
 	Scene &scene = engine.scene;
@@ -393,6 +441,17 @@ static void RebindScripts(Engine &engine)
 		}
 
 		component.structIndex = (u16)structIndex;
+
+		// The block is exactly the size the old struct was, so a struct that changed
+		// across the reload needs a new one. Its contents cannot be carried over.
+		const u32 dataSize = ScriptDataSize(scriptRegistry.scripts[structIndex]);
+		if ( dataSize != component.dataSize )
+		{
+			LOG(Warning, "Script <%s> changed size across the reload, its instance is reset.\n", component.name);
+			FreeScriptData(engine, component.data, component.dataSize);
+			component.dataSize = dataSize;
+			component.data = AllocScriptData(engine, dataSize);
+		}
 	}
 }
 
@@ -1051,6 +1110,8 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 
 		// The ID pool lives in the retained engine state, so it is only reset once
 		InitializeIDPool();
+
+		engine.scriptData.arena = PushSubArena(GlobalArena, SCRIPT_DATA_MEMORY, "Script component data");
 
 #if USE_DATA_BUILD
 		bool buildAssets = false;
