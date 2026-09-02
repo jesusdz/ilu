@@ -94,6 +94,44 @@ void DrawBoxOutline(float2 pos, float2 size, float4 color)
 	DrawBox(pos + dY(size) - float2{0, d}, float2{size.x, d}, color);
 }
 
+void DrawSpriteCentered(ID spriteID, float2 pos, float2 size, float4 pcolor)
+{
+	// TODO
+}
+
+void DrawParticles(const Scene &scene)
+{
+	// Effects outer, particles inner: consecutive quads then share a texture and
+	// DebugDrawAppendBatch merges them, one batch per effect instead of one per particle
+	// (MAX_DEBUG_DRAW_BATCHES is 64)
+	for (u32 e = 0; e < scene.particleEffectCount; ++e)
+	{
+		const ParticleEffectDesc &effect = scene.particleEffects[e].desc;
+		if ( !effect.id ) { continue; } // Removed, still waiting for CompactParticleEffects
+
+		for (u32 i = 0; i < scene.particleCount; ++i)
+		{
+			const Particle &p = scene.particles[i];
+			if ( p.effectId != effect.id ) { continue; }
+
+			const f32 t = p.age / p.lifetime;
+			const float4 color = Lerp(effect.color.min, effect.color.max, t);
+			const f32 size = Lerp(effect.size.min, effect.size.max, t);
+
+			// Local-space particles ride along with their emitter
+			const float2 pos = p.entityId ? p.pos + GetEntity(p.entityId).position.xy : p.pos;
+
+			//if ( effect.spriteID ) {
+			//	DrawSpriteCentered(effect.spriteID, pos, color, size);
+			//} else {
+				// No sprite assigned: a plain quad, so a new effect still shows something
+				const float2 boxSize = (size * 2.0f / PIXELS_PER_METER) * float2{1, 1};
+				DrawBox(pos - 0.5f * boxSize, boxSize, color);
+			//}
+		}
+	}
+}
+
 
 float3 UpDirectionFromAngles(const float2 &angles)
 {
@@ -568,6 +606,8 @@ bool RenderGraphics(Engine &engine)
 			spriteDataPtr[i].worldSize = worldSize;
 		}
 	}
+
+	DrawParticles(scene);
 
 	struct InstanceTileData
 	{

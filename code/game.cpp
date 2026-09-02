@@ -29,10 +29,6 @@ struct ScriptPlayerController
 	ILU_PROPERTY()
 	u32 randomProperty;
 
-	ID modEquinox;
-
-	bool playingMusic;
-
 	Camera camera;
 
 	ID roomId;
@@ -53,8 +49,6 @@ void Start(ScriptPlayerController &script)
 	//script.sprPlayerJump = FindSprite("spr_playerjump");
 	//script.sprPlayerFall = FindSprite("spr_playerfall");
 	script.sndJump = GetAudioClip("snd_bell_wav");
-	script.modEquinox = GetMusic("mod_equinox_mod");
-	script.playingMusic = false;
 
 	script.camera = {
 		.projectionType = ProjectionOrthographic,
@@ -72,15 +66,7 @@ void Simulate(ScriptPlayerController &script)
 {
 	const Game &game = GetGame();
 
-	if (!script.playingMusic)
-	{
-		PlayMusic(script.modEquinox);
-		script.playingMusic = true;
-	}
-
-
-	const f32 deltaSeconds = game.deltaSeconds;
-	constexpr f32 gravity = -15.8f;
+	const f32 deltaSeconds = SIMULATE_SECONDS;
 
 	const Room *roomPtr = TryGetRoom(script.roomId);
 	if ( !roomPtr ) {
@@ -103,10 +89,17 @@ void Simulate(ScriptPlayerController &script)
 
 		f32 direction = game.input.move.x;
 
-		// Speed epsilon ///////////////////////////////////////////////
+		// Physics constants ///////////////////////////////////////////
 
+		constexpr f32 runSpeed = 9.0f;
+		constexpr f32 jumpSpeed = 14.0f;
+		constexpr f32 gravityRise = -30.0f; // Lighter gravity while ascending so holding the button controls jump height
+		constexpr f32 gravityFall = -50.0f; // ~1.8x rise: stronger gravity while falling for a snappier landing
+		constexpr f32 terminalSpeed = -25.0f; // Keeps a long fall under one tile per step so collision can't tunnel
+		constexpr f32 jumpCutMultiplier = 0.35f; // Kills upward speed quickly if the button is released early
 		constexpr f32 SPEED_EPSILON = 0.01;
-		if ( Abs(speed.x) < SPEED_EPSILON ) { speed.x = 0.0f; }
+
+		// Speed epsilon ///////////////////////////////////////////////
 
 		// X ///////////////////////////////////////////////////////////
 
@@ -121,7 +114,9 @@ void Simulate(ScriptPlayerController &script)
 
 		speed.x = speed.x + direction * accel * deltaSeconds;
 
-		speed.x = Clamp(speed.x, -10.0f, 10.0f);
+		speed.x = Clamp(speed.x, -9.0f, 9.0f);
+
+		if ( Abs(speed.x) < SPEED_EPSILON ) { speed.x = 0.0f; }
 
 		const f32 prevX = pos.x;
 		pos.x += speed.x * deltaSeconds;
@@ -132,11 +127,6 @@ void Simulate(ScriptPlayerController &script)
 		}
 
 		// Y ///////////////////////////////////////////////////////////
-
-		constexpr f32 gravityRise = -30.0f; // Lighter gravity while ascending so holding the button controls jump height
-		constexpr f32 gravityFall = -50.0f; // Stronger gravity while falling for a snappier landing
-		constexpr f32 jumpSpeed = 14.0f;
-		constexpr f32 jumpCutMultiplier = 0.35f; // Kills upward speed quickly if the button is released early
 
 		// Grounded state comes from last frame's collision resolution, before this frame moves the player
 		if (game.input.jump.press) {
@@ -158,7 +148,7 @@ void Simulate(ScriptPlayerController &script)
 		const f32 gravity2 = speed.y > 0 ? gravityRise : gravityFall;
 		const f32 prevY = pos.y;
 		pos.y += speed.y * deltaSeconds + 0.5 * gravity2 * deltaSeconds * deltaSeconds;
-		speed.y = speed.y + gravity2 * deltaSeconds;
+		speed.y = Max(speed.y + gravity2 * deltaSeconds, terminalSpeed);
 
 		// Only landing on a surface grounds the player, hitting a ceiling does not
 		script.playerState = OnAir;

@@ -15,6 +15,7 @@ struct SceneDesc
 enum ComponentTypes
 {
 	ComponentType_Light,
+	ComponentType_Particles,
 	ComponentType_Script,
 	ComponentType_Count,
 };
@@ -22,12 +23,13 @@ enum ComponentTypes
 enum ComponentBits
 {
 	Component_Light = 1<<ComponentType_Light,
+	Component_Particles = 1<<ComponentType_Particles,
 	Component_Script = 1<<ComponentType_Script,
 };
 
 typedef u32 ComponentFlags;
 
-static const char *ComponentNames[] = { "Light", "Script" };
+static const char *ComponentNames[] = { "Light", "Particles", "Script" };
 
 CT_ASSERT(ARRAY_COUNT(ComponentNames) == ComponentType_Count);
 
@@ -42,6 +44,61 @@ struct LightComponent
 	float3 color;
 	f32 intensity;
 	f32 radius;
+};
+
+struct ParticleEffectDesc
+{
+	ID id;
+	const char *name;
+
+	// Look
+	ID spriteID;
+	float4_range color;
+	f32_range size;
+
+	// Emission
+	f32 rate;
+	u32 burstCount;
+	f32 duration;
+	u8 loop;
+
+	// Per-particle spawn ranges
+	f32_range lifetime;
+	f32_range speed;
+	f32_range angle;
+
+	// Shape
+	float2 spawnOffset;
+	float2 spawnExtent;
+
+	// Simulation
+	float2 gravity;
+	f32 drag;
+	u8 worldSpace;
+};
+
+struct ParticleEffect
+{
+	ParticleEffectDesc desc;
+};
+
+struct ParticlesComponent
+{
+	ID effectId;
+	u8 playOnStart;
+	u8 playing;
+	f32 emitAccum; // ???
+	f32 elapsedTime; // from 0 to duration
+};
+
+struct Particle
+{
+	float2 pos;
+	float2 vel;
+	f32 age;
+	f32 lifetime;
+	ID effectId;
+	ID entityId;
 };
 
 struct SpriteDesc
@@ -226,6 +283,9 @@ struct Prefab
 constexpr u32 SCENE_WIDTH = 320;
 constexpr u32 SCENE_HEIGHT = 180;
 
+constexpr u32 MAX_PARTICLES = 1024;
+constexpr u32 MAX_PARTICLE_EFFECTS = 8;
+
 struct Scene
 {
 	ProjectionType projectionType;
@@ -238,7 +298,16 @@ struct Scene
 	Entity entities[MAX_ENTITIES];
 	ComponentFlags entityComponents[MAX_ENTITIES];
 	LightComponent entityLights[MAX_ENTITIES];
+	ParticlesComponent entityParticles[MAX_ENTITIES];
 	ScriptComponent entityScripts[MAX_ENTITIES];
+
+	u32 particleEffectCount;
+	ParticleEffect particleEffects[MAX_PARTICLE_EFFECTS];
+
+	RandomSeries particleRandom;
+
+	u32 particleCount;
+	Particle particles[MAX_PARTICLES];
 
 	u32 spriteCount;
 	Sprite sprites[MAX_SPRITES];
@@ -338,6 +407,27 @@ struct BinRoom
 
 
 ////////////////////////////////////////////////////////////////////////
+// Scene initialization
+
+void InitializeScene(Engine &engine);
+
+
+////////////////////////////////////////////////////////////////////////
+// Particle effect management
+
+ParticleEffect &GetParticleEffect(ID particleEffectId);
+ID CreateParticleEffect(Engine &engine, const ParticleEffectDesc &desc);
+ID FindParticleEffect(const Scene &scene, const char *name);
+void RemoveParticleEffect(Scene &scene, ID particleEffectId);
+void CompactParticleEffects(Scene &scene);
+
+void SimulateParticles(Scene &scene, f32 deltaSeconds);
+void PlayParticles(Scene &scene, ID entityId);
+void StopParticles(Scene &scene, ID entityId);
+void ClearParticles(Scene &scene);
+
+
+////////////////////////////////////////////////////////////////////////
 // Sprite management
 
 Sprite &GetSprite(ID spriteId);
@@ -372,10 +462,17 @@ ID EntityFromDrawId(u32 drawId);
 // Entity components
 
 bool HasComponents(const Scene &scene, ID entityId, ComponentFlags components);
+
 LightComponent &AddLight(Scene &scene, ID entityId);
 void RemoveLight(Scene &scene, ID entityId);
 LightComponent &GetLight(Scene &scene, ID entityId);
 const LightComponent &GetLight(const Scene &scene, ID entityId);
+
+ParticlesComponent &AddParticles(Scene &scene, ID entityId);
+void RemoveParticles(Scene &scene, ID entityId);
+ParticlesComponent &GetParticles(Scene &scene, ID entityId);
+const ParticlesComponent &GetParticles(const Scene &scene, ID entityId);
+
 ScriptComponent &GetScript(Scene &scene, ID entityId);
 const ScriptComponent &GetScript(const Scene &scene, ID entityId);
 

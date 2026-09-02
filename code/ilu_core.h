@@ -1976,6 +1976,18 @@ struct float4x4
 	};
 };
 
+struct f32_range
+{
+	f32 min;
+	f32 max;
+};
+
+struct float4_range
+{
+	float4 min;
+	float4 max;
+};
+
 static constexpr f32 Pi = 3.14159265358979323846f;
 static constexpr f32 TwoPi = 2.0f * Pi;
 static constexpr f32 ToRadians = Pi / 180.0f;
@@ -2630,6 +2642,79 @@ float4 Lerp(float4 a, float4 b, f32 t)
 	return res;
 }
 
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Random numbers
+
+// xorshift32. A handful of instructions, no state beyond a word, and a period long enough
+// for jitter and effects. Deterministic on purpose: a series replays from its seed, which
+// is what keeps a fixed timestep simulation reproducible.
+struct RandomSeries
+{
+	u32 state;
+};
+
+// Zero is a fixed point of the generator, so it is the one seed that cannot be taken
+RandomSeries RandomSeed(u32 seed)
+{
+	const RandomSeries series = { .state = seed ? seed : 0x9E3779B9 };
+	return series;
+}
+
+u32 RandomU32(RandomSeries &series)
+{
+	u32 x = series.state;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	series.state = x;
+	return x;
+}
+
+// [0, 1). The top 24 bits are the well mixed ones, and they are all a f32 mantissa holds
+f32 RandomUnit(RandomSeries &series)
+{
+	const f32 res = (f32)( RandomU32(series) >> 8 ) / (f32)( 1 << 24 );
+	return res;
+}
+
+// [-1, 1)
+f32 RandomBipolar(RandomSeries &series)
+{
+	const f32 res = 2.0f * RandomUnit(series) - 1.0f;
+	return res;
+}
+
+f32 RandomRange(RandomSeries &series, f32 min, f32 max)
+{
+	const f32 res = min + ( max - min ) * RandomUnit(series);
+	return res;
+}
+
+f32 RandomRange(RandomSeries &series, f32_range range)
+{
+	const f32 res = RandomRange(series, range.min, range.max);
+	return res;
+}
+
+// [0, count)
+u32 RandomBelow(RandomSeries &series, u32 count)
+{
+	const u32 res = count > 0 ? RandomU32(series) % count : 0;
+	return res;
+}
+
+// The shared series, for callers with nothing to reproduce. Anything that has to replay
+// the same way twice keeps a series of its own instead.
+static RandomSeries sGlobalRandomSeries = { .state = 0x9E3779B9 };
+
+u32 RandomU32() { return RandomU32(sGlobalRandomSeries); }
+f32 RandomUnit() { return RandomUnit(sGlobalRandomSeries); }
+f32 RandomBipolar() { return RandomBipolar(sGlobalRandomSeries); }
+f32 RandomRange(f32 min, f32 max) { return RandomRange(sGlobalRandomSeries, min, max); }
+f32 RandomRange(f32_range range) { return RandomRange(sGlobalRandomSeries, range); }
+u32 RandomBelow(u32 count) { return RandomBelow(sGlobalRandomSeries, count); }
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

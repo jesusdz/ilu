@@ -1,3 +1,30 @@
+void InitializeScene(Engine &engine)
+{
+	engine.scene.particleRandom = RandomSeed(13);
+
+	// A builtin so it survives CleanScene and keeps the same slot every run, which is
+	// what lets a saved ParticlesComponent still refer to it.
+	const ParticleEffectDesc defaultEffectDesc = {
+		.id = { BuiltinID_DefaultParticleEffect },
+		.name = InternString("default_fx"),
+		// color and size read begin -> end over the particle's life, so this fades out
+		.color = { .min = { 1.0f, 1.0f, 1.0f, 1.0f }, .max = { 1.0f, 1.0f, 1.0f, 0.0f } },
+		.size = { .min = 1.0f, .max = 0.3f },
+		.rate = 20.0f,
+		.burstCount = 20,
+		.duration = 0.0f, // Emits until stopped
+		.loop = 1,
+		// The rest are sampled per particle, between min and max
+		.lifetime = { .min = 0.5f, .max = 1.5f },
+		.speed = { .min = 1.0f, .max = 3.0f },
+		.angle = { .min = 60.0f, .max = 120.0f }, // Degrees, a fountain pointing up
+		.gravity = { 0.0f, -9.8f },
+		.worldSpace = 1,
+	};
+	CreateParticleEffect(engine, defaultEffectDesc);
+}
+
+
 Sprite &GetSprite(ID id)
 {
 	ASSERT( Valid(id) );
@@ -138,6 +165,230 @@ void CompactSprites(Scene &scene)
 
 
 ////////////////////////////////////////////////////////////////////////
+// Particle effect management
+
+ParticleEffect &GetParticleEffect(ID id)
+{
+	ASSERT( Valid(id) );
+	ParticleEffect &effect = *((ParticleEffect*)GetObject(id));
+	return effect;
+}
+
+static ParticleEffect *PushParticleEffect(Scene &scene, const ParticleEffectDesc &desc)
+{
+	if ( scene.particleEffectCount == MAX_PARTICLE_EFFECTS )
+	{
+		LOG(Warning, "Could not create particle effect, the particle effect array is full.\n");
+		return nullptr;
+	}
+
+	ParticleEffect &effect = scene.particleEffects[scene.particleEffectCount++];
+	effect = {};
+	effect.desc = desc;
+
+	BindID(&effect.desc.id, &effect);
+
+	return &effect;
+}
+
+ID CreateParticleEffect(Engine &engine, const ParticleEffectDesc &desc)
+{
+	ParticleEffect *effect = PushParticleEffect(engine.scene, desc);
+	if ( !effect ) {
+		return {};
+	}
+
+	effect->desc.name = InternString(desc.name);
+
+	// An effect with no sprite is a valid work in progress, but one naming a sprite that
+	// is not there would silently draw nothing, so it is worth a word.
+	if ( desc.spriteID.slot != 0 && !Valid(desc.spriteID) )
+	{
+		LOG(Warning, "Particle effect <%s> refers to sprite ID %u, which does not exist.\n", desc.name, desc.spriteID.slot);
+		effect->desc.spriteID = {};
+	}
+
+	return effect->desc.id;
+}
+
+ID FindParticleEffect(const Scene &scene, const char *name)
+{
+	if (!name) return {};
+	for (u32 i = 0; i < scene.particleEffectCount; ++i)
+	{
+		const ParticleEffectDesc &desc = scene.particleEffects[i].desc;
+		if (StrEq(desc.name, name)) return desc.id;
+	}
+	return {};
+}
+
+void RemoveParticleEffect(Scene &scene, ID id)
+{
+	if ( IsBuiltin(id) )
+	{
+		LOG(Warning, "Ignoring an attempt to remove builtin particle effect <%s>.\n", GetParticleEffect(id).desc.name);
+		return;
+	}
+
+	if (id)
+	{
+		GetParticleEffect(id).desc.id = {};
+		Invalidate(id);
+	}
+}
+
+void CompactParticleEffects(Scene &scene)
+{
+	COMPACT_ARRAY_BY_ID(ParticleEffect, scene.particleEffects, scene.particleEffectCount, desc.id, nullptr, nullptr, nullptr);
+}
+
+
+
+////////////////////////////////////////////////////////////////////////
+// Particle simulation
+
+static void SpawnParticle(Scene &scene, ID entityId, const ParticleEffectDesc &effect)
+{
+	// Dropping the newest is cheaper than hunting for the oldest, and at the cap
+	// nobody can tell the difference
+	if ( scene.particleCount == MAX_PARTICLES ) { return; }
+
+	const Entity &entity = GetEntity(entityId);
+
+	const float2 jitter = {
+		effect.spawnExtent.x * RandomBipolar(scene.particleRandom),
+		effect.spawnExtent.y * RandomBipolar(scene.particleRandom),
+	};
+	const f32 angle = RandomRange(scene.particleRandom, effect.angle) * ToRadians;
+	const f32 speed = RandomRange(scene.particleRandom, effect.speed);
+	const float2 origin = effect.worldSpace ? entity.position.xy : float2{};
+
+	Particle &p = scene.particles[scene.particleCount++];
+	p = {
+		.pos = origin + effect.spawnOffset + jitter,
+		.vel = { Cos(angle) * speed, Sin(angle) * speed },
+		.age = 0.0f,
+		.lifetime = Max(RandomRange(scene.particleRandom, effect.lifetime), 0.0001f), // Divided by at draw time
+		.effectId = effect.id,
+		// Only local-space particles need to know their emitter
+		.entityId = effect.worldSpace ? ID{} : entityId,
+	};
+}
+
+void SimulateParticles(Scene &scene, f32 deltaSeconds)
+{
+	// Emission
+	for (u32 i = 0; i < scene.entityCount; ++i)
+	{
+		const Entity &entity = scene.entities[i];
+		if ( !HasComponents(scene, entity.id, Component_Particles) ) { continue; }
+
+		ParticlesComponent &particles = GetParticles(scene, entity.id);
+		if ( !particles.playing || !particles.effectId ) { continue; }
+
+		const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
+
+		particles.elapsedTime += deltaSeconds;
+		if ( effect.duration > 0.0f && particles.elapsedTime >= effect.duration )
+		{
+			if ( effect.loop ) {
+				particles.elapsedTime -= effect.duration;
+			} else {
+				particles.playing = 0; // Already-live particles still finish their lives
+				continue;
+			}
+		}
+
+		// The accumulator is what keeps a rate of 3.5/s from rounding to 3 or 4
+		particles.emitAccum += effect.rate * deltaSeconds;
+		while ( particles.emitAccum >= 1.0f )
+		{
+			SpawnParticle(scene, entity.id, effect);
+			particles.emitAccum -= 1.0f;
+		}
+	}
+
+	// Integration. Swap-remove keeps the array packed, so the draw pass is a flat walk.
+	for (u32 i = 0; i < scene.particleCount; )
+	{
+		Particle &p = scene.particles[i];
+		p.age += deltaSeconds;
+
+		// A dead effect takes its particles with it, and so does a dead emitter for the
+		// local-space ones: a slot that was set but no longer resolves
+		const bool orphaned = ( p.entityId.slot != 0 && !Valid(p.entityId) );
+		if ( p.age >= p.lifetime || !p.effectId || orphaned )
+		{
+			scene.particles[i] = scene.particles[--scene.particleCount];
+			continue;
+		}
+
+		const ParticleEffectDesc &effect = GetParticleEffect(p.effectId).desc;
+		p.vel += deltaSeconds * effect.gravity;
+		p.vel = Max(0.0f, 1.0f - effect.drag * deltaSeconds) * p.vel;
+		p.pos += deltaSeconds * p.vel;
+		++i;
+	}
+}
+
+void PlayParticles(Scene &scene, ID entityId)
+{
+	if ( entityId )
+	{
+		const Entity &entity = GetEntity(entityId);
+		if ( HasComponents(scene, entity.id, Component_Particles) )
+		{
+			ParticlesComponent &particles = GetParticles(scene, entity.id);
+			if ( particles.effectId )
+			{
+				particles.playing = 1;
+				particles.elapsedTime = 0.0f;
+				particles.emitAccum = 0.0f;
+
+				const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
+				for (u32 i = 0; i < effect.burstCount; ++i)
+				{
+					SpawnParticle(scene, entityId, effect);
+				}
+			}
+		}
+	}
+}
+
+void StopParticles(Scene &scene, ID entityId)
+{
+	if ( entityId )
+	{
+		const Entity &entity = GetEntity(entityId);
+		if ( HasComponents(scene, entity.id, Component_Particles) )
+		{
+			ParticlesComponent &particles = GetParticles(scene, entity.id);
+			particles.playing = 0;
+		}
+	}
+}
+
+// Back to rest: the live particles go, and so does the playback state of every emitter,
+// which belongs to the run that just ended
+void ClearParticles(Scene &scene)
+{
+	scene.particleCount = 0;
+
+	for (u32 i = 0; i < scene.entityCount; ++i)
+	{
+		const Entity &entity = scene.entities[i];
+		if ( !HasComponents(scene, entity.id, Component_Particles) ) { continue; }
+
+		ParticlesComponent &particles = GetParticles(scene, entity.id);
+		particles.playing = 0;
+		particles.emitAccum = 0.0f;
+		particles.elapsedTime = 0.0f;
+	}
+}
+
+
+
+////////////////////////////////////////////////////////////////////////
 // Room management
 
 Room &GetRoom(ID id)
@@ -211,7 +462,7 @@ LightComponent &AddLight(Scene &scene, ID id)
 	light = {
 		.type = LightType_Point,
 		.color = Float3(1.0f),
-		.intensity = 1.0f,
+		.intensity = 2.0f,
 		.radius = 5.0f,
 	};
 	return light;
@@ -236,6 +487,40 @@ const LightComponent &GetLight(const Scene &scene, ID id)
 	const u16 index = GetEntityIndex(scene, id);
 	ASSERT( scene.entityComponents[index] & Component_Light );
 	return scene.entityLights[index];
+}
+
+ParticlesComponent &AddParticles(Scene &scene, ID entityId)
+{
+	const u16 index = GetEntityIndex(scene, entityId);
+	scene.entityComponents[index] |= Component_Particles;
+
+	ParticlesComponent &particles = scene.entityParticles[index];
+	particles = {
+		.effectId = { BuiltinID_DefaultParticleEffect },
+		.playOnStart = 1,
+	};
+	return particles;
+}
+
+void RemoveParticles(Scene &scene, ID entityId)
+{
+	const u16 index = GetEntityIndex(scene, entityId);
+	scene.entityComponents[index] &= ~(ComponentFlags)Component_Particles;
+	scene.entityParticles[index] = {};
+}
+
+ParticlesComponent &GetParticles(Scene &scene, ID entityId)
+{
+	const u16 index = GetEntityIndex(scene, entityId);
+	ASSERT( scene.entityComponents[index] & Component_Particles );
+	return scene.entityParticles[index];
+}
+
+const ParticlesComponent &GetParticles(const Scene &scene, ID entityId)
+{
+	const u16 index = GetEntityIndex(scene, entityId);
+	ASSERT( scene.entityComponents[index] & Component_Particles );
+	return scene.entityParticles[index];
 }
 
 ScriptComponent &GetScript(Scene &scene, ID id)
@@ -443,6 +728,7 @@ void RemoveEntity(Engine &engine, ID id)
 	if (id)
 	{
 		RemoveScript(engine, id);
+		// RemoveParticles(engine, id); // ??? TODO
 
 		GetEntity(id).id = {};
 		Invalidate(id);
@@ -930,6 +1216,7 @@ void CleanScene(Engine &engine)
 	Audio &audio = engine.audio;
 
 	AudioStopAll(audio);
+	ClearParticles(scene);
 
 	if (PopDataArenaState(engine))
 	{
@@ -955,6 +1242,11 @@ void CleanScene(Engine &engine)
 	for (u16 i = 0; i < scene.spriteCount; ++i) {
 		RemoveSprite(scene, scene.sprites[i].desc.id);
 	}
+	for (u16 i = 0; i < scene.particleEffectCount; ++i) {
+		if ( !IsBuiltin(scene.particleEffects[i].desc.id) ) {
+			RemoveParticleEffect(scene, scene.particleEffects[i].desc.id);
+		}
+	}
 	for (u16 i = 0; i < scene.prefabCount; ++i) {
 		RemovePrefab(scene, scene.prefabs[i].id);
 	}
@@ -969,6 +1261,7 @@ void CleanScene(Engine &engine)
 	CompactRooms(engine.scene);
 	CompactEntities(engine.scene);
 	CompactSprites(engine.scene);
+	CompactParticleEffects(engine.scene);
 	CompactPrefabs(engine.scene);
 	CompactMaterials(engine.gfx);
 	CompactTextures(engine.gfx);

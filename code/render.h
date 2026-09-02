@@ -9,6 +9,7 @@ struct Engine;
 void DrawSprite(ID spriteId, float2 worldPos, float4 pcolor);
 void DrawBox(float2 pos, float2 size, float4 color);
 void DrawBoxOutline(float2 pos, float2 size, float4 color);
+void DrawParticles(const Scene &scene);
 
 
 ////////////////////////////////////////////////////////////////////////

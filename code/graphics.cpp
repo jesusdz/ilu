@@ -7,6 +7,7 @@ enum BuiltinID
 	BuiltinID_DefaultTexture = 1, // 0 is reserved for invalid ID
 	BuiltinID_NoiseTexture,
 	BuiltinID_DefaultMaterial,
+	BuiltinID_DefaultParticleEffect,
 	BuiltinID_Count,
 };
 CT_ASSERT(BuiltinID_Count <= ILU_ID_FIRST_DYNAMIC_SLOT);
@@ -1530,7 +1531,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.globalVertexArena = MakeBufferArena( gfx, CreateVertexBuffer(gfx, MB(4)) );
 	gfx.globalIndexArena = MakeBufferArena( gfx, CreateIndexBuffer(gfx, MB(4)) );
 
-#define MAX_DEBUG_DRAW_VERTICES 4092
+#define MAX_DEBUG_DRAW_VERTICES (4092 + MAX_PARTICLES * 6)
 
 	// Create debug draw vertex buffers
 	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)

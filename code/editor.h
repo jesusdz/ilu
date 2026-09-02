@@ -62,6 +62,7 @@ enum EditorSelectedType
 	EditorSelectedType_Music,
 	EditorSelectedType_Sprite,
 	EditorSelectedType_Prefab,
+	EditorSelectedType_ParticleEffect,
 	// File
 	EditorSelectedType_FileImage,
 	EditorSelectedType_FileAudio,
@@ -71,7 +72,7 @@ enum EditorSelectedType
 	EditorSelectedType_Count,
 	// The types that name an asset, all of them an ID living in the same union
 	EditorSelectedType_AssetBegin = EditorSelectedType_Entity,
-	EditorSelectedType_AssetEnd = EditorSelectedType_Prefab,
+	EditorSelectedType_AssetEnd = EditorSelectedType_ParticleEffect,
 	EditorSelectedType_FileBegin = EditorSelectedType_FileImage,
 	EditorSelectedType_FileEnd = EditorSelectedType_FileUnknown,
 };
@@ -88,6 +89,7 @@ static const char *EditorSelectedTypeName[] = {
 	"Music",
 	"Sprite",
 	"Prefab",
+	"Particle effect",
 	"Image file",
 	"Audio file",
 	"Music file",

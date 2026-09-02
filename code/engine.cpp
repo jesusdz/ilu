@@ -947,12 +947,14 @@ static void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mous
 	game.input.move.y -= KeyPressed(keyboard, K_S) ? 1.0f : 0.0f;
 	game.input.jump.press = KeyPress(keyboard, K_SPACE);
 	game.input.jump.pressed = KeyPressed(keyboard, K_SPACE);
+	game.input.jump.release = KeyRelease(keyboard, K_SPACE);
 
 	// Gamepad
 
 	game.input.move += gamepad.leftAxis;
 	game.input.jump.press |= ButtonPress(gamepad.a);
 	game.input.jump.pressed |= ButtonPressed(gamepad.a);
+	game.input.jump.release |= ButtonRelease(gamepad.a);
 }
 
 static void GameStop(Engine &engine)
@@ -967,6 +969,7 @@ static void GameStop(Engine &engine)
 		}
 
 		AudioStopAll(engine.audio);
+		ClearParticles(engine.scene);
 
 		GfxWaitDeviceIdle(engine.gfx);
 		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
@@ -999,7 +1002,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 	if (game.state == GameStateRunning)
 	{
-		constexpr f32 fixedStepSeconds = 1.0f / 60.0f;
+		constexpr f32 fixedStepSeconds = SIMULATE_SECONDS;
 		constexpr f32 maxFrameSeconds = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 
 		const PlatformInput platformInput = {
@@ -1017,6 +1020,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 			game.deltaSeconds = fixedStepSeconds;
 			GameSetInput(game, accumulatedInput.keyboard, accumulatedInput.mouse, accumulatedInput.gamepad);
 			RunScriptHooks(engine, ScriptHook_Simulate);
+			SimulateParticles(engine.scene, fixedStepSeconds);
 			InputConsume(accumulatedInput);
 			accumulatedSeconds -= fixedStepSeconds;
 		}
@@ -1232,6 +1236,8 @@ ENGINE_API bool OnPlatformWindowInit(Plat &platform)
 		};
 
 
+		InitializeScene(engine);
+
 #if USE_EDITOR
 		EditorInitialize(engine);
 #else
@@ -1303,6 +1309,7 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 	CompactRooms(engine.scene);
 	CompactEntities(engine.scene);
 	CompactSprites(engine.scene);
+	CompactParticleEffects(engine.scene);
 	CompactMaterials(engine.gfx);
 	CompactTextures(engine.gfx);
 }

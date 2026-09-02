@@ -405,6 +405,13 @@ static void EditorSelectPrefab(ID prefabId)
 	editor.inspector.nextSelected.type = EditorSelectedType_Prefab;
 }
 
+static void EditorSelectParticleEffect(ID particleEffectId)
+{
+	Editor &editor = GetEditor();
+	editor.inspector.nextSelected.id = particleEffectId;
+	editor.inspector.nextSelected.type = EditorSelectedType_ParticleEffect;
+}
+
 static void EditorUnselectSprite(ID spriteId)
 {
 	Editor &editor = GetEditor();
@@ -600,6 +607,10 @@ static void EditorRemoveSelection()
 
 		case EditorSelectedType_Prefab:
 			RemovePrefab(engine.scene, assetId);
+			break;
+
+		case EditorSelectedType_ParticleEffect:
+			RemoveParticleEffect(engine.scene, assetId);
 			break;
 
 		default:
@@ -900,6 +911,22 @@ static void EditorUpdateUI_Outliner()
 			UI_DragAndDropSource(ui, "IDPrefab", UI_Payload(prefab.id.slot), editor.iconAsset );
 
 			EditorAssetContextMenu("PrefabContext", EditorSelectedType_Prefab, prefab.id);
+		}
+	}
+
+	if ( UI_Section(ui, "ParticleEffects") )
+	{
+		for (u32 i = 0; i < scene.particleEffectCount; ++i)
+		{
+			const ParticleEffectDesc &desc = scene.particleEffects[i].desc;
+
+			if ( UI_Button(ui, desc.name) ) {
+				EditorSelectParticleEffect(desc.id);
+			}
+
+			UI_DragAndDropSource(ui, "IDParticleEffect", UI_Payload(desc.id.slot), editor.iconAsset );
+
+			EditorAssetContextMenu("ParticleEffectContext", EditorSelectedType_ParticleEffect, desc.id);
 		}
 	}
 
@@ -1553,6 +1580,46 @@ static void EditorUpdateUI_Inspector()
 					}
 				}
 
+				if ( HasComponents(engine.scene, inspector.selected.id, Component_Particles) )
+				{
+					UI_SeparatorLabel(ui, "Particles");
+
+					ParticlesComponent &particles = GetParticles(engine.scene, inspector.selected.id);
+
+					// A removed effect leaves the ID reading as false, so the same test
+					// covers "never assigned" and "the effect went away"
+					const ParticleEffectDesc *effect = particles.effectId ?
+						&GetParticleEffect(particles.effectId).desc : nullptr;
+
+					UI_Text(ui, "Effect", "%s", effect ? effect->name : "<none>");
+					if ( UI_DragAndDropTarget(ui, "IDParticleEffect") )
+					{
+						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+						if ( droppedId ) {
+							particles.effectId = droppedId;
+						}
+					}
+
+					if (effect && UI_Button(ui, "Play"))
+					{
+						PlayParticles(engine.scene, inspector.selected.id);
+					}
+
+					if (effect && UI_Button(ui, "Go to effect"))
+					{
+						EditorSelectParticleEffect(particles.effectId);
+					}
+
+					bool playOnStart = particles.playOnStart != 0;
+					UI_Checkbox(ui, "Play on start", &playOnStart);
+					particles.playOnStart = playOnStart ? 1 : 0;
+
+					if (UI_Button(ui, "Remove"))
+					{
+						RemoveParticles(engine.scene, inspector.selected.id);
+					}
+				}
+
 				if ( HasComponents(engine.scene, inspector.selected.id, Component_Script) )
 				{
 					ScriptComponent &component = GetScript(engine.scene, inspector.selected.id);
@@ -1615,6 +1682,7 @@ static void EditorUpdateUI_Inspector()
 						switch ( availableBits[componentEnum] )
 						{
 							case Component_Light: AddLight(engine.scene, inspector.selected.id); break;
+							case Component_Particles: AddParticles(engine.scene, inspector.selected.id); break;
 							case Component_Script: AddScript(engine, inspector.selected.id); break;
 						}
 					}
@@ -1776,6 +1844,101 @@ static void EditorUpdateUI_Inspector()
 				sprite.frameCount     = (u32)Max(0, frameCount);
 				sprite.fps            = (u32)Max(0, fps);
 				sprite.loop           = loop ? 1 : 0;
+			}
+		}
+		else if (inspector.selected.type == EditorSelectedType_ParticleEffect)
+		{
+			if (inspector.selected.id)
+			{
+				ParticleEffectDesc &effect = GetParticleEffect(inspector.selected.id).desc;
+
+				static char name[64];
+				StrCopy(name, effect.name);
+				UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
+				effect.name = InternString(name);
+
+				UI_SeparatorLabel(ui, "Look");
+
+				const SpriteDesc *sprite = effect.spriteID ? &GetSprite(effect.spriteID).desc : nullptr;
+				UI_Text(ui, "Sprite", "%s", sprite ? sprite->name : "<none>");
+				if ( UI_DragAndDropTarget(ui, "IDSprite") )
+				{
+					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+					if ( droppedId ) {
+						effect.spriteID = droppedId;
+					}
+				}
+
+				// color and size read begin -> end over the particle's life
+				float4 *colors[] = { &effect.color.min, &effect.color.max };
+				const char *colorLabels[] = { "Color begin", "Color end" };
+
+				// Which of the two pickers is open, remembered by effect so that
+				// selecting another one closes it
+				static ID colorEffect = {};
+				static u32 colorIndex = 0;
+				static float4 colorToEdit = {};
+
+				for (u32 c = 0; c < ARRAY_COUNT(colors); ++c)
+				{
+					if ( UI_ColorButton(ui, colorLabels[c], *colors[c]) )
+					{
+						colorToEdit = *colors[c];
+						colorEffect = inspector.selected.id;
+						colorIndex = c;
+					}
+
+					if ( colorEffect == inspector.selected.id && colorIndex == c )
+					{
+						bool isOpen = true;
+						UI_ColorPicker(ui, &colorToEdit, &isOpen);
+						*colors[c] = colorToEdit;
+						if ( !isOpen ) {
+							colorEffect = {};
+						}
+					}
+				}
+
+				float2 size = { effect.size.min, effect.size.max };
+				UI_InputFloat2(ui, "Size", &size);
+				effect.size = { size.x, size.y };
+
+				UI_SeparatorLabel(ui, "Emission");
+
+				UI_InputFloat(ui, "Rate", &effect.rate);
+				i32 burstCount = (i32)effect.burstCount;
+				UI_InputInt(ui, "Burst count", &burstCount);
+				effect.burstCount = (u32)Max(0, burstCount);
+				UI_InputFloat(ui, "Duration", &effect.duration);
+				bool loop = effect.loop != 0;
+				UI_Checkbox(ui, "Loop", &loop);
+				effect.loop = loop ? 1 : 0;
+
+				UI_SeparatorLabel(ui, "Particle");
+
+				// Sampled per particle, between min and max
+				float2 lifetime = { effect.lifetime.min, effect.lifetime.max };
+				float2 speed    = { effect.speed.min,    effect.speed.max    };
+				float2 angle    = { effect.angle.min,    effect.angle.max    };
+				UI_InputFloat2(ui, "Lifetime", &lifetime);
+				UI_InputFloat2(ui, "Speed", &speed);
+				UI_InputFloat2(ui, "Angle", &angle);
+				effect.lifetime = { lifetime.x, lifetime.y };
+				effect.speed    = { speed.x,    speed.y    };
+				effect.angle    = { angle.x,    angle.y    };
+
+				UI_SeparatorLabel(ui, "Shape");
+
+				UI_InputFloat2(ui, "Spawn offset", &effect.spawnOffset);
+				UI_InputFloat2(ui, "Spawn extent", &effect.spawnExtent);
+
+				UI_SeparatorLabel(ui, "Simulation");
+
+				UI_InputFloat2(ui, "Gravity", &effect.gravity);
+				UI_InputFloat(ui, "Drag", &effect.drag);
+				bool worldSpace = effect.worldSpace != 0;
+				UI_Checkbox(ui, "World space", &worldSpace);
+				effect.worldSpace = worldSpace ? 1 : 0;
 			}
 		}
 	}
@@ -2169,6 +2332,24 @@ static void EditorUpdateUI_ContextMenu()
 				};
 				const ID entityId = CreateEntity(engine, entityDesc);
 				AddLight(engine.scene, entityId);
+				EditorSelectEntity(entityId);
+			}
+			else
+			{
+				LOG(Debug, "Add light not implemented in 3D mode.\n");
+			}
+		}
+		if ( UI_MenuItem(ui, "Add particles") )
+		{
+			if ( EditorMode2D() )
+			{
+				const EntityDesc entityDesc = {
+					.name = InternString("particles"),
+					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
+					.scale = 1.0f,
+				};
+				const ID entityId = CreateEntity(engine, entityDesc);
+				AddParticles(engine.scene, entityId);
 				EditorSelectEntity(entityId);
 			}
 			else
@@ -3089,6 +3270,10 @@ void EditorUpdate(Engine &engine)
 	{
 		return;
 	}
+
+	// Particles keep moving while editing, so an effect can be tuned in place. Variable
+	// delta rather than the fixed step: this is a preview, not the simulation.
+	SimulateParticles(engine.scene, gfx.deltaSeconds);
 
 	EditorUpdateInspectedAsset();
 
