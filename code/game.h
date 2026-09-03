@@ -49,9 +49,5 @@ ID FindEntity(const char *name);
 Entity *TryGetEntity(ID entityId); // Null once the entity is gone
 ID FindRoom(const char *name);
 Room *TryGetRoom(ID roomId);       // Null once the room is gone
-void EntitySetPosition(Entity &entity, float3 position);
-void DrawBox(float2 pos, float2 size, float4 color);
-bool IsColliderAtWorldPos(float2 worldPos);
-bool IsColliderInBox(float2 pos, float2 size);
 
 #endif // GAME_H

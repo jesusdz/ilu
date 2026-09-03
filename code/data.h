@@ -109,4 +109,25 @@ void BuildAssets(const AssetDescriptors &assetDescriptors, const char *filepath,
 BinAssets OpenAssets(Arena &dataArena, const char *filepath);
 void CloseAssets(BinAssets &assets);
 
+
+////////////////////////////////////////////////////////////////////////
+// Data arena state
+
+bool PushDataArenaState(Engine &engine);
+bool PopDataArenaState(Engine &engine);
+
+
+////////////////////////////////////////////////////////////////////////
+// Scene serialization
+
+void LoadShadersFromBin(Engine &engine);
+void LoadSceneFromBin(Engine &engine);
+
+#if USE_DATA_BUILD
+void LoadSceneFromTxt(Engine &engine, const char *filepath);
+void SaveSceneToTxt(Engine &engine, const char *filepath);
+void BuildShaders(Engine &engine, const char *outBinFilepath);
+void BuildAssetsFromTxt(Engine &engine, const char *inTxtFilepath, const char *outBinFilepath);
+#endif // USE_DATA_BUILD
+
 #endif // DATA_H

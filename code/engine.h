@@ -30,17 +30,4 @@ struct Engine
 	u32 dataArenaStateCount;
 };
 
-
-////////////////////////////////////////////////////////////////////////
-// Asset descriptors and scene serialization
-
-void LoadSceneFromBin(Engine &engine);
-
-#if USE_DATA_BUILD
-void LoadSceneFromTxt(Engine &engine, const char *filepath);
-void SaveSceneToTxt(Engine &engine, const char *filepath);
-void BuildShaders(Engine &engine, const char *outBinFilepath);
-void BuildAssetsFromTxt(Engine &engine, const char *inTxtFilepath, const char *outBinFilepath);
-#endif // USE_DATA_BUILD
-
 #endif // ENGINE_H
