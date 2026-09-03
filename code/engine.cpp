@@ -20,16 +20,6 @@
 
 #endif // #if USE_UI
 
-// Needed before ilu_ui.h
-struct ImagePixels
-{
-	stbi_uc* pixels;
-	i32 width;
-	i32 height;
-	i32 channelCount;
-	bool constPixels;
-};
-
 #define TOOLS_GFX_FUNCTION_POINTERS
 #include "ilu_gfx.h"
 

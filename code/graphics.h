@@ -1,8 +1,6 @@
 #ifndef GRAPHICS_H
 #define GRAPHICS_H
 
-// NOTE: ImagePixels is defined in engine.cpp before ilu_ui.h, as the UI needs it there.
-
 struct Engine;
 
 typedef u16 Index;

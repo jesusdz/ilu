@@ -441,6 +441,16 @@ struct Image
 	Alloc alloc;
 };
 
+// CPU-side counterpart of Image: decoded pixels before they reach the device.
+struct ImagePixels
+{
+	byte *pixels;
+	i32 width;
+	i32 height;
+	i32 channelCount;
+	bool constPixels;
+};
+
 struct AttachmentDesc
 {
 	Format format;
