@@ -424,6 +424,7 @@ void CompactParticleEffects(Scene &scene);
 void SimulateParticles(Scene &scene, f32 deltaSeconds);
 void PlayParticles(Scene &scene, ID entityId);
 void StopParticles(Scene &scene, ID entityId);
+void StartParticles(Scene &scene);
 void ClearParticles(Scene &scene);
 
 

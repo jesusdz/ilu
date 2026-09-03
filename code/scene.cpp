@@ -368,8 +368,19 @@ void StopParticles(Scene &scene, ID entityId)
 	}
 }
 
-// Back to rest: the live particles go, and so does the playback state of every emitter,
-// which belongs to the run that just ended
+void StartParticles(Scene &scene)
+{
+    for (u32 i = 0; i < scene.entityCount; ++i)
+    {
+        const Entity &entity = scene.entities[i];
+        if ( !HasComponents(scene, entity.id, Component_Particles) ) { continue; }
+
+        if ( GetParticles(scene, entity.id).playOnStart ) {
+            PlayParticles(scene, entity.id);
+        }
+    }
+}
+
 void ClearParticles(Scene &scene)
 {
 	scene.particleCount = 0;

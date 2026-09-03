@@ -140,6 +140,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		game.accumulatedInput = {};
 		game.accumulatedSeconds = 0.0f;
 
+		StartParticles(engine.scene);
 		RunScriptHooks(engine, ScriptHook_Start);
 		game.state = GameStateRunning;
 	}
