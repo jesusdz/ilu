@@ -29,7 +29,7 @@ enum ComponentBits
 
 typedef u32 ComponentFlags;
 
-static const char *ComponentNames[] = { "Light", "Particles", "Script" };
+constexpr const char *ComponentNames[] = { "Light", "Particles", "Script" };
 
 CT_ASSERT(ARRAY_COUNT(ComponentNames) == ComponentType_Count);
 

@@ -94,7 +94,7 @@ void DrawBoxOutline(float2 pos, float2 size, float4 color)
 	DrawBox(pos + dY(size) - float2{0, d}, float2{size.x, d}, color);
 }
 
-void DrawSpriteCentered(ID spriteID, float2 pos, float2 size, float4 pcolor)
+static void DrawSpriteCentered(ID spriteID, float2 pos, float2 size, float4 pcolor)
 {
 	// TODO
 }

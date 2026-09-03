@@ -5,6 +5,42 @@
 #include "libs/ibxm/ibxm.h"
 
 
+// Shared by every asset kind below. They live here because audio.h is the first
+// header that needs them, not because they are an audio concern.
+
+////////////////////////////////////////////////////////////////////////
+// Asset flags
+
+enum AssetFlags
+{
+	// Not serialized and hidden from the editor's asset lists. Transient previews are ghosts, and so
+	// are the builtins, which the engine recreates on its own.
+	AssetFlag_Ghost = 1 << 0,
+	// Owned by the engine, not by the scene, so CleanScene must leave it alone. These assets hold the
+	// shared images bound in the global bind group, which nothing recreates after initialization.
+	AssetFlag_Builtin = 1 << 1,
+};
+
+// The desc fields below are typed AssetFlags, but combining two enumerators yields an int that C++
+// will not convert back to the enum on its own, so give the type the operator it is used as if it had.
+inline AssetFlags operator|(AssetFlags a, AssetFlags b) { return (AssetFlags)((u32)a | (u32)b); }
+
+////////////////////////////////////////////////////////////////////////
+// Binary data
+
+// Types
+
+#pragma pack(push, 1)
+
+struct BinLocation
+{
+	u32 offset;
+	u32 size;
+};
+
+#pragma pack(pop)
+
+
 #define MAX_AUDIO_CLIPS 16
 #define MAX_AUDIO_SOURCES 16
 #define AUDIO_CHUNK_SAMPLE_COUNT (48000u/4u)

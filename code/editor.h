@@ -14,7 +14,7 @@ enum EditorIcon
 	EditorIcon_Count,
 };
 
-static const char *sEditorIconFilenames[] = {
+constexpr const char *sEditorIconFilenames[] = {
 	"editor/play_16.png",
 	"editor/open.png",
 	"editor/save.png",
@@ -77,7 +77,7 @@ enum EditorSelectedType
 	EditorSelectedType_FileEnd = EditorSelectedType_FileUnknown,
 };
 
-static const char *EditorSelectedTypeName[] = {
+constexpr const char *EditorSelectedTypeName[] = {
 	"None",
 	"Scene",
 	"Scene", // Room
