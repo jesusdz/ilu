@@ -14,7 +14,7 @@ enum EditorIcon
 	EditorIcon_Count,
 };
 
-const char *sEditorIconFilenames[] = {
+static const char *sEditorIconFilenames[] = {
 	"editor/play_16.png",
 	"editor/open.png",
 	"editor/save.png",

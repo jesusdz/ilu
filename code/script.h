@@ -95,4 +95,24 @@ struct BinScriptDesc
 
 #pragma pack(pop)
 
+////////////////////////////////////////////////////////////////////////
+// Functions
+
+struct Engine;
+struct Scene;
+
+// The registry is rebuilt by RegisterScripts on every reload, so an index is only
+// valid until the next one. Never hold one across a reload, hold the name instead.
+void RegisterScripts();
+u32 ScriptCount();
+const Script &GetScriptAt(u32 index);
+
+ScriptComponent *AddScript(Engine &engine, ID entityId);
+ScriptComponent *SetScript(Engine &engine, ID entityId, const char *scriptName);
+void SetScript(Engine &engine, ID entityId, const ScriptDesc &desc);
+void RemoveScript(Engine &engine, ID entityId);
+bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptDesc &outScript);
+void RunScriptHooks(Engine &engine, ScriptHookType hook);
+void RebindScripts(Engine &engine);
+
 #endif // SCRIPT_H

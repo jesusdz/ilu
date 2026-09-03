@@ -998,9 +998,9 @@ static void EditorUpdateUI_Outliner()
 
 	if ( UI_Section(ui, "Scripts") )
 	{
-		for (u32 i = 0; i < scriptRegistry.scriptCount; ++i)
+		for (u32 i = 0; i < ScriptCount(); ++i)
 		{
-			const Script &script = scriptRegistry.scripts[i];
+			const Script &script = GetScriptAt(i);
 			UI_TreeNode(ui, ScriptName(script), nullptr, nullptr, UITreeNodeFlag_Leaf);
 			UI_DragAndDropSource(ui, "Script", UI_Payload((void*)&script), editor.iconAsset );
 		}
@@ -1624,9 +1624,9 @@ static void EditorUpdateUI_Inspector()
 				{
 					ScriptComponent &component = GetScript(engine.scene, inspector.selected.id);
 
-					if ( component.structIndex < scriptRegistry.scriptCount )
+					if ( component.structIndex < ScriptCount() )
 					{
-						const Script &script = scriptRegistry.scripts[component.structIndex];
+						const Script &script = GetScriptAt(component.structIndex);
 						EditorUpdateUI_InspectorProperties(component.name, script.type->members, script.type->memberCount, component.data);
 					}
 					else
