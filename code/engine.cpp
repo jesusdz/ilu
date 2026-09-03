@@ -123,104 +123,13 @@ static const char * InternString(const char *str)
 ////////////////////////////////////////////////////////////////////////
 // Game loop
 
-static bool sKeyPendingRelease[K_COUNT];
-static bool sGamepadButtonPendingRelease[ARRAY_COUNT(Gamepad::buttons)];
-
-struct PlatformInput
-{
-	Gamepad gamepad;
-	Keyboard keyboard;
-	Mouse mouse;
-};
-
-static void InputAccumulate(PlatformInput &input, const PlatformInput &newInput)
-{
-	for (u32 i = 0; i < K_COUNT; ++i)
-	{
-		const KeyState newState = newInput.keyboard.keys[i];
-		KeyState &state = input.keyboard.keys[i];
-
-		if (newState == KEY_STATE_PRESS)
-		{
-			// Latch the edge until a fixed step consumes it
-			state = KEY_STATE_PRESS;
-			sKeyPendingRelease[i] = false;
-		}
-		else if (newState == KEY_STATE_RELEASE)
-		{
-			if (state == KEY_STATE_PRESS) {
-				// The press was not consumed yet: keep it and release right after
-				sKeyPendingRelease[i] = true;
-			} else {
-				state = KEY_STATE_RELEASE;
-			}
-		}
-	}
-	for (u32 i = 0; i < ARRAY_COUNT(input.gamepad.buttons); ++i)
-	{
-		const ButtonState newState = newInput.gamepad.buttons[i];
-		ButtonState &state = input.gamepad.buttons[i];
-
-		if (newState == BUTTON_STATE_PRESS)
-		{
-			// Latch the edge until a fixed step consumes it
-			state = BUTTON_STATE_PRESS;
-			sGamepadButtonPendingRelease[i] = false;
-		}
-		else if (newState == BUTTON_STATE_RELEASE)
-		{
-			if (state == BUTTON_STATE_PRESS) {
-				// The press was not consumed yet: keep it and release right after
-				sGamepadButtonPendingRelease[i] = true;
-			} else {
-				state = BUTTON_STATE_RELEASE;
-			}
-		}
-	}
-	input.gamepad.leftTrigger = newInput.gamepad.leftTrigger;
-	input.gamepad.rightTrigger = newInput.gamepad.rightTrigger;
-	input.gamepad.leftAxis = newInput.gamepad.leftAxis;
-	input.gamepad.rightAxis = newInput.gamepad.rightAxis;
-}
-
-static void InputConsume(PlatformInput &input)
-{
-	for (u32 i = 0; i < K_COUNT; ++i)
-	{
-		KeyState &state = input.keyboard.keys[i];
-
-		if (state == KEY_STATE_PRESS)
-		{
-			state = sKeyPendingRelease[i] ? KEY_STATE_RELEASE : KEY_STATE_PRESSED;
-			sKeyPendingRelease[i] = false;
-		}
-		else if (state == KEY_STATE_RELEASE)
-		{
-			state = KEY_STATE_IDLE;
-		}
-	}
-	for (u32 i = 0; i < ARRAY_COUNT(input.gamepad.buttons); ++i)
-	{
-		ButtonState &state = input.gamepad.buttons[i];
-
-		if (state == BUTTON_STATE_PRESS)
-		{
-			state = sGamepadButtonPendingRelease[i] ? BUTTON_STATE_RELEASE : BUTTON_STATE_PRESSED;
-			sGamepadButtonPendingRelease[i] = false;
-		}
-		else if (state == BUTTON_STATE_RELEASE)
-		{
-			state = BUTTON_STATE_IDLE;
-		}
-	}
-}
-
-static void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mouse, const Gamepad &gamepad)
+static void GameSetInput(Game &game, const InputAccumulator &input)
 {
 	game.input = {};
 
 	// Keyboard
 
+	const Keyboard &keyboard = input.keyboard;
 	game.input.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
 	game.input.move.x -= KeyPressed(keyboard, K_A) ? 1.0f : 0.0f;
 	game.input.move.y += KeyPressed(keyboard, K_W) ? 1.0f : 0.0f;
@@ -231,6 +140,7 @@ static void GameSetInput(Game &game, const Keyboard &keyboard, const Mouse &mous
 
 	// Gamepad
 
+	const Gamepad &gamepad = input.gamepad;
 	game.input.move += gamepad.leftAxis;
 	game.input.jump.press |= ButtonPress(gamepad.a);
 	game.input.jump.pressed |= ButtonPressed(gamepad.a);
@@ -263,18 +173,14 @@ void GameUpdate(Engine &engine, const Plat &platform)
 {
 	Game &game = engine.game;
 
-	static PlatformInput accumulatedInput = {};
-	static f32 accumulatedSeconds = 0.0f;
-
 	if (game.state == GameStateStarting)
 	{
 		GfxWaitDeviceIdle(engine.gfx);
 		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
 		CreateRenderTargets(engine.gfx, SCENE_WIDTH, SCENE_HEIGHT);
 
-		accumulatedInput = {};
-		accumulatedSeconds = 0.0f;
-		MemSet(sKeyPendingRelease, sizeof(sKeyPendingRelease), 0);
+		game.accumulatedInput = {};
+		game.accumulatedSeconds = 0.0f;
 
 		RunScriptHooks(engine, ScriptHook_Start);
 		game.state = GameStateRunning;
@@ -285,24 +191,18 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		constexpr f32 fixedStepSeconds = SIMULATE_SECONDS;
 		constexpr f32 maxFrameSeconds = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 
-		const PlatformInput platformInput = {
-			.gamepad = *platform.gamepad,
-			.keyboard = platform.window->keyboard,
-			.mouse = platform.window->mouse,
-		};
+		InputAccumulate(game.accumulatedInput, *platform.gamepad, platform.window->keyboard);
 
-		InputAccumulate(accumulatedInput, platformInput);
+		game.accumulatedSeconds += Min(engine.gfx.deltaSeconds, maxFrameSeconds);
 
-		accumulatedSeconds += Min(engine.gfx.deltaSeconds, maxFrameSeconds);
-
-		while (accumulatedSeconds >= fixedStepSeconds)
+		while (game.accumulatedSeconds >= fixedStepSeconds)
 		{
 			game.deltaSeconds = fixedStepSeconds;
-			GameSetInput(game, accumulatedInput.keyboard, accumulatedInput.mouse, accumulatedInput.gamepad);
+			GameSetInput(game, game.accumulatedInput);
 			RunScriptHooks(engine, ScriptHook_Simulate);
 			SimulateParticles(engine.scene, fixedStepSeconds);
-			InputConsume(accumulatedInput);
-			accumulatedSeconds -= fixedStepSeconds;
+			InputConsume(game.accumulatedInput);
+			game.accumulatedSeconds -= fixedStepSeconds;
 		}
 
 		RunScriptHooks(engine, ScriptHook_Update);
@@ -321,7 +221,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 
 #if USE_UI
 
-void UIBeginFrameRecording(Engine &engine)
+static void UIBeginFrameRecording(Engine &engine)
 {
 	UI &ui = engine.ui;
 	const Window &window = GetWindow();
@@ -333,7 +233,7 @@ void UIBeginFrameRecording(Engine &engine)
 	UI_BeginFrame(ui);
 }
 
-void UIEndFrameRecording(Engine &engine)
+static void UIEndFrameRecording(Engine &engine)
 {
 	UI &ui = engine.ui;
 	UI_EndFrame(ui);

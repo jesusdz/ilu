@@ -32,6 +32,8 @@ constexpr f32 SIMULATE_SECONDS = (1.0f / 60.0f);
 struct Game
 {
 	GameState state;
+
+	InputAccumulator accumulatedInput;
 	GameInput input;
 
 	f32 deltaSeconds;
