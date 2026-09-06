@@ -346,10 +346,13 @@ struct PlatformAPI
 };
 
 struct Engine;
+#if USE_EDITOR
+struct Editor;
+#endif // USE_EDITOR
 
-struct Plat
+struct Host
 {
-	PlatformAPI api;
+	PlatformAPI platformAPI;
 	GraphicsAPI graphicsAPI;
 
 	i32 argc;
@@ -373,6 +376,9 @@ struct Plat
 	bool fileChangesDetected; // true for the one frame in which a watched directory changed
 
 	Engine *engine;
+#if USE_EDITOR
+	Editor *editor;
+#endif // USE_EDITOR
 };
 
 #endif // PLATFORM_H
@@ -386,12 +392,12 @@ struct Plat
 #ifndef PLATAFORM_API_INCLUDED
 #define PLATAFORM_API_INCLUDED
 
-extern Plat *sPlatform;
+extern Host *sHost;
 
-#define GlobalArena (*sPlatform->globalArena)
-#define FrameArena (*sPlatform->frameArena)
-#define StringArena (*sPlatform->stringArena)
-#define DataArena (*sPlatform->dataArena)
+#define GlobalArena (*sHost->globalArena)
+#define FrameArena (*sHost->frameArena)
+#define StringArena (*sHost->stringArena)
+#define DataArena (*sHost->dataArena)
 
 extern const char *BinDir;
 extern const char *DataDir;
@@ -402,18 +408,18 @@ extern PFN_PlatformQuit        PlatformQuit;
 extern PFN_AcquireScratchArena AcquireScratchArena;
 extern PFN_ReleaseScratchArena ReleaseScratchArena;
 
-inline void SetPlatformAPI(Plat &platform)
+inline void SetHost(Host &host)
 {
-	sPlatform = &platform;
+	sHost = &host;
 
-	BinDir       = platform.BinDir;
-	DataDir      = platform.DataDir;
-	AssetDir     = platform.AssetDir;
-	ProjectDir   = platform.ProjectDir;
+	BinDir       = host.BinDir;
+	DataDir      = host.DataDir;
+	AssetDir     = host.AssetDir;
+	ProjectDir   = host.ProjectDir;
 
-	PlatformQuit        = platform.api.PlatformQuit;
-	AcquireScratchArena = platform.api.AcquireScratchArena;
-	ReleaseScratchArena = platform.api.ReleaseScratchArena;
+	PlatformQuit        = host.platformAPI.PlatformQuit;
+	AcquireScratchArena = host.platformAPI.AcquireScratchArena;
+	ReleaseScratchArena = host.platformAPI.ReleaseScratchArena;
 }
 
 struct Scratch
@@ -437,7 +443,7 @@ struct Scratch
 #ifndef PLATFORM_API_IMPLEMENTATION_INCLUDED
 #define PLATFORM_API_IMPLEMENTATION_INCLUDED
 
-Plat *sPlatform = nullptr;
+Host *sHost = nullptr;
 
 const char *BinDir = "";
 const char *DataDir = "";

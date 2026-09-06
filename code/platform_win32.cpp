@@ -862,7 +862,7 @@ static void UpdateFileWatcher(Platform &platform)
 		if (GetOverlappedResult(watch.handle, &watch.overlapped, &transferred, FALSE))
 		{
 			// We don't care what changed or what the buffer contains, only that something did
-			platform.pub.fileChangesDetected = true;
+			platform.host.fileChangesDetected = true;
 
 			IssueReadDirectoryChanges(watch);
 		}
@@ -901,7 +901,7 @@ static bool InitializeGamepad(Platform &platform)
 {
 	LOG(Info, "Input system initialization:\n");
 
-	platform.pub.gamepad = &platform.gamepad;
+	platform.host.gamepad = &platform.gamepad;
 
 	bool found = false;
 
@@ -1267,7 +1267,7 @@ static void UpdateAudioDevice(Platform &platform)
 		soundBuffer.samplesPerSecond = audio.samplesPerSecond;
 		soundBuffer.sampleCount = bytesToWrite / (audio.bytesPerSample * audio.channelCount);
 		soundBuffer.samples = audio.outputSamples;
-		platform.OnPlatformRenderAudio(platform.pub, soundBuffer);
+		platform.OnPlatformRenderAudio(platform.host, soundBuffer);
 
 		if ( !Win32FillAudioBuffer(audio, byteToLock, bytesToWrite, soundBuffer.samples) ) {
 			audio.state = AudioStateResync;

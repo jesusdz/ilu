@@ -1363,10 +1363,6 @@ struct BinAssets
 // TYPES: Engine
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if USE_EDITOR
-#include "editor.h"
-#endif
-
 struct Settings
 {
 	bool hotReload;
@@ -1383,9 +1379,6 @@ struct Engine
 	ScriptDataPool scriptData;
 #if USE_UI
 	UI ui;
-#endif
-#if USE_EDITOR
-	Editor editor;
 #endif
 	Settings settings;
 

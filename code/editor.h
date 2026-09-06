@@ -222,8 +222,6 @@ struct Editor
 	FileNode *freeNodes;
 };
 
-struct Engine;
-
 void EditorInitialize(Engine &engine);
 void EditorUpdate(Engine &engine);
 void EditorRender(Engine &engine, CommandList &commandList);

@@ -372,7 +372,7 @@ bool RenderGraphics(Engine &engine)
 	Graphics &gfx = engine.gfx;
 	Window &window = GetWindow();
 #if USE_EDITOR
-	Editor &editor = engine.editor;
+	Editor &editor = GetEditor();
 #endif
 
 	static f32 totalSeconds = 0.0f;

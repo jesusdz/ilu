@@ -98,16 +98,16 @@ struct Platform
 	u32 stringMemorySize = KB(16);
 	u32 dataMemorySize = MB(16);
 
-	void (*OnPlatformLoadEngine)(Plat &);
-	void (*OnPlatformUnloadEngine)(Plat &);
-	bool (*OnPlatformInit)(Plat &);
-	void (*OnPlatformUpdate)(Plat &);
-	void (*OnPlatformRenderGraphics)(Plat &);
-	void (*OnPlatformPreRenderAudio)(Plat &);
-	void (*OnPlatformRenderAudio)(Plat &, SoundBuffer &soundBuffer);
-	void (*OnPlatformCleanup)(Plat &);
-	bool (*OnPlatformWindowInit)(Plat &);
-	void (*OnPlatformWindowCleanup)(Plat &);
+	void (*OnPlatformLoadEngine)(Host &);
+	void (*OnPlatformUnloadEngine)(Host &);
+	bool (*OnPlatformInit)(Host &);
+	void (*OnPlatformUpdate)(Host &);
+	void (*OnPlatformRenderGraphics)(Host &);
+	void (*OnPlatformPreRenderAudio)(Host &);
+	void (*OnPlatformRenderAudio)(Host &, SoundBuffer &soundBuffer);
+	void (*OnPlatformCleanup)(Host &);
+	bool (*OnPlatformWindowInit)(Host &);
+	void (*OnPlatformWindowCleanup)(Host &);
 	u32 (*OnPlatformGetStateSignature)();
 
 	void *userData;
@@ -151,7 +151,7 @@ struct Platform
 	Semaphore audioThreadFinishSemaphore;
 
 	// API exposed to the engine
-	Plat pub;
+	Host host;
 };
 
 static Platform platform = {};
@@ -284,10 +284,10 @@ static void CanonicalizePath(char *path)
 
 static void PublishDirectories(Platform &platform)
 {
-	platform.pub.BinDir    = BinDir;
-	platform.pub.DataDir   = DataDir;
-	platform.pub.AssetDir  = AssetDir;
-	platform.pub.ProjectDir = ProjectDir;
+	platform.host.BinDir    = BinDir;
+	platform.host.DataDir   = DataDir;
+	platform.host.AssetDir  = AssetDir;
+	platform.host.ProjectDir = ProjectDir;
 
 	LOG(Info, "Directories:\n");
 	LOG(Info, "- BinDir: %s\n", BinDir);
@@ -301,10 +301,10 @@ static void InitializeDirectoriesFromWorkingDir(Platform &platform, char *workin
 	StrReplace(workingDir, '\\', '/'); // Make all separators '/'
 
 	char exeDir[MAX_PATH_LENGTH] = {};
-	if (platform.pub.argc > 0)
+	if (platform.host.argc > 0)
 	{
-		StrReplace(platform.pub.argv[0], '\\', '/'); // Make all separators '/'
-		const char *exePath = platform.pub.argv[0];
+		StrReplace(platform.host.argv[0], '\\', '/'); // Make all separators '/'
+		const char *exePath = platform.host.argv[0];
 		const char *lastSeparator = StrCharR(exePath, '/');
 		const u32 length = lastSeparator ? lastSeparator - exePath : 0;
 		StrCopyN(exeDir, exePath, length);
@@ -448,7 +448,7 @@ static void UpdateAudio(Platform &platform)
 
 	if ( platform.OnPlatformPreRenderAudio )
 	{
-		platform.OnPlatformPreRenderAudio(platform.pub);
+		platform.OnPlatformPreRenderAudio(platform.host);
 	}
 }
 
@@ -768,7 +768,7 @@ static void ProcessPlatformEvents(Platform &platform)
 		{
 			case PlatformEventTypeWindowWasCreated:
 			{
-				platform.OnPlatformWindowInit(platform.pub);
+				platform.OnPlatformWindowInit(platform.host);
 				platform.windowInitialized = true;
 				ShowPlatformWindow(platform.window);
 				break;
@@ -776,7 +776,7 @@ static void ProcessPlatformEvents(Platform &platform)
 			case PlatformEventTypeWindowWillDestroy:
 			{
 				platform.windowInitialized = false;
-				platform.OnPlatformWindowCleanup(platform.pub);
+				platform.OnPlatformWindowCleanup(platform.host);
 				CleanupWindow(platform.window);
 				break;
 			};
@@ -844,11 +844,11 @@ static void UpdateAndRender(Platform &platform)
 
 	if ( platform.windowInitialized )
 	{
-		platform.OnPlatformUpdate(platform.pub);
-		platform.OnPlatformRenderGraphics(platform.pub);
+		platform.OnPlatformUpdate(platform.host);
+		platform.OnPlatformRenderGraphics(platform.host);
 
 		platform.window.flags = 0;
-		platform.pub.fileChangesDetected = false;
+		platform.host.fileChangesDetected = false;
 	}
 
 	CheckEngineHotReload(platform);
@@ -927,11 +927,11 @@ static bool InitializeArenas(Platform &platform)
 	byte *dataMemory = (byte*)AllocateVirtualMemory(platform.dataMemorySize);
 	platform.dataArena = MakeArena(dataMemory, platform.dataMemorySize, "Data arena");
 
-	platform.pub.stringInterning = &platform.stringInterning;
-	platform.pub.globalArena = &platform.globalArena;
-	platform.pub.stringArena = &platform.stringArena;
-	platform.pub.frameArena = &platform.frameArena;
-	platform.pub.dataArena = &platform.dataArena;
+	platform.host.stringInterning = &platform.stringInterning;
+	platform.host.globalArena = &platform.globalArena;
+	platform.host.stringArena = &platform.stringArena;
+	platform.host.frameArena = &platform.frameArena;
+	platform.host.dataArena = &platform.dataArena;
 
 	return true;
 }
@@ -1026,14 +1026,14 @@ static bool LoadEngineDLL(Platform &platform)
 
 	// Engine interface exposed to platform
 
-	LOAD_ENGINE_SYMBOL(OnPlatformLoadEngine,        void (*)(Plat &));
-	LOAD_ENGINE_SYMBOL(OnPlatformUnloadEngine,      void (*)(Plat &));
-	LOAD_ENGINE_SYMBOL(OnPlatformInit,              bool (*)(Plat &));
-	LOAD_ENGINE_SYMBOL(OnPlatformUpdate,            void (*)(Plat &));
-	LOAD_ENGINE_SYMBOL(OnPlatformRenderGraphics,    void (*)(Plat &));
-	LOAD_ENGINE_SYMBOL(OnPlatformCleanup,           void (*)(Plat &));
-	LOAD_ENGINE_SYMBOL(OnPlatformWindowInit,        bool (*)(Plat &));
-	LOAD_ENGINE_SYMBOL(OnPlatformWindowCleanup,     void (*)(Plat &));
+	LOAD_ENGINE_SYMBOL(OnPlatformLoadEngine,        void (*)(Host &));
+	LOAD_ENGINE_SYMBOL(OnPlatformUnloadEngine,      void (*)(Host &));
+	LOAD_ENGINE_SYMBOL(OnPlatformInit,              bool (*)(Host &));
+	LOAD_ENGINE_SYMBOL(OnPlatformUpdate,            void (*)(Host &));
+	LOAD_ENGINE_SYMBOL(OnPlatformRenderGraphics,    void (*)(Host &));
+	LOAD_ENGINE_SYMBOL(OnPlatformCleanup,           void (*)(Host &));
+	LOAD_ENGINE_SYMBOL(OnPlatformWindowInit,        bool (*)(Host &));
+	LOAD_ENGINE_SYMBOL(OnPlatformWindowCleanup,     void (*)(Host &));
 	LOAD_ENGINE_SYMBOL(OnPlatformGetStateSignature, u32 (*)());
 
 	const u32 stateSignature = platform.OnPlatformGetStateSignature();
@@ -1050,15 +1050,15 @@ static bool LoadEngineDLL(Platform &platform)
 	}
 
 	// The engine is allowed to ship without audio
-	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformRenderAudio,    void (*)(Plat &, SoundBuffer &));
-	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformPreRenderAudio, void (*)(Plat &));
+	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformRenderAudio,    void (*)(Host &, SoundBuffer &));
+	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformPreRenderAudio, void (*)(Host &));
 
 	// Platform interface exposed to engine
-	platform.pub.api.PlatformQuit        = PlatformQuit;
-	platform.pub.api.AcquireScratchArena = AcquireScratchArena;
-	platform.pub.api.ReleaseScratchArena = ReleaseScratchArena;
+	platform.host.platformAPI.PlatformQuit        = PlatformQuit;
+	platform.host.platformAPI.AcquireScratchArena = AcquireScratchArena;
+	platform.host.platformAPI.ReleaseScratchArena = ReleaseScratchArena;
 
-	platform.OnPlatformLoadEngine(platform.pub);
+	platform.OnPlatformLoadEngine(platform.host);
 
 	return true;
 }
@@ -1070,7 +1070,7 @@ static void UnloadEngineDLL(Platform &platform)
 {
 	if (platform.engineLib)
 	{
-		platform.OnPlatformUnloadEngine(platform.pub);
+		platform.OnPlatformUnloadEngine(platform.host);
 		CloseLibrary(platform.engineLib);
 		platform.engineLib = 0;
 	}
@@ -1164,7 +1164,7 @@ static bool Run(Platform &platform)
 		return false;
 	}
 
-	platform.pub.window = &platform.window;
+	platform.host.window = &platform.window;
 
 #if PLATFORM_LINUX
 	const PlatformEvent event = { .type = PlatformEventTypeWindowWasCreated };
@@ -1197,7 +1197,7 @@ static bool Run(Platform &platform)
 		return false;
 	}
 
-	if ( !platform.OnPlatformInit(platform.pub) )
+	if ( !platform.OnPlatformInit(platform.host) )
 	{
 		return false;
 	}
@@ -1259,10 +1259,10 @@ static bool Run(Platform &platform)
 
 	if ( platform.windowInitialized )
 	{
-		platform.OnPlatformWindowCleanup(platform.pub);
+		platform.OnPlatformWindowCleanup(platform.host);
 	}
 
-	platform.OnPlatformCleanup(platform.pub);
+	platform.OnPlatformCleanup(platform.host);
 	// TODO: Cleanup window and audio
 
 	return false;
@@ -1272,14 +1272,14 @@ static bool Run(Platform &platform)
 static void Main( int argc, char **argv )
 {
 	// Input args
-	platform.pub.argc = argc;
-	platform.pub.argv = argv;
+	platform.host.argc = argc;
+	platform.host.argv = argv;
 
 	InitializeArenas(platform);
 
 	InitializeDirectories(platform);
 
-	GetGraphicsAPI(&platform.pub.graphicsAPI);
+	GetGraphicsAPI(&platform.host.graphicsAPI);
 	SetGraphicsStringInterning(&platform.stringInterning);
 
 	platform.paused = false;

@@ -248,7 +248,7 @@ static bool InitializeGamepad(Platform &platform)
 {
 	LOG(Info, "Input system initialization:\n");
 
-	platform.pub.gamepad = &platform.gamepad;
+	platform.host.gamepad = &platform.gamepad;
 
 	LOG(Info, "- Missing implementation\n");
 
@@ -287,7 +287,7 @@ static aaudio_data_callback_result_t AAudioFillAudioBuffer(AAudioStream *stream,
 	soundBuffer.samplesPerSecond = audio.samplesPerSecond;
 	soundBuffer.sampleCount = numFrames;
 	soundBuffer.samples = (i16*)audioData;
-	platform.OnPlatformRenderAudio(platform.pub, soundBuffer);
+	platform.OnPlatformRenderAudio(platform.host, soundBuffer);
 
 	return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }

@@ -28,8 +28,8 @@ static const char *MakeName(const char *format, ...)
 // Both null once the selection is gone, and only good for this frame
 static Room *EditorGetContextRoom()
 {
-	Engine &engine = GetEngine();
-	const ID roomId = engine.editor.context.roomId;
+	Editor &editor = GetEditor();
+	const ID roomId = editor.context.roomId;
 	Room *room = nullptr;
 	if ( roomId ) {
 		room = &GetRoom(roomId);
@@ -39,8 +39,8 @@ static Room *EditorGetContextRoom()
 
 static Layer *EditorGetContextLayer()
 {
-	Engine &engine = GetEngine();
-	const u32 layerIndex = engine.editor.context.layerIndex;
+	Editor &editor = GetEditor();
+	const u32 layerIndex = editor.context.layerIndex;
 	Room *room = EditorGetContextRoom();
 	Layer *layer = nullptr;
 	if ( room && layerIndex < ARRAY_COUNT(room->layers) && room->layers[layerIndex].initialized ) {
@@ -111,9 +111,9 @@ static ImageH EditorLoadSnapshot(const char *filepath, const char *name)
 
 static SnapshotNode *EditorGetOrCreateSnapshotNode(const char *filepath)
 {
-	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	// First we try to find an existing snapshot for this path
-	SnapshotNode *snapshot = engine.editor.snapshots;
+	SnapshotNode *snapshot = editor.snapshots;
 	while (snapshot)
 	{
 		if ( StrEq( snapshot->filepath, filepath ) )
@@ -127,10 +127,10 @@ static SnapshotNode *EditorGetOrCreateSnapshotNode(const char *filepath)
 	if ( !snapshot )
 	{
 		snapshot = PushZeroStruct( GlobalArena, SnapshotNode );
-		if (engine.editor.snapshots) {
-			snapshot->next = engine.editor.snapshots;
+		if (editor.snapshots) {
+			snapshot->next = editor.snapshots;
 		}
-		engine.editor.snapshots = snapshot;
+		editor.snapshots = snapshot;
 		snapshot->filepath = InternString(filepath);
 		snapshot->imageH = EditorLoadSnapshot(filepath, "editor_snapshot");
 	}
@@ -141,10 +141,10 @@ static SnapshotNode *EditorGetOrCreateSnapshotNode(const char *filepath)
 static void EditorUpdateUI_MenuBar()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
-	Editor &editor = engine.editor;
 
 	if ( UI_BeginMenuBar(ui) )
 	{
@@ -248,9 +248,10 @@ static void EditorUpdateUI_MenuBar()
 static void EditorUpdateUI_ToolBar()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 	Scene &scene = engine.scene;
-	EditorContext &context = engine.editor.context;
+	EditorContext &context = editor.context;
 
 	if ( UI_BeginToolBar(ui) )
 	{
@@ -457,7 +458,8 @@ static void EditorSelectFileUnknown(FileNode *node)
 static void EditorUpdateInspectedAsset()
 {
 	Engine &engine = GetEngine();
-	EditorInspector &inspector = engine.editor.inspector;
+	Editor &editor = GetEditor();
+	EditorInspector &inspector = editor.inspector;
 
 	const bool selectionMoved =
 		inspector.selected.type != inspector.nextSelected.type ||
@@ -555,7 +557,7 @@ static void EditorRepointSpritesToDefaultTexture(Engine &engine, ID textureId)
 static void EditorRemoveSelection()
 {
 	Engine &engine = GetEngine();
-	Editor &editor = engine.editor;
+	Editor &editor = GetEditor();
 
 	const EditorSelection selection = editor.inspector.nextSelected;
 
@@ -682,10 +684,10 @@ static void EditorEntityDropTarget(ID layerId)
 static void EditorUpdateUI_DebugUI()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
-	Editor &editor = engine.editor;
 
 	UI_BeginWindow(ui, "Debug UI", &editor.showDebugUI);
 
@@ -696,8 +698,8 @@ static void EditorUpdateUI_DebugUI()
 static void EditorUpdateUI_Outliner()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
-	Editor &editor = engine.editor;
 	Scene &scene = engine.scene;
 	Graphics &gfx = engine.gfx;
 	Audio &audio = engine.audio;
@@ -1037,10 +1039,10 @@ static bool IsImgFile(const char *filename)
 static void EditorUpdateUI_Assets()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
-	Editor &editor = engine.editor;
 	EditorContext &context = editor.context;
 	EditorInspector &inspector = editor.inspector;
 
@@ -1128,10 +1130,10 @@ static const char *EditorMakeSpriteName(const Scene &scene, const char *textureN
 static void EditorUpdateUI_SpriteSheet()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
-	Editor &editor = engine.editor;
 	EditorSpriteSheet &sheet = editor.spriteSheet;
 
 	constexpr uint2 size = {320, 560};
@@ -1380,8 +1382,9 @@ static void EditorUpdateUI_InspectorRoom(Room &room)
 static void EditorUpdateUI_InspectorLayer(Layer &layer)
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
-	EditorInspector &inspector = engine.editor.inspector;
+	EditorInspector &inspector = editor.inspector;
 
 	UI_SeparatorLabel(ui, "Layer");
 
@@ -1401,8 +1404,8 @@ static void EditorUpdateUI_InspectorLayer(Layer &layer)
 static void EditorUpdateUI_Inspector()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
-	Editor &editor = engine.editor;
 	EditorInspector &inspector = editor.inspector;
 	EditorContext &context = editor.context;
 
@@ -2029,9 +2032,9 @@ static void UI_ProfilerFrame(UI &ui, const char *frameName, const ProfileNode *n
 static void EditorUpdateUI_Profiler()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 	const Graphics &gfx = engine.gfx;
-	Editor &editor = engine.editor;
 	EditorInspector &inspector = editor.inspector;
 	EditorContext &context = editor.context;
 
@@ -2131,8 +2134,8 @@ static void EditorUpdateUI_Profiler()
 static void EditorUpdateUI_About()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
-	Editor &editor = engine.editor;
 
 	UI_SetNextWindowModal(ui);
 	UI_SetNextWindowAnchor(ui, {0.5, 0.5});
@@ -2153,14 +2156,15 @@ static void EditorUpdateUI_About()
 
 	static bool wasShown = false;
 	if ( UI_IsMousePressWithAnyButton(ui) && wasShown ) {
-		engine.editor.showAbout = false;
+		editor.showAbout = false;
 	}
-	wasShown = engine.editor.showAbout;
+	wasShown = editor.showAbout;
 }
 
 static ID EditorSpawnEntityAtMouse(ID spriteId)
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 
 	if ( !EditorMode2D() )
 	{
@@ -2169,7 +2173,7 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 	}
 
 	const Mouse &mouse = GetWindow().mouse;
-	const Camera &camera = engine.editor.camera[ProjectionOrthographic];
+	const Camera &camera = editor.camera[ProjectionOrthographic];
 	const float2 worldPos = Floor(GetWorld2DCoord(engine, camera, mouse.pos));
 	//LOG(Info, "World x: %f, y: %f\n", worldPos.x, worldPos.y);
 
@@ -2186,6 +2190,7 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 static ID EditorInstantiatePrefabAtMouse(ID prefabId)
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 
 	if ( !EditorMode2D() )
 	{
@@ -2194,7 +2199,7 @@ static ID EditorInstantiatePrefabAtMouse(ID prefabId)
 	}
 
 	const Mouse &mouse = GetWindow().mouse;
-	const Camera &camera = engine.editor.camera[ProjectionOrthographic];
+	const Camera &camera = editor.camera[ProjectionOrthographic];
 	const float2 worldPos = Floor(GetWorld2DCoord(engine, camera, mouse.pos));
 
 	return InstantiatePrefab(engine, prefabId, Float3(worldPos, 0.0));
@@ -2298,11 +2303,12 @@ static void EditorUpdateUI_DragAndDropLost()
 static void EditorUpdateUI_ContextMenu()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 
 	const float2 pos = Float2(ui.input.lastMouseClickPos);
 	UI_SetNextWindowDisplacement(ui, pos);
-	if ( UI_BeginMenu(ui, "Context", &engine.editor.showContextMenu) )
+	if ( UI_BeginMenu(ui, "Context", &editor.showContextMenu) )
 	{
 		if ( UI_MenuItem(ui, "Add empty") )
 		{
@@ -2310,7 +2316,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("empty"),
-					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
+					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
 				const ID entityId = CreateEntity(engine, entityDesc);
@@ -2327,7 +2333,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("light"),
-					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
+					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
 				const ID entityId = CreateEntity(engine, entityDesc);
@@ -2345,7 +2351,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("particles"),
-					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
+					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
 				const ID entityId = CreateEntity(engine, entityDesc);
@@ -2363,7 +2369,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("script"),
-					.pos = Float3(engine.editor.contextMenuWorldPos, 0.0),
+					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
 				const ID entityId = CreateEntity(engine, entityDesc);
@@ -2382,8 +2388,8 @@ static void EditorUpdateUI_ContextMenu()
 static void EditorUpdateUI_Settings()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
-	Editor &editor = engine.editor;
 
 	constexpr uint2 size = {300, 400};
 	UI_SetNextWindowDefaultSize(ui, size);
@@ -2475,7 +2481,6 @@ static bool EditorFileDialog(EditorFileDialogMode mode, const char *extension, b
 	bool ret = false;
 
 	UI &ui = engine.ui;
-	Editor &editor = engine.editor;
 
 	static bool wasOpen = false;
 	static char filename[MAX_PATH_LENGTH] = {};
@@ -2532,10 +2537,10 @@ static bool EditorFileDialog(EditorFileDialogMode mode, const char *extension, b
 static void EditorUpdateUI()
 {
 	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
-	Editor &editor = engine.editor;
 
 	EditorUpdateUI_MenuBar();
 	EditorUpdateUI_ToolBar();
@@ -2762,7 +2767,7 @@ static void EditorUpdateCamera3D(const Window &window, Camera &camera, f32 delta
 static void EditorUpdateInteraction2D(const Window &window, const Gamepad &gamepad, Camera &camera, f32 deltaSeconds, bool handleInput)
 {
 	Engine &engine = GetEngine();
-	Editor &editor = engine.editor;
+	Editor &editor = GetEditor();
 	UI &ui = engine.ui;
 	const Mouse &mouse = window.mouse;
 
@@ -2971,7 +2976,7 @@ static void EditorBeginSceneEditing(bool handleInput)
 void EditorDebugDraw()
 {
 	Engine &engine = GetEngine();
-	Editor &editor = engine.editor;
+	Editor &editor = GetEditor();
 
 	Room *contextRoom = EditorGetContextRoom();
 	Layer *contextLayer = EditorGetContextLayer();
@@ -3029,7 +3034,7 @@ void EditorDebugDraw()
 static void EditorProcessCommands(Arena scratch)
 {
 	Engine &engine = GetEngine();
-	Editor &editor = engine.editor;
+	Editor &editor = GetEditor();
 	Graphics &gfx = engine.gfx;
 
 	if ( editor.commandCount > 0 )
@@ -3126,7 +3131,7 @@ static FileNode * InsertFileNode(FileNode *node, FileNode *first)
 
 void EditorInitialize(Engine &engine)
 {
-	Editor &editor = engine.editor;
+	Editor &editor = GetEditor();
 
 	editor.showOutliner = true;
 	editor.showAssets = true;
@@ -3213,7 +3218,7 @@ void EditorInitialize(Engine &engine)
 static bool EditorHandleKeyboardShortcuts()
 {
 	Engine &engine = GetEngine();
-	Editor &editor = engine.editor;
+	Editor &editor = GetEditor();
 	const Window &window = GetWindow();
 
 	bool handleInput = true;
@@ -3247,8 +3252,9 @@ static bool EditorHandleKeyboardShortcuts()
 
 void EditorUpdate(Engine &engine)
 {
-	const Plat &platform = GetPlatform();
-	const Gamepad &gamepad = *platform.gamepad;
+	Editor &editor = GetEditor();
+	const Host &host = GetHost();
+	const Gamepad &gamepad = *host.gamepad;
 	const Window &window = GetWindow();
 	Graphics &gfx = engine.gfx;
 
@@ -3288,29 +3294,29 @@ void EditorUpdate(Engine &engine)
 		if ( UI_IsMousePress(engine.ui, MOUSE_BUTTON_RIGHT) )
 		{
 			const Mouse &mouse = GetWindow().mouse;
-			const Camera &camera = engine.editor.camera[ProjectionOrthographic];
-			engine.editor.contextMenuWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
-			engine.editor.showContextMenu = true;
+			const Camera &camera = editor.camera[ProjectionOrthographic];
+			editor.contextMenuWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
+			editor.showContextMenu = true;
 		}
 	}
 
 	if (EditorMode3D())
 	{
-		if (engine.editor.cameraOrbit)
+		if (editor.cameraOrbit)
 		{
-			EditorUpdateCamera3DOrbit(engine.editor.camera[ProjectionPerspective], gfx.deltaSeconds);
+			EditorUpdateCamera3DOrbit(editor.camera[ProjectionPerspective], gfx.deltaSeconds);
 		}
 		else
 		{
-			EditorUpdateCamera3D(window, engine.editor.camera[ProjectionPerspective], gfx.deltaSeconds, handleInput);
+			EditorUpdateCamera3D(window, editor.camera[ProjectionPerspective], gfx.deltaSeconds, handleInput);
 		}
 
-		SetCamera(engine.editor.camera[ProjectionPerspective]);
+		SetCamera(editor.camera[ProjectionPerspective]);
 	}
 	else
 	{
-		EditorUpdateInteraction2D(window, gamepad, engine.editor.camera[ProjectionOrthographic], gfx.deltaSeconds, handleInput);
-		SetCamera(engine.editor.camera[ProjectionOrthographic]);
+		EditorUpdateInteraction2D(window, gamepad, editor.camera[ProjectionOrthographic], gfx.deltaSeconds, handleInput);
+		SetCamera(editor.camera[ProjectionOrthographic]);
 	}
 
 	EditorBeginSceneEditing(handleInput);
@@ -3320,7 +3326,7 @@ void EditorUpdate(Engine &engine)
 
 void EditorRender(Engine &engine, CommandList &commandList)
 {
-	Editor &editor = engine.editor;
+	Editor &editor = GetEditor();
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
 	const u32 frameIndex = gfx.device.frameIndex;

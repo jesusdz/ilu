@@ -697,7 +697,7 @@ static void UpdateFileWatcher(Platform &platform)
 	ssize_t len;
 	while ((len = read(fileWatchInotifyFd, buffer, sizeof(buffer))) > 0)
 	{
-		platform.pub.fileChangesDetected = true;
+		platform.host.fileChangesDetected = true;
 	}
 
 	if (len == -1 && errno != EAGAIN)
@@ -754,7 +754,7 @@ static bool InitializeGamepad(Platform &platform)
 {
 	LOG(Info, "Input system initialization:\n");
 
-	platform.pub.gamepad = &platform.gamepad;
+	platform.host.gamepad = &platform.gamepad;
 
 	gamepadFd = -1;
 
@@ -1069,7 +1069,7 @@ static void UpdateAudioDevice(Platform &platform)
 				soundBuffer.samplesPerSecond = audio.samplesPerSecond;
 				soundBuffer.sampleCount = framesToRender;
 				soundBuffer.samples = audio.outputSamples;
-				platform.OnPlatformRenderAudio(platform.pub, soundBuffer);
+				platform.OnPlatformRenderAudio(platform.host, soundBuffer);
 
 				res = FP_snd_pcm_writei(audioPcm, soundBuffer.samples, framesToRender);
 

@@ -43,6 +43,10 @@
 
 #include "engine.h"
 
+#if USE_EDITOR
+#include "editor.h"
+#endif
+
 
 #if USE_DATA_BUILD
 static constexpr bool sLoadShadersFromText = true;
@@ -51,18 +55,19 @@ static constexpr bool sLoadShadersFromText = false;
 #endif
 
 // Access to singletons
-inline Plat &GetPlatform() { return *sPlatform; }
-inline Window &GetWindow() { return *sPlatform->window; }
-inline Engine &GetEngine() { return *sPlatform->engine; }
-inline Game &GetGame() { return sPlatform->engine->game; }
+inline Host &GetHost() { return *sHost; }
+inline Window &GetWindow() { return *sHost->window; }
+inline Engine &GetEngine() { return *sHost->engine; }
+inline Game &GetGame() { return sHost->engine->game; }
 #if USE_EDITOR
-inline Editor &GetEditor() { return sPlatform->engine->editor; }
-#endif
+inline Editor &GetEditor() { return *sHost->editor; }
+#endif // USE_EDITOR
+
 
 
 static const char * InternString(const char *str)
 {
-	const char *intern = MakeStringIntern(sPlatform->stringInterning, str);
+	const char *intern = MakeStringIntern(sHost->stringInterning, str);
 	return intern;
 }
 
@@ -116,7 +121,7 @@ static void GameStop(Engine &engine)
 	}
 }
 
-void GameUpdate(Engine &engine, const Plat &platform)
+void GameUpdate(Engine &engine, const Host &host)
 {
 	Game &game = engine.game;
 
@@ -139,7 +144,7 @@ void GameUpdate(Engine &engine, const Plat &platform)
 		constexpr f32 fixedStepSeconds = SIMULATE_SECONDS;
 		constexpr f32 maxFrameSeconds = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 
-		InputAccumulate(game.accumulatedInput, *platform.gamepad, platform.window->keyboard);
+		InputAccumulate(game.accumulatedInput, *host.gamepad, host.window->keyboard);
 
 		game.accumulatedSeconds += Min(engine.gfx.deltaSeconds, maxFrameSeconds);
 
@@ -227,17 +232,17 @@ ENGINE_API u32 OnPlatformGetStateSignature()
 	return signature;
 }
 
-ENGINE_API void OnPlatformLoadEngine(Plat &platform)
+ENGINE_API void OnPlatformLoadEngine(Host &host)
 {
-	SetPlatformAPI(platform);
-	SetGraphicsAPI(&platform.graphicsAPI);
+	SetHost(host);
+	SetGraphicsAPI(&host.graphicsAPI);
 	PROFILE_INIT();
 
-	const bool firstLoad = ( platform.engine == nullptr );
+	const bool firstLoad = ( host.engine == nullptr );
 
 	if ( firstLoad )
 	{
-		platform.engine = PushZeroStruct(GlobalArena, Engine);
+		host.engine = PushZeroStruct(GlobalArena, Engine);
 		Engine &engine = GetEngine();
 
 		// The ID pool lives in the retained engine state, so it is only reset once
@@ -248,8 +253,8 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 #if USE_DATA_BUILD
 		bool buildAssets = false;
 		bool exitAfterBuild = false;
-		for ( u32 i = 0; i < platform.argc; ++i ) {
-			if ( StrEq(platform.argv[i], "--build-assets") ) {
+		for ( u32 i = 0; i < host.argc; ++i ) {
+			if ( StrEq(host.argv[i], "--build-assets") ) {
 				buildAssets = true;
 				exitAfterBuild = true;
 			}
@@ -270,6 +275,10 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 			}
 		}
 #endif // USE_DATA_BUILD
+
+#if USE_EDITOR
+		host.editor = PushZeroStruct(GlobalArena, Editor);
+#endif // USE_EDITOR
 	}
 
 	Engine &engine = GetEngine();
@@ -286,9 +295,9 @@ ENGINE_API void OnPlatformLoadEngine(Plat &platform)
 
 }
 
-ENGINE_API void OnPlatformUnloadEngine(Plat &platform)
+ENGINE_API void OnPlatformUnloadEngine(Host &host)
 {
-	Graphics &gfx = platform.engine->gfx;
+	Graphics &gfx = host.engine->gfx;
 
 	if ( IsValidGraphicsDevice(gfx.device) )
 	{
@@ -297,7 +306,7 @@ ENGINE_API void OnPlatformUnloadEngine(Plat &platform)
 	}
 }
 
-ENGINE_API bool OnPlatformInit(Plat &platform)
+ENGINE_API bool OnPlatformInit(Host &host)
 {
 	Engine &engine = GetEngine();
 
@@ -327,12 +336,12 @@ ENGINE_API bool OnPlatformInit(Plat &platform)
 	return true;
 }
 
-ENGINE_API bool OnPlatformWindowInit(Plat &platform)
+ENGINE_API bool OnPlatformWindowInit(Host &host)
 {
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
-	if ( !InitializeGraphicsSurface(gfx.device, *platform.window) )
+	if ( !InitializeGraphicsSurface(gfx.device, *host.window) )
 	{
 		// TODO: Actually we could throw a system error and exit...
 		LOG(Error, "InitializeGraphicsSurface failed!\n");
@@ -376,7 +385,7 @@ ENGINE_API bool OnPlatformWindowInit(Plat &platform)
 	return true;
 }
 
-ENGINE_API void OnPlatformUpdate(Plat &platform)
+ENGINE_API void OnPlatformUpdate(Host &host)
 {
 	PROFILE_THREAD("UpdateAndRender");
 	PROFILE_FRAME();
@@ -408,7 +417,7 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 #endif
 
 #if USE_EDITOR
-	if (engine.settings.hotReload && platform.fileChangesDetected)
+	if (engine.settings.hotReload && host.fileChangesDetected)
 	{
 		if ( CompileModifiedShaders() )
 		{
@@ -426,7 +435,7 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 
 	{
 		PROFILE_BLOCK(GameUpdate);
-		GameUpdate(engine, platform);
+		GameUpdate(engine, host);
 	}
 
 #if USE_UI
@@ -442,7 +451,7 @@ ENGINE_API void OnPlatformUpdate(Plat &platform)
 	CompactTextures(engine.gfx);
 }
 
-ENGINE_API void OnPlatformRenderGraphics(Plat &platform)
+ENGINE_API void OnPlatformRenderGraphics(Host &host)
 {
 	PROFILE_BLOCK(RenderGraphics);
 
@@ -463,9 +472,9 @@ ENGINE_API void OnPlatformRenderGraphics(Plat &platform)
 	{
 		GfxWaitDeviceIdle(gfx);
 		DestroyRenderTargets(gfx, gfx.renderTargets);
-		if ( platform.window->width != 0 && platform.window->height != 0 )
+		if ( host.window->width != 0 && host.window->height != 0 )
 		{
-			RecreateSwapchain(gfx.device, *platform.window);
+			RecreateSwapchain(gfx.device, *host.window);
 
 			char debugName[16];
 			for (u32 i = 0; i < ARRAY_COUNT(gfx.device.swapchain.imageHandles); ++i) {
@@ -493,7 +502,7 @@ ENGINE_API void OnPlatformRenderGraphics(Plat &platform)
 	}
 }
 
-ENGINE_API void OnPlatformPreRenderAudio(Plat &platform)
+ENGINE_API void OnPlatformPreRenderAudio(Host &host)
 {
 	PROFILE_THREAD("Audio");
 	PROFILE_FLUSH();
@@ -502,7 +511,7 @@ ENGINE_API void OnPlatformPreRenderAudio(Plat &platform)
 	PreRenderAudio(engine.audio);
 }
 
-ENGINE_API void OnPlatformRenderAudio(Plat &platform, SoundBuffer &soundBuffer)
+ENGINE_API void OnPlatformRenderAudio(Host &host, SoundBuffer &soundBuffer)
 {
 	PROFILE_FLUSH();
 	PROFILE_BLOCK(RenderAudio);
@@ -510,7 +519,7 @@ ENGINE_API void OnPlatformRenderAudio(Plat &platform, SoundBuffer &soundBuffer)
 	RenderAudio(engine, soundBuffer);
 }
 
-ENGINE_API void OnPlatformWindowCleanup(Plat &platform)
+ENGINE_API void OnPlatformWindowCleanup(Host &host)
 {
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
@@ -521,7 +530,7 @@ ENGINE_API void OnPlatformWindowCleanup(Plat &platform)
 	CleanupGraphicsSurface(gfx.device);
 }
 
-ENGINE_API void OnPlatformCleanup(Plat &platform)
+ENGINE_API void OnPlatformCleanup(Host &host)
 {
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
