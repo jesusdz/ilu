@@ -4,24 +4,48 @@ void InitializeScene(Engine &engine)
 
 	// A builtin so it survives CleanScene and keeps the same slot every run, which is
 	// what lets a saved ParticlesComponent still refer to it.
-	const ParticleEffectDesc defaultEffectDesc = {
-		.id = { BuiltinID_DefaultParticleEffect },
-		.name = InternString("default_fx"),
-		// color and size read begin -> end over the particle's life, so this fades out
-		.color = { .min = { 1.0f, 1.0f, 1.0f, 1.0f }, .max = { 1.0f, 1.0f, 1.0f, 0.0f } },
-		.size = { .min = 1.0f, .max = 0.3f },
-		.rate = 20.0f,
-		.burstCount = 20,
-		.duration = 0.0f, // Emits until stopped
-		.loop = 1,
-		// The rest are sampled per particle, between min and max
-		.lifetime = { .min = 0.5f, .max = 1.5f },
-		.speed = { .min = 1.0f, .max = 3.0f },
-		.angle = { .min = 60.0f, .max = 120.0f }, // Degrees, a fountain pointing up
-		.gravity = { 0.0f, -9.8f },
-		.worldSpace = 1,
-	};
-	CreateParticleEffect(engine, defaultEffectDesc);
+	{
+		const ParticleEffectDesc desc = {
+			.id = { BuiltinID_FountainParticleEffect },
+			.name = InternString("fountain_fx"),
+			// color and size read begin -> end over the particle's life, so this fades out
+			.color = { .min = { 1.0f, 1.0f, 1.0f, 1.0f }, .max = { 1.0f, 1.0f, 1.0f, 0.0f } },
+			.size = { .min = 1.0f, .max = 0.3f },
+			.rate = 20.0f,
+			.burstCount = 20,
+			.duration = 0.0f, // Emits until stopped
+			.loop = 1,
+			// The rest are sampled per particle, between min and max
+			.lifetime = { .min = 0.5f, .max = 1.5f },
+			.speed = { .min = 1.0f, .max = 3.0f },
+			.angle = { .min = 60.0f, .max = 120.0f }, // Degrees, a fountain pointing up
+			.gravity = { 0.0f, -9.8f },
+			.worldSpace = 1,
+		};
+		CreateParticleEffect(engine, desc);
+	}
+
+	{
+		const ParticleEffectDesc desc = {
+			.id = { BuiltinID_FireParticleEffect },
+			.name = InternString("fire_fx"),
+			// color and size read begin -> end over the particle's life, so this fades out
+			.color = { .min = { 1.0f, 1.0f, 0.0f, 1.0f }, .max = { 1.0f, 0.0f, 0.0f, 0.0f } },
+			.size = { .min = 1.0f, .max = 2.0f },
+			.rate = 50.0f,
+			.burstCount = 20,
+			.duration = 0.0f, // Emits until stopped
+			.loop = 1,
+			// The rest are sampled per particle, between min and max
+			.lifetime = { .min = 0.5f, .max = 1.5f },
+			.speed = { .min = 0.5f, .max = 1.0f },
+			.angle = { .min = 90.0f, .max = 90.0f }, // Degrees, a fountain pointing up
+			.spawnExtent = { .x = 0.2f, .y = 0.0f },
+			.gravity = { 0.0f, 0.0f },
+			.worldSpace = 1,
+		};
+		CreateParticleEffect(engine, desc);
+	}
 }
 
 
@@ -507,7 +531,7 @@ ParticlesComponent &AddParticles(Scene &scene, ID entityId)
 
 	ParticlesComponent &particles = scene.entityParticles[index];
 	particles = {
-		.effectId = { BuiltinID_DefaultParticleEffect },
+		.effectId = { BuiltinID_FountainParticleEffect },
 		.playOnStart = 1,
 	};
 	return particles;

@@ -41,17 +41,6 @@
 #include "shaders/bindings.hlsl"
 
 
-#include "property.h"
-#include "script.h"
-#include "audio.h"
-#include "graphics.h"
-#include "scene.h"
-#include "render.h"
-#include "game.h"
-#include "data.h"
-#if USE_EDITOR
-#include "editor.h"
-#endif
 #include "engine.h"
 
 

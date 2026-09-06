@@ -1,17 +1,3 @@
-#define INVALID_HANDLE -1
-
-// Saved data refers to these by value, so never renumber one that already exists in a
-// scene file: append instead.
-enum BuiltinID
-{
-	BuiltinID_DefaultTexture = 1, // 0 is reserved for invalid ID
-	BuiltinID_NoiseTexture,
-	BuiltinID_DefaultMaterial,
-	BuiltinID_DefaultParticleEffect,
-	BuiltinID_Count,
-};
-CT_ASSERT(BuiltinID_Count <= ILU_ID_FIRST_DYNAMIC_SLOT);
-
 static const Vertex cubeVertices[] = {
 	// front
 	{{-0.5f, -0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
@@ -226,7 +212,7 @@ RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name)
 	}
 	LOG(Warning, "Could not find render <%s> handle.\n", name);
 	INVALID_CODE_PATH();
-	return { .index = (u32)INVALID_HANDLE };
+	return { .index = U32_MAX };
 }
 
 struct StagedData
