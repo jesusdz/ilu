@@ -235,7 +235,44 @@ static GeometryType StrToGeometryType(String str)
 	return GeometryTypeCube;
 }
 
-static void WriteScriptDesc(WriteContext &ctx, const ScriptComponentDesc &script)
+static void WriteSpriteComponentDesc(WriteContext &ctx, const SpriteComponentDesc &sprite)
+{
+	WriteLine(ctx, ".sprite = {");
+	PushIndent(ctx);
+
+	WriteLine(ctx, ".spriteId = %u,", sprite.spriteId.slot);
+	WriteLine(ctx, ".layerId = %u,", sprite.layerId.slot);
+
+	PopIndent(ctx);
+	WriteLine(ctx, "},");
+}
+
+static void WriteLightComponentDesc(WriteContext &ctx, const LightComponentDesc &light)
+{
+	WriteLine(ctx, ".light = {");
+	PushIndent(ctx);
+
+	WriteLine(ctx, ".color = {%f, %f, %f},", light.color.x, light.color.y, light.color.z);
+	WriteLine(ctx, ".intensity = %f,", light.intensity);
+	WriteLine(ctx, ".radius = %f,", light.radius);
+
+	PopIndent(ctx);
+	WriteLine(ctx, "},");
+}
+
+static void WriteParticlesComponentDesc(WriteContext &ctx, const ParticlesComponentDesc &particles)
+{
+	WriteLine(ctx, ".particles = {");
+	PushIndent(ctx);
+
+	WriteLine(ctx, ".effectId = %u,", particles.effectId.slot);
+	WriteLine(ctx, ".playOnStart = %d,", particles.playOnStart);
+
+	PopIndent(ctx);
+	WriteLine(ctx, "},");
+}
+
+static void WriteScriptComponentDesc(WriteContext &ctx, const ScriptComponentDesc &script)
 {
 	WriteLine(ctx, ".script = {");
 	PushIndent(ctx);
@@ -262,28 +299,23 @@ static void WriteScriptDesc(WriteContext &ctx, const ScriptComponentDesc &script
 
 static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
 {
-	if (desc.sprite.spriteId.slot != 0) {
-		WriteLine(ctx, ".spriteId = %u,", desc.sprite.spriteId.slot);
-	} else if (desc.materialId.slot != 0) {
+	if (desc.sprite.spriteId.slot == 0 && desc.materialId.slot != 0) {
 		WriteLine(ctx, ".materialId = %u,", desc.materialId.slot);
 		WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(desc.geometryType));
 	}
 	WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
 	WriteLine(ctx, ".scale = %f,", desc.scale);
 	if (desc.sprite.spriteId.slot != 0) {
-		WriteLine(ctx, ".layerId = %u,", desc.sprite.layerId.slot);
+		WriteSpriteComponentDesc(ctx, desc.sprite);
 	}
 	if (desc.components & Component_Light) {
-		WriteLine(ctx, ".lightColor = {%f, %f, %f},", desc.light.color.x, desc.light.color.y, desc.light.color.z);
-		WriteLine(ctx, ".lightIntensity = %f,", desc.light.intensity);
-		WriteLine(ctx, ".lightRadius = %f,", desc.light.radius);
+		WriteLightComponentDesc(ctx, desc.light);
 	}
 	if (desc.components & Component_Particles) {
-		WriteLine(ctx, ".particlesEffectId = %u,", desc.particles.effectId.slot);
-		WriteLine(ctx, ".particlesPlayOnStart = %d,", desc.particles.playOnStart);
+		WriteParticlesComponentDesc(ctx, desc.particles);
 	}
 	if (desc.components & Component_Script) {
-		WriteScriptDesc(ctx, desc.script);
+		WriteScriptComponentDesc(ctx, desc.script);
 	}
 }
 
@@ -1112,6 +1144,94 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 
 static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script);
 
+static void DParser_ConsumeEntitySprite( DParser &parser, EntityDesc &entity )
+{
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
+	{
+		DParser_TryConsume(parser, TOKEN_DOT);
+
+		const String field = DParser_ConsumeLexeme(parser);
+
+		DParser_TryConsume(parser, TOKEN_EQUAL);
+
+		static const String sSpriteId = MakeString("spriteId");
+		static const String sLayerId = MakeString("layerId");
+
+		if ( StrEq( field, sSpriteId ) ) {
+			entity.sprite.spriteId = DParser_ConsumeID(parser);
+		} else if ( StrEq( field, sLayerId ) ) {
+			entity.sprite.layerId = DParser_ConsumeID(parser);
+		}
+
+		DParser_TryConsume(parser, TOKEN_COMMA);
+	}
+
+	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+}
+
+static void DParser_ConsumeEntityLight( DParser &parser, EntityDesc &entity )
+{
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
+	{
+		DParser_TryConsume(parser, TOKEN_DOT);
+
+		const String field = DParser_ConsumeLexeme(parser);
+
+		DParser_TryConsume(parser, TOKEN_EQUAL);
+
+		static const String sColor = MakeString("color");
+		static const String sIntensity = MakeString("intensity");
+		static const String sRadius = MakeString("radius");
+
+		if ( StrEq( field, sColor ) ) {
+			entity.light.color = DParser_ConsumeFloat3(parser);
+		} else if ( StrEq( field, sIntensity ) ) {
+			entity.light.intensity = DParser_ConsumeF32(parser);
+		} else if ( StrEq( field, sRadius ) ) {
+			entity.light.radius = DParser_ConsumeF32(parser);
+		}
+
+		DParser_TryConsume(parser, TOKEN_COMMA);
+	}
+
+	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+
+	entity.components |= Component_Light;
+}
+
+static void DParser_ConsumeEntityParticles( DParser &parser, EntityDesc &entity )
+{
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
+	{
+		DParser_TryConsume(parser, TOKEN_DOT);
+
+		const String field = DParser_ConsumeLexeme(parser);
+
+		DParser_TryConsume(parser, TOKEN_EQUAL);
+
+		static const String sEffectId = MakeString("effectId");
+		static const String sPlayOnStart = MakeString("playOnStart");
+
+		if ( StrEq( field, sEffectId ) ) {
+			entity.particles.effectId = DParser_ConsumeID(parser);
+		} else if ( StrEq( field, sPlayOnStart ) ) {
+			entity.particles.playOnStart = DParser_ConsumeU8(parser);
+		}
+
+		DParser_TryConsume(parser, TOKEN_COMMA);
+	}
+
+	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+
+	entity.components |= Component_Particles;
+}
+
 static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
@@ -1156,16 +1276,12 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	static const String sId = MakeString("id");
 	static const String sName = MakeString("name");
 	static const String sMaterialId = MakeString("materialId");
-	static const String sSpriteId = MakeString("spriteId");
 	static const String sPos = MakeString("pos");
 	static const String sScale = MakeString("scale");
-	static const String sLayerId = MakeString("layerId");
 	static const String sGeometryType = MakeString("geometryType");
-	static const String sLightColor = MakeString("lightColor");
-	static const String sLightIntensity = MakeString("lightIntensity");
-	static const String sLightRadius = MakeString("lightRadius");
-	static const String sParticlesEffectId = MakeString("particlesEffectId");
-	static const String sParticlesPlayOnStart = MakeString("particlesPlayOnStart");
+	static const String sSprite = MakeString("sprite");
+	static const String sLight = MakeString("light");
+	static const String sParticles = MakeString("particles");
 	static const String sScript = MakeString("script");
 
 	if ( StrEq( field, sId ) ) {
@@ -1174,31 +1290,18 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 		entity.name = PushString(*parser.arena, DParser_ConsumeString(parser));
 	} else if ( StrEq( field, sMaterialId ) ) {
 		entity.materialId = DParser_ConsumeID(parser);
-	} else if ( StrEq( field, sSpriteId ) ) {
-		entity.sprite.spriteId = DParser_ConsumeID(parser);
 	} else if ( StrEq( field, sPos ) ) {
 		entity.pos = DParser_ConsumeFloat3(parser);
 	} else if ( StrEq( field, sScale ) ) {
 		entity.scale = DParser_ConsumeF32(parser);
-	} else if ( StrEq( field, sLayerId ) ) {
-		entity.sprite.layerId = DParser_ConsumeID(parser);
 	} else if ( StrEq( field, sGeometryType ) ) {
 		entity.geometryType = DParser_ConsumeGeometryType(parser);
-	} else if ( StrEq( field, sLightColor ) ) {
-		entity.components |= Component_Light;
-		entity.light.color = DParser_ConsumeFloat3(parser);
-	} else if ( StrEq( field, sLightIntensity ) ) {
-		entity.components |= Component_Light;
-		entity.light.intensity = DParser_ConsumeF32(parser);
-	} else if ( StrEq( field, sLightRadius ) ) {
-		entity.components |= Component_Light;
-		entity.light.radius = DParser_ConsumeF32(parser);
-	} else if ( StrEq( field, sParticlesEffectId ) ) {
-		entity.components |= Component_Particles;
-		entity.particles.effectId = DParser_ConsumeID(parser);
-	} else if ( StrEq( field, sParticlesPlayOnStart ) ) {
-		entity.components |= Component_Particles;
-		entity.particles.playOnStart = DParser_ConsumeU8(parser);
+	} else if ( StrEq( field, sSprite ) ) {
+		DParser_ConsumeEntitySprite(parser, entity);
+	} else if ( StrEq( field, sLight ) ) {
+		DParser_ConsumeEntityLight(parser, entity);
+	} else if ( StrEq( field, sParticles ) ) {
+		DParser_ConsumeEntityParticles(parser, entity);
 	} else if ( StrEq( field, sScript ) ) {
 		DParser_ConsumeEntityScript(parser, entity);
 	} else {
