@@ -556,6 +556,20 @@ Entity &GetSelf()
 	return entity;
 }
 
+ID GetEntitySprite(ID entityId)
+{
+	return EntitySpriteId(GetEngine().scene, entityId);
+}
+
+void SetEntitySprite(ID entityId, ID spriteId)
+{
+	Engine &engine = GetEngine();
+	if ( !HasComponents(engine.scene, entityId, Component_Sprite) ) {
+		AddComponent(engine, entityId, ComponentType_Sprite);
+	}
+	GetSpriteComponent(engine.scene, entityId).desc.spriteId = spriteId;
+}
+
 void SetCamera(const Camera &camera)
 {
 	Engine &engine = GetEngine();

@@ -263,16 +263,16 @@ static void GetSpriteBounds(const SpriteDesc &sprite, float2 bounds[4])
 	bounds[2] = { (f32)sprite.size.x, (f32)sprite.size.y };
 }
 
-static bool EntityIsInFrustum3D(const Entity &entity, const FrustumPlanes &frustum)
+static bool EntityIsInFrustum3D(const Entity &entity, ID spriteId, const FrustumPlanes &frustum)
 {
 	bool entityIsInFrustum = false;
 
 	float3 points[8] = {};
 	u32 pointCount = 0;
 
-	if (entity.spriteId)
+	if (spriteId)
 	{
-		const SpriteDesc &sprite = GetSprite(entity.spriteId).desc;
+		const SpriteDesc &sprite = GetSprite(spriteId).desc;
 		float2 sbounds[4] = {};
 		GetSpriteBounds(sprite, sbounds);
 
@@ -318,13 +318,13 @@ static bool Intersects(float2 aMin, float2 aMax, float2 bMin, float2 bMax)
 	return !(outsideX || outsideY);
 }
 
-static bool EntityIsInFrustum2D(const Entity &entity, float2 rectMin, float2 rectMax)
+static bool EntityIsInFrustum2D(const Entity &entity, ID spriteId, float2 rectMin, float2 rectMax)
 {
 	float2 halfSize = { 0.5f * entity.scale, 0.5f * entity.scale };
 
-	if (entity.spriteId)
+	if (spriteId)
 	{
-		const SpriteDesc &sprite = GetSprite(entity.spriteId).desc;
+		const SpriteDesc &sprite = GetSprite(spriteId).desc;
 		halfSize = 0.5f * float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
 	}
 
@@ -452,7 +452,7 @@ bool RenderGraphics(Engine &engine)
 		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			Entity &entity = scene.entities[i];
-			entity.culled = !EntityIsInFrustum3D(entity, frustumPlanes);
+			entity.culled = !EntityIsInFrustum3D(entity, EntitySpriteId(scene, entity.id), frustumPlanes);
 		}
 	}
 	else
@@ -474,7 +474,7 @@ bool RenderGraphics(Engine &engine)
 		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			Entity &entity = scene.entities[i];
-			entity.culled = !EntityIsInFrustum2D(entity, cameraMinMaxRect.xy, cameraMinMaxRect.zw);
+			entity.culled = !EntityIsInFrustum2D(entity, EntitySpriteId(scene, entity.id), cameraMinMaxRect.xy, cameraMinMaxRect.zw);
 		}
 	}
 
@@ -721,8 +721,9 @@ bool RenderGraphics(Engine &engine)
 		const Entity &entity = scene.entities[i];
 		float3 entityScale = Float3(entity.scale);
 		float3 entityPosition = entity.position;
-		if (Valid(entity.layerId)) {
-			const Layer &layer = GetLayer(entity.layerId);
+		const ID layerId = EntityLayerId(scene, entity.id);
+		if (Valid(layerId)) {
+			const Layer &layer = GetLayer(layerId);
 			entityPosition.z = layer.depth;
 		}
 		if (snapToPixelGrid)
@@ -733,7 +734,8 @@ bool RenderGraphics(Engine &engine)
 		const float4x4 worldMatrix = Mul(Translate(entityPosition), Scale(entityScale)); // TODO: Apply also rotation
 		entities[i].world = worldMatrix;
 
-		const u32 spriteIndex = entity.spriteId ? GetSpriteIndex(scene, entity.spriteId) : 0;
+		const ID spriteId = EntitySpriteId(scene, entity.id);
+		const u32 spriteIndex = spriteId ? GetSpriteIndex(scene, spriteId) : 0;
 		entities[i].spriteIndex = spriteIndex;
 		entities[i].flipX = entity.flipX;
 	}
@@ -990,9 +992,10 @@ bool RenderGraphics(Engine &engine)
 
 				if (!entity.visible || entity.culled) continue;
 
+				const ID spriteId = EntitySpriteId(scene, entity.id);
 				ID textureId = {};
-				if (entity.spriteId)
-					textureId = GetSprite(entity.spriteId).desc.textureId;
+				if (spriteId)
+					textureId = GetSprite(spriteId).desc.textureId;
 				else
 					continue;
 

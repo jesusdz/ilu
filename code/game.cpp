@@ -32,6 +32,10 @@ struct ScriptPlayerController
 	Camera camera;
 
 	ID roomId;
+
+	float2 colliderSize;
+	float2 speed;
+	f32 accel;
 };
 
 void Start(ScriptPlayerController &script)
@@ -40,9 +44,9 @@ void Start(ScriptPlayerController &script)
 
 	Entity &player = GetSelf();
 	player.position.xy = float2{1, 1};
-	player.colliderSize = float2{player.scale, player.scale};
-	player.speed = {};
-	player.accel = 50;
+	script.colliderSize = float2{player.scale, player.scale};
+	script.speed = {};
+	script.accel = 50;
 
 	//script.sprPlayerIdle = FindSprite("spr_playeridle");
 	//script.sprPlayerRun = FindSprite("spr_playerrun");
@@ -82,10 +86,10 @@ void Simulate(ScriptPlayerController &script)
 
 	// Player entity
 	{
-		const float2 size = player.colliderSize;
-		const f32 accel = player.accel;
+		const float2 size = script.colliderSize;
+		const f32 accel = script.accel;
 		float2 &pos = player.position.xy;
-		float2 &speed = player.speed;
+		float2 &speed = script.speed;
 
 		f32 direction = game.input.move.x;
 
@@ -190,17 +194,17 @@ void Simulate(ScriptPlayerController &script)
 		if ( script.playerState == OnFloor || script.playerState == OnPlatform )
 		{
 			if ( Abs(speed.x) < 0.2 ) {
-				player.spriteId = script.sprPlayerIdle;
+				SetEntitySprite(player.id, script.sprPlayerIdle);
 			} else {
-				player.spriteId = script.sprPlayerRun;
+				SetEntitySprite(player.id, script.sprPlayerRun);
 			}
 		}
 		else
 		{
 			if ( speed.y >= 0.0f ) {
-				player.spriteId = script.sprPlayerJump;
+				SetEntitySprite(player.id, script.sprPlayerJump);
 			} else {
-				player.spriteId = script.sprPlayerFall;
+				SetEntitySprite(player.id, script.sprPlayerFall);
 			}
 		}
 

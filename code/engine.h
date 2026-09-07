@@ -815,7 +815,7 @@ struct SceneDesc
 ////////////////////////////////////////////////////////////////////////
 // Components
 
-enum ComponentTypes
+enum ComponentType
 {
 	ComponentType_Sprite,
 	ComponentType_Light,
@@ -939,10 +939,16 @@ struct SpriteComponentDesc
 	ID layerId;
 };
 
+struct SpriteComponent
+{
+	ID entityId;
+	SpriteComponentDesc desc;
+};
+
 struct ComponentDesc
 {
 	u32 entityIndex;
-	ComponentTypes type;
+	ComponentType type;
 	union
 	{
 		SpriteComponentDesc sprite;
@@ -1054,17 +1060,7 @@ struct Entity
 	BufferChunk vertices;
 	BufferChunk indices;
 	ID materialId;
-	// Sprite entity
-	ID spriteId;
 	bool flipX;
-	// Collider
-	float2 colliderSize;
-	// Physics
-	float2 speed;
-	f32 accel;
-	// Script
-
-	ID layerId;
 
 	bool visible;
 	bool culled;
@@ -1143,6 +1139,7 @@ constexpr u32 SCENE_HEIGHT = 180;
 constexpr u32 MAX_PARTICLES = 1024;
 constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 
+#define MAX_SPRITE_COMPONENTS 1024
 #define MAX_LIGHT_COMPONENTS 1024
 #define MAX_PARTICLES_COMPONENTS 1024
 #define MAX_SCRIPT_COMPONENTS 1024
@@ -1159,14 +1156,18 @@ struct Scene
 
 	u32 entityCount;
 	Entity entities[MAX_ENTITIES];
-	ComponentFlags entityComponents[MAX_ENTITIES];
+	// Doubles as the presence test: a type an entity does not have reads NO_COMPONENT
+	// here, so there is no separate flag to keep in step with it.
 	u16 entityComponentIndex[MAX_ENTITIES][ComponentType_Count];
 
 	// Each pool is packed, so removing a component swaps the last one down into the
 	// hole. The moved component names its own entity, which is what lets that swap
 	// repoint the entity back at its new slot.
-	u32 lightCount;
-	LightComponent lights[MAX_LIGHT_COMPONENTS];
+	u32 spriteComponentCount;
+	SpriteComponent spriteComponents[MAX_SPRITE_COMPONENTS];
+
+	u32 lightComponentCount;
+	LightComponent lightComponents[MAX_LIGHT_COMPONENTS];
 
 	u32 particlesComponentCount;
 	ParticlesComponent particlesComponents[MAX_PARTICLES_COMPONENTS];
@@ -1684,11 +1685,11 @@ u16 GetEntityIndex(const Scene &scene, ID entityId);
 void EntitySetPosition(Entity &entity, float3 position);
 EntityDesc GetEntityDesc(Engine &engine, ID entityId);
 ID CreateEntity(Engine &engine, const EntityDesc &desc);
-void AddComponent(Engine &engine, ID entityId, ComponentTypes type);
+void AddComponent(Engine &engine, ID entityId, ComponentType type);
 void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc);
-void RemoveComponent(Engine &engine, ID entityId, ComponentTypes type);
+void RemoveComponent(Engine &engine, ID entityId, ComponentType type);
 void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &pool);
-ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentTypes type);
+ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentType type);
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc);
 void RemoveEntity(Engine &engine, ID entityId);
 ID DuplicateEntity(Engine &engine, ID entityId);
@@ -1702,6 +1703,11 @@ ID EntityFromDrawId(u32 drawId);
 // Entity components
 
 bool HasComponents(const Scene &scene, ID entityId, ComponentFlags components);
+
+SpriteComponent &GetSpriteComponent(Scene &scene, ID entityId);
+const SpriteComponent &GetSpriteComponent(const Scene &scene, ID entityId);
+ID EntitySpriteId(const Scene &scene, ID entityId);
+ID EntityLayerId(const Scene &scene, ID entityId);
 
 LightComponent &GetLight(Scene &scene, ID entityId);
 const LightComponent &GetLight(const Scene &scene, ID entityId);
@@ -1797,6 +1803,8 @@ bool RenderGraphics(Engine &engine);
 // Game -> Engine interface
 
 Entity &GetSelf();
+ID GetEntitySprite(ID entityId);
+void SetEntitySprite(ID entityId, ID spriteId);
 ID FindEntity(const char *name);
 Entity *TryGetEntity(ID entityId); // Null once the entity is gone
 ID FindRoom(const char *name);

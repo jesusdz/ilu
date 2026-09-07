@@ -162,7 +162,6 @@ ScriptComponent *AddScript(Engine &engine, ID entityId)
 	const u16 entityIndex = GetEntityIndex(scene, entityId);
 	const u16 slot = (u16)scene.scriptComponentCount++;
 	scene.entityComponentIndex[entityIndex][ComponentType_Script] = slot;
-	scene.entityComponents[entityIndex] |= Component_Script;
 
 	ScriptComponent &component = scene.scriptComponents[slot];
 	component = {};
@@ -326,7 +325,6 @@ void RemoveScript(Engine &engine, ID entityId)
 	}
 
 	scene.entityComponentIndex[entityIndex][ComponentType_Script] = NO_COMPONENT;
-	scene.entityComponents[entityIndex] &= ~(ComponentFlags)Component_Script;
 }
 
 // A reload rebuilds the registry, so every component re-resolves its index by name. A

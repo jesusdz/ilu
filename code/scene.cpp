@@ -476,7 +476,86 @@ bool HasComponents(const Scene &scene, ID id, ComponentFlags components)
 		return false;
 	}
 	const u16 index = GetEntityIndex(scene, id);
-	return ( scene.entityComponents[index] & components ) == components;
+	for (u32 type = 0; type < ComponentType_Count; ++type)
+	{
+		const bool wanted = ( components & (1 << type) ) != 0;
+		if ( wanted && scene.entityComponentIndex[index][type] == NO_COMPONENT ) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static SpriteComponent *AddSpriteComponent(Scene &scene, ID entityId)
+{
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+
+	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Sprite];
+	if ( slot == NO_COMPONENT )
+	{
+		if ( scene.spriteComponentCount == MAX_SPRITE_COMPONENTS ) {
+			LOG(Warning, "Could not add a sprite component, the sprite pool is full.\n");
+			return nullptr;
+		}
+
+		slot = (u16)scene.spriteComponentCount++;
+		scene.entityComponentIndex[entityIndex][ComponentType_Sprite] = slot;
+	}
+
+	SpriteComponent &sprite = scene.spriteComponents[slot];
+	sprite = { .entityId = entityId };
+	return &sprite;
+}
+
+static void RemoveSpriteComponent(Scene &scene, ID entityId)
+{
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+
+	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Sprite];
+	if ( slot == NO_COMPONENT ) {
+		return;
+	}
+
+	const u16 last = (u16)(--scene.spriteComponentCount);
+	if ( slot != last )
+	{
+		scene.spriteComponents[slot] = scene.spriteComponents[last];
+		scene.entityComponentIndex[ GetEntityIndex(scene, scene.spriteComponents[slot].entityId) ][ComponentType_Sprite] = slot;
+	}
+
+	scene.entityComponentIndex[entityIndex][ComponentType_Sprite] = NO_COMPONENT;
+}
+
+SpriteComponent &GetSpriteComponent(Scene &scene, ID entityId)
+{
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Sprite];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.spriteComponents[slot];
+}
+
+const SpriteComponent &GetSpriteComponent(const Scene &scene, ID entityId)
+{
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Sprite];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.spriteComponents[slot];
+}
+
+// Most callers only want the ID and do not care whether the entity has the component,
+// so these answer with a null ID instead of making every site test for it first
+ID EntitySpriteId(const Scene &scene, ID entityId)
+{
+	if ( !HasComponents(scene, entityId, Component_Sprite) ) {
+		return {};
+	}
+	return GetSpriteComponent(scene, entityId).desc.spriteId;
+}
+
+ID EntityLayerId(const Scene &scene, ID entityId)
+{
+	if ( !HasComponents(scene, entityId, Component_Sprite) ) {
+		return {};
+	}
+	return GetSpriteComponent(scene, entityId).desc.layerId;
 }
 
 static LightComponent *AddLight(Scene &scene, ID id)
@@ -486,17 +565,16 @@ static LightComponent *AddLight(Scene &scene, ID id)
 	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Light];
 	if ( slot == NO_COMPONENT )
 	{
-		if ( scene.lightCount == MAX_LIGHT_COMPONENTS ) {
+		if ( scene.lightComponentCount == MAX_LIGHT_COMPONENTS ) {
 			LOG(Warning, "Could not add a light component, the light pool is full.\n");
 			return nullptr;
 		}
 
-		slot = (u16)scene.lightCount++;
+		slot = (u16)scene.lightComponentCount++;
 		scene.entityComponentIndex[entityIndex][ComponentType_Light] = slot;
-		scene.entityComponents[entityIndex] |= Component_Light;
 	}
 
-	LightComponent &light = scene.lights[slot];
+	LightComponent &light = scene.lightComponents[slot];
 	light = {
 		.entityId = id,
 		.desc = {
@@ -518,29 +596,28 @@ static void RemoveLight(Scene &scene, ID id)
 		return;
 	}
 
-	const u16 last = (u16)(--scene.lightCount);
+	const u16 last = (u16)(--scene.lightComponentCount);
 	if ( slot != last )
 	{
-		scene.lights[slot] = scene.lights[last];
-		scene.entityComponentIndex[ GetEntityIndex(scene, scene.lights[slot].entityId) ][ComponentType_Light] = slot;
+		scene.lightComponents[slot] = scene.lightComponents[last];
+		scene.entityComponentIndex[ GetEntityIndex(scene, scene.lightComponents[slot].entityId) ][ComponentType_Light] = slot;
 	}
 
 	scene.entityComponentIndex[entityIndex][ComponentType_Light] = NO_COMPONENT;
-	scene.entityComponents[entityIndex] &= ~(ComponentFlags)Component_Light;
 }
 
 LightComponent &GetLight(Scene &scene, ID id)
 {
 	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Light];
 	ASSERT( slot != NO_COMPONENT );
-	return scene.lights[slot];
+	return scene.lightComponents[slot];
 }
 
 const LightComponent &GetLight(const Scene &scene, ID id)
 {
 	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Light];
 	ASSERT( slot != NO_COMPONENT );
-	return scene.lights[slot];
+	return scene.lightComponents[slot];
 }
 
 static ParticlesComponent *AddParticles(Scene &scene, ID entityId)
@@ -557,7 +634,6 @@ static ParticlesComponent *AddParticles(Scene &scene, ID entityId)
 
 		slot = (u16)scene.particlesComponentCount++;
 		scene.entityComponentIndex[entityIndex][ComponentType_Particles] = slot;
-		scene.entityComponents[entityIndex] |= Component_Particles;
 	}
 
 	ParticlesComponent &particles = scene.particlesComponents[slot];
@@ -588,7 +664,6 @@ static void RemoveParticles(Scene &scene, ID entityId)
 	}
 
 	scene.entityComponentIndex[entityIndex][ComponentType_Particles] = NO_COMPONENT;
-	scene.entityComponents[entityIndex] &= ~(ComponentFlags)Component_Particles;
 }
 
 ParticlesComponent &GetParticles(Scene &scene, ID entityId)
@@ -643,7 +718,6 @@ ID EntityFromDrawId(u32 drawId)
 static COMPACT_MOVE(MoveEntity)
 {
 	Scene &scene = *(Scene*)data;
-	scene.entityComponents[dstIndex] = scene.entityComponents[srcIndex];
 	for (u32 type = 0; type < ComponentType_Count; ++type) {
 		scene.entityComponentIndex[dstIndex][type] = scene.entityComponentIndex[srcIndex][type];
 	}
@@ -652,7 +726,6 @@ static COMPACT_MOVE(MoveEntity)
 static COMPACT_REMOVE(ClearEntityComponents)
 {
 	Scene &scene = *(Scene*)data;
-	scene.entityComponents[index] = 0;
 	for (u32 type = 0; type < ComponentType_Count; ++type) {
 		scene.entityComponentIndex[index][type] = NO_COMPONENT;
 	}
@@ -669,7 +742,7 @@ void EntitySetPosition(Entity &entity, float3 position)
 	entity.position = position;
 }
 
-ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentTypes type)
+ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentType type)
 {
 	if ( pool.componentCount == pool.componentCapacity ) {
 		LOG(Warning, "Could not push a <%s> component descriptor, the pool is full.\n",
@@ -689,11 +762,10 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 	Scene &scene = engine.scene;
 	const Entity &entity = GetEntity(entityId);
 
-	if ( entity.spriteId )
+	if ( HasComponents(scene, entityId, Component_Sprite) )
 	{
 		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
-			desc->sprite.spriteId = entity.spriteId;
-			desc->sprite.layerId = entity.layerId;
+			desc->sprite = GetSpriteComponent(scene, entityId).desc;
 		}
 	}
 
@@ -720,7 +792,7 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 	}
 }
 
-void AddComponent(Engine &engine, ID entityId, ComponentTypes type)
+void AddComponent(Engine &engine, ID entityId, ComponentType type)
 {
 	if ( !Valid(entityId) ) {
 		LOG(Warning, "AddComponent: entity ID %u does not exist.\n", entityId.slot);
@@ -730,7 +802,7 @@ void AddComponent(Engine &engine, ID entityId, ComponentTypes type)
 	switch ( type )
 	{
 		case ComponentType_Sprite:
-			// Nothing to default: the sprite and layer are assigned after the fact
+			AddSpriteComponent(engine.scene, entityId);
 			break;
 
 		case ComponentType_Light:
@@ -751,7 +823,7 @@ void AddComponent(Engine &engine, ID entityId, ComponentTypes type)
 	}
 }
 
-void RemoveComponent(Engine &engine, ID entityId, ComponentTypes type)
+void RemoveComponent(Engine &engine, ID entityId, ComponentType type)
 {
 	if ( !Valid(entityId) ) {
 		return;
@@ -760,12 +832,8 @@ void RemoveComponent(Engine &engine, ID entityId, ComponentTypes type)
 	switch ( type )
 	{
 		case ComponentType_Sprite:
-		{
-			Entity &entity = GetEntity(entityId);
-			entity.spriteId = {};
-			entity.layerId = {};
+			RemoveSpriteComponent(engine.scene, entityId);
 			break;
-		}
 
 		case ComponentType_Light:
 			RemoveLight(engine.scene, entityId);
@@ -796,15 +864,18 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 	{
 		case ComponentType_Sprite:
 		{
-			Entity &entity = GetEntity(entityId);
-			entity.spriteId = desc.sprite.spriteId;
-			entity.layerId = desc.sprite.layerId;
+			SpriteComponent *sprite = AddSpriteComponent(engine.scene, entityId);
+			if ( !sprite ) {
+				break;
+			}
+
+			sprite->desc = desc.sprite;
 
 			if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
 			{
 				LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
-						entity.name, desc.sprite.spriteId.slot);
-				entity.spriteId = {};
+						GetEntity(entityId).name, desc.sprite.spriteId.slot);
+				sprite->desc.spriteId = {};
 			}
 			break;
 		}
@@ -840,7 +911,7 @@ EntityDesc GetEntityDesc(Engine &engine, ID id)
 		.pos     = entity.position,
 		.scale   = entity.scale,
 	};
-	if ( !entity.spriteId ) {
+	if ( !EntitySpriteId(engine.scene, id) ) {
 		entityDesc.materialId = entity.materialId;
 		entityDesc.geometryType = entity.geometryType;
 	}
@@ -861,7 +932,6 @@ static Entity *PushEntity(Scene &scene, ID id)
 	Entity &entity = scene.entities[index];
 	entity = { .id = id };
 
-	scene.entityComponents[index] = 0;
 	for (u32 type = 0; type < ComponentType_Count; ++type) {
 		scene.entityComponentIndex[index][type] = NO_COMPONENT;
 	}
@@ -991,7 +1061,7 @@ void RemoveEntity(Engine &engine, ID id)
 	if (id)
 	{
 		for (u32 type = 0; type < ComponentType_Count; ++type) {
-			RemoveComponent(engine, id, (ComponentTypes)type);
+			RemoveComponent(engine, id, (ComponentType)type);
 		}
 
 		GetEntity(id).id = {};

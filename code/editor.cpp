@@ -688,7 +688,8 @@ static void EditorEntityDropTarget(ID layerId)
 	{
 		const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( droppedId ) {
-			GetEntity(droppedId).layerId = layerId;
+			AddComponent(engine, droppedId, ComponentType_Sprite);
+			GetSpriteComponent(engine.scene, droppedId).desc.layerId = layerId;
 		}
 	}
 }
@@ -826,7 +827,7 @@ static void EditorUpdateUI_Outliner()
 							{
 								const Entity &entity = scene.entities[i];
 
-								if ( entity.layerId == layer.id )
+								if ( EntityLayerId(scene, entity.id) == layer.id )
 								{
 									if ( UI_Button(ui, entity.name) ) {
 										EditorSelectEntity(entity.id);
@@ -868,7 +869,7 @@ static void EditorUpdateUI_Outliner()
 			{
 				const Entity &entity = scene.entities[i];
 
-				if ( !Valid(entity.layerId) )
+				if ( !Valid(EntityLayerId(scene, entity.id)) )
 				{
 					if ( UI_Button(ui, entity.name) ) {
 						EditorSelectEntity(scene.entities[i].id);
@@ -1546,19 +1547,20 @@ static void EditorUpdateUI_Inspector()
 
 				UI_SeparatorLabel(ui, "Sprite");
 
-				const SpriteDesc *sprite = entity.spriteId ? &GetSprite(entity.spriteId).desc : nullptr;
+				const ID entitySpriteId = EntitySpriteId(engine.scene, inspector.selected.id);
+				const SpriteDesc *sprite = entitySpriteId ? &GetSprite(entitySpriteId).desc : nullptr;
 				UI_Text(ui, "Name", "%s", sprite ? sprite->name : "<none>");
 				if ( UI_DragAndDropTarget(ui, "IDSprite") )
 				{
 					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 					if ( droppedId ) {
-						entity.spriteId = droppedId;
+						SetEntitySprite(inspector.selected.id, droppedId);
 					}
 				}
 
 				if (sprite && UI_Button(ui, "Go to sprite"))
 				{
-					EditorSelectSprite(entity.spriteId);
+					EditorSelectSprite(entitySpriteId);
 				}
 
 				if ( HasComponents(engine.scene, inspector.selected.id, Component_Light) )
@@ -1670,7 +1672,7 @@ static void EditorUpdateUI_Inspector()
 				}
 
 				const char *availableNames[ComponentType_Count];
-				ComponentTypes availableTypes[ComponentType_Count];
+				ComponentType availableTypes[ComponentType_Count];
 				u32 availableCount = 0;
 				for (u32 i = 0; i < ComponentType_Count; ++i)
 				{
@@ -1679,7 +1681,7 @@ static void EditorUpdateUI_Inspector()
 					if ( !HasComponents(engine.scene, inspector.selected.id, bit) )
 					{
 						availableNames[availableCount] = ComponentNames[i];
-						availableTypes[availableCount] = (ComponentTypes)i;
+						availableTypes[availableCount] = (ComponentType)i;
 						availableCount++;
 					}
 				}
@@ -3392,7 +3394,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 					const Entity &entity = scene.entities[i];
 
 					if ( !entity.visible || entity.culled ) continue;
-					if ( !entity.spriteId ) continue;
+					if ( !EntitySpriteId(scene, entity.id) ) continue;
 
 					DrawIndexed(commandList, spriteIndexCount, spriteFirstIndex, spriteFirstVertex, EntityDrawId(scene, scene.entities[i].id), 1);
 				}
