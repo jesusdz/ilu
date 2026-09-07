@@ -1643,7 +1643,7 @@ static void EditorUpdateUI_Inspector()
 						if ( UI_DragAndDropTarget(ui, "Script") )
 						{
 							const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
-							SetScript(engine, inspector.selected.id, ScriptName(script));
+							AddScript(engine, inspector.selected.id, ScriptName(script));
 						}
 
 						if ( component.name ) {
@@ -2181,7 +2181,7 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 		.name = InternString("entity"),
 		.pos = Float3(worldPos, 0.0),
 		.scale = 1.0f,
-		.spriteId = spriteId,
+		.sprite = { .spriteId = spriteId, }
 	};
 
 	return CreateEntity(engine, entityDesc);

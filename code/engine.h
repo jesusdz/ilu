@@ -201,7 +201,7 @@ struct ScriptPropertyDesc
 	PropertyValue value;
 };
 
-struct ScriptDesc
+struct ScriptComponentDesc
 {
 	const char *name;
 	u32 propertyCount;
@@ -816,6 +816,7 @@ struct SceneDesc
 
 enum ComponentTypes
 {
+	ComponentType_Sprite,
 	ComponentType_Light,
 	ComponentType_Particles,
 	ComponentType_Script,
@@ -824,6 +825,7 @@ enum ComponentTypes
 
 enum ComponentBits
 {
+	Component_Sprite = 1<<ComponentType_Sprite,
 	Component_Light = 1<<ComponentType_Light,
 	Component_Particles = 1<<ComponentType_Particles,
 	Component_Script = 1<<ComponentType_Script,
@@ -831,7 +833,7 @@ enum ComponentBits
 
 typedef u32 ComponentFlags;
 
-constexpr const char *ComponentNames[] = { "Light", "Particles", "Script" };
+constexpr const char *ComponentNames[] = { "Sprite", "Light", "Particles", "Script" };
 
 CT_ASSERT(ARRAY_COUNT(ComponentNames) == ComponentType_Count);
 
@@ -840,13 +842,15 @@ enum LightType
 	LightType_Point,
 };
 
-struct LightComponent
+struct LightComponentDesc
 {
 	LightType type;
 	float3 color;
 	f32 intensity;
 	f32 radius;
 };
+
+typedef LightComponentDesc LightComponent;
 
 struct ParticleEffectDesc
 {
@@ -923,6 +927,12 @@ struct SpriteDesc
 	u8 loop;
 };
 
+struct SpriteComponentDesc
+{
+	ID spriteId;
+	ID layerId;
+};
+
 struct EntityDesc
 {
 	ID id;
@@ -933,20 +943,12 @@ struct EntityDesc
 	// 3D entity
 	ID materialId;
 	GeometryType geometryType;
-	// Sprite entity
-	ID spriteId;
-	ID layerId;
-	// Collider
-	float2 colliderSize;
-	// Physics
-	float2 speed;
-	f32 accel;
-	// Scripts
-	ScriptDesc script;
 	// Components
 	ComponentFlags components;
-	LightComponent light;
+	SpriteComponentDesc sprite;
+	LightComponentDesc light;
 	ParticlesComponentDesc particles;
+	ScriptComponentDesc script;
 };
 
 #define MAX_PREFAB_ENTITIES 16
@@ -1174,10 +1176,10 @@ struct BinEntityDesc
 	float3 pos;
 	float scale;
 	GeometryType geometryType;
-	BinScriptDesc script;
 	ComponentFlags components;
-	LightComponent light;
+	LightComponentDesc light;
 	ParticlesComponentDesc particles;
+	BinScriptDesc script;
 };
 
 struct BinLayerDesc
@@ -1407,10 +1409,10 @@ u32 ScriptCount();
 const Script &GetScriptAt(u32 index);
 
 ScriptComponent *AddScript(Engine &engine, ID entityId);
-ScriptComponent *SetScript(Engine &engine, ID entityId, const char *scriptName);
-void SetScript(Engine &engine, ID entityId, const ScriptDesc &desc);
+ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName);
+ScriptComponent *AddScript(Engine &engine, ID entityId, const ScriptComponentDesc &desc);
 void RemoveScript(Engine &engine, ID entityId);
-bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptDesc &outScript);
+bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript);
 void RunScriptHooks(Engine &engine, ScriptHookType hook);
 void RebindScripts(Engine &engine);
 

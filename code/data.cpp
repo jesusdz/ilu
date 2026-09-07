@@ -235,7 +235,7 @@ static GeometryType StrToGeometryType(String str)
 	return GeometryTypeCube;
 }
 
-static void WriteScriptDesc(WriteContext &ctx, const ScriptDesc &script)
+static void WriteScriptDesc(WriteContext &ctx, const ScriptComponentDesc &script)
 {
 	WriteLine(ctx, ".script = {");
 	PushIndent(ctx);
@@ -262,16 +262,16 @@ static void WriteScriptDesc(WriteContext &ctx, const ScriptDesc &script)
 
 static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
 {
-	if (desc.spriteId.slot != 0) {
-		WriteLine(ctx, ".spriteId = %u,", desc.spriteId.slot);
+	if (desc.sprite.spriteId.slot != 0) {
+		WriteLine(ctx, ".spriteId = %u,", desc.sprite.spriteId.slot);
 	} else if (desc.materialId.slot != 0) {
 		WriteLine(ctx, ".materialId = %u,", desc.materialId.slot);
 		WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(desc.geometryType));
 	}
 	WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
 	WriteLine(ctx, ".scale = %f,", desc.scale);
-	if (desc.spriteId.slot != 0) {
-		WriteLine(ctx, ".layerId = %u,", desc.layerId.slot);
+	if (desc.sprite.spriteId.slot != 0) {
+		WriteLine(ctx, ".layerId = %u,", desc.sprite.layerId.slot);
 	}
 	if (desc.components & Component_Light) {
 		WriteLine(ctx, ".lightColor = {%f, %f, %f},", desc.light.color.x, desc.light.color.y, desc.light.color.z);
@@ -1110,13 +1110,13 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-static void DParser_ConsumeScriptProperties( DParser &parser, ScriptDesc &script);
+static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script);
 
 static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
-	ScriptDesc scriptDesc = {};
+	ScriptComponentDesc scriptDesc = {};
 
 	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 	{
@@ -1140,7 +1140,7 @@ static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 
-	// The name is what SetScript resolves the component from, so a block without one
+	// The name is what AddScript resolves the component from, so a block without one
 	// leaves the entity scriptless rather than handing it a null to look up
 	if ( scriptDesc.name ) {
 		entity.components |= Component_Script;
@@ -1175,13 +1175,13 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	} else if ( StrEq( field, sMaterialId ) ) {
 		entity.materialId = DParser_ConsumeID(parser);
 	} else if ( StrEq( field, sSpriteId ) ) {
-		entity.spriteId = DParser_ConsumeID(parser);
+		entity.sprite.spriteId = DParser_ConsumeID(parser);
 	} else if ( StrEq( field, sPos ) ) {
 		entity.pos = DParser_ConsumeFloat3(parser);
 	} else if ( StrEq( field, sScale ) ) {
 		entity.scale = DParser_ConsumeF32(parser);
 	} else if ( StrEq( field, sLayerId ) ) {
-		entity.layerId = DParser_ConsumeID(parser);
+		entity.sprite.layerId = DParser_ConsumeID(parser);
 	} else if ( StrEq( field, sGeometryType ) ) {
 		entity.geometryType = DParser_ConsumeGeometryType(parser);
 	} else if ( StrEq( field, sLightColor ) ) {
@@ -1297,7 +1297,7 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-static void DParser_ConsumeScriptProperties( DParser &parser, ScriptDesc &script)
+static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script)
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 	script.propertyCount = 0;
@@ -1790,10 +1790,10 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 	d.id           = desc.id;
 	d.name         = DataInternString(stringPool, desc.name);
 	d.materialId   = desc.materialId;
-	d.spriteId     = desc.spriteId;
+	d.spriteId     = desc.sprite.spriteId;
 	d.pos          = desc.pos;
 	d.scale        = desc.scale;
-	d.layerId      = desc.layerId;
+	d.layerId      = desc.sprite.layerId;
 	d.geometryType = desc.geometryType;
 	d.components   = desc.components;
 	d.light        = desc.light;
@@ -1801,7 +1801,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 
 	if (desc.components & Component_Script)
 	{
-		const ScriptDesc &script = desc.script;
+		const ScriptComponentDesc &script = desc.script;
 
 		BinScriptDesc &bs = d.script;
 		bs.name = DataInternString(stringPool, script.name);

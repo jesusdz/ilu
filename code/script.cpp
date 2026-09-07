@@ -139,7 +139,7 @@ static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &componen
 }
 
 // Attaches a script component with nothing assigned to it yet. Hooks skip it and the
-// inspector offers a drop target until SetScript points it at a script.
+// inspector offers a drop target until AddScript points it at a script.
 ScriptComponent *AddScript(Engine &engine, ID entityId)
 {
 	Scene &scene = engine.scene;
@@ -166,18 +166,18 @@ ScriptComponent *AddScript(Engine &engine, ID entityId)
 
 // Points the entity's script component at scriptName, adding the component if it has none
 // and starting the instance over if it was already running something.
-ScriptComponent *SetScript(Engine &engine, ID entityId, const char *scriptName)
+ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName)
 {
 	Scene &scene = engine.scene;
 
 	if ( !Valid(entityId) ) {
-		LOG(Warning, "SetScript: script <%s> refers to entity ID %u, which does not exist.\n", scriptName, entityId.slot);
+		LOG(Warning, "AddScript: script <%s> refers to entity ID %u, which does not exist.\n", scriptName, entityId.slot);
 		return nullptr;
 	}
 
 	const u32 structIndex = FindScriptIndex(scriptName);
 	if ( structIndex == U32_MAX ) {
-		LOG(Warning, "SetScript: no script named <%s> is registered.\n", scriptName);
+		LOG(Warning, "AddScript: no script named <%s> is registered.\n", scriptName);
 		return nullptr;
 	}
 
@@ -211,7 +211,7 @@ ScriptComponent *SetScript(Engine &engine, ID entityId, const char *scriptName)
 
 // Writes the saved property values over the script data, skipping any that no longer
 // match the script's reflected members.
-static void ApplyScriptDesc(ScriptComponent &component, const ScriptDesc &desc)
+static void ApplyScriptDesc(ScriptComponent &component, const ScriptComponentDesc &desc)
 {
 	if ( component.structIndex >= scriptRegistry.scriptCount ) {
 		return;
@@ -243,16 +243,17 @@ static void ApplyScriptDesc(ScriptComponent &component, const ScriptDesc &desc)
 	}
 }
 
-void SetScript(Engine &engine, ID entityId, const ScriptDesc &desc)
+ScriptComponent* AddScript(Engine &engine, ID entityId, const ScriptComponentDesc &desc)
 {
-	ScriptComponent *component = SetScript(engine, entityId, desc.name);
+	ScriptComponent *component = AddScript(engine, entityId, desc.name);
 	if ( component ) {
 		ApplyScriptDesc(*component, desc);
 	}
+	return component;
 }
 
 // Snapshots entityId's live script into outScript. False when it has none.
-bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptDesc &outScript)
+bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript)
 {
 	outScript = {};
 

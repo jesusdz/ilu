@@ -628,10 +628,10 @@ EntityDesc GetEntityDesc(Engine &engine, ID id)
 		.name    = entity.name,
 		.pos     = entity.position,
 		.scale   = entity.scale,
-		.layerId = entity.layerId,
 	};
 	if (entity.spriteId) {
-		entityDesc.spriteId = entity.spriteId;
+		entityDesc.sprite.spriteId = entity.spriteId;
+		entityDesc.sprite.layerId = entity.layerId;
 	} else {
 		entityDesc.materialId = entity.materialId;
 		entityDesc.geometryType = entity.geometryType;
@@ -691,12 +691,12 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	entity->visible = true;
 	EntitySetPosition(*entity, desc.pos);
 	entity->scale = desc.scale;
-	entity->layerId = desc.layerId;
 	entity->geometryType = desc.geometryType;
 	entity->vertices = vertices;
 	entity->indices = indices;
 	entity->materialId = desc.materialId;
-	entity->spriteId = desc.spriteId;
+	entity->spriteId = desc.sprite.spriteId;
+	entity->layerId = desc.sprite.layerId;
 
 	// An entity carries either a material or a sprite, so only an ID that was set and
 	// then failed to resolve is worth complaining about
@@ -706,10 +706,10 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 				desc.name, desc.materialId.slot);
 		entity->materialId = engine.gfx.defaultMaterial;
 	}
-	if ( desc.spriteId.slot != 0 && !Valid(desc.spriteId) )
+	if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
 	{
 		LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
-				desc.name, desc.spriteId.slot);
+				desc.name, desc.sprite.spriteId.slot);
 		entity->spriteId = {};
 	}
 
@@ -727,7 +727,7 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 
 	if ( desc.components & Component_Script )
 	{
-		SetScript(engine, entity->id, desc.script);
+		AddScript(engine, entity->id, desc.script);
 	}
 
 	return entity->id;
@@ -742,9 +742,10 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
 		.scale = desc.scale,
 		.materialId = desc.materialId,
 		.geometryType = desc.geometryType,
-		.spriteId = desc.spriteId,
-		.layerId = desc.layerId,
 		.components = desc.components,
+		.sprite = {
+			.spriteId = desc.spriteId,
+			.layerId = desc.layerId },
 		.light = desc.light,
 		.particles = desc.particles,
 	};
@@ -752,7 +753,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
 	if ( desc.components & Component_Script )
 	{
 		const BinScriptDesc &binScript = desc.script;
-		ScriptDesc &script = entityDesc.script;
+		ScriptComponentDesc &script = entityDesc.script;
 
 		script.name = binScript.name;
 		script.propertyCount = Min(binScript.propertyCount, (u32)ARRAY_COUNT(script.properties));
