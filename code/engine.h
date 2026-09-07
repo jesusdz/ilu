@@ -204,8 +204,8 @@ struct ScriptPropertyDesc
 struct ScriptComponentDesc
 {
 	const char *name;
+	ScriptPropertyDesc *properties;
 	u32 propertyCount;
-	ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES];
 };
 
 struct Script
@@ -226,6 +226,7 @@ inline u32 ScriptDataSize(const Script &script)
 
 struct ScriptComponent
 {
+	ID entityId;
 	const char *name; // Interned, and what a reload re-resolves structIndex from
 	u16 structIndex;  // U16_MAX until a script is assigned, and again if a reload drops it
 	u32 dataSize;     // Which bucket data returns to, still known once the script is gone
@@ -850,7 +851,11 @@ struct LightComponentDesc
 	f32 radius;
 };
 
-typedef LightComponentDesc LightComponent;
+struct LightComponent
+{
+	ID entityId;
+	LightComponentDesc desc;
+};
 
 struct ParticleEffectDesc
 {
@@ -896,6 +901,7 @@ struct ParticlesComponentDesc
 
 struct ParticlesComponent
 {
+	ID entityId;
 	ParticlesComponentDesc desc;
 	u8 playing;
 	f32 emitAccum; // ???
@@ -933,6 +939,30 @@ struct SpriteComponentDesc
 	ID layerId;
 };
 
+struct ComponentDesc
+{
+	u32 entityIndex;
+	ComponentTypes type;
+	union
+	{
+		SpriteComponentDesc sprite;
+		LightComponentDesc light;
+		ParticlesComponentDesc particles;
+		ScriptComponentDesc script;
+	};
+};
+
+struct ComponentDescPool
+{
+	ComponentDesc *components;
+	u32 componentCount;
+	u32 componentCapacity;
+
+	ScriptPropertyDesc *properties;
+	u32 propertyCount;
+	u32 propertyCapacity;
+};
+
 struct EntityDesc
 {
 	ID id;
@@ -943,15 +973,11 @@ struct EntityDesc
 	// 3D entity
 	ID materialId;
 	GeometryType geometryType;
-	// Components
-	ComponentFlags components;
-	SpriteComponentDesc sprite;
-	LightComponentDesc light;
-	ParticlesComponentDesc particles;
-	ScriptComponentDesc script;
 };
 
 #define MAX_PREFAB_ENTITIES 16
+#define MAX_PREFAB_COMPONENTS 32
+#define MAX_PREFAB_SCRIPT_PROPERTIES 64
 
 struct PrefabDesc
 {
@@ -959,6 +985,8 @@ struct PrefabDesc
 	const char *name;
 	EntityDesc entities[MAX_PREFAB_ENTITIES];
 	u32 entityCount;
+	const ComponentDesc *components;
+	u32 componentCount;
 };
 
 struct TileDesc
@@ -1094,6 +1122,10 @@ struct Prefab
 	const char *name;
 	EntityDesc entities[MAX_PREFAB_ENTITIES];
 	u32 entityCount;
+	ComponentDesc components[MAX_PREFAB_COMPONENTS];
+	u32 componentCount;
+	ScriptPropertyDesc scriptProperties[MAX_PREFAB_SCRIPT_PROPERTIES];
+	u32 scriptPropertyCount;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -1111,6 +1143,12 @@ constexpr u32 SCENE_HEIGHT = 180;
 constexpr u32 MAX_PARTICLES = 1024;
 constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 
+#define MAX_LIGHT_COMPONENTS 1024
+#define MAX_PARTICLES_COMPONENTS 1024
+#define MAX_SCRIPT_COMPONENTS 1024
+
+constexpr u16 NO_COMPONENT = U16_MAX;
+
 struct Scene
 {
 	ProjectionType projectionType;
@@ -1122,9 +1160,19 @@ struct Scene
 	u32 entityCount;
 	Entity entities[MAX_ENTITIES];
 	ComponentFlags entityComponents[MAX_ENTITIES];
-	LightComponent entityLights[MAX_ENTITIES];
-	ParticlesComponent entityParticles[MAX_ENTITIES];
-	ScriptComponent entityScripts[MAX_ENTITIES];
+	u16 entityComponentIndex[MAX_ENTITIES][ComponentType_Count];
+
+	// Each pool is packed, so removing a component swaps the last one down into the
+	// hole. The moved component names its own entity, which is what lets that swap
+	// repoint the entity back at its new slot.
+	u32 lightCount;
+	LightComponent lights[MAX_LIGHT_COMPONENTS];
+
+	u32 particlesComponentCount;
+	ParticlesComponent particlesComponents[MAX_PARTICLES_COMPONENTS];
+
+	u32 scriptComponentCount;
+	ScriptComponent scriptComponents[MAX_SCRIPT_COMPONENTS];
 
 	u32 particleEffectCount;
 	ParticleEffect particleEffects[MAX_PARTICLE_EFFECTS];
@@ -1300,6 +1348,8 @@ struct AssetDescriptors
 	EntityDesc *entityDescs;
 	u32 entityDescCount;
 
+	ComponentDescPool componentPool;
+
 	PrefabDesc *prefabDescs;
 	u32 prefabDescCount;
 
@@ -1412,7 +1462,7 @@ ScriptComponent *AddScript(Engine &engine, ID entityId);
 ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName);
 ScriptComponent *AddScript(Engine &engine, ID entityId, const ScriptComponentDesc &desc);
 void RemoveScript(Engine &engine, ID entityId);
-bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript);
+bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript, ComponentDescPool &pool);
 void RunScriptHooks(Engine &engine, ScriptHookType hook);
 void RebindScripts(Engine &engine);
 
@@ -1634,6 +1684,12 @@ u16 GetEntityIndex(const Scene &scene, ID entityId);
 void EntitySetPosition(Entity &entity, float3 position);
 EntityDesc GetEntityDesc(Engine &engine, ID entityId);
 ID CreateEntity(Engine &engine, const EntityDesc &desc);
+ID CreateEntity(Engine &engine, const EntityDesc &desc, const ComponentDesc *components, u32 componentCount);
+void AddComponent(Engine &engine, ID entityId, ComponentTypes type);
+void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc);
+void RemoveComponent(Engine &engine, ID entityId, ComponentTypes type);
+void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &pool);
+ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentTypes type);
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc);
 void RemoveEntity(Engine &engine, ID entityId);
 ID DuplicateEntity(Engine &engine, ID entityId);
@@ -1648,13 +1704,9 @@ ID EntityFromDrawId(u32 drawId);
 
 bool HasComponents(const Scene &scene, ID entityId, ComponentFlags components);
 
-LightComponent &AddLight(Scene &scene, ID entityId);
-void RemoveLight(Scene &scene, ID entityId);
 LightComponent &GetLight(Scene &scene, ID entityId);
 const LightComponent &GetLight(const Scene &scene, ID entityId);
 
-ParticlesComponent &AddParticles(Scene &scene, ID entityId);
-void RemoveParticles(Scene &scene, ID entityId);
 ParticlesComponent &GetParticles(Scene &scene, ID entityId);
 const ParticlesComponent &GetParticles(const Scene &scene, ID entityId);
 

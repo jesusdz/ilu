@@ -302,12 +302,9 @@ static void SpawnParticle(Scene &scene, ID entityId, const ParticleEffectDesc &e
 void SimulateParticles(Scene &scene, f32 deltaSeconds)
 {
 	// Emission
-	for (u32 i = 0; i < scene.entityCount; ++i)
+	for (u32 i = 0; i < scene.particlesComponentCount; ++i)
 	{
-		const Entity &entity = scene.entities[i];
-		if ( !HasComponents(scene, entity.id, Component_Particles) ) { continue; }
-
-		ParticlesComponent &particles = GetParticles(scene, entity.id);
+		ParticlesComponent &particles = scene.particlesComponents[i];
 		if ( !particles.playing || !particles.desc.effectId ) { continue; }
 
 		const ParticleEffectDesc &effect = GetParticleEffect(particles.desc.effectId).desc;
@@ -327,7 +324,7 @@ void SimulateParticles(Scene &scene, f32 deltaSeconds)
 		particles.emitAccum += effect.rate * deltaSeconds;
 		while ( particles.emitAccum >= 1.0f )
 		{
-			SpawnParticle(scene, entity.id, effect);
+			SpawnParticle(scene, particles.entityId, effect);
 			particles.emitAccum -= 1.0f;
 		}
 	}
@@ -394,13 +391,10 @@ void StopParticles(Scene &scene, ID entityId)
 
 void StartParticles(Scene &scene)
 {
-    for (u32 i = 0; i < scene.entityCount; ++i)
+    for (u32 i = 0; i < scene.particlesComponentCount; ++i)
     {
-        const Entity &entity = scene.entities[i];
-        if ( !HasComponents(scene, entity.id, Component_Particles) ) { continue; }
-
-        if ( GetParticles(scene, entity.id).desc.playOnStart ) {
-            PlayParticles(scene, entity.id);
+        if ( scene.particlesComponents[i].desc.playOnStart ) {
+            PlayParticles(scene, scene.particlesComponents[i].entityId);
         }
     }
 }
@@ -409,12 +403,9 @@ void ClearParticles(Scene &scene)
 {
 	scene.particleCount = 0;
 
-	for (u32 i = 0; i < scene.entityCount; ++i)
+	for (u32 i = 0; i < scene.particlesComponentCount; ++i)
 	{
-		const Entity &entity = scene.entities[i];
-		if ( !HasComponents(scene, entity.id, Component_Particles) ) { continue; }
-
-		ParticlesComponent &particles = GetParticles(scene, entity.id);
+		ParticlesComponent &particles = scene.particlesComponents[i];
 		particles.playing = 0;
 		particles.emitAccum = 0.0f;
 		particles.elapsedTime = 0.0f;
@@ -488,90 +479,144 @@ bool HasComponents(const Scene &scene, ID id, ComponentFlags components)
 	return ( scene.entityComponents[index] & components ) == components;
 }
 
-LightComponent &AddLight(Scene &scene, ID id)
+static LightComponent *AddLight(Scene &scene, ID id)
 {
-	const u16 index = GetEntityIndex(scene, id);
-	scene.entityComponents[index] |= Component_Light;
+	const u16 entityIndex = GetEntityIndex(scene, id);
 
-	LightComponent &light = scene.entityLights[index];
+	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Light];
+	if ( slot == NO_COMPONENT )
+	{
+		if ( scene.lightCount == MAX_LIGHT_COMPONENTS ) {
+			LOG(Warning, "Could not add a light component, the light pool is full.\n");
+			return nullptr;
+		}
+
+		slot = (u16)scene.lightCount++;
+		scene.entityComponentIndex[entityIndex][ComponentType_Light] = slot;
+		scene.entityComponents[entityIndex] |= Component_Light;
+	}
+
+	LightComponent &light = scene.lights[slot];
 	light = {
-		.type = LightType_Point,
-		.color = Float3(1.0f),
-		.intensity = 2.0f,
-		.radius = 5.0f,
+		.entityId = id,
+		.desc = {
+			.type = LightType_Point,
+			.color = Float3(1.0f),
+			.intensity = 2.0f,
+			.radius = 5.0f,
+		},
 	};
-	return light;
+	return &light;
 }
 
-void RemoveLight(Scene &scene, ID id)
+static void RemoveLight(Scene &scene, ID id)
 {
-	const u16 index = GetEntityIndex(scene, id);
-	scene.entityComponents[index] &= ~(ComponentFlags)Component_Light;
-	scene.entityLights[index] = {};
+	const u16 entityIndex = GetEntityIndex(scene, id);
+
+	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Light];
+	if ( slot == NO_COMPONENT ) {
+		return;
+	}
+
+	const u16 last = (u16)(--scene.lightCount);
+	if ( slot != last )
+	{
+		scene.lights[slot] = scene.lights[last];
+		scene.entityComponentIndex[ GetEntityIndex(scene, scene.lights[slot].entityId) ][ComponentType_Light] = slot;
+	}
+
+	scene.entityComponentIndex[entityIndex][ComponentType_Light] = NO_COMPONENT;
+	scene.entityComponents[entityIndex] &= ~(ComponentFlags)Component_Light;
 }
 
 LightComponent &GetLight(Scene &scene, ID id)
 {
-	const u16 index = GetEntityIndex(scene, id);
-	ASSERT( scene.entityComponents[index] & Component_Light );
-	return scene.entityLights[index];
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Light];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.lights[slot];
 }
 
 const LightComponent &GetLight(const Scene &scene, ID id)
 {
-	const u16 index = GetEntityIndex(scene, id);
-	ASSERT( scene.entityComponents[index] & Component_Light );
-	return scene.entityLights[index];
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Light];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.lights[slot];
 }
 
-ParticlesComponent &AddParticles(Scene &scene, ID entityId)
+static ParticlesComponent *AddParticles(Scene &scene, ID entityId)
 {
-	const u16 index = GetEntityIndex(scene, entityId);
-	scene.entityComponents[index] |= Component_Particles;
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
 
-	ParticlesComponent &particles = scene.entityParticles[index];
+	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Particles];
+	if ( slot == NO_COMPONENT )
+	{
+		if ( scene.particlesComponentCount == MAX_PARTICLES_COMPONENTS ) {
+			LOG(Warning, "Could not add a particles component, the particles pool is full.\n");
+			return nullptr;
+		}
+
+		slot = (u16)scene.particlesComponentCount++;
+		scene.entityComponentIndex[entityIndex][ComponentType_Particles] = slot;
+		scene.entityComponents[entityIndex] |= Component_Particles;
+	}
+
+	ParticlesComponent &particles = scene.particlesComponents[slot];
 	particles = {
+		.entityId = entityId,
 		.desc = {
 			.effectId = { BuiltinID_FountainParticleEffect },
 			.playOnStart = 1,
 		},
 	};
-	return particles;
+	return &particles;
 }
 
-void RemoveParticles(Scene &scene, ID entityId)
+static void RemoveParticles(Scene &scene, ID entityId)
 {
-	const u16 index = GetEntityIndex(scene, entityId);
-	scene.entityComponents[index] &= ~(ComponentFlags)Component_Particles;
-	scene.entityParticles[index] = {};
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+
+	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Particles];
+	if ( slot == NO_COMPONENT ) {
+		return;
+	}
+
+	const u16 last = (u16)(--scene.particlesComponentCount);
+	if ( slot != last )
+	{
+		scene.particlesComponents[slot] = scene.particlesComponents[last];
+		scene.entityComponentIndex[ GetEntityIndex(scene, scene.particlesComponents[slot].entityId) ][ComponentType_Particles] = slot;
+	}
+
+	scene.entityComponentIndex[entityIndex][ComponentType_Particles] = NO_COMPONENT;
+	scene.entityComponents[entityIndex] &= ~(ComponentFlags)Component_Particles;
 }
 
 ParticlesComponent &GetParticles(Scene &scene, ID entityId)
 {
-	const u16 index = GetEntityIndex(scene, entityId);
-	ASSERT( scene.entityComponents[index] & Component_Particles );
-	return scene.entityParticles[index];
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Particles];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.particlesComponents[slot];
 }
 
 const ParticlesComponent &GetParticles(const Scene &scene, ID entityId)
 {
-	const u16 index = GetEntityIndex(scene, entityId);
-	ASSERT( scene.entityComponents[index] & Component_Particles );
-	return scene.entityParticles[index];
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Particles];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.particlesComponents[slot];
 }
 
 ScriptComponent &GetScript(Scene &scene, ID id)
 {
-	const u16 index = GetEntityIndex(scene, id);
-	ASSERT( scene.entityComponents[index] & Component_Script );
-	return scene.entityScripts[index];
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Script];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.scriptComponents[slot];
 }
 
 const ScriptComponent &GetScript(const Scene &scene, ID id)
 {
-	const u16 index = GetEntityIndex(scene, id);
-	ASSERT( scene.entityComponents[index] & Component_Script );
-	return scene.entityScripts[index];
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Script];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.scriptComponents[slot];
 }
 
 // The high half indexes the GPU entity buffer, the low half is the entity's ID slot.
@@ -599,14 +644,18 @@ static COMPACT_MOVE(MoveEntity)
 {
 	Scene &scene = *(Scene*)data;
 	scene.entityComponents[dstIndex] = scene.entityComponents[srcIndex];
-	scene.entityLights[dstIndex] = scene.entityLights[srcIndex];
-	scene.entityScripts[dstIndex] = scene.entityScripts[srcIndex];
+	for (u32 type = 0; type < ComponentType_Count; ++type) {
+		scene.entityComponentIndex[dstIndex][type] = scene.entityComponentIndex[srcIndex][type];
+	}
 }
 
 static COMPACT_REMOVE(ClearEntityComponents)
 {
 	Scene &scene = *(Scene*)data;
 	scene.entityComponents[index] = 0;
+	for (u32 type = 0; type < ComponentType_Count; ++type) {
+		scene.entityComponentIndex[index][type] = NO_COMPONENT;
+	}
 }
 
 void CompactEntities(Scene &scene)
@@ -620,6 +669,154 @@ void EntitySetPosition(Entity &entity, float3 position)
 	entity.position = position;
 }
 
+ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentTypes type)
+{
+	if ( pool.componentCount == pool.componentCapacity ) {
+		LOG(Warning, "Could not push a <%s> component descriptor, the pool is full.\n",
+				ComponentNames[type]);
+		return nullptr;
+	}
+
+	ComponentDesc &desc = pool.components[pool.componentCount++];
+	desc = {};
+	desc.entityIndex = entityIndex;
+	desc.type = type;
+	return &desc;
+}
+
+void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &pool)
+{
+	Scene &scene = engine.scene;
+	const Entity &entity = GetEntity(entityId);
+
+	if ( entity.spriteId )
+	{
+		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
+			desc->sprite.spriteId = entity.spriteId;
+			desc->sprite.layerId = entity.layerId;
+		}
+	}
+
+	if ( HasComponents(scene, entityId, Component_Light) )
+	{
+		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Light) ) {
+			desc->light = GetLight(scene, entityId).desc;
+		}
+	}
+
+	if ( HasComponents(scene, entityId, Component_Particles) )
+	{
+		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Particles) ) {
+			desc->particles = GetParticles(scene, entityId).desc;
+		}
+	}
+
+	ScriptComponentDesc script = {};
+	if ( GatherEntityScriptDesc(scene, entityId, script, pool) )
+	{
+		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
+			desc->script = script;
+		}
+	}
+}
+
+void AddComponent(Engine &engine, ID entityId, ComponentTypes type)
+{
+	switch ( type )
+	{
+		case ComponentType_Sprite:
+			// Nothing to default: the sprite and layer are assigned after the fact
+			break;
+
+		case ComponentType_Light:
+			AddLight(engine.scene, entityId);
+			break;
+
+		case ComponentType_Particles:
+			AddParticles(engine.scene, entityId);
+			break;
+
+		case ComponentType_Script:
+			AddScript(engine, entityId);
+			break;
+
+		default:
+			LOG(Warning, "Ignoring an attempt to add a component of unknown type %u.\n", type);
+			break;
+	}
+}
+
+void RemoveComponent(Engine &engine, ID entityId, ComponentTypes type)
+{
+	switch ( type )
+	{
+		case ComponentType_Sprite:
+		{
+			Entity &entity = GetEntity(entityId);
+			entity.spriteId = {};
+			entity.layerId = {};
+			break;
+		}
+
+		case ComponentType_Light:
+			RemoveLight(engine.scene, entityId);
+			break;
+
+		case ComponentType_Particles:
+			RemoveParticles(engine.scene, entityId);
+			break;
+
+		case ComponentType_Script:
+			RemoveScript(engine, entityId);
+			break;
+
+		default:
+			LOG(Warning, "Ignoring an attempt to remove a component of unknown type %u.\n", type);
+			break;
+	}
+}
+
+void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
+{
+	switch ( desc.type )
+	{
+		case ComponentType_Sprite:
+		{
+			Entity &entity = GetEntity(entityId);
+			entity.spriteId = desc.sprite.spriteId;
+			entity.layerId = desc.sprite.layerId;
+
+			if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
+			{
+				LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
+						entity.name, desc.sprite.spriteId.slot);
+				entity.spriteId = {};
+			}
+			break;
+		}
+
+		case ComponentType_Light:
+			if ( LightComponent *light = AddLight(engine.scene, entityId) ) {
+				light->desc = desc.light;
+			}
+			break;
+
+		case ComponentType_Particles:
+			if ( ParticlesComponent *particles = AddParticles(engine.scene, entityId) ) {
+				particles->desc = desc.particles;
+			}
+			break;
+
+		case ComponentType_Script:
+			AddScript(engine, entityId, desc.script);
+			break;
+
+		default:
+			LOG(Warning, "Ignoring a component descriptor of unknown type %u.\n", desc.type);
+			break;
+	}
+}
+
 EntityDesc GetEntityDesc(Engine &engine, ID id)
 {
 	const Entity &entity = GetEntity(id);
@@ -629,26 +826,9 @@ EntityDesc GetEntityDesc(Engine &engine, ID id)
 		.pos     = entity.position,
 		.scale   = entity.scale,
 	};
-	if (entity.spriteId) {
-		entityDesc.sprite.spriteId = entity.spriteId;
-		entityDesc.sprite.layerId = entity.layerId;
-	} else {
+	if ( !entity.spriteId ) {
 		entityDesc.materialId = entity.materialId;
 		entityDesc.geometryType = entity.geometryType;
-	}
-	if ( HasComponents(engine.scene, id, Component_Light) )
-	{
-		entityDesc.components |= Component_Light;
-		entityDesc.light = GetLight(engine.scene, id);
-	}
-	if ( HasComponents(engine.scene, id, Component_Particles) )
-	{
-		entityDesc.components |= Component_Particles;
-		entityDesc.particles = GetParticles(engine.scene, id).desc;
-	}
-	if ( GatherEntityScriptDesc(engine.scene, id, entityDesc.script) )
-	{
-		entityDesc.components |= Component_Script;
 	}
 	return entityDesc;
 }
@@ -668,9 +848,9 @@ static Entity *PushEntity(Scene &scene, ID id)
 	entity = { .id = id };
 
 	scene.entityComponents[index] = 0;
-	scene.entityLights[index] = {};
-	scene.entityParticles[index] = {};
-	scene.entityScripts[index] = {};
+	for (u32 type = 0; type < ComponentType_Count; ++type) {
+		scene.entityComponentIndex[index][type] = NO_COMPONENT;
+	}
 
 	BindID(&entity.id, &entity);
 
@@ -695,8 +875,6 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	entity->vertices = vertices;
 	entity->indices = indices;
 	entity->materialId = desc.materialId;
-	entity->spriteId = desc.sprite.spriteId;
-	entity->layerId = desc.sprite.layerId;
 
 	// An entity carries either a material or a sprite, so only an ID that was set and
 	// then failed to resolve is worth complaining about
@@ -706,34 +884,23 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 				desc.name, desc.materialId.slot);
 		entity->materialId = engine.gfx.defaultMaterial;
 	}
-	if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
-	{
-		LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
-				desc.name, desc.sprite.spriteId.slot);
-		entity->spriteId = {};
-	}
-
-	if ( desc.components & Component_Light )
-	{
-		LightComponent &light = AddLight(engine.scene, entity->id);
-		light = desc.light;
-	}
-
-	if ( desc.components & Component_Particles )
-	{
-		ParticlesComponent &particles = AddParticles(engine.scene, entity->id);
-		particles.desc = desc.particles;
-	}
-
-	if ( desc.components & Component_Script )
-	{
-		AddScript(engine, entity->id, desc.script);
-	}
 
 	return entity->id;
 }
 
-static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
+ID CreateEntity(Engine &engine, const EntityDesc &desc, const ComponentDesc *components, u32 componentCount)
+{
+	const ID entityId = CreateEntity(engine, desc);
+	if ( entityId )
+	{
+		for (u32 i = 0; i < componentCount; ++i) {
+			AddComponent(engine, entityId, components[i]);
+		}
+	}
+	return entityId;
+}
+
+static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, ComponentDescPool &pool)
 {
 	EntityDesc entityDesc = {
 		.id = desc.id,
@@ -742,27 +909,55 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
 		.scale = desc.scale,
 		.materialId = desc.materialId,
 		.geometryType = desc.geometryType,
-		.components = desc.components,
-		.sprite = {
-			.spriteId = desc.spriteId,
-			.layerId = desc.layerId },
-		.light = desc.light,
-		.particles = desc.particles,
 	};
+
+	if ( desc.spriteId )
+	{
+		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
+			component->sprite.spriteId = desc.spriteId;
+			component->sprite.layerId = desc.layerId;
+		}
+	}
+
+	if ( desc.components & Component_Light )
+	{
+		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Light) ) {
+			component->light = desc.light;
+		}
+	}
+
+	if ( desc.components & Component_Particles )
+	{
+		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Particles) ) {
+			component->particles = desc.particles;
+		}
+	}
 
 	if ( desc.components & Component_Script )
 	{
 		const BinScriptDesc &binScript = desc.script;
-		ScriptComponentDesc &script = entityDesc.script;
+		const u32 propertyCount = Min(binScript.propertyCount, (u32)ARRAY_COUNT(binScript.properties));
 
-		script.name = binScript.name;
-		script.propertyCount = Min(binScript.propertyCount, (u32)ARRAY_COUNT(script.properties));
-		for (u32 p = 0; p < script.propertyCount; ++p)
+		if ( pool.propertyCount + propertyCount > pool.propertyCapacity )
 		{
-			const BinScriptPropertyDesc &binProperty = binScript.properties[p];
-			script.properties[p].name = binProperty.name;
-			script.properties[p].value.type = binProperty.type;
-			script.properties[p].value.uValue = binProperty.value;
+			LOG(Warning, "Entity <%s> drops its script properties, the property pool is full.\n", desc.name);
+		}
+		else if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Script) )
+		{
+			ScriptComponentDesc &script = component->script;
+			script.name = binScript.name;
+			script.properties = pool.properties + pool.propertyCount;
+			script.propertyCount = propertyCount;
+
+			for (u32 p = 0; p < propertyCount; ++p)
+			{
+				const BinScriptPropertyDesc &binProperty = binScript.properties[p];
+
+				ScriptPropertyDesc &property = pool.properties[pool.propertyCount++];
+				property.name = binProperty.name;
+				property.value.type = binProperty.type;
+				property.value.uValue = binProperty.value;
+			}
 		}
 	}
 
@@ -771,15 +966,26 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
 
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 {
-	return CreateEntity(engine, EntityDescFromBin(desc));
+	ComponentDesc components[ComponentType_Count] = {};
+	ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+	ComponentDescPool pool = {
+		.components = components,
+		.componentCapacity = ARRAY_COUNT(components),
+		.properties = properties,
+		.propertyCapacity = ARRAY_COUNT(properties),
+	};
+
+	const EntityDesc entityDesc = EntityDescFromBin(desc, 0, pool);
+	return CreateEntity(engine, entityDesc, pool.components, pool.componentCount);
 }
 
 void RemoveEntity(Engine &engine, ID id)
 {
 	if (id)
 	{
-		RemoveScript(engine, id);
-		RemoveParticles(engine.scene, id);
+		for (u32 type = 0; type < ComponentType_Count; ++type) {
+			RemoveComponent(engine, id, (ComponentTypes)type);
+		}
 
 		GetEntity(id).id = {};
 		Invalidate(id);
@@ -788,9 +994,20 @@ void RemoveEntity(Engine &engine, ID id)
 
 ID DuplicateEntity(Engine &engine, ID entityId)
 {
+	ComponentDesc components[ComponentType_Count] = {};
+	ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+	ComponentDescPool pool = {
+		.components = components,
+		.componentCapacity = ARRAY_COUNT(components),
+		.properties = properties,
+		.propertyCapacity = ARRAY_COUNT(properties),
+	};
+
 	EntityDesc desc = GetEntityDesc(engine, entityId);
+	GatherEntityComponentDescs(engine, entityId, 0, pool);
+
 	desc.id = {}; // The copy is a new entity, so let the pool hand it its own ID
-	return CreateEntity(engine, desc);
+	return CreateEntity(engine, desc, pool.components, pool.componentCount);
 }
 
 
@@ -861,11 +1078,58 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 		prefab.entities[i] = desc.entities[i];
 	}
 
+	prefab.componentCount = Min(desc.componentCount, (u32)ARRAY_COUNT(prefab.components));
+	if ( desc.componentCount > prefab.componentCount )
+	{
+		LOG(Warning, "Prefab <%s> has %u components, only the first %u are kept.\n",
+				desc.name, desc.componentCount, prefab.componentCount);
+	}
+
+	// A prefab outlives the descriptors it was built from, so the script properties its
+	// components point at are copied into storage the prefab owns
+	prefab.scriptPropertyCount = 0;
+	for (u32 i = 0; i < prefab.componentCount; ++i)
+	{
+		ComponentDesc &component = prefab.components[i];
+		component = desc.components[i];
+
+		if ( component.type != ComponentType_Script ) {
+			continue;
+		}
+
+		ScriptComponentDesc &script = component.script;
+		const ScriptPropertyDesc *source = script.properties;
+
+		if ( prefab.scriptPropertyCount + script.propertyCount > ARRAY_COUNT(prefab.scriptProperties) )
+		{
+			LOG(Warning, "Prefab <%s> drops the properties of script <%s>, its property storage is full.\n",
+					desc.name, script.name);
+			script.properties = nullptr;
+			script.propertyCount = 0;
+			continue;
+		}
+
+		script.properties = prefab.scriptProperties + prefab.scriptPropertyCount;
+		for (u32 p = 0; p < script.propertyCount; ++p) {
+			prefab.scriptProperties[prefab.scriptPropertyCount++] = source[p];
+		}
+	}
+
 	return prefab.id;
 }
 
+
 ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
 {
+	ComponentDesc components[MAX_PREFAB_COMPONENTS] = {};
+	ScriptPropertyDesc properties[MAX_PREFAB_SCRIPT_PROPERTIES] = {};
+	ComponentDescPool pool = {
+		.components = components,
+		.componentCapacity = ARRAY_COUNT(components),
+		.properties = properties,
+		.propertyCapacity = ARRAY_COUNT(properties),
+	};
+
 	PrefabDesc prefabDesc = {};
 	prefabDesc.id = desc.id;
 	prefabDesc.name = desc.name;
@@ -873,8 +1137,11 @@ ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
 
 	for (u32 i = 0; i < prefabDesc.entityCount; ++i)
 	{
-		prefabDesc.entities[i] = EntityDescFromBin(desc.entities[i]);
+		prefabDesc.entities[i] = EntityDescFromBin(desc.entities[i], i, pool);
 	}
+
+	prefabDesc.components = pool.components;
+	prefabDesc.componentCount = pool.componentCount;
 
 	return CreatePrefab(engine, prefabDesc);
 }
@@ -901,6 +1168,7 @@ ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition)
 {
 	const Prefab &prefab = GetPrefab(prefabId);
 
+	ID entityIds[MAX_PREFAB_ENTITIES] = {};
 	ID firstEntityId = {};
 	for (u32 i = 0; i < prefab.entityCount; ++i)
 	{
@@ -908,11 +1176,20 @@ ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition)
 		entityDesc.id = {}; // Each instance is a new entity, not the template's own
 		entityDesc.pos = entityDesc.pos + atPosition;
 
-		const ID entityId = CreateEntity(engine, entityDesc);
+		entityIds[i] = CreateEntity(engine, entityDesc);
 		if (i == 0) {
-			firstEntityId = entityId;
+			firstEntityId = entityIds[i];
 		}
 	}
+
+	for (u32 i = 0; i < prefab.componentCount; ++i)
+	{
+		const ComponentDesc &component = prefab.components[i];
+		if ( component.entityIndex < prefab.entityCount && entityIds[component.entityIndex] ) {
+			AddComponent(engine, entityIds[component.entityIndex], component);
+		}
+	}
+
 	return firstEntityId;
 }
 

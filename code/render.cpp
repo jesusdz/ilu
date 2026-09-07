@@ -527,17 +527,17 @@ bool RenderGraphics(Engine &engine)
 
 		if ( cullLights )
 		{
-			const float2 lightMin = { entity.position.x - light.radius, entity.position.y - light.radius };
-			const float2 lightMax = { entity.position.x + light.radius, entity.position.y + light.radius };
+			const float2 lightMin = { entity.position.x - light.desc.radius, entity.position.y - light.desc.radius };
+			const float2 lightMax = { entity.position.x + light.desc.radius, entity.position.y + light.desc.radius };
 			if ( !Intersects(lightMin, lightMax, cameraMinMaxRect.xy, cameraMinMaxRect.zw) ) {
 				continue;
 			}
 		}
 
 		lightData[lightCount].positionWs = entity.position;
-		lightData[lightCount].radius = Max(light.radius, 0.0001f);
-		lightData[lightCount].color = light.color;
-		lightData[lightCount].intensity = light.intensity;
+		lightData[lightCount].radius = Max(light.desc.radius, 0.0001f);
+		lightData[lightCount].color = light.desc.color;
+		lightData[lightCount].intensity = light.desc.intensity;
 		lightCount++;
 	}
 

@@ -648,13 +648,25 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 	{
 		if (type == EditorSelectedType_Entity && UI_MenuItem(ui, "Create prefab"))
 		{
+			ComponentDesc components[ComponentType_Count] = {};
+			ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+			ComponentDescPool pool = {
+				.components = components,
+				.componentCapacity = ARRAY_COUNT(components),
+				.properties = properties,
+				.propertyCapacity = ARRAY_COUNT(properties),
+			};
+
 			EntityDesc entityDesc = GetEntityDesc(engine, assetId);
+			GatherEntityComponentDescs(engine, assetId, 0, pool);
 			entityDesc.id = {}; // The prefab holds a template, not this entity's own identity
 
 			PrefabDesc prefabDesc = {};
 			prefabDesc.name = entityDesc.name;
 			prefabDesc.entityCount = 1;
 			prefabDesc.entities[0] = entityDesc;
+			prefabDesc.components = pool.components;
+			prefabDesc.componentCount = pool.componentCount;
 
 			CreatePrefab(engine, prefabDesc);
 		}
@@ -1558,9 +1570,9 @@ static void EditorUpdateUI_Inspector()
 					static float4 lightColorToEdit = {};
 					static ID lightColorEntity = {};
 
-					if ( UI_ColorButton(ui, "Color", Float4(light.color, 1.0f)) )
+					if ( UI_ColorButton(ui, "Color", Float4(light.desc.color, 1.0f)) )
 					{
-						lightColorToEdit = Float4(light.color, 1.0f);
+						lightColorToEdit = Float4(light.desc.color, 1.0f);
 						lightColorEntity = inspector.selected.id;
 					}
 
@@ -1568,18 +1580,18 @@ static void EditorUpdateUI_Inspector()
 					{
 						bool isOpen = true;
 						UI_ColorPicker(ui, &lightColorToEdit, &isOpen);
-						light.color = lightColorToEdit.xyz;
+						light.desc.color = lightColorToEdit.xyz;
 						if ( !isOpen ) {
 							lightColorEntity = {};
 						}
 					}
 
-					UI_InputFloat(ui, "Intensity", &light.intensity);
-					UI_InputFloat(ui, "Radius", &light.radius);
+					UI_InputFloat(ui, "Intensity", &light.desc.intensity);
+					UI_InputFloat(ui, "Radius", &light.desc.radius);
 
 					if (UI_Button(ui, "Remove"))
 					{
-						RemoveLight(engine.scene, inspector.selected.id);
+						RemoveComponent(engine, inspector.selected.id, ComponentType_Light);
 					}
 				}
 
@@ -1619,7 +1631,7 @@ static void EditorUpdateUI_Inspector()
 
 					if (UI_Button(ui, "Remove"))
 					{
-						RemoveParticles(engine.scene, inspector.selected.id);
+						RemoveComponent(engine, inspector.selected.id, ComponentType_Particles);
 					}
 				}
 
@@ -1653,12 +1665,12 @@ static void EditorUpdateUI_Inspector()
 
 					if (UI_Button(ui, "Remove"))
 					{
-						RemoveScript(engine, inspector.selected.id);
+						RemoveComponent(engine, inspector.selected.id, ComponentType_Script);
 					}
 				}
 
 				const char *availableNames[ComponentType_Count];
-				ComponentFlags availableBits[ComponentType_Count];
+				ComponentTypes availableTypes[ComponentType_Count];
 				u32 availableCount = 0;
 				for (u32 i = 0; i < ComponentType_Count; ++i)
 				{
@@ -1667,7 +1679,7 @@ static void EditorUpdateUI_Inspector()
 					if ( !HasComponents(engine.scene, inspector.selected.id, bit) )
 					{
 						availableNames[availableCount] = ComponentNames[i];
-						availableBits[availableCount] = bit;
+						availableTypes[availableCount] = (ComponentTypes)i;
 						availableCount++;
 					}
 				}
@@ -1682,12 +1694,7 @@ static void EditorUpdateUI_Inspector()
 
 					if ( UI_Button(ui, "Add") )
 					{
-						switch ( availableBits[componentEnum] )
-						{
-							case Component_Light: AddLight(engine.scene, inspector.selected.id); break;
-							case Component_Particles: AddParticles(engine.scene, inspector.selected.id); break;
-							case Component_Script: AddScript(engine, inspector.selected.id); break;
-						}
+						AddComponent(engine, inspector.selected.id, availableTypes[componentEnum]);
 					}
 				}
 			}
@@ -2181,10 +2188,15 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 		.name = InternString("entity"),
 		.pos = Float3(worldPos, 0.0),
 		.scale = 1.0f,
-		.sprite = { .spriteId = spriteId, }
 	};
 
-	return CreateEntity(engine, entityDesc);
+	const ComponentDesc spriteComponent = {
+		.entityIndex = 0,
+		.type = ComponentType_Sprite,
+		.sprite = { .spriteId = spriteId, },
+	};
+
+	return CreateEntity(engine, entityDesc, &spriteComponent, 1);
 }
 
 static ID EditorInstantiatePrefabAtMouse(ID prefabId)
@@ -2337,7 +2349,7 @@ static void EditorUpdateUI_ContextMenu()
 					.scale = 1.0f,
 				};
 				const ID entityId = CreateEntity(engine, entityDesc);
-				AddLight(engine.scene, entityId);
+				AddComponent(engine, entityId, ComponentType_Light);
 				EditorSelectEntity(entityId);
 			}
 			else
@@ -2355,7 +2367,7 @@ static void EditorUpdateUI_ContextMenu()
 					.scale = 1.0f,
 				};
 				const ID entityId = CreateEntity(engine, entityDesc);
-				AddParticles(engine.scene, entityId);
+				AddComponent(engine, entityId, ComponentType_Particles);
 				EditorSelectEntity(entityId);
 			}
 			else
@@ -2373,7 +2385,7 @@ static void EditorUpdateUI_ContextMenu()
 					.scale = 1.0f,
 				};
 				const ID entityId = CreateEntity(engine, entityDesc);
-				AddScript(engine, entityId);
+				AddComponent(engine, entityId, ComponentType_Script);
 				EditorSelectEntity(entityId);
 			}
 			else

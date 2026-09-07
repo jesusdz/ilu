@@ -154,11 +154,19 @@ ScriptComponent *AddScript(Engine &engine, ID entityId)
 		return nullptr;
 	}
 
-	const u16 index = GetEntityIndex(scene, entityId);
-	scene.entityComponents[index] |= Component_Script;
+	if ( scene.scriptComponentCount == MAX_SCRIPT_COMPONENTS ) {
+		LOG(Warning, "AddScript: the script pool is full.\n");
+		return nullptr;
+	}
 
-	ScriptComponent &component = scene.entityScripts[index];
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+	const u16 slot = (u16)scene.scriptComponentCount++;
+	scene.entityComponentIndex[entityIndex][ComponentType_Script] = slot;
+	scene.entityComponents[entityIndex] |= Component_Script;
+
+	ScriptComponent &component = scene.scriptComponents[slot];
 	component = {};
+	component.entityId = entityId;
 	component.structIndex = U16_MAX;
 
 	return &component;
@@ -185,8 +193,7 @@ ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName)
 		return nullptr;
 	}
 
-	const u16 index = GetEntityIndex(scene, entityId);
-	ScriptComponent &component = scene.entityScripts[index];
+	ScriptComponent &component = GetScript(scene, entityId);
 
 	if ( engine.game.state == GameStateRunning ) {
 		RunScriptHook(engine, entityId, component, ScriptHook_Stop);
@@ -197,6 +204,7 @@ ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName)
 	const u32 dataSize = ScriptDataSize(scriptRegistry.scripts[structIndex]);
 
 	component = {};
+	component.entityId = entityId;
 	component.name = InternString(scriptName);
 	component.structIndex = (u16)structIndex;
 	component.dataSize = dataSize;
@@ -253,7 +261,7 @@ ScriptComponent* AddScript(Engine &engine, ID entityId, const ScriptComponentDes
 }
 
 // Snapshots entityId's live script into outScript. False when it has none.
-bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript)
+bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript, ComponentDescPool &pool)
 {
 	outScript = {};
 
@@ -267,17 +275,26 @@ bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc
 	}
 
 	outScript.name = component.name;
+	outScript.properties = pool.properties + pool.propertyCount;
 
 	const ReflexStruct *type = scriptRegistry.scripts[component.structIndex].type;
-	for (u32 p = 0; p < type->memberCount && outScript.propertyCount < MAX_SCRIPT_PROPERTIES; ++p)
+	for (u32 p = 0; p < type->memberCount; ++p)
 	{
 		const ReflexMember &member = type->members[p];
 		if ( !IsStorableProperty(member) ) {
 			continue;
 		}
-		ScriptPropertyDesc &propertyDesc = outScript.properties[outScript.propertyCount++];
+
+		if ( pool.propertyCount == pool.propertyCapacity ) {
+			LOG(Warning, "Script <%s> drops property <%s>, the property pool is full.\n",
+					outScript.name, member.name);
+			break;
+		}
+
+		ScriptPropertyDesc &propertyDesc = pool.properties[pool.propertyCount++];
 		propertyDesc.name = member.name;
 		propertyDesc.value = GetPropertyValue(member, component.data);
+		outScript.propertyCount++;
 	}
 
 	return true;
@@ -291,16 +308,25 @@ void RemoveScript(Engine &engine, ID entityId)
 		return;
 	}
 
-	const u16 index = GetEntityIndex(scene, entityId);
-	ScriptComponent &component = scene.entityScripts[index];
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Script];
+	ScriptComponent &component = scene.scriptComponents[slot];
 
 	if ( engine.game.state == GameStateRunning ) {
 		RunScriptHook(engine, entityId, component, ScriptHook_Stop);
 	}
 
-	scene.entityComponents[index] &= ~(ComponentFlags)Component_Script;
 	FreeScriptData(engine, component.data, component.dataSize);
-	component = {};
+
+	const u16 last = (u16)(--scene.scriptComponentCount);
+	if ( slot != last )
+	{
+		scene.scriptComponents[slot] = scene.scriptComponents[last];
+		scene.entityComponentIndex[ GetEntityIndex(scene, scene.scriptComponents[slot].entityId) ][ComponentType_Script] = slot;
+	}
+
+	scene.entityComponentIndex[entityIndex][ComponentType_Script] = NO_COMPONENT;
+	scene.entityComponents[entityIndex] &= ~(ComponentFlags)Component_Script;
 }
 
 // A reload rebuilds the registry, so every component re-resolves its index by name. A
@@ -309,13 +335,9 @@ void RemoveScript(Engine &engine, ID entityId)
 void RebindScripts(Engine &engine)
 {
 	Scene &scene = engine.scene;
-	for (u32 i = 0; i < scene.entityCount; ++i)
+	for (u32 i = 0; i < scene.scriptComponentCount; ++i)
 	{
-		if ( !(scene.entityComponents[i] & Component_Script) ) {
-			continue;
-		}
-
-		ScriptComponent &component = scene.entityScripts[i];
+		ScriptComponent &component = scene.scriptComponents[i];
 
 		if ( !component.name ) { // Added, but no script dropped on it yet
 			continue;
@@ -346,12 +368,10 @@ void RebindScripts(Engine &engine)
 void RunScriptHooks(Engine &engine, ScriptHookType hook)
 {
 	Scene &scene = engine.scene;
-	for (u32 i = 0; i < scene.entityCount; ++i)
+	for (u32 i = 0; i < scene.scriptComponentCount; ++i)
 	{
-		if ( !(scene.entityComponents[i] & Component_Script) ) {
-			continue;
-		}
-		RunScriptHook(engine, scene.entities[i].id, scene.entityScripts[i], hook);
+		const ID entityId = scene.scriptComponents[i].entityId;
+		RunScriptHook(engine, entityId, scene.scriptComponents[i], hook);
 	}
 }
 

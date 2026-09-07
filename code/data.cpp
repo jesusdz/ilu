@@ -297,25 +297,33 @@ static void WriteScriptComponentDesc(WriteContext &ctx, const ScriptComponentDes
 	WriteLine(ctx, "},");
 }
 
-static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
+static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &component)
 {
-	if (desc.sprite.spriteId.slot == 0 && desc.materialId.slot != 0) {
+	switch (component.type)
+	{
+		case ComponentType_Sprite:    WriteSpriteComponentDesc(ctx, component.sprite); break;
+		case ComponentType_Light:     WriteLightComponentDesc(ctx, component.light); break;
+		case ComponentType_Particles: WriteParticlesComponentDesc(ctx, component.particles); break;
+		case ComponentType_Script:    WriteScriptComponentDesc(ctx, component.script); break;
+		default: break;
+	}
+}
+
+static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc, u32 entityIndex,
+		const ComponentDesc *components, u32 componentCount)
+{
+	if (desc.materialId.slot != 0) {
 		WriteLine(ctx, ".materialId = %u,", desc.materialId.slot);
 		WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(desc.geometryType));
 	}
 	WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
 	WriteLine(ctx, ".scale = %f,", desc.scale);
-	if (desc.sprite.spriteId.slot != 0) {
-		WriteSpriteComponentDesc(ctx, desc.sprite);
-	}
-	if (desc.components & Component_Light) {
-		WriteLightComponentDesc(ctx, desc.light);
-	}
-	if (desc.components & Component_Particles) {
-		WriteParticlesComponentDesc(ctx, desc.particles);
-	}
-	if (desc.components & Component_Script) {
-		WriteScriptComponentDesc(ctx, desc.script);
+
+	for (u32 i = 0; i < componentCount; ++i)
+	{
+		if (components[i].entityIndex == entityIndex) {
+			WriteComponentDesc(ctx, components[i]);
+		}
 	}
 }
 
@@ -418,7 +426,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 		PushIndent(ctx);
 		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		WriteEntityDescBody(ctx, desc);
+		WriteEntityDescBody(ctx, desc, i, assets.componentPool.components, assets.componentPool.componentCount);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -445,7 +453,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 			WriteLine(ctx, "{");
 			PushIndent(ctx);
 			WriteLine(ctx, ".name = \"%s\",", entity.name);
-			WriteEntityDescBody(ctx, entity);
+			WriteEntityDescBody(ctx, entity, e, desc.components, desc.componentCount);
 			PopIndent(ctx);
 			WriteLine(ctx, "},");
 		}
@@ -1142,11 +1150,13 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script);
+static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script, ComponentDescPool &pool);
 
-static void DParser_ConsumeEntitySprite( DParser &parser, EntityDesc &entity )
+static void DParser_ConsumeEntitySprite( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Sprite);
 
 	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 	{
@@ -1160,9 +1170,11 @@ static void DParser_ConsumeEntitySprite( DParser &parser, EntityDesc &entity )
 		static const String sLayerId = MakeString("layerId");
 
 		if ( StrEq( field, sSpriteId ) ) {
-			entity.sprite.spriteId = DParser_ConsumeID(parser);
+			const ID id = DParser_ConsumeID(parser);
+			if ( component ) { component->sprite.spriteId = id; }
 		} else if ( StrEq( field, sLayerId ) ) {
-			entity.sprite.layerId = DParser_ConsumeID(parser);
+			const ID id = DParser_ConsumeID(parser);
+			if ( component ) { component->sprite.layerId = id; }
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
@@ -1171,9 +1183,11 @@ static void DParser_ConsumeEntitySprite( DParser &parser, EntityDesc &entity )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-static void DParser_ConsumeEntityLight( DParser &parser, EntityDesc &entity )
+static void DParser_ConsumeEntityLight( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Light);
 
 	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 	{
@@ -1188,24 +1202,27 @@ static void DParser_ConsumeEntityLight( DParser &parser, EntityDesc &entity )
 		static const String sRadius = MakeString("radius");
 
 		if ( StrEq( field, sColor ) ) {
-			entity.light.color = DParser_ConsumeFloat3(parser);
+			const float3 color = DParser_ConsumeFloat3(parser);
+			if ( component ) { component->light.color = color; }
 		} else if ( StrEq( field, sIntensity ) ) {
-			entity.light.intensity = DParser_ConsumeF32(parser);
+			const f32 intensity = DParser_ConsumeF32(parser);
+			if ( component ) { component->light.intensity = intensity; }
 		} else if ( StrEq( field, sRadius ) ) {
-			entity.light.radius = DParser_ConsumeF32(parser);
+			const f32 radius = DParser_ConsumeF32(parser);
+			if ( component ) { component->light.radius = radius; }
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
 	}
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
-
-	entity.components |= Component_Light;
 }
 
-static void DParser_ConsumeEntityParticles( DParser &parser, EntityDesc &entity )
+static void DParser_ConsumeEntityParticles( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Particles);
 
 	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 	{
@@ -1219,20 +1236,20 @@ static void DParser_ConsumeEntityParticles( DParser &parser, EntityDesc &entity 
 		static const String sPlayOnStart = MakeString("playOnStart");
 
 		if ( StrEq( field, sEffectId ) ) {
-			entity.particles.effectId = DParser_ConsumeID(parser);
+			const ID id = DParser_ConsumeID(parser);
+			if ( component ) { component->particles.effectId = id; }
 		} else if ( StrEq( field, sPlayOnStart ) ) {
-			entity.particles.playOnStart = DParser_ConsumeU8(parser);
+			const u8 playOnStart = DParser_ConsumeU8(parser);
+			if ( component ) { component->particles.playOnStart = playOnStart; }
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
 	}
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
-
-	entity.components |= Component_Particles;
 }
 
-static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
+static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
@@ -1252,7 +1269,7 @@ static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 		if ( StrEq( field, sName ) ) {
 			scriptDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
 		} else if ( StrEq( field, sProperties ) ) {
-			DParser_ConsumeScriptProperties(parser, scriptDesc);
+			DParser_ConsumeScriptProperties(parser, scriptDesc, pool);
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
@@ -1262,16 +1279,17 @@ static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 
 	// The name is what AddScript resolves the component from, so a block without one
 	// leaves the entity scriptless rather than handing it a null to look up
-	if ( scriptDesc.name ) {
-		entity.components |= Component_Script;
-		entity.script = scriptDesc;
-	} else {
-		LOG(Warning, "Entity <%s> has a script without a name, it is ignored.\n",
-				entity.name ? entity.name : "?");
+	if ( !scriptDesc.name ) {
+		LOG(Warning, "An entity has a script without a name, it is ignored.\n");
+		return;
+	}
+
+	if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
+		component->script = scriptDesc;
 	}
 }
 
-static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDesc &entity )
+static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDesc &entity, ComponentDescPool &pool, u32 entityIndex )
 {
 	static const String sId = MakeString("id");
 	static const String sName = MakeString("name");
@@ -1297,13 +1315,13 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	} else if ( StrEq( field, sGeometryType ) ) {
 		entity.geometryType = DParser_ConsumeGeometryType(parser);
 	} else if ( StrEq( field, sSprite ) ) {
-		DParser_ConsumeEntitySprite(parser, entity);
+		DParser_ConsumeEntitySprite(parser, pool, entityIndex);
 	} else if ( StrEq( field, sLight ) ) {
-		DParser_ConsumeEntityLight(parser, entity);
+		DParser_ConsumeEntityLight(parser, pool, entityIndex);
 	} else if ( StrEq( field, sParticles ) ) {
-		DParser_ConsumeEntityParticles(parser, entity);
+		DParser_ConsumeEntityParticles(parser, pool, entityIndex);
 	} else if ( StrEq( field, sScript ) ) {
-		DParser_ConsumeEntityScript(parser, entity);
+		DParser_ConsumeEntityScript(parser, pool, entityIndex);
 	} else {
 		return false;
 	}
@@ -1311,13 +1329,25 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	return true;
 }
 
+
+
+
+
 static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
+	ComponentDescPool pool = {
+		.components = PushZeroArray(*parser.arena, ComponentDesc, MAX_PREFAB_COMPONENTS),
+		.componentCapacity = MAX_PREFAB_COMPONENTS,
+		.properties = PushZeroArray(*parser.arena, ScriptPropertyDesc, MAX_PREFAB_SCRIPT_PROPERTIES),
+		.propertyCapacity = MAX_PREFAB_SCRIPT_PROPERTIES,
+	};
+
 	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
 	{
 		EntityDesc entityDesc = {};
+		const u32 entityIndex = prefab.entityCount;
 
 		while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 		{
@@ -1327,7 +1357,7 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 
 			DParser_TryConsume(parser, TOKEN_EQUAL);
 
-			if ( !DParser_ConsumeEntityField(parser, field, entityDesc) ) {
+			if ( !DParser_ConsumeEntityField(parser, field, entityDesc, pool, entityIndex) ) {
 				LOG(Warning, "Unknown prefab entity field <%.*s>.\n", field.size, field.str);
 				DParser_SkipFieldValue(parser);
 			}
@@ -1342,6 +1372,9 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 			prefab.entities[prefab.entityCount++] = entityDesc;
 		}
 	}
+
+	prefab.components = pool.components;
+	prefab.componentCount = pool.componentCount;
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
@@ -1400,9 +1433,11 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script)
+static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script, ComponentDescPool &pool)
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	script.properties = pool.properties + pool.propertyCount;
 	script.propertyCount = 0;
 
 	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
@@ -1416,8 +1451,9 @@ static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDes
 		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 		DParser_TryConsume(parser, TOKEN_COMMA);
 
-		if ( script.propertyCount < MAX_SCRIPT_PROPERTIES ) {
-			script.properties[script.propertyCount++] = propertyDesc;
+		if ( pool.propertyCount < pool.propertyCapacity ) {
+			pool.properties[pool.propertyCount++] = propertyDesc;
+			script.propertyCount++;
 		}
 	}
 
@@ -1634,7 +1670,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
-					if ( !DParser_ConsumeEntityField( parser, field, desc ) ) {
+					if ( !DParser_ConsumeEntityField( parser, field, desc, descriptors.componentPool, index ) ) {
 						LOG(Warning, "Unknown Entity field <%.*s>.\n", field.size, field.str);
 					}
 
@@ -1806,6 +1842,12 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 				descriptors.materialDescs = PushZeroArray(arena, MaterialDesc, descriptors.materialDescCount);
 				descriptors.materialDescCount = 0;
 				descriptors.entityDescs = PushZeroArray(arena, EntityDesc, descriptors.entityDescCount);
+				// The counting pass does not descend into entity bodies, so the component
+				// pools are sized to the worst case an entity could ask for
+				descriptors.componentPool.componentCapacity = descriptors.entityDescCount * ComponentType_Count + 1;
+				descriptors.componentPool.components = PushZeroArray(arena, ComponentDesc, descriptors.componentPool.componentCapacity);
+				descriptors.componentPool.propertyCapacity = descriptors.entityDescCount * MAX_SCRIPT_PROPERTIES + 1;
+				descriptors.componentPool.properties = PushZeroArray(arena, ScriptPropertyDesc, descriptors.componentPool.propertyCapacity);
 				descriptors.entityDescCount = 0;
 				descriptors.prefabDescs = PushZeroArray(arena, PrefabDesc, descriptors.prefabDescCount);
 				descriptors.prefabDescCount = 0;
@@ -1887,38 +1929,63 @@ static const char *DataGetString( const char *stringPool, const char *offsetPtr 
 	return str;
 }
 
-static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStringPool &stringPool)
+static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 entityIndex, const ComponentDesc *components, u32 componentCount, DataStringPool &stringPool)
 {
 	d = {};
 	d.id           = desc.id;
 	d.name         = DataInternString(stringPool, desc.name);
 	d.materialId   = desc.materialId;
-	d.spriteId     = desc.sprite.spriteId;
 	d.pos          = desc.pos;
 	d.scale        = desc.scale;
-	d.layerId      = desc.sprite.layerId;
 	d.geometryType = desc.geometryType;
-	d.components   = desc.components;
-	d.light        = desc.light;
-	d.particles    = desc.particles;
 
-	if (desc.components & Component_Script)
+	for (u32 i = 0; i < componentCount; ++i)
 	{
-		const ScriptComponentDesc &script = desc.script;
+		const ComponentDesc &component = components[i];
+		if (component.entityIndex != entityIndex) {
+			continue;
+		}
 
-		BinScriptDesc &bs = d.script;
-		bs.name = DataInternString(stringPool, script.name);
-
-		ASSERT(script.propertyCount <= ARRAY_COUNT(bs.properties));
-		bs.propertyCount = script.propertyCount;
-		for (u32 p = 0; p < script.propertyCount; ++p)
+		switch (component.type)
 		{
-			const ScriptPropertyDesc &property = script.properties[p];
+			case ComponentType_Sprite:
+				d.spriteId = component.sprite.spriteId;
+				d.layerId = component.sprite.layerId;
+				break;
 
-			BinScriptPropertyDesc &pd = bs.properties[p];
-			pd.name  = DataInternString(stringPool, property.name);
-			pd.type  = property.value.type;
-			pd.value = property.value.uValue;
+			case ComponentType_Light:
+				d.components |= Component_Light;
+				d.light = component.light;
+				break;
+
+			case ComponentType_Particles:
+				d.components |= Component_Particles;
+				d.particles = component.particles;
+				break;
+
+			case ComponentType_Script:
+			{
+				const ScriptComponentDesc &script = component.script;
+
+				d.components |= Component_Script;
+
+				BinScriptDesc &bs = d.script;
+				bs.name = DataInternString(stringPool, script.name);
+				bs.propertyCount = Min(script.propertyCount, (u32)ARRAY_COUNT(bs.properties));
+				for (u32 p = 0; p < bs.propertyCount; ++p)
+				{
+					const ScriptPropertyDesc &property = script.properties[p];
+
+					BinScriptPropertyDesc &pd = bs.properties[p];
+					pd.name  = DataInternString(stringPool, property.name);
+					pd.type  = property.value.type;
+					pd.value = property.value.uValue;
+				}
+				break;
+			}
+
+			default:
+				break;
 		}
 	}
 }
@@ -2153,7 +2220,8 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		// Entities
 		for (u32 i = 0; i < entityCount; ++i)
 		{
-			BuildBinEntityDesc(binEntityDescs[i], descriptors.entityDescs[i], stringPool);
+			BuildBinEntityDesc(binEntityDescs[i], descriptors.entityDescs[i], i,
+					descriptors.componentPool.components, descriptors.componentPool.componentCount, stringPool);
 		}
 
 		// Prefabs
@@ -2169,7 +2237,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 			for (u32 e = 0; e < desc.entityCount; ++e)
 			{
-				BuildBinEntityDesc(d.entities[e], desc.entities[e], stringPool);
+				BuildBinEntityDesc(d.entities[e], desc.entities[e], e, desc.components, desc.componentCount, stringPool);
 			}
 		}
 
@@ -2502,12 +2570,23 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	}
 
 	static EntityDesc entityDescs[MAX_ENTITIES];
+	static ComponentDesc componentDescs[MAX_ENTITIES * ComponentType_Count];
+	static ScriptPropertyDesc scriptPropertyDescs[MAX_ENTITIES * MAX_SCRIPT_PROPERTIES];
+	ComponentDescPool componentPool = {
+		.components = componentDescs,
+		.componentCapacity = ARRAY_COUNT(componentDescs),
+		.properties = scriptPropertyDescs,
+		.propertyCapacity = ARRAY_COUNT(scriptPropertyDescs),
+	};
+
 	u32 entityCount = 0;
 	for (u16 i = 0; i < engine.scene.entityCount; ++i) {
 		const Entity &entity = engine.scene.entities[i];
 		if ( !entity.id ) { continue; }
-		EntityDesc &desc = entityDescs[entityCount++];
+		const u32 entityIndex = entityCount++;
+		EntityDesc &desc = entityDescs[entityIndex];
 		desc = GetEntityDesc(engine, entity.id);
+		GatherEntityComponentDescs(engine, entity.id, entityIndex, componentPool);
 	}
 
 	static PrefabDesc prefabDescs[MAX_PREFABS];
@@ -2522,6 +2601,8 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		for (u32 e = 0; e < prefab.entityCount; ++e) {
 			desc.entities[e] = prefab.entities[e];
 		}
+		desc.components = prefab.components;
+		desc.componentCount = prefab.componentCount;
 	}
 
 	static RoomDesc roomDescs[MAX_ROOMS];
@@ -2619,6 +2700,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		.materialDescCount = materialCount,
 		.entityDescs = entityDescs,
 		.entityDescCount = entityCount,
+		.componentPool = componentPool,
 		.prefabDescs = prefabDescs,
 		.prefabDescCount = prefabCount,
 		.roomDescs = roomDescs,
