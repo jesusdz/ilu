@@ -209,6 +209,39 @@ Entity player = {
  },
 };
 
+Entity light = {
+ .id = 1043,
+ .pos = {9.000000, 1.000000, 0.000000},
+ .scale = 1.000000,
+ .lightColor = {1.000000, 0.506250, 0.000000},
+ .lightIntensity = 4.000000,
+ .lightRadius = 5.000000,
+ .particlesEffectId = 5,
+ .particlesPlayOnStart = 1,
+};
+
+Entity light = {
+ .id = 1044,
+ .pos = {19.000000, 1.000000, 0.000000},
+ .scale = 1.000000,
+ .lightColor = {1.000000, 0.506250, 0.000000},
+ .lightIntensity = 4.000000,
+ .lightRadius = 5.000000,
+ .particlesEffectId = 5,
+ .particlesPlayOnStart = 1,
+};
+
+Entity light = {
+ .id = 1045,
+ .pos = {32.000000, 1.000000, 0.000000},
+ .scale = 1.000000,
+ .lightColor = {1.000000, 0.506250, 0.000000},
+ .lightIntensity = 4.000000,
+ .lightRadius = 5.000000,
+ .particlesEffectId = 5,
+ .particlesPlayOnStart = 1,
+};
+
 
 // Prefabs /////////////////////////////////////////////////////////////
 

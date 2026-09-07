@@ -290,6 +290,10 @@ static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
 		WriteLine(ctx, ".lightIntensity = %f,", desc.light.intensity);
 		WriteLine(ctx, ".lightRadius = %f,", desc.light.radius);
 	}
+	if (desc.components & Component_Particles) {
+		WriteLine(ctx, ".particlesEffectId = %u,", desc.particles.effectId.slot);
+		WriteLine(ctx, ".particlesPlayOnStart = %d,", desc.particles.playOnStart);
+	}
 	WriteScriptDescs(ctx, &desc.script, (desc.components & Component_Script) ? 1 : 0);
 }
 
@@ -1176,6 +1180,8 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	static const String sLightColor = MakeString("lightColor");
 	static const String sLightIntensity = MakeString("lightIntensity");
 	static const String sLightRadius = MakeString("lightRadius");
+	static const String sParticlesEffectId = MakeString("particlesEffectId");
+	static const String sParticlesPlayOnStart = MakeString("particlesPlayOnStart");
 	static const String sScripts = MakeString("scripts");
 
 	if ( StrEq( field, sId ) ) {
@@ -1203,6 +1209,12 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	} else if ( StrEq( field, sLightRadius ) ) {
 		entity.components |= Component_Light;
 		entity.light.radius = DParser_ConsumeF32(parser);
+	} else if ( StrEq( field, sParticlesEffectId ) ) {
+		entity.components |= Component_Particles;
+		entity.particles.effectId = DParser_ConsumeID(parser);
+	} else if ( StrEq( field, sParticlesPlayOnStart ) ) {
+		entity.components |= Component_Particles;
+		entity.particles.playOnStart = DParser_ConsumeU8(parser);
 	} else if ( StrEq( field, sScripts ) ) {
 		DParser_ConsumeEntityScripts(parser, entity);
 	} else {
@@ -1801,6 +1813,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 	d.geometryType = desc.geometryType;
 	d.components   = desc.components;
 	d.light        = desc.light;
+	d.particles    = desc.particles;
 
 	if (desc.components & Component_Script)
 	{

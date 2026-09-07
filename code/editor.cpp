@@ -1591,15 +1591,15 @@ static void EditorUpdateUI_Inspector()
 
 					// A removed effect leaves the ID reading as false, so the same test
 					// covers "never assigned" and "the effect went away"
-					const ParticleEffectDesc *effect = particles.effectId ?
-						&GetParticleEffect(particles.effectId).desc : nullptr;
+					const ParticleEffectDesc *effect = particles.desc.effectId ?
+						&GetParticleEffect(particles.desc.effectId).desc : nullptr;
 
 					UI_Text(ui, "Effect", "%s", effect ? effect->name : "<none>");
 					if ( UI_DragAndDropTarget(ui, "IDParticleEffect") )
 					{
 						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 						if ( droppedId ) {
-							particles.effectId = droppedId;
+							particles.desc.effectId = droppedId;
 						}
 					}
 
@@ -1610,12 +1610,12 @@ static void EditorUpdateUI_Inspector()
 
 					if (effect && UI_Button(ui, "Go to effect"))
 					{
-						EditorSelectParticleEffect(particles.effectId);
+						EditorSelectParticleEffect(particles.desc.effectId);
 					}
 
-					bool playOnStart = particles.playOnStart != 0;
+					bool playOnStart = particles.desc.playOnStart != 0;
 					UI_Checkbox(ui, "Play on start", &playOnStart);
-					particles.playOnStart = playOnStart ? 1 : 0;
+					particles.desc.playOnStart = playOnStart ? 1 : 0;
 
 					if (UI_Button(ui, "Remove"))
 					{

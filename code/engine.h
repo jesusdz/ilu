@@ -884,10 +884,15 @@ struct ParticleEffect
 	ParticleEffectDesc desc;
 };
 
-struct ParticlesComponent
+struct ParticlesComponentDesc
 {
 	ID effectId;
 	u8 playOnStart;
+};
+
+struct ParticlesComponent
+{
+	ParticlesComponentDesc desc;
 	u8 playing;
 	f32 emitAccum; // ???
 	f32 elapsedTime; // from 0 to duration
@@ -941,6 +946,7 @@ struct EntityDesc
 	// Components
 	ComponentFlags components;
 	LightComponent light;
+	ParticlesComponentDesc particles;
 };
 
 #define MAX_PREFAB_ENTITIES 16
@@ -1101,7 +1107,7 @@ constexpr u32 SCENE_WIDTH = 320;
 constexpr u32 SCENE_HEIGHT = 180;
 
 constexpr u32 MAX_PARTICLES = 1024;
-constexpr u32 MAX_PARTICLE_EFFECTS = 8;
+constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 
 struct Scene
 {
@@ -1171,6 +1177,7 @@ struct BinEntityDesc
 	BinScriptDesc script;
 	ComponentFlags components;
 	LightComponent light;
+	ParticlesComponentDesc particles;
 };
 
 struct BinLayerDesc

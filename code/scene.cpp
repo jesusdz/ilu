@@ -308,9 +308,9 @@ void SimulateParticles(Scene &scene, f32 deltaSeconds)
 		if ( !HasComponents(scene, entity.id, Component_Particles) ) { continue; }
 
 		ParticlesComponent &particles = GetParticles(scene, entity.id);
-		if ( !particles.playing || !particles.effectId ) { continue; }
+		if ( !particles.playing || !particles.desc.effectId ) { continue; }
 
-		const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
+		const ParticleEffectDesc &effect = GetParticleEffect(particles.desc.effectId).desc;
 
 		particles.elapsedTime += deltaSeconds;
 		if ( effect.duration > 0.0f && particles.elapsedTime >= effect.duration )
@@ -363,13 +363,13 @@ void PlayParticles(Scene &scene, ID entityId)
 		if ( HasComponents(scene, entity.id, Component_Particles) )
 		{
 			ParticlesComponent &particles = GetParticles(scene, entity.id);
-			if ( particles.effectId )
+			if ( particles.desc.effectId )
 			{
 				particles.playing = 1;
 				particles.elapsedTime = 0.0f;
 				particles.emitAccum = 0.0f;
 
-				const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
+				const ParticleEffectDesc &effect = GetParticleEffect(particles.desc.effectId).desc;
 				for (u32 i = 0; i < effect.burstCount; ++i)
 				{
 					SpawnParticle(scene, entityId, effect);
@@ -399,7 +399,7 @@ void StartParticles(Scene &scene)
         const Entity &entity = scene.entities[i];
         if ( !HasComponents(scene, entity.id, Component_Particles) ) { continue; }
 
-        if ( GetParticles(scene, entity.id).playOnStart ) {
+        if ( GetParticles(scene, entity.id).desc.playOnStart ) {
             PlayParticles(scene, entity.id);
         }
     }
@@ -531,8 +531,10 @@ ParticlesComponent &AddParticles(Scene &scene, ID entityId)
 
 	ParticlesComponent &particles = scene.entityParticles[index];
 	particles = {
-		.effectId = { BuiltinID_FountainParticleEffect },
-		.playOnStart = 1,
+		.desc = {
+			.effectId = { BuiltinID_FountainParticleEffect },
+			.playOnStart = 1,
+		},
 	};
 	return particles;
 }
@@ -639,6 +641,11 @@ EntityDesc GetEntityDesc(Engine &engine, ID id)
 		entityDesc.components |= Component_Light;
 		entityDesc.light = GetLight(engine.scene, id);
 	}
+	if ( HasComponents(engine.scene, id, Component_Particles) )
+	{
+		entityDesc.components |= Component_Particles;
+		entityDesc.particles = GetParticles(engine.scene, id).desc;
+	}
 	if ( GatherEntityScriptDesc(engine.scene, id, entityDesc.script) )
 	{
 		entityDesc.components |= Component_Script;
@@ -662,6 +669,7 @@ static Entity *PushEntity(Scene &scene, ID id)
 
 	scene.entityComponents[index] = 0;
 	scene.entityLights[index] = {};
+	scene.entityParticles[index] = {};
 	scene.entityScripts[index] = {};
 
 	BindID(&entity.id, &entity);
@@ -711,6 +719,12 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 		light = desc.light;
 	}
 
+	if ( desc.components & Component_Particles )
+	{
+		ParticlesComponent &particles = AddParticles(engine.scene, entity->id);
+		particles.desc = desc.particles;
+	}
+
 	if ( desc.components & Component_Script )
 	{
 		SetScript(engine, entity->id, desc.script);
@@ -732,6 +746,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc)
 		.layerId = desc.layerId,
 		.components = desc.components,
 		.light = desc.light,
+		.particles = desc.particles,
 	};
 
 	if ( desc.components & Component_Script )
@@ -763,7 +778,7 @@ void RemoveEntity(Engine &engine, ID id)
 	if (id)
 	{
 		RemoveScript(engine, id);
-		// RemoveParticles(engine, id); // ??? TODO
+		RemoveParticles(engine.scene, id);
 
 		GetEntity(id).id = {};
 		Invalidate(id);
