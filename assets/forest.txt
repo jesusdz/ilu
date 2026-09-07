@@ -195,16 +195,15 @@ Entity player = {
  .lightColor = {1.000000, 0.584102, 0.268750},
  .lightIntensity = 2.000000,
  .lightRadius = 10.000000,
- .scripts = {
-  ScriptPlayerController = {
-   .properties = {
-    {"sprPlayerIdle", IDSprite, 1032},
-    {"sprPlayerRun", IDSprite, 1024},
-    {"sprPlayerJump", IDSprite, 1037},
-    {"sprPlayerFall", IDSprite, 1036},
-    {"sndJump", IDSoundClip, 0},
-    {"randomProperty", u32, 0},
-   },
+ .script = {
+  .name = "ScriptPlayerController",
+  .properties = {
+   {"sprPlayerIdle", IDSprite, 1032},
+   {"sprPlayerRun", IDSprite, 1024},
+   {"sprPlayerJump", IDSprite, 1037},
+   {"sprPlayerFall", IDSprite, 1036},
+   {"sndJump", IDSoundClip, 0},
+   {"randomProperty", u32, 0},
   },
  },
 };

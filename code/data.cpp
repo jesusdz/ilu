@@ -235,34 +235,22 @@ static GeometryType StrToGeometryType(String str)
 	return GeometryTypeCube;
 }
 
-static void WriteScriptDescs(WriteContext &ctx, const ScriptDesc *scripts, u32 scriptCount)
+static void WriteScriptDesc(WriteContext &ctx, const ScriptDesc &script)
 {
-	if (scriptCount == 0) {
-		return;
-	}
-
-	WriteLine(ctx, ".scripts = {");
+	WriteLine(ctx, ".script = {");
 	PushIndent(ctx);
 
-	for (u32 s = 0; s < scriptCount; ++s)
-	{
-		const ScriptDesc &script = scripts[s];
+	WriteLine(ctx, ".name = \"%s\",", script.name);
 
-		// The identifier is the script type, the way an Entity's is its name
-		WriteLine(ctx, "%s = {", script.name);
+	if (script.propertyCount > 0)
+	{
+		WriteLine(ctx, ".properties = {");
 		PushIndent(ctx);
-		if (script.propertyCount > 0)
+		for (u32 p = 0; p < script.propertyCount; ++p)
 		{
-			WriteLine(ctx, ".properties = {");
-			PushIndent(ctx);
-			for (u32 p = 0; p < script.propertyCount; ++p)
-			{
-				const ScriptPropertyDesc &propDesc = script.properties[p];
-				const char *typeStr = PropertyTypeToString(propDesc.value.type);
-				WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
-			}
-			PopIndent(ctx);
-			WriteLine(ctx, "},");
+			const ScriptPropertyDesc &propDesc = script.properties[p];
+			const char *typeStr = PropertyTypeToString(propDesc.value.type);
+			WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
 		}
 		PopIndent(ctx);
 		WriteLine(ctx, "},");
@@ -294,7 +282,9 @@ static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
 		WriteLine(ctx, ".particlesEffectId = %u,", desc.particles.effectId.slot);
 		WriteLine(ctx, ".particlesPlayOnStart = %d,", desc.particles.playOnStart);
 	}
-	WriteScriptDescs(ctx, &desc.script, (desc.components & Component_Script) ? 1 : 0);
+	if (desc.components & Component_Script) {
+		WriteScriptDesc(ctx, desc.script);
+	}
 }
 
 void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
@@ -1122,49 +1112,43 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 
 static void DParser_ConsumeScriptProperties( DParser &parser, ScriptDesc &script);
 
-static void DParser_ConsumeEntityScripts( DParser &parser, EntityDesc &entity )
+static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
+	ScriptDesc scriptDesc = {};
+
 	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 	{
-		ScriptDesc scriptDesc = {};
-		const String name = DParser_ConsumeLexeme(parser);
-		scriptDesc.name = PushString(*parser.arena, name);
+		DParser_TryConsume(parser, TOKEN_DOT);
+
+		const String field = DParser_ConsumeLexeme(parser);
 
 		DParser_TryConsume(parser, TOKEN_EQUAL);
-		DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
-		while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
-		{
-			DParser_TryConsume(parser, TOKEN_DOT);
+		static const String sName = MakeString("name");
+		static const String sProperties = MakeString("properties");
 
-			const String field = DParser_ConsumeLexeme(parser);
-
-			DParser_TryConsume(parser, TOKEN_EQUAL);
-
-			static const String sProperties = MakeString("properties");
-
-			if ( StrEq( field, sProperties ) ) {
-				DParser_ConsumeScriptProperties(parser, scriptDesc);
-			}
-
-			DParser_TryConsume(parser, TOKEN_COMMA);
+		if ( StrEq( field, sName ) ) {
+			scriptDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
+		} else if ( StrEq( field, sProperties ) ) {
+			DParser_ConsumeScriptProperties(parser, scriptDesc);
 		}
 
-		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 		DParser_TryConsume(parser, TOKEN_COMMA);
-
-		if ( entity.components & Component_Script ) {
-			LOG(Warning, "Entity <%s> lists more than one script, only <%s> is kept.\n",
-					entity.name ? entity.name : "?", entity.script.name);
-		} else {
-			entity.components |= Component_Script;
-			entity.script = scriptDesc;
-		}
 	}
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+
+	// The name is what SetScript resolves the component from, so a block without one
+	// leaves the entity scriptless rather than handing it a null to look up
+	if ( scriptDesc.name ) {
+		entity.components |= Component_Script;
+		entity.script = scriptDesc;
+	} else {
+		LOG(Warning, "Entity <%s> has a script without a name, it is ignored.\n",
+				entity.name ? entity.name : "?");
+	}
 }
 
 static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDesc &entity )
@@ -1182,7 +1166,7 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	static const String sLightRadius = MakeString("lightRadius");
 	static const String sParticlesEffectId = MakeString("particlesEffectId");
 	static const String sParticlesPlayOnStart = MakeString("particlesPlayOnStart");
-	static const String sScripts = MakeString("scripts");
+	static const String sScript = MakeString("script");
 
 	if ( StrEq( field, sId ) ) {
 		entity.id = DParser_ConsumeID(parser);
@@ -1215,8 +1199,8 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	} else if ( StrEq( field, sParticlesPlayOnStart ) ) {
 		entity.components |= Component_Particles;
 		entity.particles.playOnStart = DParser_ConsumeU8(parser);
-	} else if ( StrEq( field, sScripts ) ) {
-		DParser_ConsumeEntityScripts(parser, entity);
+	} else if ( StrEq( field, sScript ) ) {
+		DParser_ConsumeEntityScript(parser, entity);
 	} else {
 		return false;
 	}
