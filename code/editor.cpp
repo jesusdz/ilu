@@ -2196,7 +2196,9 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 		.sprite = { .spriteId = spriteId, },
 	};
 
-	return CreateEntity(engine, entityDesc, &spriteComponent, 1);
+	const ID entityId = CreateEntity(engine, entityDesc);
+	AddComponent(engine, entityId, spriteComponent);
+	return entityId;
 }
 
 static ID EditorInstantiatePrefabAtMouse(ID prefabId)

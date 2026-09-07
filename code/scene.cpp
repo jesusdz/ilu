@@ -722,6 +722,11 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 
 void AddComponent(Engine &engine, ID entityId, ComponentTypes type)
 {
+	if ( !Valid(entityId) ) {
+		LOG(Warning, "AddComponent: entity ID %u does not exist.\n", entityId.slot);
+		return;
+	}
+
 	switch ( type )
 	{
 		case ComponentType_Sprite:
@@ -748,6 +753,10 @@ void AddComponent(Engine &engine, ID entityId, ComponentTypes type)
 
 void RemoveComponent(Engine &engine, ID entityId, ComponentTypes type)
 {
+	if ( !Valid(entityId) ) {
+		return;
+	}
+
 	switch ( type )
 	{
 		case ComponentType_Sprite:
@@ -778,6 +787,11 @@ void RemoveComponent(Engine &engine, ID entityId, ComponentTypes type)
 
 void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 {
+	if ( !Valid(entityId) ) {
+		LOG(Warning, "AddComponent: entity ID %u does not exist.\n", entityId.slot);
+		return;
+	}
+
 	switch ( desc.type )
 	{
 		case ComponentType_Sprite:
@@ -888,18 +902,6 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	return entity->id;
 }
 
-ID CreateEntity(Engine &engine, const EntityDesc &desc, const ComponentDesc *components, u32 componentCount)
-{
-	const ID entityId = CreateEntity(engine, desc);
-	if ( entityId )
-	{
-		for (u32 i = 0; i < componentCount; ++i) {
-			AddComponent(engine, entityId, components[i]);
-		}
-	}
-	return entityId;
-}
-
 static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, ComponentDescPool &pool)
 {
 	EntityDesc entityDesc = {
@@ -976,7 +978,12 @@ ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 	};
 
 	const EntityDesc entityDesc = EntityDescFromBin(desc, 0, pool);
-	return CreateEntity(engine, entityDesc, pool.components, pool.componentCount);
+
+	const ID entityId = CreateEntity(engine, entityDesc);
+	for (u32 i = 0; i < pool.componentCount; ++i) {
+		AddComponent(engine, entityId, pool.components[i]);
+	}
+	return entityId;
 }
 
 void RemoveEntity(Engine &engine, ID id)
@@ -1007,7 +1014,12 @@ ID DuplicateEntity(Engine &engine, ID entityId)
 	GatherEntityComponentDescs(engine, entityId, 0, pool);
 
 	desc.id = {}; // The copy is a new entity, so let the pool hand it its own ID
-	return CreateEntity(engine, desc, pool.components, pool.componentCount);
+
+	const ID copyId = CreateEntity(engine, desc);
+	for (u32 i = 0; i < pool.componentCount; ++i) {
+		AddComponent(engine, copyId, pool.components[i]);
+	}
+	return copyId;
 }
 
 

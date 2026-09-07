@@ -1684,7 +1684,6 @@ u16 GetEntityIndex(const Scene &scene, ID entityId);
 void EntitySetPosition(Entity &entity, float3 position);
 EntityDesc GetEntityDesc(Engine &engine, ID entityId);
 ID CreateEntity(Engine &engine, const EntityDesc &desc);
-ID CreateEntity(Engine &engine, const EntityDesc &desc, const ComponentDesc *components, u32 componentCount);
 void AddComponent(Engine &engine, ID entityId, ComponentTypes type);
 void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc);
 void RemoveComponent(Engine &engine, ID entityId, ComponentTypes type);

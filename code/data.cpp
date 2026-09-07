@@ -2770,7 +2770,15 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 		// Entities
 		for (u32 i = 0; i < assetDescriptors.entityDescCount; ++i)
 		{
-			CreateEntity(engine, assetDescriptors.entityDescs[i]);
+			const ID entityId = CreateEntity(engine, assetDescriptors.entityDescs[i]);
+
+			const ComponentDescPool &pool = assetDescriptors.componentPool;
+			for (u32 c = 0; c < pool.componentCount; ++c)
+			{
+				if ( pool.components[c].entityIndex == i ) {
+					AddComponent(engine, entityId, pool.components[c]);
+				}
+			}
 		}
 
 		// Prefabs
