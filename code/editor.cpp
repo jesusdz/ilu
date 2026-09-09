@@ -689,7 +689,7 @@ static void EditorEntityDropTarget(ID layerId)
 		const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( droppedId ) {
 			AddComponent(engine, droppedId, ComponentType_Sprite);
-			GetSpriteComponent(engine.scene, droppedId).layerId = layerId;
+			GetSprite(engine.scene, droppedId).layerId = layerId;
 		}
 	}
 }
@@ -1013,7 +1013,7 @@ static void EditorUpdateUI_Outliner()
 
 	if ( UI_Section(ui, "Scripts") )
 	{
-		for (u32 i = 0; i < ScriptCount(); ++i)
+		for (u32 i = 1; i < ScriptCount(); ++i)
 		{
 			const Script &script = GetScriptAt(i);
 			UI_TreeNode(ui, ScriptName(script), nullptr, nullptr, UITreeNodeFlag_Leaf);
@@ -1641,7 +1641,7 @@ static void EditorUpdateUI_Inspector()
 				{
 					ScriptComponent &component = GetScript(engine.scene, inspector.selected.id);
 
-					if ( component.structIndex < ScriptCount() )
+					if ( component.structIndex != NULL_SCRIPT )
 					{
 						const Script &script = GetScriptAt(component.structIndex);
 						EditorUpdateUI_InspectorProperties(component.name, script.type->members, script.type->memberCount, component.data);

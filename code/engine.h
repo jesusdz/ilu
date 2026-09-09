@@ -174,6 +174,7 @@ CT_ASSERT(BuiltinID_Count <= ILU_ID_FIRST_DYNAMIC_SLOT);
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 constexpr u32 MAX_SCRIPTS = 64;
+constexpr u16 NULL_SCRIPT = 0; // Registry slot of the script that does nothing
 constexpr u32 MAX_SCRIPT_PROPERTIES = 16;
 
 // Structs tagged ILU_STRUCT(Script) are the ones that can be registered as scripts
@@ -228,7 +229,7 @@ struct ScriptComponent
 {
 	ID entityId;
 	const char *name; // Interned, and what a reload re-resolves structIndex from
-	u16 structIndex;  // U16_MAX until a script is assigned, and again if a reload drops it
+	u16 structIndex;  // NULL_SCRIPT until a script is assigned, and again if a reload drops it
 	u32 dataSize;     // Which bucket data returns to, still known once the script is gone
 	byte *data;
 };
@@ -1476,7 +1477,8 @@ ScriptComponent *AddScript(Engine &engine, ID entityId);
 ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName);
 ScriptComponent *AddScript(Engine &engine, ID entityId, const ScriptComponentDesc &desc);
 void RemoveScript(Engine &engine, ID entityId);
-bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript, ComponentDescPool &pool);
+ScriptComponentDesc MakeDesc(const ScriptComponent &comp, ComponentDescPool &pool);
+void ApplyDesc(ScriptComponent &comp, const ScriptComponentDesc &desc);
 void RunScriptHooks(Engine &engine, ScriptHookType hook);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1716,8 +1718,8 @@ ID EntityFromDrawId(u32 drawId);
 
 bool HasComponents(const Scene &scene, ID entityId, ComponentFlags components);
 
-SpriteComponent &GetSpriteComponent(Scene &scene, ID entityId);
-const SpriteComponent &GetSpriteComponent(const Scene &scene, ID entityId);
+SpriteComponent &GetSprite(Scene &scene, ID entityId);
+const SpriteComponent &GetSprite(const Scene &scene, ID entityId);
 ID EntitySpriteId(const Scene &scene, ID entityId);
 ID EntityLayerId(const Scene &scene, ID entityId);
 

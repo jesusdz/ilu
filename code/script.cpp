@@ -35,7 +35,8 @@ static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHoo
 
 static u32 FindScriptIndex(const char *name)
 {
-	for (u32 i = 0; i < scriptRegistry.scriptCount; ++i)
+	// From 1: slot 0 is the null script, which no name resolves to
+	for (u32 i = 1; i < scriptRegistry.scriptCount; ++i)
 	{
 		if ( StrEq( ScriptName(scriptRegistry.scripts[i]), name ) ) {
 			return i;
@@ -93,10 +94,6 @@ static void FreeScriptData(Engine &engine, byte *data, u32 size)
 
 static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &component, ScriptHookType hook)
 {
-	if ( component.structIndex >= scriptRegistry.scriptCount ) {
-		return;
-	}
-
 	const Script &script = scriptRegistry.scripts[component.structIndex];
 
 	if ( ScriptHook hookFn = script.hooks[hook] )
@@ -111,42 +108,12 @@ static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &componen
 	}
 }
 
-// Writes the saved property values over the script data, skipping any that no longer
-// match the script's reflected members.
-static void ApplyScriptDesc(ScriptComponent &component, const ScriptComponentDesc &desc)
-{
-	if ( component.structIndex >= scriptRegistry.scriptCount ) {
-		return;
-	}
-
-	const ReflexStruct *type = scriptRegistry.scripts[component.structIndex].type;
-
-	for (u32 i = 0; i < desc.propertyCount; ++i)
-	{
-		const ScriptPropertyDesc &propertyDesc = desc.properties[i];
-
-		const ReflexMember *member = nullptr;
-		for (u32 p = 0; p < type->memberCount; ++p)
-		{
-			const ReflexMember &currMember = type->members[p];
-			if ( StrEq( currMember.name, propertyDesc.name ) ) {
-				member = &currMember;
-				break;
-			}
-		}
-
-		if ( !member ) {
-			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else if ( member->reflexId != propertyDesc.value.type ) {
-			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else {
-			SetPropertyValue(*member, component.data, propertyDesc.value);
-		}
-	}
-}
-
 void RegisterScripts(Engine &engine)
 {
+	// Reserved slot 0. For script components without a script assigned
+	static const ReflexStruct nullScriptType = { .name = "None" };
+	RegisterScript(&nullScriptType, nullptr, nullptr, nullptr, nullptr);
+
 	for (u32 i = ReflexID_StructBegin; i < ReflexID_StructEnd; ++i)
 	{
 		const ReflexStruct* rstruct = ReflexGetStruct(i);
@@ -175,7 +142,7 @@ void RegisterScripts(Engine &engine)
 		const u32 structIndex = FindScriptIndex(component.name);
 		if ( structIndex == U32_MAX ) {
 			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", component.name);
-			component.structIndex = U16_MAX;
+			component.structIndex = NULL_SCRIPT;
 			continue;
 		}
 
@@ -233,7 +200,6 @@ ScriptComponent *AddScript(Engine &engine, ID entityId)
 	ScriptComponent &component = scene.scriptComponents[slot];
 	component = {};
 	component.entityId = entityId;
-	component.structIndex = U16_MAX;
 
 	return &component;
 }
@@ -287,49 +253,64 @@ ScriptComponent* AddScript(Engine &engine, ID entityId, const ScriptComponentDes
 {
 	ScriptComponent *component = AddScript(engine, entityId, desc.name);
 	if ( component ) {
-		ApplyScriptDesc(*component, desc);
+		ApplyDesc(*component, desc);
 	}
 	return component;
 }
 
-// Snapshots entityId's live script into outScript. False when it has none.
-bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript, ComponentDescPool &pool)
+ScriptComponentDesc MakeDesc(const ScriptComponent &comp, ComponentDescPool &pool)
 {
-	outScript = {};
+	ScriptComponentDesc desc = {};
+	desc.name = comp.name;
+	desc.properties = pool.properties + pool.propertyCount;
 
-	if ( !HasComponents(scene, entityId, Component_Script) ) {
-		return false;
-	}
-
-	const ScriptComponent &component = GetScript(scene, entityId);
-	if ( component.structIndex >= scriptRegistry.scriptCount ) {
-		return false;
-	}
-
-	outScript.name = component.name;
-	outScript.properties = pool.properties + pool.propertyCount;
-
-	const ReflexStruct *type = scriptRegistry.scripts[component.structIndex].type;
+	const ReflexStruct *type = scriptRegistry.scripts[comp.structIndex].type;
 	for (u32 p = 0; p < type->memberCount; ++p)
 	{
 		const ReflexMember &member = type->members[p];
-		if ( !IsStorableProperty(member) ) {
-			continue;
-		}
+		if ( IsStorableProperty(member) )
+		{
+			if ( pool.propertyCount == pool.propertyCapacity ) {
+				LOG(Warning, "Script <%s> drops property <%s>, the property pool is full.\n", desc.name, member.name);
+				break;
+			}
 
-		if ( pool.propertyCount == pool.propertyCapacity ) {
-			LOG(Warning, "Script <%s> drops property <%s>, the property pool is full.\n",
-					outScript.name, member.name);
-			break;
+			ScriptPropertyDesc &propertyDesc = pool.properties[pool.propertyCount++];
+			propertyDesc.name = member.name;
+			propertyDesc.value = GetPropertyValue(member, comp.data);
+			desc.propertyCount++;
 		}
-
-		ScriptPropertyDesc &propertyDesc = pool.properties[pool.propertyCount++];
-		propertyDesc.name = member.name;
-		propertyDesc.value = GetPropertyValue(member, component.data);
-		outScript.propertyCount++;
 	}
 
-	return true;
+	return desc;
+}
+
+void ApplyDesc(ScriptComponent &comp, const ScriptComponentDesc &desc)
+{
+	const ReflexStruct *type = scriptRegistry.scripts[comp.structIndex].type;
+
+	for (u32 i = 0; i < desc.propertyCount; ++i)
+	{
+		const ScriptPropertyDesc &propertyDesc = desc.properties[i];
+
+		const ReflexMember *member = nullptr;
+		for (u32 p = 0; p < type->memberCount; ++p)
+		{
+			const ReflexMember &currMember = type->members[p];
+			if ( StrEq( currMember.name, propertyDesc.name ) ) {
+				member = &currMember;
+				break;
+			}
+		}
+
+		if ( !member ) {
+			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
+		} else if ( member->reflexId != propertyDesc.value.type ) {
+			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
+		} else {
+			SetPropertyValue(*member, comp.data, propertyDesc.value);
+		}
+	}
 }
 
 void RemoveScript(Engine &engine, ID entityId)

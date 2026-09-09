@@ -565,7 +565,7 @@ void SetEntitySprite(ID entityId, ID spriteId)
 	if ( !HasComponents(engine.scene, entityId, Component_Sprite) ) {
 		AddComponent(engine, entityId, ComponentType_Sprite);
 	}
-	GetSpriteComponent(engine.scene, entityId).spriteId = spriteId;
+	GetSprite(engine.scene, entityId).spriteId = spriteId;
 }
 
 void SetCamera(const Camera &camera)

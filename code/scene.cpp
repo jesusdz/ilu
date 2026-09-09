@@ -526,14 +526,14 @@ static void RemoveSpriteComponent(Scene &scene, ID entityId)
 	scene.entityComponentIndex[entityIndex][ComponentType_Sprite] = NO_COMPONENT;
 }
 
-SpriteComponent &GetSpriteComponent(Scene &scene, ID entityId)
+SpriteComponent &GetSprite(Scene &scene, ID entityId)
 {
 	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Sprite];
 	ASSERT( slot != NO_COMPONENT );
 	return scene.spriteComponents[slot];
 }
 
-const SpriteComponent &GetSpriteComponent(const Scene &scene, ID entityId)
+const SpriteComponent &GetSprite(const Scene &scene, ID entityId)
 {
 	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Sprite];
 	ASSERT( slot != NO_COMPONENT );
@@ -547,7 +547,7 @@ ID EntitySpriteId(const Scene &scene, ID entityId)
 	if ( !HasComponents(scene, entityId, Component_Sprite) ) {
 		return {};
 	}
-	return GetSpriteComponent(scene, entityId).spriteId;
+	return GetSprite(scene, entityId).spriteId;
 }
 
 ID EntityLayerId(const Scene &scene, ID entityId)
@@ -555,7 +555,7 @@ ID EntityLayerId(const Scene &scene, ID entityId)
 	if ( !HasComponents(scene, entityId, Component_Sprite) ) {
 		return {};
 	}
-	return GetSpriteComponent(scene, entityId).layerId;
+	return GetSprite(scene, entityId).layerId;
 }
 
 static LightComponent *AddLight(Scene &scene, ID id)
@@ -810,7 +810,7 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 	if ( HasComponents(scene, entityId, Component_Sprite) )
 	{
 		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
-			desc->sprite = MakeDesc(GetSpriteComponent(scene, entityId));
+			desc->sprite = MakeDesc(GetSprite(scene, entityId));
 		}
 	}
 
@@ -828,11 +828,14 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 		}
 	}
 
-	ScriptComponentDesc script = {};
-	if ( GatherEntityScriptDesc(scene, entityId, script, pool) )
+	if ( HasComponents(scene, entityId, Component_Script) )
 	{
-		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
-			desc->script = script;
+		const ScriptComponent &script = GetScript(scene, entityId);
+		if ( script.name )
+		{
+			if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
+				desc->script = MakeDesc(script, pool);
+			}
 		}
 	}
 }
