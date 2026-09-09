@@ -138,15 +138,15 @@ struct Platform
 	volatile_i64 eventHead;
 	PlatformEvent events[128];
 
-	bool paused;
-	bool keepRunning;
-	bool windowInitialized;
+	volatile bool paused;
+	volatile bool keepRunning;
+	volatile bool windowInitialized;
 	volatile_u32 inSizeMove; // Main thread is inside a modal size/move loop
 
 	Semaphore updateThreadFinishSemaphore;
 	Mutex renderLock;
 
-	bool audioPaused;
+	volatile bool audioPaused;
 	Semaphore audioThreadPauseSemaphore;
 	Semaphore audioThreadFinishSemaphore;
 
@@ -1078,6 +1078,16 @@ static void UnloadEngineDLL(Platform &platform)
 
 static void PauseThreads(Platform &platform)
 {
+	// Make sure we start from a non-paused state
+#if USE_AUDIO_THREAD
+	platform.audioPaused = false;
+#endif
+	for (u32 i = 0; i < WORK_QUEUE_WORKER_COUNT; ++i)
+	{
+		workQueue.workerPaused[i] = 0;
+	}
+
+
 	platform.paused = true;
 
 #if USE_AUDIO_THREAD
@@ -1115,6 +1125,8 @@ static void ResumeThreads(Platform &platform)
 #if USE_AUDIO_THREAD
 	SignalSemaphore(platform.audioThreadPauseSemaphore);
 #endif
+
+	// Don't wait for thread's paused flags to become false again
 }
 
 static void CheckEngineHotReload(Platform &platform)
@@ -1140,7 +1152,6 @@ static void CheckEngineHotReload(Platform &platform)
 			PauseThreads(platform);
 			UnloadEngineDLL(platform);
 			const bool reloaded = LoadEngineDLL(platform);
-			ResumeThreads(platform);
 
 			if ( !reloaded )
 			{
@@ -1148,6 +1159,10 @@ static void CheckEngineHotReload(Platform &platform)
 				LOG(Error, "Engine hot reload failed. Quitting.\n");
 				PlatformQuit();
 			}
+
+			// Resumed last, so threads waking up from the pause observe the quit request
+			// before they can call into a module that failed to load.
+			ResumeThreads(platform);
 		}
 	}
 }
