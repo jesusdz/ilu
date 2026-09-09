@@ -987,6 +987,9 @@ struct SpriteComponent
 	// Descriptor
 	ID spriteId;
 	ID layerId;
+
+	// Runtime
+	bool flipX;
 };
 
 struct ComponentDesc
@@ -1097,7 +1100,6 @@ struct Entity
 	// Transform
 	float3 position;
 	float scale;
-	bool flipX;
 
 	bool visible;
 	bool culled;

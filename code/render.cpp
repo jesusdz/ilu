@@ -734,10 +734,13 @@ bool RenderGraphics(Engine &engine)
 		const float4x4 worldMatrix = Mul(Translate(entityPosition), Scale(entityScale)); // TODO: Apply also rotation
 		entities[i].world = worldMatrix;
 
-		const ID spriteId = EntitySpriteId(scene, entity.id);
-		const u32 spriteIndex = spriteId ? GetSpriteIndex(scene, spriteId) : 0;
-		entities[i].spriteIndex = spriteIndex;
-		entities[i].flipX = entity.flipX;
+		if ( HasComponents(scene, entity.id, Component_Sprite) )
+		{
+			const SpriteComponent &sprite = GetSprite(scene, entity.id);
+			const u32 spriteIndex = sprite.spriteId ? GetSpriteIndex(scene, sprite.spriteId) : 0;
+			entities[i].spriteIndex = spriteIndex;
+			entities[i].flipX = sprite.flipX;
+		}
 	}
 
 	// Update materials

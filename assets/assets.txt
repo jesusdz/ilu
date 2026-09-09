@@ -54,42 +54,52 @@ Material mat_grass = {
 
 Entity ent_cube0 = {
  .id = 1007,
- .materialId = 1004,
  .pos = {1.000000, 0.000000, 1.000000},
  .scale = 1.000000,
- .geometryType = GeometryTypeCube,
+ .model = {
+  .materialId = 1004,
+  .geometryType = GeometryTypeCube,
+ },
 };
 
 Entity ent_cube1 = {
  .id = 1008,
- .materialId = 1004,
  .pos = {1.000000, 0.000000, -1.000000},
  .scale = 1.000000,
- .geometryType = GeometryTypeCube,
+ .model = {
+  .materialId = 1004,
+  .geometryType = GeometryTypeCube,
+ },
 };
 
 Entity ent_cube2 = {
  .id = 1009,
- .materialId = 1005,
  .pos = {-1.000000, 0.000000, 1.000000},
  .scale = 1.000000,
- .geometryType = GeometryTypeCube,
+ .model = {
+  .materialId = 1005,
+  .geometryType = GeometryTypeCube,
+ },
 };
 
 Entity ent_cube3 = {
  .id = 1010,
- .materialId = 1005,
  .pos = {-1.000000, 0.000000, -1.000000},
  .scale = 1.000000,
- .geometryType = GeometryTypeCube,
+ .model = {
+  .materialId = 1005,
+  .geometryType = GeometryTypeCube,
+ },
 };
 
 Entity ent_plane = {
  .id = 1011,
- .materialId = 1006,
  .pos = {0.000000, -0.500000, 0.000000},
  .scale = 11.000000,
- .geometryType = GeometryTypePlane,
+ .model = {
+  .materialId = 1006,
+  .geometryType = GeometryTypePlane,
+ },
 };
 
 

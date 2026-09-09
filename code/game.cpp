@@ -78,6 +78,7 @@ void Simulate(ScriptPlayerController &script)
 	}
 	const Room &room = *roomPtr;
 	Entity &player = GetSelf();
+	SpriteComponent &sprite = GetSprite(GetEngine().scene, player.id);
 
 	const f32 screenLeft = room.pos.x;
 	const f32 screenRight = room.pos.x + RoomSize(room).x;
@@ -194,24 +195,24 @@ void Simulate(ScriptPlayerController &script)
 		if ( script.playerState == OnFloor || script.playerState == OnPlatform )
 		{
 			if ( Abs(speed.x) < 0.2 ) {
-				SetEntitySprite(player.id, script.sprPlayerIdle);
+				sprite.spriteId = script.sprPlayerIdle;
 			} else {
-				SetEntitySprite(player.id, script.sprPlayerRun);
+				sprite.spriteId = script.sprPlayerRun;
 			}
 		}
 		else
 		{
 			if ( speed.y >= 0.0f ) {
-				SetEntitySprite(player.id, script.sprPlayerJump);
+				sprite.spriteId = script.sprPlayerJump;
 			} else {
-				SetEntitySprite(player.id, script.sprPlayerFall);
+				sprite.spriteId = script.sprPlayerFall;
 			}
 		}
 
 		if ( speed.x > 0 ) {
-			player.flipX = false;
+			sprite.flipX = false;
 		} else if ( speed.x < 0 ) {
-			player.flipX = true;
+			sprite.flipX = true;
 		}
 	}
 
