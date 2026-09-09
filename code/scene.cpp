@@ -305,9 +305,9 @@ void SimulateParticles(Scene &scene, f32 deltaSeconds)
 	for (u32 i = 0; i < scene.particlesComponentCount; ++i)
 	{
 		ParticlesComponent &particles = scene.particlesComponents[i];
-		if ( !particles.playing || !particles.desc.effectId ) { continue; }
+		if ( !particles.playing || !particles.effectId ) { continue; }
 
-		const ParticleEffectDesc &effect = GetParticleEffect(particles.desc.effectId).desc;
+		const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
 
 		particles.elapsedTime += deltaSeconds;
 		if ( effect.duration > 0.0f && particles.elapsedTime >= effect.duration )
@@ -360,13 +360,13 @@ void PlayParticles(Scene &scene, ID entityId)
 		if ( HasComponents(scene, entity.id, Component_Particles) )
 		{
 			ParticlesComponent &particles = GetParticles(scene, entity.id);
-			if ( particles.desc.effectId )
+			if ( particles.effectId )
 			{
 				particles.playing = 1;
 				particles.elapsedTime = 0.0f;
 				particles.emitAccum = 0.0f;
 
-				const ParticleEffectDesc &effect = GetParticleEffect(particles.desc.effectId).desc;
+				const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
 				for (u32 i = 0; i < effect.burstCount; ++i)
 				{
 					SpawnParticle(scene, entityId, effect);
@@ -393,7 +393,7 @@ void StartParticles(Scene &scene)
 {
     for (u32 i = 0; i < scene.particlesComponentCount; ++i)
     {
-        if ( scene.particlesComponents[i].desc.playOnStart ) {
+        if ( scene.particlesComponents[i].playOnStart ) {
             PlayParticles(scene, scene.particlesComponents[i].entityId);
         }
     }
@@ -547,7 +547,7 @@ ID EntitySpriteId(const Scene &scene, ID entityId)
 	if ( !HasComponents(scene, entityId, Component_Sprite) ) {
 		return {};
 	}
-	return GetSpriteComponent(scene, entityId).desc.spriteId;
+	return GetSpriteComponent(scene, entityId).spriteId;
 }
 
 ID EntityLayerId(const Scene &scene, ID entityId)
@@ -555,7 +555,7 @@ ID EntityLayerId(const Scene &scene, ID entityId)
 	if ( !HasComponents(scene, entityId, Component_Sprite) ) {
 		return {};
 	}
-	return GetSpriteComponent(scene, entityId).desc.layerId;
+	return GetSpriteComponent(scene, entityId).layerId;
 }
 
 static LightComponent *AddLight(Scene &scene, ID id)
@@ -577,12 +577,10 @@ static LightComponent *AddLight(Scene &scene, ID id)
 	LightComponent &light = scene.lightComponents[slot];
 	light = {
 		.entityId = id,
-		.desc = {
-			.type = LightType_Point,
-			.color = Float3(1.0f),
-			.intensity = 2.0f,
-			.radius = 5.0f,
-		},
+		.type = LightType_Point,
+		.color = Float3(1.0f),
+		.intensity = 2.0f,
+		.radius = 5.0f,
 	};
 	return &light;
 }
@@ -639,10 +637,8 @@ static ParticlesComponent *AddParticles(Scene &scene, ID entityId)
 	ParticlesComponent &particles = scene.particlesComponents[slot];
 	particles = {
 		.entityId = entityId,
-		.desc = {
-			.effectId = { BuiltinID_FountainParticleEffect },
-			.playOnStart = 1,
-		},
+		.effectId = { BuiltinID_FountainParticleEffect },
+		.playOnStart = 1,
 	};
 	return &particles;
 }
@@ -757,6 +753,55 @@ ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, Compo
 	return &desc;
 }
 
+SpriteComponentDesc MakeDesc(const SpriteComponent &comp)
+{
+	const SpriteComponentDesc desc = {
+		.spriteId = comp.spriteId,
+		.layerId = comp.layerId,
+	};
+	return desc;
+}
+
+void ApplyDesc(SpriteComponent &comp, const SpriteComponentDesc &desc)
+{
+	comp.spriteId = desc.spriteId;
+	comp.layerId = desc.layerId;
+}
+
+LightComponentDesc MakeDesc(const LightComponent &comp)
+{
+	const LightComponentDesc desc = {
+		.type = comp.type,
+		.color = comp.color,
+		.intensity = comp.intensity,
+		.radius = comp.radius,
+	};
+	return desc;
+}
+
+void ApplyDesc(LightComponent &comp, const LightComponentDesc &desc)
+{
+	comp.type = desc.type;
+	comp.color = desc.color;
+	comp.intensity = desc.intensity;
+	comp.radius = desc.radius;
+}
+
+ParticlesComponentDesc MakeDesc(const ParticlesComponent &comp)
+{
+	const ParticlesComponentDesc desc = {
+		.effectId = comp.effectId,
+		.playOnStart = comp.playOnStart,
+	};
+	return desc;
+}
+
+void ApplyDesc(ParticlesComponent &comp, const ParticlesComponentDesc &desc)
+{
+	comp.effectId = desc.effectId;
+	comp.playOnStart = desc.playOnStart;
+}
+
 void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &pool)
 {
 	Scene &scene = engine.scene;
@@ -765,21 +810,21 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 	if ( HasComponents(scene, entityId, Component_Sprite) )
 	{
 		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
-			desc->sprite = GetSpriteComponent(scene, entityId).desc;
+			desc->sprite = MakeDesc(GetSpriteComponent(scene, entityId));
 		}
 	}
 
 	if ( HasComponents(scene, entityId, Component_Light) )
 	{
 		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Light) ) {
-			desc->light = GetLight(scene, entityId).desc;
+			desc->light = MakeDesc(GetLight(scene, entityId));
 		}
 	}
 
 	if ( HasComponents(scene, entityId, Component_Particles) )
 	{
 		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Particles) ) {
-			desc->particles = GetParticles(scene, entityId).desc;
+			desc->particles = MakeDesc(GetParticles(scene, entityId));
 		}
 	}
 
@@ -864,31 +909,29 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 	{
 		case ComponentType_Sprite:
 		{
-			SpriteComponent *sprite = AddSpriteComponent(engine.scene, entityId);
-			if ( !sprite ) {
-				break;
-			}
-
-			sprite->desc = desc.sprite;
-
-			if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
+			if ( SpriteComponent *sprite = AddSpriteComponent(engine.scene, entityId) )
 			{
-				LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
-						GetEntity(entityId).name, desc.sprite.spriteId.slot);
-				sprite->desc.spriteId = {};
+				ApplyDesc(*sprite, desc.sprite);
+
+				if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
+				{
+					LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
+							GetEntity(entityId).name, desc.sprite.spriteId.slot);
+					sprite->spriteId = {};
+				}
 			}
 			break;
 		}
 
 		case ComponentType_Light:
 			if ( LightComponent *light = AddLight(engine.scene, entityId) ) {
-				light->desc = desc.light;
+				ApplyDesc(*light, desc.light);
 			}
 			break;
 
 		case ComponentType_Particles:
 			if ( ParticlesComponent *particles = AddParticles(engine.scene, entityId) ) {
-				particles->desc = desc.particles;
+				ApplyDesc(*particles, desc.particles);
 			}
 			break;
 

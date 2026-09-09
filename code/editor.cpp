@@ -689,7 +689,7 @@ static void EditorEntityDropTarget(ID layerId)
 		const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( droppedId ) {
 			AddComponent(engine, droppedId, ComponentType_Sprite);
-			GetSpriteComponent(engine.scene, droppedId).desc.layerId = layerId;
+			GetSpriteComponent(engine.scene, droppedId).layerId = layerId;
 		}
 	}
 }
@@ -1572,9 +1572,9 @@ static void EditorUpdateUI_Inspector()
 					static float4 lightColorToEdit = {};
 					static ID lightColorEntity = {};
 
-					if ( UI_ColorButton(ui, "Color", Float4(light.desc.color, 1.0f)) )
+					if ( UI_ColorButton(ui, "Color", Float4(light.color, 1.0f)) )
 					{
-						lightColorToEdit = Float4(light.desc.color, 1.0f);
+						lightColorToEdit = Float4(light.color, 1.0f);
 						lightColorEntity = inspector.selected.id;
 					}
 
@@ -1582,14 +1582,14 @@ static void EditorUpdateUI_Inspector()
 					{
 						bool isOpen = true;
 						UI_ColorPicker(ui, &lightColorToEdit, &isOpen);
-						light.desc.color = lightColorToEdit.xyz;
+						light.color = lightColorToEdit.xyz;
 						if ( !isOpen ) {
 							lightColorEntity = {};
 						}
 					}
 
-					UI_InputFloat(ui, "Intensity", &light.desc.intensity);
-					UI_InputFloat(ui, "Radius", &light.desc.radius);
+					UI_InputFloat(ui, "Intensity", &light.intensity);
+					UI_InputFloat(ui, "Radius", &light.radius);
 
 					if (UI_Button(ui, "Remove"))
 					{
@@ -1605,15 +1605,15 @@ static void EditorUpdateUI_Inspector()
 
 					// A removed effect leaves the ID reading as false, so the same test
 					// covers "never assigned" and "the effect went away"
-					const ParticleEffectDesc *effect = particles.desc.effectId ?
-						&GetParticleEffect(particles.desc.effectId).desc : nullptr;
+					const ParticleEffectDesc *effect = particles.effectId ?
+						&GetParticleEffect(particles.effectId).desc : nullptr;
 
 					UI_Text(ui, "Effect", "%s", effect ? effect->name : "<none>");
 					if ( UI_DragAndDropTarget(ui, "IDParticleEffect") )
 					{
 						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 						if ( droppedId ) {
-							particles.desc.effectId = droppedId;
+							particles.effectId = droppedId;
 						}
 					}
 
@@ -1624,12 +1624,12 @@ static void EditorUpdateUI_Inspector()
 
 					if (effect && UI_Button(ui, "Go to effect"))
 					{
-						EditorSelectParticleEffect(particles.desc.effectId);
+						EditorSelectParticleEffect(particles.effectId);
 					}
 
-					bool playOnStart = particles.desc.playOnStart != 0;
+					bool playOnStart = particles.playOnStart != 0;
 					UI_Checkbox(ui, "Play on start", &playOnStart);
-					particles.desc.playOnStart = playOnStart ? 1 : 0;
+					particles.playOnStart = playOnStart ? 1 : 0;
 
 					if (UI_Button(ui, "Remove"))
 					{

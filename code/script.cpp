@@ -33,33 +33,6 @@ static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHoo
 	};
 }
 
-void RegisterScripts()
-{
-	for (u32 i = ReflexID_StructBegin; i < ReflexID_StructEnd; ++i)
-	{
-		const ReflexStruct* rstruct = ReflexGetStruct(i);
-		if (rstruct && rstruct->hint && StrEq(rstruct->hint, SCRIPT_HINT))
-		{
-			ScriptHook start = ReflexGetFunctor(rstruct->name, "Start");
-			ScriptHook simulate = ReflexGetFunctor(rstruct->name, "Simulate");
-			ScriptHook update = ReflexGetFunctor(rstruct->name, "Update");
-			ScriptHook stop = ReflexGetFunctor(rstruct->name, "Stop");
-			RegisterScript(rstruct, start, simulate, update, stop);
-		}
-	}
-}
-
-u32 ScriptCount()
-{
-	return scriptRegistry.scriptCount;
-}
-
-const Script &GetScriptAt(u32 index)
-{
-	ASSERT( index < scriptRegistry.scriptCount );
-	return scriptRegistry.scripts[index];
-}
-
 static u32 FindScriptIndex(const char *name)
 {
 	for (u32 i = 0; i < scriptRegistry.scriptCount; ++i)
@@ -136,6 +109,100 @@ static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &componen
 
 		game.currentEntity = prevEntity;
 	}
+}
+
+// Writes the saved property values over the script data, skipping any that no longer
+// match the script's reflected members.
+static void ApplyScriptDesc(ScriptComponent &component, const ScriptComponentDesc &desc)
+{
+	if ( component.structIndex >= scriptRegistry.scriptCount ) {
+		return;
+	}
+
+	const ReflexStruct *type = scriptRegistry.scripts[component.structIndex].type;
+
+	for (u32 i = 0; i < desc.propertyCount; ++i)
+	{
+		const ScriptPropertyDesc &propertyDesc = desc.properties[i];
+
+		const ReflexMember *member = nullptr;
+		for (u32 p = 0; p < type->memberCount; ++p)
+		{
+			const ReflexMember &currMember = type->members[p];
+			if ( StrEq( currMember.name, propertyDesc.name ) ) {
+				member = &currMember;
+				break;
+			}
+		}
+
+		if ( !member ) {
+			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
+		} else if ( member->reflexId != propertyDesc.value.type ) {
+			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
+		} else {
+			SetPropertyValue(*member, component.data, propertyDesc.value);
+		}
+	}
+}
+
+void RegisterScripts(Engine &engine)
+{
+	for (u32 i = ReflexID_StructBegin; i < ReflexID_StructEnd; ++i)
+	{
+		const ReflexStruct* rstruct = ReflexGetStruct(i);
+		if (rstruct && rstruct->hint && StrEq(rstruct->hint, SCRIPT_HINT))
+		{
+			ScriptHook start = ReflexGetFunctor(rstruct->name, "Start");
+			ScriptHook simulate = ReflexGetFunctor(rstruct->name, "Simulate");
+			ScriptHook update = ReflexGetFunctor(rstruct->name, "Update");
+			ScriptHook stop = ReflexGetFunctor(rstruct->name, "Stop");
+			RegisterScript(rstruct, start, simulate, update, stop);
+		}
+	}
+
+	// A reload rebuilds the registry, so every component re-resolves its index by name. A
+	// struct whose size changed gets a fresh block, but one that only moved its members
+	// around keeps its data and reads it back under the new layout.
+	Scene &scene = engine.scene;
+	for (u32 i = 0; i < scene.scriptComponentCount; ++i)
+	{
+		ScriptComponent &component = scene.scriptComponents[i];
+
+		if ( !component.name ) { // Added, but no script dropped on it yet
+			continue;
+		}
+
+		const u32 structIndex = FindScriptIndex(component.name);
+		if ( structIndex == U32_MAX ) {
+			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", component.name);
+			component.structIndex = U16_MAX;
+			continue;
+		}
+
+		component.structIndex = (u16)structIndex;
+
+		// The block is exactly the size the old struct was, so a struct that changed
+		// across the reload needs a new one. Its contents cannot be carried over.
+		const u32 dataSize = ScriptDataSize(scriptRegistry.scripts[structIndex]);
+		if ( dataSize != component.dataSize )
+		{
+			LOG(Warning, "Script <%s> changed size across the reload, its instance is reset.\n", component.name);
+			FreeScriptData(engine, component.data, component.dataSize);
+			component.dataSize = dataSize;
+			component.data = AllocScriptData(engine, dataSize);
+		}
+	}
+}
+
+u32 ScriptCount()
+{
+	return scriptRegistry.scriptCount;
+}
+
+const Script &GetScriptAt(u32 index)
+{
+	ASSERT( index < scriptRegistry.scriptCount );
+	return scriptRegistry.scripts[index];
 }
 
 // Attaches a script component with nothing assigned to it yet. Hooks skip it and the
@@ -216,40 +283,6 @@ ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName)
 	return &component;
 }
 
-// Writes the saved property values over the script data, skipping any that no longer
-// match the script's reflected members.
-static void ApplyScriptDesc(ScriptComponent &component, const ScriptComponentDesc &desc)
-{
-	if ( component.structIndex >= scriptRegistry.scriptCount ) {
-		return;
-	}
-
-	const ReflexStruct *type = scriptRegistry.scripts[component.structIndex].type;
-
-	for (u32 i = 0; i < desc.propertyCount; ++i)
-	{
-		const ScriptPropertyDesc &propertyDesc = desc.properties[i];
-
-		const ReflexMember *member = nullptr;
-		for (u32 p = 0; p < type->memberCount; ++p)
-		{
-			const ReflexMember &currMember = type->members[p];
-			if ( StrEq( currMember.name, propertyDesc.name ) ) {
-				member = &currMember;
-				break;
-			}
-		}
-
-		if ( !member ) {
-			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else if ( member->reflexId != propertyDesc.value.type ) {
-			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else {
-			SetPropertyValue(*member, component.data, propertyDesc.value);
-		}
-	}
-}
-
 ScriptComponent* AddScript(Engine &engine, ID entityId, const ScriptComponentDesc &desc)
 {
 	ScriptComponent *component = AddScript(engine, entityId, desc.name);
@@ -325,42 +358,6 @@ void RemoveScript(Engine &engine, ID entityId)
 	}
 
 	scene.entityComponentIndex[entityIndex][ComponentType_Script] = NO_COMPONENT;
-}
-
-// A reload rebuilds the registry, so every component re-resolves its index by name. A
-// struct whose size changed gets a fresh block, but one that only moved its members
-// around keeps its data and reads it back under the new layout.
-void RebindScripts(Engine &engine)
-{
-	Scene &scene = engine.scene;
-	for (u32 i = 0; i < scene.scriptComponentCount; ++i)
-	{
-		ScriptComponent &component = scene.scriptComponents[i];
-
-		if ( !component.name ) { // Added, but no script dropped on it yet
-			continue;
-		}
-
-		const u32 structIndex = FindScriptIndex(component.name);
-		if ( structIndex == U32_MAX ) {
-			LOG(Warning, "Script <%s> is gone after the reload, its instance stops running.\n", component.name);
-			component.structIndex = U16_MAX;
-			continue;
-		}
-
-		component.structIndex = (u16)structIndex;
-
-		// The block is exactly the size the old struct was, so a struct that changed
-		// across the reload needs a new one. Its contents cannot be carried over.
-		const u32 dataSize = ScriptDataSize(scriptRegistry.scripts[structIndex]);
-		if ( dataSize != component.dataSize )
-		{
-			LOG(Warning, "Script <%s> changed size across the reload, its instance is reset.\n", component.name);
-			FreeScriptData(engine, component.data, component.dataSize);
-			component.dataSize = dataSize;
-			component.data = AllocScriptData(engine, dataSize);
-		}
-	}
 }
 
 void RunScriptHooks(Engine &engine, ScriptHookType hook)

@@ -854,7 +854,12 @@ struct LightComponentDesc
 struct LightComponent
 {
 	ID entityId;
-	LightComponentDesc desc;
+
+	// Descriptor
+	LightType type;
+	float3 color;
+	f32 intensity;
+	f32 radius;
 };
 
 struct ParticleEffectDesc
@@ -902,7 +907,12 @@ struct ParticlesComponentDesc
 struct ParticlesComponent
 {
 	ID entityId;
-	ParticlesComponentDesc desc;
+
+	// Descriptor
+	ID effectId;
+	u8 playOnStart;
+
+	// Runtime
 	u8 playing;
 	f32 emitAccum; // ???
 	f32 elapsedTime; // from 0 to duration
@@ -942,7 +952,10 @@ struct SpriteComponentDesc
 struct SpriteComponent
 {
 	ID entityId;
-	SpriteComponentDesc desc;
+
+	// Descriptor
+	ID spriteId;
+	ID layerId;
 };
 
 struct ComponentDesc
@@ -1455,7 +1468,7 @@ struct Engine
 
 // The registry is rebuilt by RegisterScripts on every reload, so an index is only
 // valid until the next one. Never hold one across a reload, hold the name instead.
-void RegisterScripts();
+void RegisterScripts(Engine &engine);
 u32 ScriptCount();
 const Script &GetScriptAt(u32 index);
 
@@ -1465,7 +1478,6 @@ ScriptComponent *AddScript(Engine &engine, ID entityId, const ScriptComponentDes
 void RemoveScript(Engine &engine, ID entityId);
 bool GatherEntityScriptDesc(const Scene &scene, ID entityId, ScriptComponentDesc &outScript, ComponentDescPool &pool);
 void RunScriptHooks(Engine &engine, ScriptHookType hook);
-void RebindScripts(Engine &engine);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // FUNCTIONS: Audio

@@ -282,9 +282,7 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 	}
 
 	Engine &engine = GetEngine();
-
-	RegisterScripts();
-	RebindScripts(engine);
+	RegisterScripts(engine);
 
 	if ( !firstLoad )
 	{
@@ -567,7 +565,7 @@ void SetEntitySprite(ID entityId, ID spriteId)
 	if ( !HasComponents(engine.scene, entityId, Component_Sprite) ) {
 		AddComponent(engine, entityId, ComponentType_Sprite);
 	}
-	GetSpriteComponent(engine.scene, entityId).desc.spriteId = spriteId;
+	GetSpriteComponent(engine.scene, entityId).spriteId = spriteId;
 }
 
 void SetCamera(const Camera &camera)
