@@ -230,9 +230,22 @@ static GeometryType StrToGeometryType(String str)
 	static const String sGeometryTypeSprite = MakeString("GeometryTypeSprite");
 	if ( StrEq(str, sGeometryTypeCube) ) return GeometryTypeCube;
 	else if ( StrEq(str, sGeometryTypePlane) ) return GeometryTypePlane;
+	else if ( StrEq(str, sGeometryTypeQuad) ) return GeometryTypeQuad;
 	else if ( StrEq(str, sGeometryTypeScreen) ) return GeometryTypeScreen;
 	else if ( StrEq(str, sGeometryTypeSprite) ) return GeometryTypeSprite;
 	return GeometryTypeCube;
+}
+
+static void WriteModelComponentDesc(WriteContext &ctx, const ModelComponentDesc &model)
+{
+	WriteLine(ctx, ".model = {");
+	PushIndent(ctx);
+
+	WriteLine(ctx, ".materialId = %u,", model.materialId.slot);
+	WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(model.geometryType));
+
+	PopIndent(ctx);
+	WriteLine(ctx, "},");
 }
 
 static void WriteSpriteComponentDesc(WriteContext &ctx, const SpriteComponentDesc &sprite)
@@ -301,6 +314,7 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &component
 {
 	switch (component.type)
 	{
+		case ComponentType_Model:     WriteModelComponentDesc(ctx, component.model); break;
 		case ComponentType_Sprite:    WriteSpriteComponentDesc(ctx, component.sprite); break;
 		case ComponentType_Light:     WriteLightComponentDesc(ctx, component.light); break;
 		case ComponentType_Particles: WriteParticlesComponentDesc(ctx, component.particles); break;
@@ -312,10 +326,6 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &component
 static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc, u32 entityIndex,
 		const ComponentDesc *components, u32 componentCount)
 {
-	if (desc.materialId.slot != 0) {
-		WriteLine(ctx, ".materialId = %u,", desc.materialId.slot);
-		WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(desc.geometryType));
-	}
 	WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
 	WriteLine(ctx, ".scale = %f,", desc.scale);
 
@@ -1152,6 +1162,37 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 
 static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script, ComponentDescPool &pool);
 
+static void DParser_ConsumeEntityModel( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
+{
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Model);
+
+	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
+	{
+		DParser_TryConsume(parser, TOKEN_DOT);
+
+		const String field = DParser_ConsumeLexeme(parser);
+
+		DParser_TryConsume(parser, TOKEN_EQUAL);
+
+		static const String sMaterialId = MakeString("materialId");
+		static const String sGeometryType = MakeString("geometryType");
+
+		if ( StrEq( field, sMaterialId ) ) {
+			const ID id = DParser_ConsumeID(parser);
+			if ( component ) { component->model.materialId = id; }
+		} else if ( StrEq( field, sGeometryType ) ) {
+			const GeometryType geometryType = DParser_ConsumeGeometryType(parser);
+			if ( component ) { component->model.geometryType = geometryType; }
+		}
+
+		DParser_TryConsume(parser, TOKEN_COMMA);
+	}
+
+	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+}
+
 static void DParser_ConsumeEntitySprite( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
@@ -1293,10 +1334,9 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 {
 	static const String sId = MakeString("id");
 	static const String sName = MakeString("name");
-	static const String sMaterialId = MakeString("materialId");
 	static const String sPos = MakeString("pos");
 	static const String sScale = MakeString("scale");
-	static const String sGeometryType = MakeString("geometryType");
+	static const String sModel = MakeString("model");
 	static const String sSprite = MakeString("sprite");
 	static const String sLight = MakeString("light");
 	static const String sParticles = MakeString("particles");
@@ -1306,14 +1346,12 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 		entity.id = DParser_ConsumeID(parser);
 	} else if ( StrEq( field, sName ) ) {
 		entity.name = PushString(*parser.arena, DParser_ConsumeString(parser));
-	} else if ( StrEq( field, sMaterialId ) ) {
-		entity.materialId = DParser_ConsumeID(parser);
 	} else if ( StrEq( field, sPos ) ) {
 		entity.pos = DParser_ConsumeFloat3(parser);
 	} else if ( StrEq( field, sScale ) ) {
 		entity.scale = DParser_ConsumeF32(parser);
-	} else if ( StrEq( field, sGeometryType ) ) {
-		entity.geometryType = DParser_ConsumeGeometryType(parser);
+	} else if ( StrEq( field, sModel ) ) {
+		DParser_ConsumeEntityModel(parser, pool, entityIndex);
 	} else if ( StrEq( field, sSprite ) ) {
 		DParser_ConsumeEntitySprite(parser, pool, entityIndex);
 	} else if ( StrEq( field, sLight ) ) {
@@ -1934,10 +1972,8 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 	d = {};
 	d.id           = desc.id;
 	d.name         = DataInternString(stringPool, desc.name);
-	d.materialId   = desc.materialId;
 	d.pos          = desc.pos;
 	d.scale        = desc.scale;
-	d.geometryType = desc.geometryType;
 
 	for (u32 i = 0; i < componentCount; ++i)
 	{
@@ -1948,6 +1984,12 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 
 		switch (component.type)
 		{
+			case ComponentType_Model:
+				d.components |= Component_Model;
+				d.materialId = component.model.materialId;
+				d.geometryType = component.model.geometryType;
+				break;
+
 			case ComponentType_Sprite:
 				d.spriteId = component.sprite.spriteId;
 				d.layerId = component.sprite.layerId;

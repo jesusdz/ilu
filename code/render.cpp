@@ -819,15 +819,20 @@ bool RenderGraphics(Engine &engine)
 
 			if ( !entity.visible ) continue;
 
-			// Geometry
-			SetVertexBuffer(commandList, vertexBuffer);
-			SetIndexBuffer(commandList, indexBuffer);
+			if ( HasComponents(scene, entity.id, Component_Model) )
+			{
+				const ModelComponent &model = GetModel(scene, entity.id);
 
-			// Draw!!!
-			const uint32_t indexCount = entity.indices.size/sizeof(Index);
-			const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
-			const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[entityIndex].id), 1);
+				// Geometry
+				SetVertexBuffer(commandList, vertexBuffer);
+				SetIndexBuffer(commandList, indexBuffer);
+
+				// Draw!!!
+				const uint32_t indexCount = model.indices.size/sizeof(Index);
+				const uint32_t firstIndex = model.indices.offset/sizeof(Index);
+				const int32_t firstVertex = model.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
+				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[entityIndex].id), 1);
+			}
 		}
 
 		EndRenderPass(commandList);
@@ -891,31 +896,37 @@ bool RenderGraphics(Engine &engine)
 				const Entity &entity = scene.entities[i];
 
 				if ( !entity.visible || entity.culled ) continue;
-				if ( !entity.materialId ) continue;
 
-				const ID materialId = entity.materialId;
-				const Material &material = GetMaterial(materialId);
+				if ( HasComponents(scene, entity.id, Component_Model) )
+				{
+					const ModelComponent &model = GetModel(scene, entity.id);
 
-				BeginDebugGroup(commandList, material.desc.name, ColorBlack);
+					const ID materialId = model.materialId;
+					if ( !materialId ) { continue; }
 
-				// Pipeline
-				SetPipeline(commandList, gfx.pipelines[material.pipelineIndex]);
+					const Material &material = GetMaterial(materialId);
 
-				// Bind groups
-				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-				SetBindGroup(commandList, 1, gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)]);
+					BeginDebugGroup(commandList, material.desc.name, ColorBlack);
 
-				// Geometry
-				SetVertexBuffer(commandList, vertexBuffer);
-				SetIndexBuffer(commandList, indexBuffer);
+					// Pipeline
+					SetPipeline(commandList, gfx.pipelines[material.pipelineIndex]);
 
-				// Draw!!!
-				const uint32_t indexCount = entity.indices.size/sizeof(Index);
-				const uint32_t firstIndex = entity.indices.offset/sizeof(Index);
-				const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, entity.id), 1);
+					// Bind groups
+					SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+					SetBindGroup(commandList, 1, gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)]);
 
-				EndDebugGroup(commandList);
+					// Geometry
+					SetVertexBuffer(commandList, vertexBuffer);
+					SetIndexBuffer(commandList, indexBuffer);
+
+					// Draw!!!
+					const uint32_t indexCount = model.indices.size/sizeof(Index);
+					const uint32_t firstIndex = model.indices.offset/sizeof(Index);
+					const int32_t firstVertex = model.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
+					DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, entity.id), 1);
+
+					EndDebugGroup(commandList);
+				}
 			}
 		}
 

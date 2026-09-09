@@ -954,6 +954,9 @@ static void EditorUpdateUI_Outliner()
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectMaterial(desc.id);
 			}
+
+			UI_DragAndDropSource(ui, "IDMaterial", UI_Payload(desc.id.slot), editor.iconAsset );
+
 			EditorAssetContextMenu("MaterialContext", EditorSelectedType_Material, desc.id);
 		}
 	}
@@ -1545,22 +1548,64 @@ static void EditorUpdateUI_Inspector()
 				UI_InputFloat(ui, "Scale", &entity.scale);
 				UI_Checkbox(ui, "Visible", &entity.visible);
 
-				UI_SeparatorLabel(ui, "Sprite");
-
-				const ID entitySpriteId = EntitySpriteId(engine.scene, inspector.selected.id);
-				const SpriteDesc *sprite = entitySpriteId ? &GetSprite(entitySpriteId).desc : nullptr;
-				UI_Text(ui, "Name", "%s", sprite ? sprite->name : "<none>");
-				if ( UI_DragAndDropTarget(ui, "IDSprite") )
+				if ( HasComponents(engine.scene, inspector.selected.id, Component_Model) )
 				{
-					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
-					if ( droppedId ) {
-						SetEntitySprite(inspector.selected.id, droppedId);
+					UI_SeparatorLabel(ui, "Model");
+
+					ModelComponent &model = GetModel(engine.scene, inspector.selected.id);
+
+					const MaterialDesc *material = model.materialId ? &GetMaterial(model.materialId).desc : nullptr;
+
+					UI_Text(ui, "Material", "%s", material ? material->name : "<none>");
+					if ( UI_DragAndDropTarget(ui, "IDMaterial") )
+					{
+						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+						if ( droppedId ) {
+							model.materialId = droppedId;
+						}
+					}
+
+					if (material && UI_Button(ui, "Go to material"))
+					{
+						EditorSelectMaterial(model.materialId);
+					}
+
+					u32 geometryType = model.geometryType;
+					UI_Combo(ui, "Geometry", (const char **)GeometryTypeStr, GeometryTypeCount, &geometryType);
+					if ( geometryType != (u32)model.geometryType ) {
+						SetModelGeometryType(engine, model, (GeometryType)geometryType);
+					}
+
+					if (UI_Button(ui, "Remove"))
+					{
+						RemoveComponent(engine, inspector.selected.id, ComponentType_Model);
 					}
 				}
 
-				if (sprite && UI_Button(ui, "Go to sprite"))
+				if ( HasComponents(engine.scene, inspector.selected.id, Component_Sprite) )
 				{
-					EditorSelectSprite(entitySpriteId);
+					UI_SeparatorLabel(ui, "Sprite");
+
+					const ID entitySpriteId = EntitySpriteId(engine.scene, inspector.selected.id);
+					const SpriteDesc *sprite = entitySpriteId ? &GetSprite(entitySpriteId).desc : nullptr;
+					UI_Text(ui, "Name", "%s", sprite ? sprite->name : "<none>");
+					if ( UI_DragAndDropTarget(ui, "IDSprite") )
+					{
+						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
+						if ( droppedId ) {
+							SetEntitySprite(inspector.selected.id, droppedId);
+						}
+					}
+
+					if (sprite && UI_Button(ui, "Go to sprite"))
+					{
+						EditorSelectSprite(entitySpriteId);
+					}
+
+					if (UI_Button(ui, "Remove"))
+					{
+						RemoveComponent(engine, inspector.selected.id, ComponentType_Sprite);
+					}
 				}
 
 				if ( HasComponents(engine.scene, inspector.selected.id, Component_Light) )
@@ -3373,12 +3418,13 @@ void EditorRender(Engine &engine, CommandList &commandList)
 				const Entity &entity = scene.entities[i];
 
 				if ( !entity.visible || entity.culled ) continue;
-				if ( !entity.materialId ) continue;
+				if ( !EntityMaterialId(scene, entity.id) ) continue;
+				const ModelComponent &model = GetModel(scene, entity.id);
 
 				// Draw!!!
-				const uint32_t indexCount = entity.indices.size/2; // div 2 (2 bytes per index)
-				const uint32_t firstIndex = entity.indices.offset/2; // div 2 (2 bytes per index)
-				const int32_t firstVertex = entity.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
+				const uint32_t indexCount = model.indices.size/2; // div 2 (2 bytes per index)
+				const uint32_t firstIndex = model.indices.offset/2; // div 2 (2 bytes per index)
+				const int32_t firstVertex = model.vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
 				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, EntityDrawId(scene, scene.entities[i].id), 1);
 			}
 

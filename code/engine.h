@@ -443,7 +443,16 @@ enum GeometryType
 	GeometryTypeScreen,
 	GeometryTypeQuad,
 	GeometryTypeSprite,
+	GeometryTypeCount,
 };
+constexpr const char *GeometryTypeStr[] = {
+	"GeometryTypeCube",
+	"GeometryTypePlane",
+	"GeometryTypeScreen",
+	"GeometryTypeQuad",
+	"GeometryTypeSprite",
+};
+CT_ASSERT(ARRAY_COUNT(GeometryTypeStr) == GeometryTypeCount);
 
 enum ShaderType
 {
@@ -818,6 +827,7 @@ struct SceneDesc
 
 enum ComponentType
 {
+	ComponentType_Model,
 	ComponentType_Sprite,
 	ComponentType_Light,
 	ComponentType_Particles,
@@ -827,6 +837,7 @@ enum ComponentType
 
 enum ComponentBits
 {
+	Component_Model = 1<<ComponentType_Model,
 	Component_Sprite = 1<<ComponentType_Sprite,
 	Component_Light = 1<<ComponentType_Light,
 	Component_Particles = 1<<ComponentType_Particles,
@@ -835,7 +846,7 @@ enum ComponentBits
 
 typedef u32 ComponentFlags;
 
-constexpr const char *ComponentNames[] = { "Sprite", "Light", "Particles", "Script" };
+constexpr const char *ComponentNames[] = { "Model", "Sprite", "Light", "Particles", "Script" };
 
 CT_ASSERT(ARRAY_COUNT(ComponentNames) == ComponentType_Count);
 
@@ -932,6 +943,25 @@ struct Particle
 ////////////////////////////////////////////////////////////////////////
 // Descriptors
 
+struct ModelComponentDesc
+{
+	ID materialId;
+	GeometryType geometryType;
+};
+
+struct ModelComponent
+{
+	ID entityId;
+
+	// Descriptor
+	ID materialId;
+	GeometryType geometryType;
+
+	// Runtime
+	BufferChunk vertices;
+	BufferChunk indices;
+};
+
 struct SpriteDesc
 {
 	ID id;
@@ -965,6 +995,7 @@ struct ComponentDesc
 	ComponentType type;
 	union
 	{
+		ModelComponentDesc model;
 		SpriteComponentDesc sprite;
 		LightComponentDesc light;
 		ParticlesComponentDesc particles;
@@ -990,9 +1021,6 @@ struct EntityDesc
 	// Transform
 	float3 pos;
 	float scale;
-	// 3D entity
-	ID materialId;
-	GeometryType geometryType;
 };
 
 #define MAX_PREFAB_ENTITIES 16
@@ -1069,11 +1097,6 @@ struct Entity
 	// Transform
 	float3 position;
 	float scale;
-	// 3D entity
-	GeometryType geometryType;
-	BufferChunk vertices;
-	BufferChunk indices;
-	ID materialId;
 	bool flipX;
 
 	bool visible;
@@ -1153,6 +1176,7 @@ constexpr u32 SCENE_HEIGHT = 180;
 constexpr u32 MAX_PARTICLES = 1024;
 constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 
+#define MAX_MODEL_COMPONENTS 1024
 #define MAX_SPRITE_COMPONENTS 1024
 #define MAX_LIGHT_COMPONENTS 1024
 #define MAX_PARTICLES_COMPONENTS 1024
@@ -1177,6 +1201,9 @@ struct Scene
 	// Each pool is packed, so removing a component swaps the last one down into the
 	// hole. The moved component names its own entity, which is what lets that swap
 	// repoint the entity back at its new slot.
+	u32 modelComponentCount;
+	ModelComponent modelComponents[MAX_MODEL_COMPONENTS];
+
 	u32 spriteComponentCount;
 	SpriteComponent spriteComponents[MAX_SPRITE_COMPONENTS];
 
@@ -1717,6 +1744,11 @@ ID EntityFromDrawId(u32 drawId);
 // Entity components
 
 bool HasComponents(const Scene &scene, ID entityId, ComponentFlags components);
+
+ModelComponent &GetModel(Scene &scene, ID entityId);
+const ModelComponent &GetModel(const Scene &scene, ID entityId);
+ID EntityMaterialId(const Scene &scene, ID entityId);
+void SetModelGeometryType(Engine &engine, ModelComponent &model, GeometryType geometryType);
 
 SpriteComponent &GetSprite(Scene &scene, ID entityId);
 const SpriteComponent &GetSprite(const Scene &scene, ID entityId);

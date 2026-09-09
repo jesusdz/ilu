@@ -486,6 +486,78 @@ bool HasComponents(const Scene &scene, ID id, ComponentFlags components)
 	return true;
 }
 
+static void UpdateModelGeometry(Graphics &gfx, ModelComponent &model)
+{
+	model.vertices = GetVerticesForGeometryType(gfx, model.geometryType);
+	model.indices = GetIndicesForGeometryType(gfx, model.geometryType);
+}
+
+static ModelComponent *AddModel(Engine &engine, ID entityId)
+{
+	Scene &scene = engine.scene;
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+
+	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Model];
+	if ( slot == NO_COMPONENT )
+	{
+		if ( scene.modelComponentCount == MAX_MODEL_COMPONENTS ) {
+			LOG(Warning, "Could not add a model component, the model pool is full.\n");
+			return nullptr;
+		}
+
+		slot = (u16)scene.modelComponentCount++;
+		scene.entityComponentIndex[entityIndex][ComponentType_Model] = slot;
+	}
+
+	ModelComponent &model = scene.modelComponents[slot];
+	model = {
+		.entityId = entityId,
+		.materialId = engine.gfx.defaultMaterial,
+		.geometryType = GeometryTypeCube,
+	};
+	UpdateModelGeometry(engine.gfx, model);
+	return &model;
+}
+
+static void RemoveModel(Scene &scene, ID entityId)
+{
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+
+	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Model];
+	if ( slot == NO_COMPONENT ) {
+		return;
+	}
+
+	const u16 last = (u16)(--scene.modelComponentCount);
+	if ( slot != last )
+	{
+		scene.modelComponents[slot] = scene.modelComponents[last];
+		scene.entityComponentIndex[ GetEntityIndex(scene, scene.modelComponents[slot].entityId) ][ComponentType_Model] = slot;
+	}
+
+	scene.entityComponentIndex[entityIndex][ComponentType_Model] = NO_COMPONENT;
+}
+
+ModelComponent &GetModel(Scene &scene, ID entityId)
+{
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Model];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.modelComponents[slot];
+}
+
+const ModelComponent &GetModel(const Scene &scene, ID entityId)
+{
+	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Model];
+	ASSERT( slot != NO_COMPONENT );
+	return scene.modelComponents[slot];
+}
+
+void SetModelGeometryType(Engine &engine, ModelComponent &model, GeometryType geometryType)
+{
+	model.geometryType = geometryType;
+	UpdateModelGeometry(engine.gfx, model);
+}
+
 static SpriteComponent *AddSpriteComponent(Scene &scene, ID entityId)
 {
 	const u16 entityIndex = GetEntityIndex(scene, entityId);
@@ -542,6 +614,14 @@ const SpriteComponent &GetSprite(const Scene &scene, ID entityId)
 
 // Most callers only want the ID and do not care whether the entity has the component,
 // so these answer with a null ID instead of making every site test for it first
+ID EntityMaterialId(const Scene &scene, ID entityId)
+{
+	if ( !HasComponents(scene, entityId, Component_Model) ) {
+		return {};
+	}
+	return GetModel(scene, entityId).materialId;
+}
+
 ID EntitySpriteId(const Scene &scene, ID entityId)
 {
 	if ( !HasComponents(scene, entityId, Component_Sprite) ) {
@@ -753,6 +833,21 @@ ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, Compo
 	return &desc;
 }
 
+ModelComponentDesc MakeDesc(const ModelComponent &comp)
+{
+	const ModelComponentDesc desc = {
+		.materialId = comp.materialId,
+		.geometryType = comp.geometryType,
+	};
+	return desc;
+}
+
+void ApplyDesc(ModelComponent &comp, const ModelComponentDesc &desc)
+{
+	comp.materialId = desc.materialId;
+	comp.geometryType = desc.geometryType;
+}
+
 SpriteComponentDesc MakeDesc(const SpriteComponent &comp)
 {
 	const SpriteComponentDesc desc = {
@@ -807,6 +902,13 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 	Scene &scene = engine.scene;
 	const Entity &entity = GetEntity(entityId);
 
+	if ( HasComponents(scene, entityId, Component_Model) )
+	{
+		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Model) ) {
+			desc->model = MakeDesc(GetModel(scene, entityId));
+		}
+	}
+
 	if ( HasComponents(scene, entityId, Component_Sprite) )
 	{
 		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
@@ -849,6 +951,10 @@ void AddComponent(Engine &engine, ID entityId, ComponentType type)
 
 	switch ( type )
 	{
+		case ComponentType_Model:
+			AddModel(engine, entityId);
+			break;
+
 		case ComponentType_Sprite:
 			AddSpriteComponent(engine.scene, entityId);
 			break;
@@ -879,6 +985,10 @@ void RemoveComponent(Engine &engine, ID entityId, ComponentType type)
 
 	switch ( type )
 	{
+		case ComponentType_Model:
+			RemoveModel(engine.scene, entityId);
+			break;
+
 		case ComponentType_Sprite:
 			RemoveSpriteComponent(engine.scene, entityId);
 			break;
@@ -910,6 +1020,23 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 
 	switch ( desc.type )
 	{
+		case ComponentType_Model:
+		{
+			if ( ModelComponent *model = AddModel(engine, entityId) )
+			{
+				ApplyDesc(*model, desc.model);
+				UpdateModelGeometry(engine.gfx, *model);
+
+				if ( desc.model.materialId.slot != 0 && !Valid(desc.model.materialId) )
+				{
+					LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n",
+							GetEntity(entityId).name, desc.model.materialId.slot);
+					model->materialId = engine.gfx.defaultMaterial;
+				}
+			}
+			break;
+		}
+
 		case ComponentType_Sprite:
 		{
 			if ( SpriteComponent *sprite = AddSpriteComponent(engine.scene, entityId) )
@@ -957,10 +1084,6 @@ EntityDesc GetEntityDesc(Engine &engine, ID id)
 		.pos     = entity.position,
 		.scale   = entity.scale,
 	};
-	if ( !EntitySpriteId(engine.scene, id) ) {
-		entityDesc.materialId = entity.materialId;
-		entityDesc.geometryType = entity.geometryType;
-	}
 	return entityDesc;
 }
 
@@ -989,9 +1112,6 @@ static Entity *PushEntity(Scene &scene, ID id)
 
 ID CreateEntity(Engine &engine, const EntityDesc &desc)
 {
-	BufferChunk vertices = GetVerticesForGeometryType(engine.gfx, desc.geometryType);
-	BufferChunk indices = GetIndicesForGeometryType(engine.gfx, desc.geometryType);
-
 	Entity *entity = PushEntity(engine.scene, desc.id);
 	if ( !entity ) {
 		return {};
@@ -1001,19 +1121,6 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	entity->visible = true;
 	EntitySetPosition(*entity, desc.pos);
 	entity->scale = desc.scale;
-	entity->geometryType = desc.geometryType;
-	entity->vertices = vertices;
-	entity->indices = indices;
-	entity->materialId = desc.materialId;
-
-	// An entity carries either a material or a sprite, so only an ID that was set and
-	// then failed to resolve is worth complaining about
-	if ( desc.materialId.slot != 0 && !Valid(desc.materialId) )
-	{
-		LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n",
-				desc.name, desc.materialId.slot);
-		entity->materialId = engine.gfx.defaultMaterial;
-	}
 
 	return entity->id;
 }
@@ -1025,9 +1132,15 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 		.name = desc.name,
 		.pos = desc.pos,
 		.scale = desc.scale,
-		.materialId = desc.materialId,
-		.geometryType = desc.geometryType,
 	};
+
+	if ( desc.components & Component_Model )
+	{
+		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Model) ) {
+			component->model.materialId = desc.materialId;
+			component->model.geometryType = desc.geometryType;
+		}
+	}
 
 	if ( desc.spriteId )
 	{
