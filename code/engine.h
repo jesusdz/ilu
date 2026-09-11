@@ -90,7 +90,7 @@ struct BinLocation
 
 typedef u16 Index;
 
-ILU_ENUM()
+ILU_ENUM(Count)
 enum GeometryType
 {
 	GeometryTypeCube,
@@ -100,14 +100,6 @@ enum GeometryType
 	GeometryTypeSprite,
 	GeometryTypeCount,
 };
-constexpr const char *GeometryTypeStr[] = {
-	"GeometryTypeCube",
-	"GeometryTypePlane",
-	"GeometryTypeScreen",
-	"GeometryTypeQuad",
-	"GeometryTypeSprite",
-};
-CT_ASSERT(ARRAY_COUNT(GeometryTypeStr) == GeometryTypeCount);
 
 enum ShaderType
 {
@@ -843,6 +835,22 @@ constexpr const char *ComponentFieldNames[] = {
 #undef COMPONENT_FIELD_NAME
 };
 
+// The component and the descriptor reflex generates for it, e.g. LightComponent and
+// LightComponentDesc. A script component has neither, its properties are the script's.
+inline const ReflexStruct *ComponentReflexStruct(ComponentType type)
+{
+	char name[64];
+	SPrintf(name, "%sComponent", ComponentNames[type]);
+	return ReflexGetStructFromName(name);
+}
+
+inline const ReflexStruct *ComponentDescReflexStruct(ComponentType type)
+{
+	char name[64];
+	SPrintf(name, "%sComponentDesc", ComponentNames[type]);
+	return ReflexGetStructFromName(name);
+}
+
 typedef u32 ComponentFlags;
 
 CT_ASSERT(ComponentType_Count < sizeof(ComponentFlags) * 8);
@@ -895,7 +903,7 @@ struct LightComponent
 	// Descriptor
 	ILU_PROPERTY()
 	LightType type;
-	ILU_PROPERTY()
+	ILU_PROPERTY(Color)
 	float3 color;
 	ILU_PROPERTY()
 	f32 intensity;
@@ -914,7 +922,7 @@ struct ParticlesComponent
 	// Descriptor
 	ILU_PROPERTY(ParticleEffect)
 	ID effectId;
-	ILU_PROPERTY()
+	ILU_PROPERTY(Bool)
 	u8 playOnStart;
 
 	// Runtime

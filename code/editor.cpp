@@ -1324,6 +1324,110 @@ static void EditorUpdateUI_InspectorProperties(const char *scriptName, const Ref
 	}
 }
 
+// Rebuilds what a component derives from a property, which editing the field cannot do
+static void EditorComponentPropertyChanged(Engine &engine, ID entityId, ComponentType componentType, const ReflexMember &member)
+{
+	if ( componentType == ComponentType_Model && StrEq(member.name, "geometryType") )
+	{
+		ModelComponent &model = GetModel(engine.scene, entityId);
+		SetModelGeometryType(engine, model, model.geometryType);
+	}
+}
+
+static void EditorUpdateUI_Component(Engine &engine, ID entityId, ComponentType componentType)
+{
+	UI &ui = engine.ui;
+
+	UI_SeparatorLabel(ui, "%s", ComponentNames[componentType]);
+
+	// Automatic UI powered by reflex
+	const ReflexStruct *type = ComponentReflexStruct(componentType);
+	byte *component = (byte*)GetComponentSlot(engine.scene, entityId, componentType);
+
+	if ( type && component )
+	{
+		for (u32 i = 0; i < type->memberCount; ++i)
+		{
+			const ReflexMember &member = type->members[i];
+			if ( member.ops->edit && member.ops->edit(member, component + member.offset) ) {
+				EditorComponentPropertyChanged(engine, entityId, componentType, member);
+			}
+		}
+	}
+	else
+	{
+		UI_Text(ui, "Properties", "<not reflected>");
+	}
+
+	// What a component offers besides its properties
+	switch (componentType)
+	{
+		case ComponentType_Model:
+		{
+			const ModelComponent &model = GetModel(engine.scene, entityId);
+			if ( model.materialId && UI_Button(ui, "Go to material") ) {
+				EditorSelectMaterial(model.materialId);
+			}
+			break;
+		}
+
+		case ComponentType_Sprite:
+		{
+			const ID spriteId = EntitySpriteId(engine.scene, entityId);
+			if ( spriteId && UI_Button(ui, "Go to sprite") ) {
+				EditorSelectSprite(spriteId);
+			}
+			break;
+		}
+
+		case ComponentType_Particles:
+		{
+			// A removed effect leaves the ID reading as false, so the same test
+			// covers "never assigned" and "the effect went away"
+			const ParticlesComponent &particles = GetParticles(engine.scene, entityId);
+			if ( particles.effectId && UI_Button(ui, "Play") ) {
+				PlayParticles(engine.scene, entityId);
+			}
+			if ( particles.effectId && UI_Button(ui, "Go to effect") ) {
+				EditorSelectParticleEffect(particles.effectId);
+			}
+			break;
+		}
+
+		default:;
+	}
+}
+
+static void EditorUpdateUI_ScriptComponent(Engine &engine, ID entityId)
+{
+	UI &ui = engine.ui;
+
+	ScriptComponent &component = GetScript(engine.scene, entityId);
+
+	if ( component.structIndex != NULL_SCRIPT )
+	{
+		const Script &script = GetScriptAt(component.structIndex);
+		EditorUpdateUI_InspectorProperties(component.name, script.type->members, script.type->memberCount, component.data);
+		return;
+	}
+
+	UI_SeparatorLabel(ui, "Script");
+
+	// No name means the component was added but never assigned. A name
+	// with no index is a script that a reload took away, and dropping
+	// another one here replaces it.
+	UI_Text(ui, "Script", component.name ? component.name : "<drag here>");
+	if ( UI_DragAndDropTarget(ui, "Script") )
+	{
+		const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
+		AddScript(engine, entityId, ScriptName(script));
+	}
+
+	if ( component.name ) {
+		UI_Text(ui, "Status", "<not registered>");
+	}
+}
+
 static void EditorUpdateUI_InspectorScene(Scene &scene)
 {
 	Engine &engine = GetEngine();
@@ -1519,171 +1623,23 @@ static void EditorUpdateUI_Inspector()
 				UI_InputFloat(ui, "Scale", &entity.scale);
 				UI_Checkbox(ui, "Visible", &entity.visible);
 
-				if ( HasComponents(engine.scene, inspector.selected.id, Component_Model) )
+				for (u32 type = 0; type < ComponentType_Count; ++type)
 				{
-					UI_SeparatorLabel(ui, "Model");
+					const ComponentFlags bit = 1 << type;
 
-					ModelComponent &model = GetModel(engine.scene, inspector.selected.id);
-
-					const MaterialDesc *material = model.materialId ? &GetMaterial(model.materialId).desc : nullptr;
-
-					UI_Text(ui, "Material", "%s", material ? material->name : "<none>");
-					if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Material]) )
-					{
-						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
-						if ( droppedId ) {
-							model.materialId = droppedId;
-						}
+					if ( !HasComponents(engine.scene, inspector.selected.id, bit) ) {
+						continue;
 					}
 
-					if (material && UI_Button(ui, "Go to material"))
-					{
-						EditorSelectMaterial(model.materialId);
-					}
-
-					u32 geometryType = model.geometryType;
-					UI_Combo(ui, "Geometry", (const char **)GeometryTypeStr, GeometryTypeCount, &geometryType);
-					if ( geometryType != (u32)model.geometryType ) {
-						SetModelGeometryType(engine, model, (GeometryType)geometryType);
+					if ( type == ComponentType_Script ) {
+						EditorUpdateUI_ScriptComponent(engine, inspector.selected.id);
+					} else {
+						EditorUpdateUI_Component(engine, inspector.selected.id, (ComponentType)type);
 					}
 
 					if (UI_Button(ui, "Remove"))
 					{
-						RemoveComponent(engine, inspector.selected.id, ComponentType_Model);
-					}
-				}
-
-				if ( HasComponents(engine.scene, inspector.selected.id, Component_Sprite) )
-				{
-					UI_SeparatorLabel(ui, "Sprite");
-
-					const ID entitySpriteId = EntitySpriteId(engine.scene, inspector.selected.id);
-					const SpriteDesc *sprite = entitySpriteId ? &GetSprite(entitySpriteId).desc : nullptr;
-					UI_Text(ui, "Name", "%s", sprite ? sprite->name : "<none>");
-					if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Sprite]) )
-					{
-						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
-						if ( droppedId ) {
-							SetEntitySprite(inspector.selected.id, droppedId);
-						}
-					}
-
-					if (sprite && UI_Button(ui, "Go to sprite"))
-					{
-						EditorSelectSprite(entitySpriteId);
-					}
-
-					if (UI_Button(ui, "Remove"))
-					{
-						RemoveComponent(engine, inspector.selected.id, ComponentType_Sprite);
-					}
-				}
-
-				if ( HasComponents(engine.scene, inspector.selected.id, Component_Light) )
-				{
-					UI_SeparatorLabel(ui, "Light");
-
-					LightComponent &light = GetLight(engine.scene, inspector.selected.id);
-
-					static float4 lightColorToEdit = {};
-					static ID lightColorEntity = {};
-
-					if ( UI_ColorButton(ui, "Color", Float4(light.color, 1.0f)) )
-					{
-						lightColorToEdit = Float4(light.color, 1.0f);
-						lightColorEntity = inspector.selected.id;
-					}
-
-					if ( lightColorEntity == inspector.selected.id )
-					{
-						bool isOpen = true;
-						UI_ColorPicker(ui, &lightColorToEdit, &isOpen);
-						light.color = lightColorToEdit.xyz;
-						if ( !isOpen ) {
-							lightColorEntity = {};
-						}
-					}
-
-					UI_InputFloat(ui, "Intensity", &light.intensity);
-					UI_InputFloat(ui, "Radius", &light.radius);
-
-					if (UI_Button(ui, "Remove"))
-					{
-						RemoveComponent(engine, inspector.selected.id, ComponentType_Light);
-					}
-				}
-
-				if ( HasComponents(engine.scene, inspector.selected.id, Component_Particles) )
-				{
-					UI_SeparatorLabel(ui, "Particles");
-
-					ParticlesComponent &particles = GetParticles(engine.scene, inspector.selected.id);
-
-					// A removed effect leaves the ID reading as false, so the same test
-					// covers "never assigned" and "the effect went away"
-					const ParticleEffectDesc *effect = particles.effectId ?
-						&GetParticleEffect(particles.effectId).desc : nullptr;
-
-					UI_Text(ui, "Effect", "%s", effect ? effect->name : "<none>");
-					if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_ParticleEffect]) )
-					{
-						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
-						if ( droppedId ) {
-							particles.effectId = droppedId;
-						}
-					}
-
-					if (effect && UI_Button(ui, "Play"))
-					{
-						PlayParticles(engine.scene, inspector.selected.id);
-					}
-
-					if (effect && UI_Button(ui, "Go to effect"))
-					{
-						EditorSelectParticleEffect(particles.effectId);
-					}
-
-					bool playOnStart = particles.playOnStart != 0;
-					UI_Checkbox(ui, "Play on start", &playOnStart);
-					particles.playOnStart = playOnStart ? 1 : 0;
-
-					if (UI_Button(ui, "Remove"))
-					{
-						RemoveComponent(engine, inspector.selected.id, ComponentType_Particles);
-					}
-				}
-
-				if ( HasComponents(engine.scene, inspector.selected.id, Component_Script) )
-				{
-					ScriptComponent &component = GetScript(engine.scene, inspector.selected.id);
-
-					if ( component.structIndex != NULL_SCRIPT )
-					{
-						const Script &script = GetScriptAt(component.structIndex);
-						EditorUpdateUI_InspectorProperties(component.name, script.type->members, script.type->memberCount, component.data);
-					}
-					else
-					{
-						UI_SeparatorLabel(ui, "Script");
-
-						// No name means the component was added but never assigned. A name
-						// with no index is a script that a reload took away, and dropping
-						// another one here replaces it.
-						UI_Text(ui, "Script", component.name ? component.name : "<drag here>");
-						if ( UI_DragAndDropTarget(ui, "Script") )
-						{
-							const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
-							AddScript(engine, inspector.selected.id, ScriptName(script));
-						}
-
-						if ( component.name ) {
-							UI_Text(ui, "Status", "<not registered>");
-						}
-					}
-
-					if (UI_Button(ui, "Remove"))
-					{
-						RemoveComponent(engine, inspector.selected.id, ComponentType_Script);
+						RemoveComponent(engine, inspector.selected.id, (ComponentType)type);
 					}
 				}
 

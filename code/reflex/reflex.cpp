@@ -428,12 +428,22 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 		printf("////////////////////////////////////////////////////////////////////////\n");
 		printf("// enum %.*s\n", StringPrintfArgs(cenum->name));
 
+		// The last enumerator of an enum tagged ILU_ENUM(Count) counts the others, so it
+		// is left out: it is no value the enum can hold
+		u32 enumeratorCount = 0;
+		for (const CastEnumeratorList *it = CAST_CHILD(cenum, enumeratorList); it; it = it->next) {
+			if (CAST_CHILD(it, enumerator)) enumeratorCount++;
+		}
+		if (cenum->tag && StrEq(cenum->tag->arguments, "Count") && enumeratorCount > 0) {
+			enumeratorCount--;
+		}
+
 		printf("\n");
 		printf("// ReflexEnumerator info\n");
 		printf("static const ReflexEnumerator reflexEnumerators_%.*s[] = {\n", StringPrintfArgs(cenum->name));
 		i32 enumeratorValue = 0;
 		const CastEnumeratorList *enumeratorList = CAST_CHILD(cenum, enumeratorList);
-		while (enumeratorList) {
+		while (enumeratorList && (u32)enumeratorValue < enumeratorCount) {
 			const CastEnumerator *enumerator = CAST_CHILD(enumeratorList, enumerator);
 			if (enumerator) {
 				printf("  { ");

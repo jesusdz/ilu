@@ -30,9 +30,22 @@ static bool EditProperty_u32(const ReflexMember &member, void *field)
 	return UI_InputUInt(ui, member.name, (u32*)field);
 }
 
+static bool HasHint(const ReflexMember &member, const char *hint)
+{
+	return member.hint && StrEq(member.hint, hint);
+}
+
 static bool EditProperty_u8(const ReflexMember &member, void *field)
 {
 	UI &ui = GetEngine().ui;
+
+	if ( HasHint(member, "Bool") ) {
+		bool value = *(u8*)field != 0;
+		const bool changed = UI_Checkbox(ui, member.name, &value);
+		*(u8*)field = value ? 1 : 0;
+		return changed;
+	}
+
 	u32 value = *(u8*)field;
 	const bool changed = UI_InputUInt(ui, member.name, &value);
 	*(u8*)field = (u8)Min(value, 255u);
@@ -48,6 +61,35 @@ static bool EditProperty_f32(const ReflexMember &member, void *field)
 static bool EditProperty_float3(const ReflexMember &member, void *field)
 {
 	UI &ui = GetEngine().ui;
+
+	if ( HasHint(member, "Color") )
+	{
+		// The picker edits a copy until it is closed, and only one can be open, so the field
+		// it belongs to is what tells the open picker apart from every other color row
+		static const void *openField = nullptr;
+		static float4 color = {};
+
+		float3 &value = *(float3*)field;
+
+		if ( UI_ColorButton(ui, member.name, Float4(value, 1.0f)) ) {
+			openField = field;
+			color = Float4(value, 1.0f);
+		}
+
+		if ( openField != field ) {
+			return false;
+		}
+
+		bool isOpen = true;
+		UI_ColorPicker(ui, &color, &isOpen);
+		const bool changed = value.x != color.x || value.y != color.y || value.z != color.z;
+		value = color.xyz;
+		if ( !isOpen ) {
+			openField = nullptr;
+		}
+		return changed;
+	}
+
 	return UI_InputFloat3(ui, member.name, (float3*)field);
 }
 

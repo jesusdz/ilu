@@ -220,15 +220,6 @@ static void PopIndent(WriteContext &ctx)
 	ctx.indent--;
 }
 
-// The descriptor reflex generates for each ILU_STRUCT(Component), e.g. LightComponentDesc.
-// Script components have no such descriptor, their properties depend on the script.
-static const ReflexStruct *ComponentDescType(ComponentType type)
-{
-	char name[64];
-	SPrintf(name, "%sComponentDesc", ComponentNames[type]);
-	return ReflexGetStructFromName(name);
-}
-
 // All the descriptors in the union start at the same address
 static void *ComponentDescData(ComponentDesc &component)
 {
@@ -299,7 +290,7 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &component
 		return;
 	}
 
-	const ReflexStruct *type = ComponentDescType(component.type);
+	const ReflexStruct *type = ComponentDescReflexStruct(component.type);
 	if ( !type ) {
 		LOG(Warning, "Component <%s> has no reflected descriptor, it is not saved.\n", ComponentNames[component.type]);
 		return;
@@ -1168,7 +1159,7 @@ static void DParser_ConsumeProperties( DParser &parser, const ReflexStruct &type
 
 static void DParser_ConsumeEntityComponent( DParser &parser, ComponentDescPool &pool, u32 entityIndex, ComponentType componentType )
 {
-	const ReflexStruct *type = ComponentDescType(componentType);
+	const ReflexStruct *type = ComponentDescReflexStruct(componentType);
 	if ( !type ) {
 		LOG(Warning, "Component <%s> has no reflected descriptor, it is skipped.\n", ComponentNames[componentType]);
 	}
