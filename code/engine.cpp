@@ -683,10 +683,6 @@ void PlayMusic(ID musicId)
 #define ILU_PROFILE_IMPLEMENTATION
 #include "ilu_profile.h"
 
-#if USE_EDITOR
-#include "editor.cpp"
-#endif
-
 #include "libs/ibxm/ibxm.c"
 
 #include "game.cpp"
@@ -695,8 +691,14 @@ void PlayMusic(ID musicId)
 #define ILU_ID_IMPLEMENTATION
 #include "ilu_id.h"
 
+#include "properties.cpp"
+
 #define REFLEX_GENERATED_IMPLEMENTATION
 #include "reflex.generated.h"
+
+#if USE_EDITOR
+#include "editor.cpp"
+#endif
 
 // TODO:
 // - [ ] Instead of binding descriptors per entity, group entities by material and perform a multi draw call for each material group.

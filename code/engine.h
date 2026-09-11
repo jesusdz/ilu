@@ -2,6 +2,14 @@
 #define ENGINE_H
 
 ////////////////////////////////////////////////////////////////////////
+// Reflection annotations
+
+#define ILU_STRUCT(...)
+#define ILU_PROPERTY(...)
+#define ILU_ENUM(...)
+
+
+////////////////////////////////////////////////////////////////////////
 // ID kinds
 
 #define FOREACH_ID_KIND(X) \
@@ -82,6 +90,7 @@ struct BinLocation
 
 typedef u16 Index;
 
+ILU_ENUM()
 enum GeometryType
 {
 	GeometryTypeCube,
@@ -128,6 +137,7 @@ struct DebugDrawBatch
 	u32 vertexCount;
 };
 
+ILU_ENUM()
 enum LightType
 {
 	LightType_Point,
@@ -137,14 +147,18 @@ enum LightType
 // TYPES: Reflected properties
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define ILU_STRUCT(...)
-#define ILU_PROPERTY(...)
-#define ILU_ENUM(...)
+// Every type used by a reflected member needs a PropertyOps_<Type>, see properties.cpp
+#define REFLEX_OPS(Type) &PropertyOps_##Type
 
 #define REFLEX_GENERATED_DECLARATION
 #include "reflex.generated.h"
 
 #include "reflex\reflex.h"
+
+struct ReflexOps
+{
+	bool (*edit)(const ReflexMember &member, void *field);
+};
 
 typedef ReflexID PropertyType;
 

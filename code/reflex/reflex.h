@@ -84,11 +84,18 @@ struct ReflexEnum
 	u16 enumeratorCount;
 };
 
+struct ReflexOps; // Defined by user code
+
+#ifndef REFLEX_OPS
+#define REFLEX_OPS(Type) nullptr
+#endif // REFLEX_OPS
+
 struct ReflexMember
 {
 	const char *name;
 	const char *hint; // Optional arguments in the tag macro
 	const char *typeName; // As spelled in C, e.g. "unsigned int" or "ID"
+	const ReflexOps *ops; // User operations
 	u16 isConst : 1;
 	u16 pointerCount : 2;
 	u16 isArray : 1;

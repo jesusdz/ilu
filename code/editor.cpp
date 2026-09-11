@@ -1303,54 +1303,10 @@ static void EditorUpdateUI_SpriteSheet()
 	UI_EndWindow(ui);
 }
 
-static const char *EditorObjectName(ID id)
-{
-	if ( !id ) {
-		return "<none>";
-	}
-
-	switch ( GetIDKind(id) )
-	{
-		case IDKind_Entity:         return GetEntity(id).name;
-		case IDKind_Texture:        return GetTexture(id).desc.name;
-		case IDKind_Material:       return GetMaterial(id).desc.name;
-		case IDKind_Sprite:         return GetSprite(id).desc.name;
-		case IDKind_ParticleEffect: return GetParticleEffect(id).desc.name;
-		case IDKind_Layer:          return GetLayer(id).name;
-		case IDKind_Room:           return GetRoom(id).name;
-		case IDKind_Prefab:         return GetPrefab(id).name;
-		case IDKind_AudioClip:      return GetAudioClip(id).desc.name;
-		case IDKind_MusicFile:      return GetMusicFile(id).desc.name;
-		default:;
-	}
-
-	return "<unknown>";
-}
-
 static void EditorUpdateUI_Property(const ReflexMember &member, void *data)
 {
-	UI &ui = GetEngine().ui;
-
-	const PropertyType type = member.reflexId;
-
-	PropertyValue value = GetPropertyValue(member, data);
-
-	if ( type == ReflexID_u32 )
-	{
-		if ( UI_InputUInt(ui, member.name, &value.uValue) ) {
-			SetPropertyValue(member, data, value);
-		}
-	}
-	else if ( IsIDProperty(type) )
-	{
-		UI_Text(ui, member.name, "%s", EditorObjectName(value.idValue));
-
-		const IDKind kind = PropertyIDKind(member);
-		if ( kind != IDKind_None && UI_DragAndDropTarget(ui, IDKindNames[kind]) )
-		{
-			value.idValue = { UI_DragAndDropPayload(ui).uvalue };
-			SetPropertyValue(member, data, value);
-		}
+	if (member.ops && member.ops->edit) {
+		member.ops->edit(member, (byte*)data + member.offset);
 	}
 }
 

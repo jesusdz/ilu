@@ -139,6 +139,16 @@ static void PrintReflexID(const ReflexMember &member)
 	}
 }
 
+static const char *OpsTypeName(const ReflexMember &member)
+{
+	if (member.pointerCount > 0) return "Pointer";
+	if (member.isArray) return "Array";
+	if (ReflexIsTrivial(member.reflexId)) return TrivialReflexIDNames[member.reflexId] + sizeof("ReflexID_") - 1;
+	if (ReflexIsStruct(member.reflexId)) return "Struct";
+	if (ReflexIsEnum(member.reflexId)) return "Enum";
+	return member.typeName;
+}
+
 // Prints the member back as a C declaration, e.g. "const char *name;"
 static void PrintMemberDeclaration(const ReflexMember &member)
 {
@@ -261,6 +271,17 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 				LOG(Error, "Reflex: the type of <%.*s::%s> cannot be reflected\n", StringPrintfArgs(cstruct->name), member.name);
 				return false;
 			}
+
+			// The real ID of a reflected type only exists in the consumer of the generated code
+			// Anyway, we just identify here if these types are structs or enums
+			if (member.reflexId == ReflexID_Null) {
+				for (u32 i = 0; i < structCount; ++i) {
+					if (StrEq(structs[i]->name, member.typeName)) member.reflexId = ReflexID_StructBegin;
+				}
+				for (u32 i = 0; i < enumCount; ++i) {
+					if (StrEq(enums[i]->name, member.typeName)) member.reflexId = ReflexID_EnumBegin;
+				}
+			}
 		}
 
 		reflexStructs[index] = {
@@ -284,24 +305,11 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 		for (u32 memberIndex = 0; memberIndex < reflexStruct.memberCount; ++memberIndex)
 		{
 			const ReflexMember &member = reflexStruct.members[memberIndex];
-			if (ReflexIsTrivial(member.reflexId)) {
-				continue;
+			if (member.reflexId != ReflexID_Null) {
+				continue; // Trivial or reflected struct/enum
 			}
 
 			const char *typeName = member.typeName;
-
-			// Types reflected in this file already have a ReflexID
-			bool isReflected = false;
-			for (u32 i = 0; i < structCount && !isReflected; ++i) {
-				isReflected = StrEq(structs[i]->name, typeName);
-			}
-			for (u32 i = 0; i < enumCount && !isReflected; ++i) {
-				isReflected = StrEq(enums[i]->name, typeName);
-			}
-			if (isReflected) {
-				continue;
-			}
-
 			const bool isValue = member.pointerCount == 0;
 
 			u32 customIndex = 0;
@@ -467,6 +475,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 				printf(".hint = NULL, ");
 			}
 			printf(".typeName = \"%s\", ", member.typeName);
+			printf(".ops = REFLEX_OPS(%s), ", OpsTypeName(member));
 			printf(".isConst = %s, ", member.isConst ? "true" : "false");
 			printf(".pointerCount = %u, ", (u32)member.pointerCount);
 			printf(".isArray = %s, ", member.isArray ? "true" : "false");
