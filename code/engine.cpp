@@ -695,7 +695,7 @@ void PlayMusic(ID musicId)
 #define ILU_ID_IMPLEMENTATION
 #include "ilu_id.h"
 
-// Reflection declarations are put at the end of the engine so information about all types is available
+#define REFLEX_GENERATED_IMPLEMENTATION
 #include "reflex.generated.h"
 
 // TODO:

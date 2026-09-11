@@ -79,7 +79,7 @@ REM ######################################################
 call vcenv.bat
 pushd build
 copy nul ..\code\reflex.generated.h > nul
-reflex.exe ..\code\game.cpp > ..\code\reflex.generated.h
+reflex.exe ..\code\engine.h ..\code\game.cpp > ..\code\reflex.generated.h
 set CommonCompilerFlags=%CommonCompilerFlags% -I %RootDir%\vulkan\include
 set CommonLinkerFlags=%CommonLinkerFlags% user32.lib
 cl %CommonCompilerFlags% ..\code\platform.cpp /Feilu.exe /link %CommonLinkerFlags%
@@ -97,7 +97,7 @@ REM ######################################################
 call vcenv.bat
 pushd build
 copy nul ..\code\reflex.generated.h > nul
-reflex.exe ..\code\game.cpp > ..\code\reflex.generated.h
+reflex.exe ..\code\engine.h ..\code\game.cpp > ..\code\reflex.generated.h
 set CommonCompilerFlags=%CommonCompilerFlags% -I %RootDir%\vulkan\include
 cl %CommonCompilerFlags% /LD ..\code\engine.cpp /Feengine.dll
 popd

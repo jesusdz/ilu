@@ -37,11 +37,6 @@ static bool IsPointerMember(const CastStructDeclaration *structDeclaration)
 
 void GenerateReflex(const Cast *cast, Arena arena)
 {
-	printf("\n");
-	printf("////////////////////////////////////////////////////////////////////////\n");
-	printf("// Includes\n");
-	printf("#include <stddef.h> // for offsetof macro\n");
-
 	const CastStructSpecifier *structs[128];
 	u32 structCount = 0;
 
@@ -115,7 +110,9 @@ void GenerateReflex(const Cast *cast, Arena arena)
 
 	// Reflected members can point to not reflected types declared in other files.
 	// These are opaque and we call them custom types
-	String customTypes[128];
+	String customTypeNames[128];
+	String customTypeNamesExt[128];
+	bool customTypeIsID[128];
 	bool customTypeIsValue[128];
 	u32 customTypeCount = 0;
 
@@ -152,17 +149,19 @@ void GenerateReflex(const Cast *cast, Arena arena)
 
 			const String tagName = structDeclaration->tag->arguments;
 
-			char customTypeName[128];
-			SPrintf(customTypeName, "%.*s%.*s", StringPrintfArgs(typeName), StringPrintfArgs(tagName));
+			char customTypeNameExt[128];
+
+			SPrintf(customTypeNameExt, "%.*s%.*s", StringPrintfArgs(typeName), StringPrintfArgs(tagName));
 
 			u32 customIndex = 0;
-			while (customIndex < customTypeCount && !StrEq(customTypes[customIndex], customTypeName)) {
+			while (customIndex < customTypeCount && !StrEq(customTypeNamesExt[customIndex], customTypeNameExt)) {
 				customIndex++;
 			}
 			if (customIndex == customTypeCount) {
-				ASSERT(customTypeCount < ARRAY_COUNT(customTypes));
-				const char *str = PushString(arena, customTypeName);
-				customTypes[customTypeCount] = MakeString(str);
+				ASSERT(customTypeCount < ARRAY_COUNT(customTypeNames));
+				customTypeNames[customTypeCount] = MakeString(PushString(arena, typeName));
+				customTypeNamesExt[customTypeCount] = MakeString(PushString(arena, customTypeNameExt));
+				customTypeIsID[customTypeCount] = StrEq(typeName, "ID");
 				customTypeIsValue[customTypeCount] = false;
 				customTypeCount++;
 			}
@@ -170,28 +169,67 @@ void GenerateReflex(const Cast *cast, Arena arena)
 		}
 	}
 
+	printf("\n");
+	printf("#ifdef REFLEX_GENERATED_DECLARATION\n");
+
 	if (customTypeCount > 0)
 	{
 		printf("\n");
+		printf("////////////////////////////////////////////////////////////////////////\n");
+		printf("// Include this file with REFLEX_GENERATED_DECLARATION before before reflex.h\n");
+		printf("\n");
+
+		printf("#define REFLEX_ID_CUSTOM_TYPES \\\n");
+		printf("	ReflexID_IDBegin, \\\n");
+
+		for (u32 index = 0; index < customTypeCount; ++index)
+		{
+			if ( customTypeIsID[index] ) {
+				const String typeName = customTypeNamesExt[index];
+				printf("	ReflexID_%.*s, \\\n", StringPrintfArgs(typeName));
+			}
+		}
+
+		printf("	ReflexID_IDEnd, \\\n");
+		for (u32 index = 0; index < customTypeCount; ++index)
+		{
+			const String typeName = customTypeNamesExt[index];
+			if ( !customTypeIsID[index] ) {
+				printf("	ReflexID_%.*s, \\\n", StringPrintfArgs(typeName));
+			}
+		}
+	}
+
+	printf("\n");
+	printf("#undef REFLEX_GENERATED_DECLARATION\n");
+	printf("#endif REFLEX_GENERATED_DECLARATION\n");
+
+	printf("\n");
+	printf("\n");
+	printf("#ifdef REFLEX_GENERATED_IMPLEMENTATION\n");
+
+	if (customTypeCount > 0)
+	{
 		printf("\n");
 		printf("////////////////////////////////////////////////////////////////////////\n");
 		printf("// Custom Types: used by reflected members but not reflected themselves\n");
 
 		for (u32 index = 0; index < customTypeCount; ++index)
 		{
-			const String typeName = customTypes[index];
+			const String typeName = customTypeNames[index];
+			const String typeNameExt = customTypeNamesExt[index];
 
 			printf("\n");
 			printf("// ReflexCustom info\n");
-			printf("static const ReflexCustom reflexCustom_%.*s =\n", StringPrintfArgs(typeName));
+			printf("static const ReflexCustom reflexCustom_%.*s =\n", StringPrintfArgs(typeNameExt));
 			printf("{\n");
-			printf("  .name = \"%.*s\",\n", StringPrintfArgs(typeName));
+			printf("  .name = \"%.*s\",\n", StringPrintfArgs(typeNameExt));
 			printf("  .size = sizeof(%.*s),\n", StringPrintfArgs(typeName));
 			printf("};\n");
 
 			printf("\n");
 			printf("// ReflexCustom registration\n");
-			printf("static const ReflexID ReflexIDStub_%.*s = ReflexRegisterCustom(&reflexCustom_%.*s, ReflexID_%.*s);\n", StringPrintfArgs(typeName), StringPrintfArgs(typeName), StringPrintfArgs(typeName));
+			printf("static const ReflexID ReflexIDStub_%.*s = ReflexRegisterCustom(&reflexCustom_%.*s, ReflexID_%.*s);\n", StringPrintfArgs(typeNameExt), StringPrintfArgs(typeNameExt), StringPrintfArgs(typeNameExt));
 			printf("\n");
 		}
 	}
@@ -420,7 +458,7 @@ void GenerateReflex(const Cast *cast, Arena arena)
 			printf(".isArray = %s, ", isArray ? "true" : "false");
 			printf(".arrayDim = %u, ", arrayDim);
 			printf(".reflexId = %.*s%.*s, ", StringPrintfArgs(typeName), StringPrintfArgs(memberTag->arguments));
-			printf(".offset = offsetof(%.*s, %.*s) ", StringPrintfArgs(cstruct->name), StringPrintfArgs(memberName));
+			printf(".offset = OFFSET_OF(%.*s, %.*s) ", StringPrintfArgs(cstruct->name), StringPrintfArgs(memberName));
 			printf("},\n");
 		}
 
@@ -477,6 +515,10 @@ void GenerateReflex(const Cast *cast, Arena arena)
 				StringPrintfArgs(scriptName), StringPrintfArgs(functionName),
 				StringPrintfArgs(scriptName), StringPrintfArgs(functionName));
 	}
+
+	printf("\n");
+	printf("#undef REFLEX_GENERATED_IMPLEMENTATION\n");
+	printf("#endif REFLEX_GENERATED_IMPLEMENTATION\n\n");
 }
 
 int main(int argc, char **argv)

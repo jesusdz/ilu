@@ -1,17 +1,6 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// TYPES: Basics
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-typedef ID IDEntity;
-typedef ID IDTexture;
-typedef ID IDSprite;
-typedef ID IDPrefab;
-typedef ID IDSoundClip;
-typedef ID IDMusicFile;
-
 ////////////////////////////////////////////////////////////////////////
 // Asset flags
 
@@ -50,17 +39,8 @@ struct BinLocation
 #define ILU_PROPERTY(...)
 #define ILU_ENUM(...)
 
-// List of custom types for reflex
-#define REFLEX_ID_CUSTOM_TYPES \
-	ReflexID_IDBegin, \
-	ReflexID_IDEntity, \
-	ReflexID_IDTexture, \
-	ReflexID_IDSprite, \
-	ReflexID_IDPrefab, \
-	ReflexID_IDSoundClip, \
-	ReflexID_IDMusicFile, \
-	ReflexID_IDEnd, \
-	ReflexID_u32,
+#define REFLEX_GENERATED_DECLARATION
+#include "reflex.generated.h"
 
 #include "reflex\reflex.h"
 
@@ -856,7 +836,7 @@ struct ModelComponent
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY()
+	ILU_PROPERTY(Material)
 	ID materialId;
 	ILU_PROPERTY()
 	GeometryType geometryType;
@@ -881,9 +861,9 @@ struct SpriteComponent
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY()
+	ILU_PROPERTY(Sprite)
 	ID spriteId;
-	ILU_PROPERTY()
+	ILU_PROPERTY(Layer)
 	ID layerId;
 
 	// Runtime
@@ -937,7 +917,7 @@ struct ParticlesComponent
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY()
+	ILU_PROPERTY(Effect)
 	ID effectId;
 	ILU_PROPERTY()
 	u8 playOnStart;

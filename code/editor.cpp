@@ -1304,9 +1304,9 @@ static const char *EditorPropertyIDName(PropertyType type, ID id)
 
 	switch (type)
 	{
-		case ReflexID_IDEntity:  return GetEntity(id).name;
+		//case ReflexID_IDEntity:  return GetEntity(id).name;
 		case ReflexID_IDSprite:  return GetSprite(id).desc.name;
-		case ReflexID_IDTexture: return GetTexture(id).desc.name;
+		//case ReflexID_IDTexture: return GetTexture(id).desc.name;
 		default:;
 	}
 
