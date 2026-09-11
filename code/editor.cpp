@@ -679,12 +679,18 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 	UI_PopID(ui);
 }
 
+static void EditorIDDragSource(ID id, ImageH imageH, float4 uvRect = {0, 0, 1, 1})
+{
+	UI &ui = GetEngine().ui;
+	UI_DragAndDropSource(ui, IDKindNames[GetIDKind(id)], UI_Payload(id.slot), imageH, uvRect);
+}
+
 static void EditorEntityDropTarget(ID layerId)
 {
 	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 
-	if ( UI_DragAndDropTarget(ui, "Entity") )
+	if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Entity]) )
 	{
 		const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( droppedId ) {
@@ -832,7 +838,7 @@ static void EditorUpdateUI_Outliner()
 									if ( UI_Button(ui, entity.name) ) {
 										EditorSelectEntity(entity.id);
 									}
-									UI_DragAndDropSource(ui, "Entity", UI_Payload(entity.id.slot), editor.iconAsset );
+									EditorIDDragSource(entity.id, editor.iconAsset);
 									EditorAssetContextMenu("EntityContext", EditorSelectedType_Entity, scene.entities[i].id);
 								}
 							}
@@ -874,7 +880,7 @@ static void EditorUpdateUI_Outliner()
 					if ( UI_Button(ui, entity.name) ) {
 						EditorSelectEntity(scene.entities[i].id);
 					}
-					UI_DragAndDropSource(ui, "Entity", UI_Payload(entity.id.slot), editor.iconAsset );
+					EditorIDDragSource(entity.id, editor.iconAsset);
 					EditorAssetContextMenu("EntityContext", EditorSelectedType_Entity, scene.entities[i].id);
 				}
 			}
@@ -905,7 +911,7 @@ static void EditorUpdateUI_Outliner()
 				selectedSprite = spriteId;
 			}
 
-			UI_DragAndDropSource(ui, "IDSprite", UI_Payload(spriteId.slot), texture.image, uvRect );
+			EditorIDDragSource(spriteId, texture.image, uvRect);
 
 			EditorAssetContextMenu("SpriteContext", EditorSelectedType_Sprite, spriteId);
 		}
@@ -923,7 +929,7 @@ static void EditorUpdateUI_Outliner()
 				EditorSelectPrefab(prefab.id);
 			}
 
-			UI_DragAndDropSource(ui, "IDPrefab", UI_Payload(prefab.id.slot), editor.iconAsset );
+			EditorIDDragSource(prefab.id, editor.iconAsset);
 
 			EditorAssetContextMenu("PrefabContext", EditorSelectedType_Prefab, prefab.id);
 		}
@@ -939,7 +945,7 @@ static void EditorUpdateUI_Outliner()
 				EditorSelectParticleEffect(desc.id);
 			}
 
-			UI_DragAndDropSource(ui, "IDParticleEffect", UI_Payload(desc.id.slot), editor.iconAsset );
+			EditorIDDragSource(desc.id, editor.iconAsset);
 
 			EditorAssetContextMenu("ParticleEffectContext", EditorSelectedType_ParticleEffect, desc.id);
 		}
@@ -955,7 +961,7 @@ static void EditorUpdateUI_Outliner()
 				EditorSelectMaterial(desc.id);
 			}
 
-			UI_DragAndDropSource(ui, "IDMaterial", UI_Payload(desc.id.slot), editor.iconAsset );
+			EditorIDDragSource(desc.id, editor.iconAsset);
 
 			EditorAssetContextMenu("MaterialContext", EditorSelectedType_Material, desc.id);
 		}
@@ -981,7 +987,7 @@ static void EditorUpdateUI_Outliner()
 				selectedHandle = textureId;
 			}
 
-			UI_DragAndDropSource(ui, "Texture", UI_Payload(textureId.slot), texture.image );
+			EditorIDDragSource(textureId, texture.image);
 
 			EditorAssetContextMenu("TextureContext", EditorSelectedType_Texture, textureId);
 		}
@@ -997,6 +1003,7 @@ static void EditorUpdateUI_Outliner()
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectAudioClip(desc.id);
 			}
+			EditorIDDragSource(desc.id, editor.iconAsset);
 			EditorAssetContextMenu("AudioClipContext", EditorSelectedType_Audio, desc.id);
 		}
 	}
@@ -1296,17 +1303,24 @@ static void EditorUpdateUI_SpriteSheet()
 	UI_EndWindow(ui);
 }
 
-static const char *EditorPropertyIDName(PropertyType type, ID id)
+static const char *EditorObjectName(ID id)
 {
 	if ( !id ) {
 		return "<none>";
 	}
 
-	switch (type)
+	switch ( GetIDKind(id) )
 	{
-		//case ReflexID_IDEntity:  return GetEntity(id).name;
-		case ReflexID_IDSprite:  return GetSprite(id).desc.name;
-		//case ReflexID_IDTexture: return GetTexture(id).desc.name;
+		case IDKind_Entity:         return GetEntity(id).name;
+		case IDKind_Texture:        return GetTexture(id).desc.name;
+		case IDKind_Material:       return GetMaterial(id).desc.name;
+		case IDKind_Sprite:         return GetSprite(id).desc.name;
+		case IDKind_ParticleEffect: return GetParticleEffect(id).desc.name;
+		case IDKind_Layer:          return GetLayer(id).name;
+		case IDKind_Room:           return GetRoom(id).name;
+		case IDKind_Prefab:         return GetPrefab(id).name;
+		case IDKind_AudioClip:      return GetAudioClip(id).desc.name;
+		case IDKind_MusicFile:      return GetMusicFile(id).desc.name;
 		default:;
 	}
 
@@ -1329,9 +1343,10 @@ static void EditorUpdateUI_Property(const ReflexMember &member, void *data)
 	}
 	else if ( IsIDProperty(type) )
 	{
-		UI_Text(ui, member.name, "%s", EditorPropertyIDName(type, value.idValue));
+		UI_Text(ui, member.name, "%s", EditorObjectName(value.idValue));
 
-		if ( UI_DragAndDropTarget(ui, PropertyTypeToString(type)) )
+		const IDKind kind = PropertyIDKind(member);
+		if ( kind != IDKind_None && UI_DragAndDropTarget(ui, IDKindNames[kind]) )
 		{
 			value.idValue = { UI_DragAndDropPayload(ui).uvalue };
 			SetPropertyValue(member, data, value);
@@ -1557,7 +1572,7 @@ static void EditorUpdateUI_Inspector()
 					const MaterialDesc *material = model.materialId ? &GetMaterial(model.materialId).desc : nullptr;
 
 					UI_Text(ui, "Material", "%s", material ? material->name : "<none>");
-					if ( UI_DragAndDropTarget(ui, "IDMaterial") )
+					if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Material]) )
 					{
 						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 						if ( droppedId ) {
@@ -1589,7 +1604,7 @@ static void EditorUpdateUI_Inspector()
 					const ID entitySpriteId = EntitySpriteId(engine.scene, inspector.selected.id);
 					const SpriteDesc *sprite = entitySpriteId ? &GetSprite(entitySpriteId).desc : nullptr;
 					UI_Text(ui, "Name", "%s", sprite ? sprite->name : "<none>");
-					if ( UI_DragAndDropTarget(ui, "IDSprite") )
+					if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Sprite]) )
 					{
 						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 						if ( droppedId ) {
@@ -1654,7 +1669,7 @@ static void EditorUpdateUI_Inspector()
 						&GetParticleEffect(particles.effectId).desc : nullptr;
 
 					UI_Text(ui, "Effect", "%s", effect ? effect->name : "<none>");
-					if ( UI_DragAndDropTarget(ui, "IDParticleEffect") )
+					if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_ParticleEffect]) )
 					{
 						const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 						if ( droppedId ) {
@@ -1770,7 +1785,7 @@ static void EditorUpdateUI_Inspector()
 				// so the row reads as empty rather than resolving one
 				const Texture *texture = desc.textureId ? &GetTexture(desc.textureId) : nullptr;
 				UI_Text(ui, "Name", "%s", texture ? texture->desc.name : "<none>");
-				if ( UI_DragAndDropTarget(ui, "Texture") )
+				if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Texture]) )
 				{
 					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 					if ( droppedId ) {
@@ -1869,7 +1884,7 @@ static void EditorUpdateUI_Inspector()
 						.zw = Float2(sprite.size)/Float2(texture.size),
 					};
 					UI_Text(ui, "Texture", texture.desc.name);
-					if ( UI_DragAndDropTarget(ui, "Texture") )
+					if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Texture]) )
 					{
 						ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 						if ( droppedId ) {
@@ -1918,7 +1933,7 @@ static void EditorUpdateUI_Inspector()
 
 				const SpriteDesc *sprite = effect.spriteID ? &GetSprite(effect.spriteID).desc : nullptr;
 				UI_Text(ui, "Sprite", "%s", sprite ? sprite->name : "<none>");
-				if ( UI_DragAndDropTarget(ui, "IDSprite") )
+				if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Sprite]) )
 				{
 					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 					if ( droppedId ) {
@@ -2271,7 +2286,7 @@ static void EditorUpdateUI_DragAndDropLost()
 	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 
-	if ( UI_DragAndDropTargetLost(ui, "IDSprite") )
+	if ( UI_DragAndDropTargetLost(ui, IDKindNames[IDKind_Sprite]) )
 	{
 		const ID spriteId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( spriteId ) {
@@ -2279,7 +2294,7 @@ static void EditorUpdateUI_DragAndDropLost()
 		}
 	}
 
-	if ( UI_DragAndDropTargetLost(ui, "IDPrefab") )
+	if ( UI_DragAndDropTargetLost(ui, IDKindNames[IDKind_Prefab]) )
 	{
 		const ID prefabId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( prefabId ) {
@@ -2287,7 +2302,7 @@ static void EditorUpdateUI_DragAndDropLost()
 		}
 	}
 
-	if ( UI_DragAndDropTargetLost(ui, "Texture") )
+	if ( UI_DragAndDropTargetLost(ui, IDKindNames[IDKind_Texture]) )
 	{
 		const ID textureId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( textureId )

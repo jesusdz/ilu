@@ -2,6 +2,52 @@
 #define ENGINE_H
 
 ////////////////////////////////////////////////////////////////////////
+// ID kinds
+
+#define FOREACH_ID_KIND(X) \
+	X(Entity) \
+	X(Texture) \
+	X(Material) \
+	X(Sprite) \
+	X(ParticleEffect) \
+	X(Layer) \
+	X(Room) \
+	X(Prefab) \
+	X(AudioClip) \
+	X(MusicFile)
+
+enum IDKind
+{
+	IDKind_None,
+#define ID_KIND(Name) IDKind_##Name,
+	FOREACH_ID_KIND(ID_KIND)
+#undef ID_KIND
+	IDKind_Count,
+};
+CT_ASSERT(IDKind_Count <= 256);
+
+constexpr const char *IDKindNames[] =
+{
+	"None",
+#define ID_KIND_NAME(Name) #Name,
+	FOREACH_ID_KIND(ID_KIND_NAME)
+#undef ID_KIND_NAME
+};
+CT_ASSERT(ARRAY_COUNT(IDKindNames) == IDKind_Count);
+
+inline IDKind IDKindFromName(const char *name)
+{
+	if ( name ) {
+		for (u32 kind = IDKind_None + 1; kind < IDKind_Count; ++kind) {
+			if ( StrEq(IDKindNames[kind], name) ) {
+				return (IDKind)kind;
+			}
+		}
+	}
+	return IDKind_None;
+}
+
+////////////////////////////////////////////////////////////////////////
 // Asset flags
 
 enum AssetFlags
@@ -58,8 +104,15 @@ struct PropertyValue
 
 inline bool IsIDProperty(PropertyType type)
 {
-	const bool res = type >= ReflexID_IDBegin && type <= ReflexID_IDEnd;
+	const bool res = type == ReflexID_ID;
 	return res;
+}
+
+// The hint in an ID property's tag names the kind of object it refers to, e.g. ILU_PROPERTY(Sprite)
+inline IDKind PropertyIDKind(const ReflexMember &member)
+{
+	const IDKind kind = IsIDProperty(member.reflexId) ? IDKindFromName(member.hint) : IDKind_None;
+	return kind;
 }
 
 // Whether a reflected member holds a value the engine knows how to read, write
@@ -917,7 +970,7 @@ struct ParticlesComponent
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY(Effect)
+	ILU_PROPERTY(ParticleEffect)
 	ID effectId;
 	ILU_PROPERTY()
 	u8 playOnStart;

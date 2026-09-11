@@ -23,7 +23,7 @@ struct ScriptPlayerController
 	ILU_PROPERTY(Sprite)
 	ID sprPlayerFall;
 
-	ILU_PROPERTY(SoundClip)
+	ILU_PROPERTY(AudioClip)
 	ID sndJump;
 
 	ILU_PROPERTY()

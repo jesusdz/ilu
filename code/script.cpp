@@ -22,7 +22,9 @@ static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHoo
 	{
 		const ReflexMember &member = type->members[i];
 		if ( !IsStorableProperty(member) ) {
-			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> cannot be stored, does its tag need a hint (e.g. ILU_PROPERTY(Sprite))?\n", type->name, member.name, PropertyTypeToString(member.reflexId));
+			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> cannot be stored\n", type->name, member.name, PropertyTypeToString(member.reflexId));
+		} else if ( IsIDProperty(member.reflexId) && PropertyIDKind(member) == IDKind_None ) {
+			LOG(Warning, "RegisterScript: <%s> property <%s> has hint <%s>, which names no ID kind (e.g. ILU_PROPERTY(Sprite)), so nothing can be assigned to it in the editor\n", type->name, member.name, member.hint ? member.hint : "");
 		}
 	}
 
