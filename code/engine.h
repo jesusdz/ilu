@@ -967,6 +967,17 @@ struct ComponentDesc
 	};
 };
 
+// All the descriptors in the union start at the same address
+inline void *ComponentDescData(ComponentDesc &component)
+{
+	return &component.model;
+}
+
+inline const void *ComponentDescData(const ComponentDesc &component)
+{
+	return &component.model;
+}
+
 struct ComponentDescPool
 {
 	ComponentDesc *components;

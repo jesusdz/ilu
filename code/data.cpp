@@ -220,17 +220,6 @@ static void PopIndent(WriteContext &ctx)
 	ctx.indent--;
 }
 
-// All the descriptors in the union start at the same address
-static void *ComponentDescData(ComponentDesc &component)
-{
-	return &component.model;
-}
-
-static const void *ComponentDescData(const ComponentDesc &component)
-{
-	return &component.model;
-}
-
 static void WriteProperty(WriteContext &ctx, const ReflexMember &member, const void *field)
 {
 	WriteIndentation(ctx);

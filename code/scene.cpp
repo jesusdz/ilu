@@ -111,8 +111,7 @@ ID CreateSprite(Engine &engine, const SpriteDesc &desc)
 
 	if ( !Valid(sprite->desc.textureId) )
 	{
-		LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n",
-				desc.name, desc.textureId.slot);
+		LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n", desc.name, desc.textureId.slot);
 		sprite->desc.textureId = gfx.defaultTexture;
 	}
 
@@ -750,8 +749,7 @@ void EntitySetPosition(Entity &entity, float3 position)
 ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentType type)
 {
 	if ( pool.componentCount == pool.componentCapacity ) {
-		LOG(Warning, "Could not push a <%s> component descriptor, the pool is full.\n",
-				ComponentNames[type]);
+		LOG(Warning, "Could not push a <%s> component descriptor, the pool is full.\n", ComponentNames[type]);
 		return nullptr;
 	}
 
@@ -762,110 +760,71 @@ ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, Compo
 	return &desc;
 }
 
-ModelComponentDesc MakeDesc(const ModelComponent &comp)
+// A component and the descriptor reflex generates for it hold the same properties in the same
+// order, only at different offsets, so the copy walks both member lists at once
+static void CopyProperties(const ReflexStruct &dstType, void *dst, const ReflexStruct &srcType, const void *src)
 {
-	const ModelComponentDesc desc = {
-		.materialId = comp.materialId,
-		.geometryType = comp.geometryType,
-	};
-	return desc;
+	ASSERT( dstType.memberCount == srcType.memberCount );
+
+	for (u32 i = 0; i < dstType.memberCount; ++i)
+	{
+		const ReflexMember &dstMember = dstType.members[i];
+		const ReflexMember &srcMember = srcType.members[i];
+		ASSERT( dstMember.reflexId == srcMember.reflexId );
+
+		MemCopy((byte*)dst + dstMember.offset, (const byte*)src + srcMember.offset, ReflexGetTypeSize(dstMember.reflexId));
+	}
 }
 
-void ApplyDesc(ModelComponent &comp, const ModelComponentDesc &desc)
+static void MakeComponentDesc(ComponentType type, const void *component, void *desc)
 {
-	comp.materialId = desc.materialId;
-	comp.geometryType = desc.geometryType;
+	const ReflexStruct *componentType = ComponentReflexStruct(type);
+	const ReflexStruct *descType = ComponentDescReflexStruct(type);
+
+	if ( !componentType || !descType ) {
+		LOG(Warning, "Component <%s> is not reflected, its descriptor stays empty.\n", ComponentNames[type]);
+		return;
+	}
+
+	CopyProperties(*descType, desc, *componentType, component);
 }
 
-SpriteComponentDesc MakeDesc(const SpriteComponent &comp)
+static void ApplyComponentDesc(ComponentType type, void *component, const void *desc)
 {
-	const SpriteComponentDesc desc = {
-		.spriteId = comp.spriteId,
-		.layerId = comp.layerId,
-	};
-	return desc;
-}
+	const ReflexStruct *componentType = ComponentReflexStruct(type);
+	const ReflexStruct *descType = ComponentDescReflexStruct(type);
 
-void ApplyDesc(SpriteComponent &comp, const SpriteComponentDesc &desc)
-{
-	comp.spriteId = desc.spriteId;
-	comp.layerId = desc.layerId;
-}
+	if ( !componentType || !descType ) {
+		LOG(Warning, "Component <%s> is not reflected, its descriptor is not applied.\n", ComponentNames[type]);
+		return;
+	}
 
-LightComponentDesc MakeDesc(const LightComponent &comp)
-{
-	const LightComponentDesc desc = {
-		.type = comp.type,
-		.color = comp.color,
-		.intensity = comp.intensity,
-		.radius = comp.radius,
-	};
-	return desc;
-}
-
-void ApplyDesc(LightComponent &comp, const LightComponentDesc &desc)
-{
-	comp.type = desc.type;
-	comp.color = desc.color;
-	comp.intensity = desc.intensity;
-	comp.radius = desc.radius;
-}
-
-ParticlesComponentDesc MakeDesc(const ParticlesComponent &comp)
-{
-	const ParticlesComponentDesc desc = {
-		.effectId = comp.effectId,
-		.playOnStart = comp.playOnStart,
-	};
-	return desc;
-}
-
-void ApplyDesc(ParticlesComponent &comp, const ParticlesComponentDesc &desc)
-{
-	comp.effectId = desc.effectId;
-	comp.playOnStart = desc.playOnStart;
+	CopyProperties(*componentType, component, *descType, desc);
 }
 
 void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &pool)
 {
 	Scene &scene = engine.scene;
-	const Entity &entity = GetEntity(entityId);
 
-	if ( HasComponents(scene, entityId, Component_Model) )
+	for (u32 type = 0; type < ComponentType_Count; ++type)
 	{
-		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Model) ) {
-			desc->model = MakeDesc(GetModel(scene, entityId));
-		}
-	}
+		const ComponentFlags bit = 1 << type;
 
-	if ( HasComponents(scene, entityId, Component_Sprite) )
-	{
-		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
-			desc->sprite = MakeDesc(GetSprite(scene, entityId));
-		}
-	}
+		if ( HasComponents(scene, entityId, bit) ) {
 
-	if ( HasComponents(scene, entityId, Component_Light) )
-	{
-		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Light) ) {
-			desc->light = MakeDesc(GetLight(scene, entityId));
-		}
-	}
-
-	if ( HasComponents(scene, entityId, Component_Particles) )
-	{
-		if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Particles) ) {
-			desc->particles = MakeDesc(GetParticles(scene, entityId));
-		}
-	}
-
-	if ( HasComponents(scene, entityId, Component_Script) )
-	{
-		const ScriptComponent &script = GetScript(scene, entityId);
-		if ( script.name )
-		{
-			if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
-				desc->script = MakeDesc(script, pool);
+			if ( type == ComponentType_Script )
+			{
+				const ScriptComponent &script = GetScript(scene, entityId);
+				if ( script.name )
+				{
+					if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
+						desc->script = MakeDesc(script, pool);
+					}
+				}
+			}
+			else ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, (ComponentType)type) )
+			{
+				MakeComponentDesc((ComponentType)type, GetComponentSlot(scene, entityId, (ComponentType)type), ComponentDescData(*desc));
 			}
 		}
 	}
@@ -932,60 +891,58 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 		return;
 	}
 
+	if ( desc.type == ComponentType_Script ) {
+		AddScript(engine, entityId, desc.script);
+		return;
+	}
+
+	if ( desc.type >= ComponentType_Count ) {
+		LOG(Warning, "Ignoring a component descriptor of unknown type %u.\n", desc.type);
+		return;
+	}
+
+	AddComponent(engine, entityId, desc.type);
+
+	// Its pool was full, and AddComponent already said so
+	if ( !HasComponents(engine.scene, entityId, (ComponentFlags)(1 << desc.type)) ) {
+		return;
+	}
+
+	void *component = GetComponentSlot(engine.scene, entityId, desc.type);
+
+	ApplyComponentDesc(desc.type, component, ComponentDescData(desc));
+
+	// What the components keep beyond their properties. The IDs saved in a scene are only
+	// checked here, where the entity can still be named in the warning.
 	switch ( desc.type )
 	{
 		case ComponentType_Model:
 		{
-			if ( ModelComponent *model = AddModel(engine, entityId) )
-			{
-				ApplyDesc(*model, desc.model);
-				UpdateModelGeometry(engine.gfx, *model);
+			ModelComponent &model = *(ModelComponent*)component;
 
-				if ( desc.model.materialId.slot != 0 && !Valid(desc.model.materialId) )
-				{
-					LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n",
-							GetEntity(entityId).name, desc.model.materialId.slot);
-					model->materialId = engine.gfx.defaultMaterial;
-				}
+			if ( desc.model.materialId.slot != 0 && !Valid(desc.model.materialId) )
+			{
+				LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n", GetEntity(entityId).name, desc.model.materialId.slot);
+				model.materialId = engine.gfx.defaultMaterial;
 			}
+
+			UpdateModelGeometry(engine.gfx, model);
 			break;
 		}
 
 		case ComponentType_Sprite:
 		{
-			if ( SpriteComponent *sprite = AddSpriteComponent(engine.scene, entityId) )
-			{
-				ApplyDesc(*sprite, desc.sprite);
+			SpriteComponent &sprite = *(SpriteComponent*)component;
 
-				if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
-				{
-					LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n",
-							GetEntity(entityId).name, desc.sprite.spriteId.slot);
-					sprite->spriteId = {};
-				}
+			if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
+			{
+				LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n", GetEntity(entityId).name, desc.sprite.spriteId.slot);
+				sprite.spriteId = {};
 			}
 			break;
 		}
 
-		case ComponentType_Light:
-			if ( LightComponent *light = AddLight(engine.scene, entityId) ) {
-				ApplyDesc(*light, desc.light);
-			}
-			break;
-
-		case ComponentType_Particles:
-			if ( ParticlesComponent *particles = AddParticles(engine.scene, entityId) ) {
-				ApplyDesc(*particles, desc.particles);
-			}
-			break;
-
-		case ComponentType_Script:
-			AddScript(engine, entityId, desc.script);
-			break;
-
-		default:
-			LOG(Warning, "Ignoring a component descriptor of unknown type %u.\n", desc.type);
-			break;
+		default:;
 	}
 }
 
@@ -1216,8 +1173,7 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 {
 	if ( desc.entityCount > MAX_PREFAB_ENTITIES )
 	{
-		LOG(Warning, "Could not create prefab <%s>, it has %u entities, more than the %u max.\n",
-				desc.name, desc.entityCount, MAX_PREFAB_ENTITIES);
+		LOG(Warning, "Could not create prefab <%s>, it has %u entities, more than the %u max.\n", desc.name, desc.entityCount, MAX_PREFAB_ENTITIES);
 		return {};
 	}
 
@@ -1236,8 +1192,7 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 	prefab.componentCount = Min(desc.componentCount, (u32)ARRAY_COUNT(prefab.components));
 	if ( desc.componentCount > prefab.componentCount )
 	{
-		LOG(Warning, "Prefab <%s> has %u components, only the first %u are kept.\n",
-				desc.name, desc.componentCount, prefab.componentCount);
+		LOG(Warning, "Prefab <%s> has %u components, only the first %u are kept.\n", desc.name, desc.componentCount, prefab.componentCount);
 	}
 
 	// A prefab outlives the descriptors it was built from, so the script properties its
@@ -1257,8 +1212,7 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 
 		if ( prefab.scriptPropertyCount + script.propertyCount > ARRAY_COUNT(prefab.scriptProperties) )
 		{
-			LOG(Warning, "Prefab <%s> drops the properties of script <%s>, its property storage is full.\n",
-					desc.name, script.name);
+			LOG(Warning, "Prefab <%s> drops the properties of script <%s>, its property storage is full.\n", desc.name, script.name);
 			script.properties = nullptr;
 			script.propertyCount = 0;
 			continue;

@@ -1342,10 +1342,11 @@ static void EditorUpdateUI_Component(Engine &engine, ID entityId, ComponentType 
 
 	// Automatic UI powered by reflex
 	const ReflexStruct *type = ComponentReflexStruct(componentType);
-	byte *component = (byte*)GetComponentSlot(engine.scene, entityId, componentType);
 
-	if ( type && component )
+	if ( type )
 	{
+		byte *component = (byte*)GetComponentSlot(engine.scene, entityId, componentType);
+
 		for (u32 i = 0; i < type->memberCount; ++i)
 		{
 			const ReflexMember &member = type->members[i];
