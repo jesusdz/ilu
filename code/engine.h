@@ -1430,7 +1430,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 14; // 14: scripts nested in their entity
+constexpr u32 BinAssetsVersion = 15; // 15: sprite components flagged in BinEntityDesc::components
 
 #pragma pack(push, 1)
 

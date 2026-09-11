@@ -1056,7 +1056,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 		}
 	}
 
-	if ( desc.spriteId )
+	if ( desc.components & Component_Sprite )
 	{
 		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
 			component->sprite.spriteId = desc.spriteId;
