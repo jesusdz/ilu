@@ -40,7 +40,7 @@ struct ID
 {
 	u32 slot;
 
-	operator bool() const;
+	explicit operator bool() const;
 };
 
 struct IDSlot

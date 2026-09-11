@@ -1991,6 +1991,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 				break;
 
 			case ComponentType_Sprite:
+				d.components |= Component_Sprite;
 				d.spriteId = component.sprite.spriteId;
 				d.layerId = component.sprite.layerId;
 				break;

@@ -131,7 +131,7 @@ void RegisterScripts(Engine &engine)
 	// struct whose size changed gets a fresh block, but one that only moved its members
 	// around keeps its data and reads it back under the new layout.
 	Scene &scene = engine.scene;
-	for (u32 i = 0; i < scene.scriptComponentCount; ++i)
+	for (u32 i = 0; i < scene.componentPools[ComponentType_Script].count; ++i)
 	{
 		ScriptComponent &component = scene.scriptComponents[i];
 
@@ -188,20 +188,8 @@ ScriptComponent *AddScript(Engine &engine, ID entityId)
 		return nullptr;
 	}
 
-	if ( scene.scriptComponentCount == MAX_SCRIPT_COMPONENTS ) {
-		LOG(Warning, "AddScript: the script pool is full.\n");
-		return nullptr;
-	}
-
-	const u16 entityIndex = GetEntityIndex(scene, entityId);
-	const u16 slot = (u16)scene.scriptComponentCount++;
-	scene.entityComponentIndex[entityIndex][ComponentType_Script] = slot;
-
-	ScriptComponent &component = scene.scriptComponents[slot];
-	component = {};
-	component.entityId = entityId;
-
-	return &component;
+	ScriptComponent *component = (ScriptComponent*)AddComponentSlot(scene, entityId, ComponentType_Script);
+	return component;
 }
 
 // Points the entity's script component at scriptName, adding the component if it has none
@@ -321,9 +309,7 @@ void RemoveScript(Engine &engine, ID entityId)
 		return;
 	}
 
-	const u16 entityIndex = GetEntityIndex(scene, entityId);
-	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Script];
-	ScriptComponent &component = scene.scriptComponents[slot];
+	ScriptComponent &component = GetScript(scene, entityId);
 
 	if ( engine.game.state == GameStateRunning ) {
 		RunScriptHook(engine, entityId, component, ScriptHook_Stop);
@@ -331,20 +317,13 @@ void RemoveScript(Engine &engine, ID entityId)
 
 	FreeScriptData(engine, component.data, component.dataSize);
 
-	const u16 last = (u16)(--scene.scriptComponentCount);
-	if ( slot != last )
-	{
-		scene.scriptComponents[slot] = scene.scriptComponents[last];
-		scene.entityComponentIndex[ GetEntityIndex(scene, scene.scriptComponents[slot].entityId) ][ComponentType_Script] = slot;
-	}
-
-	scene.entityComponentIndex[entityIndex][ComponentType_Script] = NO_COMPONENT;
+	RemoveComponentSlot(scene, entityId, ComponentType_Script);
 }
 
 void RunScriptHooks(Engine &engine, ScriptHookType hook)
 {
 	Scene &scene = engine.scene;
-	for (u32 i = 0; i < scene.scriptComponentCount; ++i)
+	for (u32 i = 0; i < scene.componentPools[ComponentType_Script].count; ++i)
 	{
 		const ID entityId = scene.scriptComponents[i].entityId;
 		RunScriptHook(engine, entityId, scene.scriptComponents[i], hook);

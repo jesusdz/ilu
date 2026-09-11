@@ -809,30 +809,37 @@ struct SceneDesc
 ////////////////////////////////////////////////////////////////////////
 // Components
 
+#define FOREACH_COMPONENT(X) \
+	X(Model, model, MAX_MODEL_COMPONENTS) \
+	X(Sprite, sprite, MAX_SPRITE_COMPONENTS) \
+	X(Light, light, MAX_LIGHT_COMPONENTS) \
+	X(Particles, particles, MAX_PARTICLES_COMPONENTS) \
+	X(Script, script, MAX_SCRIPT_COMPONENTS)
+
 enum ComponentType
 {
-	ComponentType_Model,
-	ComponentType_Sprite,
-	ComponentType_Light,
-	ComponentType_Particles,
-	ComponentType_Script,
+#define COMPONENT_TYPE(Name, name, Max) ComponentType_##Name,
+	FOREACH_COMPONENT(COMPONENT_TYPE)
+#undef COMPONENT_TYPE
 	ComponentType_Count,
 };
 
 enum ComponentBits
 {
-	Component_Model = 1<<ComponentType_Model,
-	Component_Sprite = 1<<ComponentType_Sprite,
-	Component_Light = 1<<ComponentType_Light,
-	Component_Particles = 1<<ComponentType_Particles,
-	Component_Script = 1<<ComponentType_Script,
+#define COMPONENT_BIT(Name, name, Max) Component_##Name = 1 << ComponentType_##Name,
+	FOREACH_COMPONENT(COMPONENT_BIT)
+#undef COMPONENT_BIT
+};
+
+constexpr const char *ComponentNames[] = {
+#define COMPONENT_NAME(Name, name, Max) #Name,
+	FOREACH_COMPONENT(COMPONENT_NAME)
+#undef COMPONENT_NAME
 };
 
 typedef u32 ComponentFlags;
 
-constexpr const char *ComponentNames[] = { "Model", "Sprite", "Light", "Particles", "Script" };
-
-CT_ASSERT(ARRAY_COUNT(ComponentNames) == ComponentType_Count);
+CT_ASSERT(ComponentType_Count < sizeof(ComponentFlags) * 8);
 
 ////////////////////////////////////////////////////////////////////////
 // Model component
@@ -1200,6 +1207,14 @@ constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 
 constexpr u16 NO_COMPONENT = U16_MAX;
 
+struct ComponentPool
+{
+	byte *items;
+	u32 stride;
+	u32 count;
+	u32 capacity;
+};
+
 struct Scene
 {
 	ProjectionType projectionType;
@@ -1214,23 +1229,14 @@ struct Scene
 	// here, so there is no separate flag to keep in step with it.
 	u16 entityComponentIndex[MAX_ENTITIES][ComponentType_Count];
 
+	ComponentPool componentPools[ComponentType_Count];
+
 	// Each pool is packed, so removing a component swaps the last one down into the
 	// hole. The moved component names its own entity, which is what lets that swap
 	// repoint the entity back at its new slot.
-	u32 modelComponentCount;
-	ModelComponent modelComponents[MAX_MODEL_COMPONENTS];
-
-	u32 spriteComponentCount;
-	SpriteComponent spriteComponents[MAX_SPRITE_COMPONENTS];
-
-	u32 lightComponentCount;
-	LightComponent lightComponents[MAX_LIGHT_COMPONENTS];
-
-	u32 particlesComponentCount;
-	ParticlesComponent particlesComponents[MAX_PARTICLES_COMPONENTS];
-
-	u32 scriptComponentCount;
-	ScriptComponent scriptComponents[MAX_SCRIPT_COMPONENTS];
+#define COMPONENT_ARRAY(Name, name, Max) Name##Component name##Components[Max];
+	FOREACH_COMPONENT(COMPONENT_ARRAY)
+#undef COMPONENT_ARRAY
 
 	u32 particleEffectCount;
 	ParticleEffect particleEffects[MAX_PARTICLE_EFFECTS];
@@ -1760,6 +1766,10 @@ ID EntityFromDrawId(u32 drawId);
 // Entity components
 
 bool HasComponents(const Scene &scene, ID entityId, ComponentFlags components);
+
+void *AddComponentSlot(Scene &scene, ID entityId, ComponentType type);
+void RemoveComponentSlot(Scene &scene, ID entityId, ComponentType type);
+void *GetComponentSlot(const Scene &scene, ID entityId, ComponentType type);
 
 ModelComponent &GetModel(Scene &scene, ID entityId);
 const ModelComponent &GetModel(const Scene &scene, ID entityId);

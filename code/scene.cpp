@@ -1,6 +1,18 @@
 void InitializeScene(Engine &engine)
 {
-	engine.scene.particleRandom = RandomSeed(13);
+	Scene &scene = engine.scene;
+
+	scene.particleRandom = RandomSeed(13);
+
+#define INIT_COMPONENT_POOL(Name, name, Max) \
+	ASSERT( OFFSET_OF(Name##Component, entityId) == 0 ); \
+	scene.componentPools[ComponentType_##Name] = { \
+		.items = (byte*)scene.name##Components, \
+		.stride = sizeof(Name##Component), \
+		.capacity = Max, \
+	};
+	FOREACH_COMPONENT(INIT_COMPONENT_POOL)
+#undef INIT_COMPONENT_POOL
 
 	// A builtin so it survives CleanScene and keeps the same slot every run, which is
 	// what lets a saved ParticlesComponent still refer to it.
@@ -302,7 +314,8 @@ static void SpawnParticle(Scene &scene, ID entityId, const ParticleEffectDesc &e
 void SimulateParticles(Scene &scene, f32 deltaSeconds)
 {
 	// Emission
-	for (u32 i = 0; i < scene.particlesComponentCount; ++i)
+	const u32 particleComponentCount = scene.componentPools[ComponentType_Particles].count;
+	for (u32 i = 0; i < particleComponentCount; ++i)
 	{
 		ParticlesComponent &particles = scene.particlesComponents[i];
 		if ( !particles.playing || !particles.effectId ) { continue; }
@@ -391,7 +404,8 @@ void StopParticles(Scene &scene, ID entityId)
 
 void StartParticles(Scene &scene)
 {
-    for (u32 i = 0; i < scene.particlesComponentCount; ++i)
+	const u32 particleComponentCount = scene.componentPools[ComponentType_Particles].count;
+    for (u32 i = 0; i < particleComponentCount; ++i)
     {
         if ( scene.particlesComponents[i].playOnStart ) {
             PlayParticles(scene, scene.particlesComponents[i].entityId);
@@ -403,7 +417,8 @@ void ClearParticles(Scene &scene)
 {
 	scene.particleCount = 0;
 
-	for (u32 i = 0; i < scene.particlesComponentCount; ++i)
+	const u32 particleComponentCount = scene.componentPools[ComponentType_Particles].count;
+	for (u32 i = 0; i < particleComponentCount; ++i)
 	{
 		ParticlesComponent &particles = scene.particlesComponents[i];
 		particles.playing = 0;
@@ -454,28 +469,28 @@ void CompactRooms(Scene &scene)
 ////////////////////////////////////////////////////////////////////////
 // Entity management
 
-Entity &GetEntity(ID id)
+Entity &GetEntity(ID entityId)
 {
-	ASSERT( Valid(id) );
-	Entity &entity = *((Entity*)GetObject(id));
+	ASSERT( Valid(entityId) );
+	Entity &entity = *((Entity*)GetObject(entityId));
 	return entity;
 }
 
 // Entities keep a dense index, unlike textures: the GPU entity buffer is addressed by it.
-u16 GetEntityIndex(const Scene &scene, ID id)
+u16 GetEntityIndex(const Scene &scene, ID entityId)
 {
-	const Entity &entity = GetEntity(id);
+	const Entity &entity = GetEntity(entityId);
 	const u16 index = (u16)(&entity - scene.entities);
 	ASSERT( index < scene.entityCount );
 	return index;
 }
 
-bool HasComponents(const Scene &scene, ID id, ComponentFlags components)
+bool HasComponents(const Scene &scene, ID entityId, ComponentFlags components)
 {
-	if ( !Valid(id) ) {
+	if ( !Valid(entityId) ) {
 		return false;
 	}
-	const u16 index = GetEntityIndex(scene, id);
+	const u16 index = GetEntityIndex(scene, entityId);
 	for (u32 type = 0; type < ComponentType_Count; ++type)
 	{
 		const bool wanted = ( components & (1 << type) ) != 0;
@@ -486,6 +501,65 @@ bool HasComponents(const Scene &scene, ID id, ComponentFlags components)
 	return true;
 }
 
+static void *ComponentAt(const ComponentPool &pool, u32 index)
+{
+	void *component = pool.items + index * pool.stride;
+	return component;
+}
+
+void *AddComponentSlot(Scene &scene, ID entityId, ComponentType componentType)
+{
+	ComponentPool &pool = scene.componentPools[componentType];
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+
+	u16 slot = scene.entityComponentIndex[entityIndex][componentType];
+	if ( slot == NO_COMPONENT )
+	{
+		if (pool.count == pool.capacity) {
+			LOG(Warning, "Could not add a <%s> component, its pool is full.\n", ComponentNames[componentType]);
+			return nullptr;
+		}
+
+		slot = (u16)pool.count++;
+		scene.entityComponentIndex[entityIndex][componentType] = slot;
+	}
+
+	void *component = ComponentAt(pool, slot);
+	MemSet(component, pool.stride, 0);
+	*(ID*)component = entityId;
+	return component;
+}
+
+void RemoveComponentSlot(Scene &scene, ID entityId, ComponentType componentType)
+{
+	ComponentPool &pool = scene.componentPools[componentType];
+	const u16 entityIndex = GetEntityIndex(scene, entityId);
+
+	const u16 slot = scene.entityComponentIndex[entityIndex][componentType];
+	if (slot == NO_COMPONENT) {
+		return;
+	}
+
+	const u16 last = (u16)(--pool.count);
+	if (slot != last)
+	{
+		void *moved = ComponentAt(pool, slot);
+		MemCopy(moved, ComponentAt(pool, last), pool.stride);
+		const ID movedEntityId = *(const ID*)moved;
+		scene.entityComponentIndex[ GetEntityIndex(scene, movedEntityId) ][componentType] = slot;
+	}
+
+	scene.entityComponentIndex[entityIndex][componentType] = NO_COMPONENT;
+}
+
+void *GetComponentSlot(const Scene &scene, ID entityId, ComponentType componentType)
+{
+	const u16 slot = scene.entityComponentIndex[GetEntityIndex(scene, entityId)][componentType];
+	ASSERT( slot != NO_COMPONENT );
+	void *component = ComponentAt(scene.componentPools[componentType], slot);
+	return component;
+}
+
 static void UpdateModelGeometry(Graphics &gfx, ModelComponent &model)
 {
 	model.vertices = GetVerticesForGeometryType(gfx, model.geometryType);
@@ -494,62 +568,26 @@ static void UpdateModelGeometry(Graphics &gfx, ModelComponent &model)
 
 static ModelComponent *AddModel(Engine &engine, ID entityId)
 {
-	Scene &scene = engine.scene;
-	const u16 entityIndex = GetEntityIndex(scene, entityId);
-
-	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Model];
-	if ( slot == NO_COMPONENT )
+	ModelComponent *model = (ModelComponent*)AddComponentSlot(engine.scene, entityId, ComponentType_Model);
+	if ( model )
 	{
-		if ( scene.modelComponentCount == MAX_MODEL_COMPONENTS ) {
-			LOG(Warning, "Could not add a model component, the model pool is full.\n");
-			return nullptr;
-		}
-
-		slot = (u16)scene.modelComponentCount++;
-		scene.entityComponentIndex[entityIndex][ComponentType_Model] = slot;
+		model->materialId = engine.gfx.defaultMaterial;
+		model->geometryType = GeometryTypeCube;
+		UpdateModelGeometry(engine.gfx, *model);
 	}
-
-	ModelComponent &model = scene.modelComponents[slot];
-	model = {
-		.entityId = entityId,
-		.materialId = engine.gfx.defaultMaterial,
-		.geometryType = GeometryTypeCube,
-	};
-	UpdateModelGeometry(engine.gfx, model);
-	return &model;
-}
-
-static void RemoveModel(Scene &scene, ID entityId)
-{
-	const u16 entityIndex = GetEntityIndex(scene, entityId);
-
-	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Model];
-	if ( slot == NO_COMPONENT ) {
-		return;
-	}
-
-	const u16 last = (u16)(--scene.modelComponentCount);
-	if ( slot != last )
-	{
-		scene.modelComponents[slot] = scene.modelComponents[last];
-		scene.entityComponentIndex[ GetEntityIndex(scene, scene.modelComponents[slot].entityId) ][ComponentType_Model] = slot;
-	}
-
-	scene.entityComponentIndex[entityIndex][ComponentType_Model] = NO_COMPONENT;
+	return model;
 }
 
 ModelComponent &GetModel(Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Model];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.modelComponents[slot];
+	ModelComponent &model = *(ModelComponent*)GetComponentSlot(scene, entityId, ComponentType_Model);
+	return model;
 }
 
 const ModelComponent &GetModel(const Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Model];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.modelComponents[slot];
+	const ModelComponent &model = *(const ModelComponent*)GetComponentSlot(scene, entityId, ComponentType_Model);
+	return model;
 }
 
 void SetModelGeometryType(Engine &engine, ModelComponent &model, GeometryType geometryType)
@@ -560,56 +598,20 @@ void SetModelGeometryType(Engine &engine, ModelComponent &model, GeometryType ge
 
 static SpriteComponent *AddSpriteComponent(Scene &scene, ID entityId)
 {
-	const u16 entityIndex = GetEntityIndex(scene, entityId);
-
-	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Sprite];
-	if ( slot == NO_COMPONENT )
-	{
-		if ( scene.spriteComponentCount == MAX_SPRITE_COMPONENTS ) {
-			LOG(Warning, "Could not add a sprite component, the sprite pool is full.\n");
-			return nullptr;
-		}
-
-		slot = (u16)scene.spriteComponentCount++;
-		scene.entityComponentIndex[entityIndex][ComponentType_Sprite] = slot;
-	}
-
-	SpriteComponent &sprite = scene.spriteComponents[slot];
-	sprite = { .entityId = entityId };
-	return &sprite;
-}
-
-static void RemoveSpriteComponent(Scene &scene, ID entityId)
-{
-	const u16 entityIndex = GetEntityIndex(scene, entityId);
-
-	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Sprite];
-	if ( slot == NO_COMPONENT ) {
-		return;
-	}
-
-	const u16 last = (u16)(--scene.spriteComponentCount);
-	if ( slot != last )
-	{
-		scene.spriteComponents[slot] = scene.spriteComponents[last];
-		scene.entityComponentIndex[ GetEntityIndex(scene, scene.spriteComponents[slot].entityId) ][ComponentType_Sprite] = slot;
-	}
-
-	scene.entityComponentIndex[entityIndex][ComponentType_Sprite] = NO_COMPONENT;
+	SpriteComponent *sprite = (SpriteComponent*)AddComponentSlot(scene, entityId, ComponentType_Sprite);
+	return sprite;
 }
 
 SpriteComponent &GetSprite(Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Sprite];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.spriteComponents[slot];
+	SpriteComponent &sprite = *(SpriteComponent*)GetComponentSlot(scene, entityId, ComponentType_Sprite);
+	return sprite;
 }
 
 const SpriteComponent &GetSprite(const Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Sprite];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.spriteComponents[slot];
+	const SpriteComponent &sprite = *(const SpriteComponent*)GetComponentSlot(scene, entityId, ComponentType_Sprite);
+	return sprite;
 }
 
 // Most callers only want the ID and do not care whether the entity has the component,
@@ -638,136 +640,64 @@ ID EntityLayerId(const Scene &scene, ID entityId)
 	return GetSprite(scene, entityId).layerId;
 }
 
-static LightComponent *AddLight(Scene &scene, ID id)
+static LightComponent *AddLight(Scene &scene, ID entityId)
 {
-	const u16 entityIndex = GetEntityIndex(scene, id);
-
-	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Light];
-	if ( slot == NO_COMPONENT )
+	LightComponent *light = (LightComponent*)AddComponentSlot(scene, entityId, ComponentType_Light);
+	if ( light )
 	{
-		if ( scene.lightComponentCount == MAX_LIGHT_COMPONENTS ) {
-			LOG(Warning, "Could not add a light component, the light pool is full.\n");
-			return nullptr;
-		}
-
-		slot = (u16)scene.lightComponentCount++;
-		scene.entityComponentIndex[entityIndex][ComponentType_Light] = slot;
+		light->type = LightType_Point;
+		light->color = Float3(1.0f);
+		light->intensity = 2.0f;
+		light->radius = 5.0f;
 	}
-
-	LightComponent &light = scene.lightComponents[slot];
-	light = {
-		.entityId = id,
-		.type = LightType_Point,
-		.color = Float3(1.0f),
-		.intensity = 2.0f,
-		.radius = 5.0f,
-	};
-	return &light;
+	return light;
 }
 
-static void RemoveLight(Scene &scene, ID id)
+LightComponent &GetLight(Scene &scene, ID entityId)
 {
-	const u16 entityIndex = GetEntityIndex(scene, id);
-
-	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Light];
-	if ( slot == NO_COMPONENT ) {
-		return;
-	}
-
-	const u16 last = (u16)(--scene.lightComponentCount);
-	if ( slot != last )
-	{
-		scene.lightComponents[slot] = scene.lightComponents[last];
-		scene.entityComponentIndex[ GetEntityIndex(scene, scene.lightComponents[slot].entityId) ][ComponentType_Light] = slot;
-	}
-
-	scene.entityComponentIndex[entityIndex][ComponentType_Light] = NO_COMPONENT;
+	LightComponent &light = *(LightComponent*)GetComponentSlot(scene, entityId, ComponentType_Light);
+	return light;
 }
 
-LightComponent &GetLight(Scene &scene, ID id)
+const LightComponent &GetLight(const Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Light];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.lightComponents[slot];
-}
-
-const LightComponent &GetLight(const Scene &scene, ID id)
-{
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Light];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.lightComponents[slot];
+	const LightComponent &light = *(const LightComponent*)GetComponentSlot(scene, entityId, ComponentType_Light);
+	return light;
 }
 
 static ParticlesComponent *AddParticles(Scene &scene, ID entityId)
 {
-	const u16 entityIndex = GetEntityIndex(scene, entityId);
-
-	u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Particles];
-	if ( slot == NO_COMPONENT )
+	ParticlesComponent *particles = (ParticlesComponent*)AddComponentSlot(scene, entityId, ComponentType_Particles);
+	if ( particles )
 	{
-		if ( scene.particlesComponentCount == MAX_PARTICLES_COMPONENTS ) {
-			LOG(Warning, "Could not add a particles component, the particles pool is full.\n");
-			return nullptr;
-		}
-
-		slot = (u16)scene.particlesComponentCount++;
-		scene.entityComponentIndex[entityIndex][ComponentType_Particles] = slot;
+		particles->effectId = { BuiltinID_FountainParticleEffect };
+		particles->playOnStart = 1;
 	}
-
-	ParticlesComponent &particles = scene.particlesComponents[slot];
-	particles = {
-		.entityId = entityId,
-		.effectId = { BuiltinID_FountainParticleEffect },
-		.playOnStart = 1,
-	};
-	return &particles;
-}
-
-static void RemoveParticles(Scene &scene, ID entityId)
-{
-	const u16 entityIndex = GetEntityIndex(scene, entityId);
-
-	const u16 slot = scene.entityComponentIndex[entityIndex][ComponentType_Particles];
-	if ( slot == NO_COMPONENT ) {
-		return;
-	}
-
-	const u16 last = (u16)(--scene.particlesComponentCount);
-	if ( slot != last )
-	{
-		scene.particlesComponents[slot] = scene.particlesComponents[last];
-		scene.entityComponentIndex[ GetEntityIndex(scene, scene.particlesComponents[slot].entityId) ][ComponentType_Particles] = slot;
-	}
-
-	scene.entityComponentIndex[entityIndex][ComponentType_Particles] = NO_COMPONENT;
+	return particles;
 }
 
 ParticlesComponent &GetParticles(Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Particles];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.particlesComponents[slot];
+	ParticlesComponent &particles = *(ParticlesComponent*)GetComponentSlot(scene, entityId, ComponentType_Particles);
+	return particles;
 }
 
 const ParticlesComponent &GetParticles(const Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, entityId) ][ComponentType_Particles];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.particlesComponents[slot];
+	const ParticlesComponent &particles = *(const ParticlesComponent*)GetComponentSlot(scene, entityId, ComponentType_Particles);
+	return particles;
 }
 
-ScriptComponent &GetScript(Scene &scene, ID id)
+ScriptComponent &GetScript(Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Script];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.scriptComponents[slot];
+	ScriptComponent &script = *(ScriptComponent*)GetComponentSlot(scene, entityId, ComponentType_Script);
+	return script;
 }
 
-const ScriptComponent &GetScript(const Scene &scene, ID id)
+const ScriptComponent &GetScript(const Scene &scene, ID entityId)
 {
-	const u16 slot = scene.entityComponentIndex[ GetEntityIndex(scene, id) ][ComponentType_Script];
-	ASSERT( slot != NO_COMPONENT );
-	return scene.scriptComponents[slot];
+	const ScriptComponent &script = *(const ScriptComponent*)GetComponentSlot(scene, entityId, ComponentType_Script);
+	return script;
 }
 
 // The high half indexes the GPU entity buffer, the low half is the entity's ID slot.
@@ -775,10 +705,10 @@ const ScriptComponent &GetScript(const Scene &scene, ID id)
 // globals.selectedEntity, so both halves have to stay where they are.
 CT_ASSERT(ILU_ID_MAX_SLOTS <= U16_MAX);
 
-u32 EntityDrawId(const Scene &scene, ID id)
+u32 EntityDrawId(const Scene &scene, ID entityId)
 {
-	const u32 index = GetEntityIndex(scene, id);
-	const u32 drawId = (index << 16) | id.slot;
+	const u32 index = GetEntityIndex(scene, entityId);
+	const u32 drawId = (index << 16) | entityId.slot;
 	return drawId;
 }
 
@@ -787,8 +717,8 @@ ID EntityFromDrawId(u32 drawId)
 	// The readback is a frame behind, but slots are never recycled, so a stale one
 	// either still names the same entity or has gone invalid for good. Slot 0 is the
 	// background, and never resolves.
-	const ID id = { .slot = drawId & 0xFFFF };
-	return Valid(id) ? id : ID{};
+	const ID entityId = { .slot = drawId & 0xFFFF };
+	return Valid(entityId) ? entityId : ID{};
 }
 
 static COMPACT_MOVE(MoveEntity)
@@ -809,8 +739,7 @@ static COMPACT_REMOVE(ClearEntityComponents)
 
 void CompactEntities(Scene &scene)
 {
-	COMPACT_ARRAY_BY_ID(Entity, scene.entities, scene.entityCount, id,
-			MoveEntity, ClearEntityComponents, &scene);
+	COMPACT_ARRAY_BY_ID(Entity, scene.entities, scene.entityCount, id, MoveEntity, ClearEntityComponents, &scene);
 }
 
 void EntitySetPosition(Entity &entity, float3 position)
@@ -977,37 +906,22 @@ void AddComponent(Engine &engine, ID entityId, ComponentType type)
 	}
 }
 
-void RemoveComponent(Engine &engine, ID entityId, ComponentType type)
+void RemoveComponent(Engine &engine, ID entityId, ComponentType componentType)
 {
-	if ( !Valid(entityId) ) {
+	if ( !entityId ) {
+		LOG(Warning, "Ignoring an attempt to remove a component from an invalid entity\n");
 		return;
 	}
 
-	switch ( type )
-	{
-		case ComponentType_Model:
-			RemoveModel(engine.scene, entityId);
-			break;
+	if ( componentType >= ComponentType_Count ) {
+		LOG(Warning, "Ignoring an attempt to remove a component of unknown type: %u\n", componentType);
+		return;
+	}
 
-		case ComponentType_Sprite:
-			RemoveSpriteComponent(engine.scene, entityId);
-			break;
-
-		case ComponentType_Light:
-			RemoveLight(engine.scene, entityId);
-			break;
-
-		case ComponentType_Particles:
-			RemoveParticles(engine.scene, entityId);
-			break;
-
-		case ComponentType_Script:
-			RemoveScript(engine, entityId);
-			break;
-
-		default:
-			LOG(Warning, "Ignoring an attempt to remove a component of unknown type %u.\n", type);
-			break;
+	if ( componentType == ComponentType_Script ) {
+		RemoveScript(engine, entityId);
+	} else {
+		RemoveComponentSlot(engine.scene, entityId, componentType);
 	}
 }
 
@@ -1075,9 +989,9 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 	}
 }
 
-EntityDesc GetEntityDesc(Engine &engine, ID id)
+EntityDesc GetEntityDesc(Engine &engine, ID entityId)
 {
-	const Entity &entity = GetEntity(id);
+	const Entity &entity = GetEntity(entityId);
 	EntityDesc entityDesc = {
 		.id      = entity.id,
 		.name    = entity.name,
@@ -1089,7 +1003,7 @@ EntityDesc GetEntityDesc(Engine &engine, ID id)
 
 // Appends an entity and gives it its ID. Null when the array is full. Entities do not
 // keep their descriptor around, so the ID comes in on its own.
-static Entity *PushEntity(Scene &scene, ID id)
+static Entity *PushEntity(Scene &scene, ID entityId)
 {
 	if ( scene.entityCount == MAX_ENTITIES )
 	{
@@ -1099,7 +1013,7 @@ static Entity *PushEntity(Scene &scene, ID id)
 
 	const u32 index = scene.entityCount++;
 	Entity &entity = scene.entities[index];
-	entity = { .id = id };
+	entity = { .id = entityId };
 
 	for (u32 type = 0; type < ComponentType_Count; ++type) {
 		scene.entityComponentIndex[index][type] = NO_COMPONENT;
