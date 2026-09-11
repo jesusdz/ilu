@@ -255,7 +255,8 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 		translationUnit = translationUnit->next;
 	}
 
-	ReflexStruct reflexStructs[ARRAY_COUNT(structs)];
+	ReflexStruct reflexStructs[2 * ARRAY_COUNT(structs)]; // Room for a descriptor per struct
+	u32 reflexStructCount = structCount;
 
 	for (u32 index = 0; index < structCount; ++index)
 	{
@@ -290,6 +291,24 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 			.members = members,
 			.memberCount = (u16)structDeclarationCount,
 		};
+	}
+
+	// The descriptor printed for each component is reflected too. It shares the component's
+	// members, since their offsets are only printed later, from the name of each struct.
+	for (u32 index = 0; index < structCount; ++index)
+	{
+		const ReflexStruct &component = reflexStructs[index];
+		if (component.hint && StrEq(component.hint, "Component"))
+		{
+			char descName[128];
+			SPrintf(descName, "%sDesc", component.name);
+
+			ASSERT(reflexStructCount < ARRAY_COUNT(reflexStructs));
+			ReflexStruct &desc = reflexStructs[reflexStructCount++];
+			desc = component;
+			desc.name = PushString(arena, descName);
+			desc.hint = NULL;
+		}
 	}
 
 	// Reflected members can point to not reflected types declared in other files.
@@ -447,7 +466,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	}
 
 	// Structs
-	for (u32 index = 0; index < structCount; ++index)
+	for (u32 index = 0; index < reflexStructCount; ++index)
 	{
 		const ReflexStruct &reflexStruct = reflexStructs[index];
 		const char *structName = reflexStruct.name;

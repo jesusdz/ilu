@@ -155,22 +155,17 @@ enum LightType
 
 #include "reflex\reflex.h"
 
+struct WriteContext;
+struct DParser;
+
 struct ReflexOps
 {
 	bool (*edit)(const ReflexMember &member, void *field);
+	void (*write)(WriteContext &ctx, const ReflexMember &member, const void *field); // The value only
+	bool (*parse)(DParser &parser, const ReflexMember &member, void *field);
 };
 
 typedef ReflexID PropertyType;
-
-struct PropertyValue
-{
-	PropertyType type;
-	union
-	{
-		u32 uValue;
-		ID idValue;
-	};
-};
 
 inline bool IsIDProperty(PropertyType type)
 {
@@ -185,73 +180,19 @@ inline IDKind PropertyIDKind(const ReflexMember &member)
 	return kind;
 }
 
-// Whether a reflected member holds a value the engine knows how to read, write
-// and serialize. Pointers, arrays and types outside the property set are not
-// storable, and every reflected member was tagged on purpose, so callers report
-// these instead of silently dropping them.
-inline bool IsStorableProperty(const ReflexMember &member)
+inline const ReflexMember *FindProperty(const ReflexStruct &type, String name)
 {
-	if ( member.pointerCount > 0 || member.isArray ) {
-		return false;
+	for (u32 i = 0; i < type.memberCount; ++i) {
+		if ( StrEq(name, type.members[i].name) ) {
+			return &type.members[i];
+		}
 	}
-
-	const bool res = member.reflexId == ReflexID_u32 || IsIDProperty(member.reflexId);
-	return res;
+	return nullptr;
 }
 
-inline const char *PropertyTypeToString(PropertyType type)
+inline const ReflexMember *FindProperty(const ReflexStruct &type, const char *name)
 {
-	const char *str = ReflexGetTypeName(type);
-	return str;
-}
-
-inline PropertyType StringToPropertyType(const char *str)
-{
-	const PropertyType type = ReflexGetTypeFromName(str);
-	return type;
-}
-
-inline PropertyType StringToPropertyType(String str)
-{
-	char buffer[128];
-	StrCopy(buffer, str);
-	const PropertyType type = ReflexGetTypeFromName(buffer);
-	return type;
-}
-
-inline PropertyValue GetPropertyValue(const ReflexMember &member, const void *base)
-{
-	if ( !IsStorableProperty(member) ) {
-		const PropertyValue none = { .type = ReflexID_Null };
-		return none;
-	}
-
-	const byte *field = (const byte *)base + member.offset;
-
-	PropertyValue value = { .type = member.reflexId };
-
-	if (member.reflexId == ReflexID_u32) {
-		value.uValue = *(const u32*)field;
-	} else if (IsIDProperty(member.reflexId)) {
-		value.idValue = *(const ID*)field;
-	}
-
-	return value;
-}
-
-inline void SetPropertyValue(const ReflexMember &member, void *base, PropertyValue value)
-{
-	if ( !IsStorableProperty(member) || value.type != member.reflexId ) {
-		return;
-	}
-
-	byte *field = (byte *)base + member.offset;
-
-	if (member.reflexId == ReflexID_u32) {
-		*(u32*)field = value.uValue;
-	} else if (IsIDProperty(member.reflexId)) {
-		*(ID*)field = value.idValue;
-	}
+	return FindProperty(type, MakeString(name));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -299,10 +240,16 @@ enum ScriptHookType
 
 typedef ReflexFunctor ScriptHook;
 
+// Room for the largest property type, float3 today
+constexpr u32 MAX_PROPERTY_VALUE_SIZE = 16;
+
+// The value is kept by name rather than as a copy of the whole script, so it still finds
+// its member after a reload moves the members around
 struct ScriptPropertyDesc
 {
 	const char *name;
-	PropertyValue value;
+	byte value[MAX_PROPERTY_VALUE_SIZE]; // The member's bytes
+	PropertyType type;
 };
 
 struct Script
@@ -344,7 +291,7 @@ struct BinScriptPropertyDesc
 {
 	const char *name;
 	ReflexID type;
-	u32 value; // Raw view of PropertyValue, whichever member the type selects
+	byte value[MAX_PROPERTY_VALUE_SIZE];
 };
 
 struct BinScriptDesc
@@ -887,6 +834,13 @@ constexpr const char *ComponentNames[] = {
 #define COMPONENT_NAME(Name, name, Max) #Name,
 	FOREACH_COMPONENT(COMPONENT_NAME)
 #undef COMPONENT_NAME
+};
+
+// As they appear in the entity blocks of the asset files, e.g. ".light = {...}"
+constexpr const char *ComponentFieldNames[] = {
+#define COMPONENT_FIELD_NAME(Name, name, Max) #name,
+	FOREACH_COMPONENT(COMPONENT_FIELD_NAME)
+#undef COMPONENT_FIELD_NAME
 };
 
 typedef u32 ComponentFlags;
@@ -1465,7 +1419,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 15; // 15: sprite components flagged in BinEntityDesc::components
+constexpr u32 BinAssetsVersion = 16; // 16: script property values stored as the member's bytes
 
 #pragma pack(push, 1)
 

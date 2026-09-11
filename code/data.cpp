@@ -196,6 +196,19 @@ static void WriteLine(WriteContext &ctx, const char *format, ...)
 	va_end(vaList);
 }
 
+// Neither indents nor ends the line, for pieces of one
+static void WriteText(WriteContext &ctx, const char *format, ...)
+{
+	va_list vaList;
+	va_start(vaList, format);
+
+	const i32 len = VSPrintf(ctx.line, format, vaList);
+	char *chars = (char*)PushSize(ctx.arena, len);
+	MemCopy(chars, ctx.line, len);
+
+	va_end(vaList);
+}
+
 static void PushIndent(WriteContext &ctx)
 {
 	ctx.indent++;
@@ -207,82 +220,42 @@ static void PopIndent(WriteContext &ctx)
 	ctx.indent--;
 }
 
-static const char *GeometryTypeToString(GeometryType type)
+// The descriptor reflex generates for each ILU_STRUCT(Component), e.g. LightComponentDesc.
+// Script components have no such descriptor, their properties depend on the script.
+static const ReflexStruct *ComponentDescType(ComponentType type)
 {
-	switch (type)
+	char name[64];
+	SPrintf(name, "%sComponentDesc", ComponentNames[type]);
+	return ReflexGetStructFromName(name);
+}
+
+// All the descriptors in the union start at the same address
+static void *ComponentDescData(ComponentDesc &component)
+{
+	return &component.model;
+}
+
+static const void *ComponentDescData(const ComponentDesc &component)
+{
+	return &component.model;
+}
+
+static void WriteProperty(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	WriteIndentation(ctx);
+	WriteText(ctx, ".%s = ", member.name);
+	member.ops->write(ctx, member, field);
+	WriteText(ctx, ",");
+	NewLine(ctx);
+}
+
+static void WriteProperties(WriteContext &ctx, const ReflexStruct &type, const void *base)
+{
+	for (u32 i = 0; i < type.memberCount; ++i)
 	{
-		case GeometryTypeCube: return "GeometryTypeCube";
-		case GeometryTypePlane: return "GeometryTypePlane";
-		case GeometryTypeQuad: return "GeometryTypeQuad";
-		case GeometryTypeScreen: return "GeometryTypeScreen";
-		case GeometryTypeSprite: return "GeometryTypeSprite";
-		default:;
+		const ReflexMember &member = type.members[i];
+		WriteProperty(ctx, member, (const byte*)base + member.offset);
 	}
-	return "<unknown>";
-}
-
-static GeometryType StrToGeometryType(String str)
-{
-	static const String sGeometryTypeCube = MakeString("GeometryTypeCube");
-	static const String sGeometryTypePlane = MakeString("GeometryTypePlane");
-	static const String sGeometryTypeQuad = MakeString("GeometryTypeQuad");
-	static const String sGeometryTypeScreen = MakeString("GeometryTypeScreen");
-	static const String sGeometryTypeSprite = MakeString("GeometryTypeSprite");
-	if ( StrEq(str, sGeometryTypeCube) ) return GeometryTypeCube;
-	else if ( StrEq(str, sGeometryTypePlane) ) return GeometryTypePlane;
-	else if ( StrEq(str, sGeometryTypeQuad) ) return GeometryTypeQuad;
-	else if ( StrEq(str, sGeometryTypeScreen) ) return GeometryTypeScreen;
-	else if ( StrEq(str, sGeometryTypeSprite) ) return GeometryTypeSprite;
-	return GeometryTypeCube;
-}
-
-static void WriteModelComponentDesc(WriteContext &ctx, const ModelComponentDesc &model)
-{
-	WriteLine(ctx, ".model = {");
-	PushIndent(ctx);
-
-	WriteLine(ctx, ".materialId = %u,", model.materialId.slot);
-	WriteLine(ctx, ".geometryType = %s,", GeometryTypeToString(model.geometryType));
-
-	PopIndent(ctx);
-	WriteLine(ctx, "},");
-}
-
-static void WriteSpriteComponentDesc(WriteContext &ctx, const SpriteComponentDesc &sprite)
-{
-	WriteLine(ctx, ".sprite = {");
-	PushIndent(ctx);
-
-	WriteLine(ctx, ".spriteId = %u,", sprite.spriteId.slot);
-	WriteLine(ctx, ".layerId = %u,", sprite.layerId.slot);
-
-	PopIndent(ctx);
-	WriteLine(ctx, "},");
-}
-
-static void WriteLightComponentDesc(WriteContext &ctx, const LightComponentDesc &light)
-{
-	WriteLine(ctx, ".light = {");
-	PushIndent(ctx);
-
-	WriteLine(ctx, ".color = {%f, %f, %f},", light.color.x, light.color.y, light.color.z);
-	WriteLine(ctx, ".intensity = %f,", light.intensity);
-	WriteLine(ctx, ".radius = %f,", light.radius);
-
-	PopIndent(ctx);
-	WriteLine(ctx, "},");
-}
-
-static void WriteParticlesComponentDesc(WriteContext &ctx, const ParticlesComponentDesc &particles)
-{
-	WriteLine(ctx, ".particles = {");
-	PushIndent(ctx);
-
-	WriteLine(ctx, ".effectId = %u,", particles.effectId.slot);
-	WriteLine(ctx, ".playOnStart = %d,", particles.playOnStart);
-
-	PopIndent(ctx);
-	WriteLine(ctx, "},");
 }
 
 static void WriteScriptComponentDesc(WriteContext &ctx, const ScriptComponentDesc &script)
@@ -292,15 +265,24 @@ static void WriteScriptComponentDesc(WriteContext &ctx, const ScriptComponentDes
 
 	WriteLine(ctx, ".name = \"%s\",", script.name);
 
-	if (script.propertyCount > 0)
+	const ReflexStruct *type = ReflexGetStructFromName(script.name);
+	if ( script.propertyCount > 0 && !type ) {
+		LOG(Warning, "Script <%s> is not reflected, its properties are not saved.\n", script.name);
+	}
+
+	if ( script.propertyCount > 0 && type )
 	{
 		WriteLine(ctx, ".properties = {");
 		PushIndent(ctx);
 		for (u32 p = 0; p < script.propertyCount; ++p)
 		{
-			const ScriptPropertyDesc &propDesc = script.properties[p];
-			const char *typeStr = PropertyTypeToString(propDesc.value.type);
-			WriteLine(ctx, "{\"%s\", %s, %u},", propDesc.name, typeStr, propDesc.value.uValue);
+			const ScriptPropertyDesc &property = script.properties[p];
+			const ReflexMember *member = FindProperty(*type, property.name);
+			if ( member && member->reflexId == property.type ) {
+				WriteProperty(ctx, *member, property.value);
+			} else {
+				LOG(Warning, "Script <%s> has no property <%s> of its type anymore, it is not saved.\n", script.name, property.name);
+			}
 		}
 		PopIndent(ctx);
 		WriteLine(ctx, "},");
@@ -312,15 +294,22 @@ static void WriteScriptComponentDesc(WriteContext &ctx, const ScriptComponentDes
 
 static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &component)
 {
-	switch (component.type)
-	{
-		case ComponentType_Model:     WriteModelComponentDesc(ctx, component.model); break;
-		case ComponentType_Sprite:    WriteSpriteComponentDesc(ctx, component.sprite); break;
-		case ComponentType_Light:     WriteLightComponentDesc(ctx, component.light); break;
-		case ComponentType_Particles: WriteParticlesComponentDesc(ctx, component.particles); break;
-		case ComponentType_Script:    WriteScriptComponentDesc(ctx, component.script); break;
-		default: break;
+	if ( component.type == ComponentType_Script ) {
+		WriteScriptComponentDesc(ctx, component.script);
+		return;
 	}
+
+	const ReflexStruct *type = ComponentDescType(component.type);
+	if ( !type ) {
+		LOG(Warning, "Component <%s> has no reflected descriptor, it is not saved.\n", ComponentNames[component.type]);
+		return;
+	}
+
+	WriteLine(ctx, ".%s = {", ComponentFieldNames[component.type]);
+	PushIndent(ctx);
+	WriteProperties(ctx, *type, ComponentDescData(component));
+	PopIndent(ctx);
+	WriteLine(ctx, "},");
 }
 
 static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc, u32 entityIndex,
@@ -1020,23 +1009,6 @@ static f32 DParser_ConsumeF32( DParser &parser )
 	return res;
 }
 
-static GeometryType DParser_ConsumeGeometryType( DParser &parser )
-{
-	const String strGeometryType = DParser_ConsumeLexeme(parser);
-	const GeometryType res = StrToGeometryType(strGeometryType);
-	return res;
-}
-
-static PropertyType DParser_ConsumePropertyType( DParser &parser )
-{
-	const String strPropertyType = DParser_ConsumeLexeme(parser);
-	const PropertyType res = StringToPropertyType(strPropertyType);
-	if (res == ReflexID_Null) {
-		LOG(Warning, "DParser_ConsumeGeometryType: unrecognized geometry type %.*s\n", strPropertyType.size, strPropertyType.str);
-	}
-	return res;
-}
-
 static i32 DParser_ConsumeI32( DParser &parser )
 {
 	const bool neg = DParser_TryConsume(parser, TOKEN_MINUS);
@@ -1162,11 +1134,16 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 
 static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script, ComponentDescPool &pool);
 
-static void DParser_ConsumeEntityModel( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
+static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member, void *field )
+{
+	if ( !member.ops->parse(parser, member, field) ) {
+		LOG(Warning, "Property <%s> has a value that is not a valid <%s>.\n", member.name, member.typeName);
+	}
+}
+
+static void DParser_ConsumeProperties( DParser &parser, const ReflexStruct &type, void *base )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
-
-	ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Model);
 
 	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 	{
@@ -1176,15 +1153,11 @@ static void DParser_ConsumeEntityModel( DParser &parser, ComponentDescPool &pool
 
 		DParser_TryConsume(parser, TOKEN_EQUAL);
 
-		static const String sMaterialId = MakeString("materialId");
-		static const String sGeometryType = MakeString("geometryType");
-
-		if ( StrEq( field, sMaterialId ) ) {
-			const ID id = DParser_ConsumeID(parser);
-			if ( component ) { component->model.materialId = id; }
-		} else if ( StrEq( field, sGeometryType ) ) {
-			const GeometryType geometryType = DParser_ConsumeGeometryType(parser);
-			if ( component ) { component->model.geometryType = geometryType; }
+		if ( const ReflexMember *member = FindProperty(type, field) ) {
+			DParser_ConsumeProperty(parser, *member, (byte*)base + member->offset);
+		} else {
+			LOG(Warning, "<%s> has no property <%.*s>, its value is skipped.\n", type.name, field.size, field.str);
+			DParser_SkipFieldValue(parser);
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
@@ -1193,101 +1166,19 @@ static void DParser_ConsumeEntityModel( DParser &parser, ComponentDescPool &pool
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-static void DParser_ConsumeEntitySprite( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
+static void DParser_ConsumeEntityComponent( DParser &parser, ComponentDescPool &pool, u32 entityIndex, ComponentType componentType )
 {
-	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
-
-	ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Sprite);
-
-	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
-	{
-		DParser_TryConsume(parser, TOKEN_DOT);
-
-		const String field = DParser_ConsumeLexeme(parser);
-
-		DParser_TryConsume(parser, TOKEN_EQUAL);
-
-		static const String sSpriteId = MakeString("spriteId");
-		static const String sLayerId = MakeString("layerId");
-
-		if ( StrEq( field, sSpriteId ) ) {
-			const ID id = DParser_ConsumeID(parser);
-			if ( component ) { component->sprite.spriteId = id; }
-		} else if ( StrEq( field, sLayerId ) ) {
-			const ID id = DParser_ConsumeID(parser);
-			if ( component ) { component->sprite.layerId = id; }
-		}
-
-		DParser_TryConsume(parser, TOKEN_COMMA);
+	const ReflexStruct *type = ComponentDescType(componentType);
+	if ( !type ) {
+		LOG(Warning, "Component <%s> has no reflected descriptor, it is skipped.\n", ComponentNames[componentType]);
 	}
 
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
-}
-
-static void DParser_ConsumeEntityLight( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
-{
-	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
-
-	ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Light);
-
-	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
-	{
-		DParser_TryConsume(parser, TOKEN_DOT);
-
-		const String field = DParser_ConsumeLexeme(parser);
-
-		DParser_TryConsume(parser, TOKEN_EQUAL);
-
-		static const String sColor = MakeString("color");
-		static const String sIntensity = MakeString("intensity");
-		static const String sRadius = MakeString("radius");
-
-		if ( StrEq( field, sColor ) ) {
-			const float3 color = DParser_ConsumeFloat3(parser);
-			if ( component ) { component->light.color = color; }
-		} else if ( StrEq( field, sIntensity ) ) {
-			const f32 intensity = DParser_ConsumeF32(parser);
-			if ( component ) { component->light.intensity = intensity; }
-		} else if ( StrEq( field, sRadius ) ) {
-			const f32 radius = DParser_ConsumeF32(parser);
-			if ( component ) { component->light.radius = radius; }
-		}
-
-		DParser_TryConsume(parser, TOKEN_COMMA);
+	ComponentDesc *component = type ? PushComponentDesc(pool, entityIndex, componentType) : nullptr;
+	if ( component ) {
+		DParser_ConsumeProperties(parser, *type, ComponentDescData(*component));
+	} else {
+		DParser_SkipFieldValue(parser);
 	}
-
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
-}
-
-static void DParser_ConsumeEntityParticles( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
-{
-	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
-
-	ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Particles);
-
-	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
-	{
-		DParser_TryConsume(parser, TOKEN_DOT);
-
-		const String field = DParser_ConsumeLexeme(parser);
-
-		DParser_TryConsume(parser, TOKEN_EQUAL);
-
-		static const String sEffectId = MakeString("effectId");
-		static const String sPlayOnStart = MakeString("playOnStart");
-
-		if ( StrEq( field, sEffectId ) ) {
-			const ID id = DParser_ConsumeID(parser);
-			if ( component ) { component->particles.effectId = id; }
-		} else if ( StrEq( field, sPlayOnStart ) ) {
-			const u8 playOnStart = DParser_ConsumeU8(parser);
-			if ( component ) { component->particles.playOnStart = playOnStart; }
-		}
-
-		DParser_TryConsume(parser, TOKEN_COMMA);
-	}
-
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
 static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
@@ -1336,35 +1227,35 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 	static const String sName = MakeString("name");
 	static const String sPos = MakeString("pos");
 	static const String sScale = MakeString("scale");
-	static const String sModel = MakeString("model");
-	static const String sSprite = MakeString("sprite");
-	static const String sLight = MakeString("light");
-	static const String sParticles = MakeString("particles");
-	static const String sScript = MakeString("script");
 
 	if ( StrEq( field, sId ) ) {
 		entity.id = DParser_ConsumeID(parser);
+		return true;
 	} else if ( StrEq( field, sName ) ) {
 		entity.name = PushString(*parser.arena, DParser_ConsumeString(parser));
+		return true;
 	} else if ( StrEq( field, sPos ) ) {
 		entity.pos = DParser_ConsumeFloat3(parser);
+		return true;
 	} else if ( StrEq( field, sScale ) ) {
 		entity.scale = DParser_ConsumeF32(parser);
-	} else if ( StrEq( field, sModel ) ) {
-		DParser_ConsumeEntityModel(parser, pool, entityIndex);
-	} else if ( StrEq( field, sSprite ) ) {
-		DParser_ConsumeEntitySprite(parser, pool, entityIndex);
-	} else if ( StrEq( field, sLight ) ) {
-		DParser_ConsumeEntityLight(parser, pool, entityIndex);
-	} else if ( StrEq( field, sParticles ) ) {
-		DParser_ConsumeEntityParticles(parser, pool, entityIndex);
-	} else if ( StrEq( field, sScript ) ) {
-		DParser_ConsumeEntityScript(parser, pool, entityIndex);
-	} else {
-		return false;
+		return true;
 	}
 
-	return true;
+	for (u32 type = 0; type < ComponentType_Count; ++type)
+	{
+		if ( StrEq( field, ComponentFieldNames[type] ) )
+		{
+			if ( type == ComponentType_Script ) {
+				DParser_ConsumeEntityScript(parser, pool, entityIndex);
+			} else {
+				DParser_ConsumeEntityComponent(parser, pool, entityIndex, (ComponentType)type);
+			}
+			return true;
+		}
+	}
+
+	return false;
 }
 
 
@@ -1471,28 +1362,51 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
+// Parsing runs before RegisterScripts, so the script's layout comes from reflex by name. That
+// name is the reason .name has to come before .properties in the script block.
 static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script, ComponentDescPool &pool)
 {
+	const ReflexStruct *type = script.name ? ReflexGetStructFromName(script.name) : nullptr;
+	if ( !type ) {
+		LOG(Warning, "Script <%s> is not reflected, its properties are skipped.\n", script.name ? script.name : "");
+		DParser_SkipFieldValue(parser);
+		return;
+	}
+
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
 	script.properties = pool.properties + pool.propertyCount;
 	script.propertyCount = 0;
 
-	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
+	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 	{
-		ScriptPropertyDesc propertyDesc = {};
-		propertyDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
-		DParser_TryConsume(parser, TOKEN_COMMA);
-		propertyDesc.value.type = DParser_ConsumePropertyType(parser);
-		DParser_TryConsume(parser, TOKEN_COMMA);
-		propertyDesc.value.uValue = DParser_ConsumeU32(parser);
-		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
-		DParser_TryConsume(parser, TOKEN_COMMA);
+		DParser_TryConsume(parser, TOKEN_DOT);
 
-		if ( pool.propertyCount < pool.propertyCapacity ) {
-			pool.properties[pool.propertyCount++] = propertyDesc;
+		const String field = DParser_ConsumeLexeme(parser);
+
+		DParser_TryConsume(parser, TOKEN_EQUAL);
+
+		const ReflexMember *member = FindProperty(*type, field);
+		if ( !member ) {
+			LOG(Warning, "Script <%s> has no property <%.*s>, its value is skipped.\n", script.name, field.size, field.str);
+			DParser_SkipFieldValue(parser);
+		} else if ( ReflexGetTypeSize(member->reflexId) > MAX_PROPERTY_VALUE_SIZE ) {
+			LOG(Warning, "Script <%s> property <%s> is too large to be stored, its value is skipped.\n", script.name, member->name);
+			DParser_SkipFieldValue(parser);
+		} else if ( pool.propertyCount == pool.propertyCapacity ) {
+			LOG(Warning, "Script <%s> drops property <%s>, the property pool is full.\n", script.name, member->name);
+			DParser_SkipFieldValue(parser);
+		} else {
+			ScriptPropertyDesc &property = pool.properties[pool.propertyCount++];
+			property = {
+				.name = PushString(*parser.arena, member->name),
+				.type = member->reflexId,
+			};
+			DParser_ConsumeProperty(parser, *member, property.value);
 			script.propertyCount++;
 		}
+
+		DParser_TryConsume(parser, TOKEN_COMMA);
 	}
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
@@ -2021,8 +1935,8 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 
 					BinScriptPropertyDesc &pd = bs.properties[p];
 					pd.name  = DataInternString(stringPool, property.name);
-					pd.type  = property.value.type;
-					pd.value = property.value.uValue;
+					pd.type  = property.type;
+					MemCopy(pd.value, property.value, sizeof(pd.value));
 				}
 				break;
 			}

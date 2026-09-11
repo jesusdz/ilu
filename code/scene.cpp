@@ -1100,8 +1100,8 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 
 				ScriptPropertyDesc &property = pool.properties[pool.propertyCount++];
 				property.name = binProperty.name;
-				property.value.type = binProperty.type;
-				property.value.uValue = binProperty.value;
+				property.type = binProperty.type;
+				MemCopy(property.value, binProperty.value, sizeof(property.value));
 			}
 		}
 	}

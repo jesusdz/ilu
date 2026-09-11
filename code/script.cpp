@@ -21,8 +21,8 @@ static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHoo
 	for (u32 i = 0; i < type->memberCount; ++i)
 	{
 		const ReflexMember &member = type->members[i];
-		if ( !IsStorableProperty(member) ) {
-			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> cannot be stored\n", type->name, member.name, PropertyTypeToString(member.reflexId));
+		if ( ReflexGetTypeSize(member.reflexId) > MAX_PROPERTY_VALUE_SIZE ) {
+			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> is too large to be stored\n", type->name, member.name, member.typeName);
 		} else if ( IsIDProperty(member.reflexId) && PropertyIDKind(member) == IDKind_None ) {
 			LOG(Warning, "RegisterScript: <%s> property <%s> has hint <%s>, which names no ID kind (e.g. ILU_PROPERTY(Sprite)), so nothing can be assigned to it in the editor\n", type->name, member.name, member.hint ? member.hint : "");
 		}
@@ -258,7 +258,8 @@ ScriptComponentDesc MakeDesc(const ScriptComponent &comp, ComponentDescPool &poo
 	for (u32 p = 0; p < type->memberCount; ++p)
 	{
 		const ReflexMember &member = type->members[p];
-		if ( IsStorableProperty(member) )
+		const u32 size = ReflexGetTypeSize(member.reflexId);
+		if ( size <= MAX_PROPERTY_VALUE_SIZE )
 		{
 			if ( pool.propertyCount == pool.propertyCapacity ) {
 				LOG(Warning, "Script <%s> drops property <%s>, the property pool is full.\n", desc.name, member.name);
@@ -266,8 +267,11 @@ ScriptComponentDesc MakeDesc(const ScriptComponent &comp, ComponentDescPool &poo
 			}
 
 			ScriptPropertyDesc &propertyDesc = pool.properties[pool.propertyCount++];
-			propertyDesc.name = member.name;
-			propertyDesc.value = GetPropertyValue(member, comp.data);
+			propertyDesc = {
+				.name = member.name,
+				.type = member.reflexId,
+			};
+			MemCopy(propertyDesc.value, comp.data + member.offset, size);
 			desc.propertyCount++;
 		}
 	}
@@ -283,22 +287,14 @@ void ApplyDesc(ScriptComponent &comp, const ScriptComponentDesc &desc)
 	{
 		const ScriptPropertyDesc &propertyDesc = desc.properties[i];
 
-		const ReflexMember *member = nullptr;
-		for (u32 p = 0; p < type->memberCount; ++p)
-		{
-			const ReflexMember &currMember = type->members[p];
-			if ( StrEq( currMember.name, propertyDesc.name ) ) {
-				member = &currMember;
-				break;
-			}
-		}
+		const ReflexMember *member = FindProperty(*type, propertyDesc.name);
 
 		if ( !member ) {
 			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else if ( member->reflexId != propertyDesc.value.type ) {
+		} else if ( member->reflexId != propertyDesc.type ) {
 			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
 		} else {
-			SetPropertyValue(*member, comp.data, propertyDesc.value);
+			MemCopy(comp.data + member->offset, propertyDesc.value, ReflexGetTypeSize(member->reflexId));
 		}
 	}
 }

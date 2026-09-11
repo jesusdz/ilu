@@ -202,12 +202,12 @@ Entity player = {
  .script = {
   .name = "ScriptPlayerController",
   .properties = {
-   {"sprPlayerIdle", ID, 1032},
-   {"sprPlayerRun", ID, 1024},
-   {"sprPlayerJump", ID, 1037},
-   {"sprPlayerFall", ID, 1036},
-   {"sndJump", ID, 0},
-   {"randomProperty", u32, 0},
+   .sprPlayerIdle = 1032,
+   .sprPlayerRun = 1024,
+   .sprPlayerJump = 1037,
+   .sprPlayerFall = 1036,
+   .sndJump = 0,
+   .randomProperty = 0,
   },
  },
 };
