@@ -850,12 +850,15 @@ struct ModelComponentDesc
 	GeometryType geometryType;
 };
 
+ILU_STRUCT(Component)
 struct ModelComponent
 {
 	ID entityId;
 
 	// Descriptor
+	ILU_PROPERTY()
 	ID materialId;
+	ILU_PROPERTY()
 	GeometryType geometryType;
 
 	// Runtime
@@ -872,12 +875,15 @@ struct SpriteComponentDesc
 	ID layerId;
 };
 
+ILU_STRUCT(Component)
 struct SpriteComponent
 {
 	ID entityId;
 
 	// Descriptor
+	ILU_PROPERTY()
 	ID spriteId;
+	ILU_PROPERTY()
 	ID layerId;
 
 	// Runtime
@@ -900,14 +906,19 @@ struct LightComponentDesc
 	f32 radius;
 };
 
+ILU_STRUCT(Component)
 struct LightComponent
 {
 	ID entityId;
 
 	// Descriptor
+	ILU_PROPERTY()
 	LightType type;
+	ILU_PROPERTY()
 	float3 color;
+	ILU_PROPERTY()
 	f32 intensity;
+	ILU_PROPERTY()
 	f32 radius;
 };
 
@@ -920,12 +931,15 @@ struct ParticlesComponentDesc
 	u8 playOnStart;
 };
 
+ILU_STRUCT(Component)
 struct ParticlesComponent
 {
 	ID entityId;
 
 	// Descriptor
+	ILU_PROPERTY()
 	ID effectId;
+	ILU_PROPERTY()
 	u8 playOnStart;
 
 	// Runtime

@@ -34,9 +34,14 @@
  *
  * const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize);
  * const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize, const CastConfig &config);
+ * bool Cast_Append( CastArena &arena, Cast &cast, const char *text, cast_u64 textSize, const CastConfig &config);
  * const char *Cast_GetError();
  * int Cast_EvaluateInt( const CastExpression *ast ); // And for all trivial types
  * void Cast_Print( const Cast *cast ); // Only if CAST_PRINT was defined
+ *
+ * Cast_Append parses one more file into an existing Cast (start from a zeroed one).
+ * Types declared by earlier files are known while parsing later ones, as if the
+ * earlier files had been #included.
  */
 
 #ifndef CAST_H
@@ -176,6 +181,7 @@ struct CastFunctionDefinition;
 struct CastExternalDeclaration;
 struct CastTranslationUnit;
 struct Cast;
+struct CIdentifierList;
 
 // Cast tags
 
@@ -201,6 +207,7 @@ struct CastConfig
 
 const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize );
 const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize, const CastConfig &config );
+bool Cast_Append( CastArena &arena, Cast &cast, const char *text, cast_u64 textSize, const CastConfig &config );
 const char *Cast_GetError();
 #ifdef CAST_PRINT
 void Cast_Print( const Cast *cast );
@@ -437,6 +444,7 @@ struct CastTranslationUnit
 struct Cast
 {
 	CastTranslationUnit *translationUnit;
+	CIdentifierList *identifiers;
 };
 
 
@@ -463,6 +471,7 @@ enum CTokenId
 	TOKEN_TERNARY,
 	TOKEN_MODULO,
 	TOKEN_SLASH,
+	TOKEN_BACKSLASH,
 	TOKEN_STAR,
 	TOKEN_TILDE,
 	// One or two-character tokens
@@ -531,6 +540,7 @@ static const char *CTokenIdNames[] =
 	"TOKEN_TERNARY",
 	"TOKEN_MODULO",
 	"TOKEN_SLASH",
+	"TOKEN_BACKSLASH",
 	"TOKEN_STAR",
 	"TOKEN_TILDE",
 	// One or two-character tokens
@@ -826,6 +836,7 @@ static void CScanner_ScanToken(CScanner &scanner, CTokenList &tokenList)
 		case '?': CScanner_AddToken(scanner, tokenList, TOKEN_TERNARY); break;
 		case '%': CScanner_AddToken(scanner, tokenList, TOKEN_MODULO); break;
 		case '!': CScanner_AddToken(scanner, tokenList, CScanner_Consume(scanner, '=') ? TOKEN_NOT_EQUAL : TOKEN_NOT); break;
+		case '\\': CScanner_AddToken(scanner, tokenList, TOKEN_BACKSLASH); break;
 		case '=': CScanner_AddToken(scanner, tokenList, CScanner_Consume(scanner, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL); break;
 		case '<': CScanner_AddToken(scanner, tokenList, CScanner_Consume(scanner, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS); break;
 		case '>': CScanner_AddToken(scanner, tokenList, CScanner_Consume(scanner, '=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER); break;
@@ -858,8 +869,19 @@ static void CScanner_ScanToken(CScanner &scanner, CTokenList &tokenList)
 			break;
 
 		case '#':
-			// Discard all chars until the end of line is reached
-			while ( !Char_IsEOL( CScanner_Peek(scanner) ) && !CScanner_IsAtEnd(scanner) ) CScanner_Advance(scanner);
+			// Discard all chars until the end of line is reached, and a trailing backslash
+			// carries the directive on to the next line
+			while ( !Char_IsEOL( CScanner_Peek(scanner) ) && !CScanner_IsAtEnd(scanner) )
+			{
+				if ( CScanner_Advance(scanner) == '\\' )
+				{
+					CScanner_Consume(scanner, '\r');
+					if ( CScanner_Consume(scanner, '\n') ) {
+						scanner.line++;
+						scanner.currentInLine = 0;
+					}
+				}
+			}
 			break;
 
 		// Skip whitespaces
@@ -1281,11 +1303,13 @@ static bool Cast_IsTypedef( const CastExternalDeclaration *externalDeclaration, 
 
 #define CAST_BACKUP() \
 	CastArena backupArena = *parser.arena; \
-	cast_u32 nextTokenBackup = parser.nextToken;
+	cast_u32 nextTokenBackup = parser.nextToken; \
+	CIdentifierList *identifiersBackup = parser.identifiers;
 
 #define CAST_RESTORE() \
 	*parser.arena = backupArena; \
-	parser.nextToken = nextTokenBackup;
+	parser.nextToken = nextTokenBackup; \
+	parser.identifiers = identifiersBackup;
 
 #define CAST_NODE( TypeName ) \
 	CastPushZeroStruct( *parser.arena, TypeName )
@@ -2252,18 +2276,7 @@ static CastTranslationUnit *Cast_ParseTranslationUnit( CParser &parser, CTokenLi
 }
 
 
-static Cast *Cast_Create( CParser &parser, CTokenList &tokenList )
-{
-	Cast *cast = NULL;
-	CastTranslationUnit *translationUnit = Cast_ParseTranslationUnit(parser, tokenList);
-	if ( translationUnit ) {
-		cast = CAST_NODE( Cast );
-		cast->translationUnit = translationUnit;
-	}
-	return cast;
-}
-
-const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize, const CastConfig &config )
+bool Cast_Append( CastArena &arena, Cast &cast, const char *text, cast_u64 textSize, const CastConfig &config )
 {
 	gCastError[0] = '\0';
 
@@ -2275,10 +2288,33 @@ const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize, 
 		parser.tokenList = &tokenList;
 		parser.arena = &arena;
 		parser.config = config;
-		Cast *cast = Cast_Create(parser, tokenList);
-		return cast;
+		parser.identifiers = cast.identifiers;
+
+		CastTranslationUnit *translationUnit = Cast_ParseTranslationUnit(parser, tokenList);
+		if ( translationUnit )
+		{
+			CastTranslationUnit **tail = &cast.translationUnit;
+			while ( *tail ) {
+				tail = &(*tail)->next;
+			}
+			*tail = translationUnit;
+			cast.identifiers = parser.identifiers;
+			return true;
+		}
 	}
 
+	return false;
+}
+
+const Cast *Cast_Create( CastArena &arena, const char *text, cast_u64 textSize, const CastConfig &config )
+{
+	Cast cast = {};
+	if ( Cast_Append(arena, cast, text, textSize, config) )
+	{
+		Cast *result = CastPushStruct( arena, Cast );
+		*result = cast;
+		return result;
+	}
 	return NULL;
 }
 

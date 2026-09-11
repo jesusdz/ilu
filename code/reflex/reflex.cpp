@@ -481,51 +481,48 @@ void GenerateReflex(const Cast *cast, Arena arena)
 
 int main(int argc, char **argv)
 {
-	if (argc != 2 )
+	if (argc < 2 )
 	{
-		LOG(Info, "Usage: %s <c file>\n", argv[0]);
+		LOG(Info, "Usage: %s <c file> [<c file>...]\n", argv[0]);
 		return -1;
 	}
 
-	const char *filename = argv[1];
+	u32 globalArenaSize = MB(4);
+	byte *globalArenaBase = (byte*)AllocateVirtualMemory(globalArenaSize);
+	Arena globalArena = MakeArena(globalArenaBase, globalArenaSize, "globalArena");
 
-	u64 fileSize;
-	if ( GetFileSize(filename, fileSize) && fileSize > 0 )
+	Cast cast = {};
+
+	for (int argIndex = 1; argIndex < argc; ++argIndex)
 	{
-		u32 globalArenaSize = MB(4);
-		byte *globalArenaBase = (byte*)AllocateVirtualMemory(globalArenaSize);
-		Arena globalArena = MakeArena(globalArenaBase, globalArenaSize, "globalArena");
+		const char *filename = argv[argIndex];
+
+		u64 fileSize;
+		if ( !GetFileSize(filename, fileSize) || fileSize == 0 )
+		{
+			LOG(Error, "GetFileSize() failed reading %s\n", filename);
+			return -1;
+		}
 
 		char* bytes = PushArray(globalArena, char, fileSize + 1);
-		if ( ReadEntireFile(filename, bytes, fileSize) )
-		{
-			bytes[fileSize] = 0;
-
-			const Cast *cast = Cast_Create(globalArena, bytes, fileSize, castConfig);
-			if (cast)
-			{
-				GenerateReflex(cast, globalArena);
-			}
-			else
-			{
-				LOG(Error, "Cast_Create() failed:\n");
-				LOG(Error, "- file: %s\n", filename);
-				LOG(Error, "- message: %s\n", Cast_GetError());
-				return -1;
-			}
-		}
-		else
+		if ( !ReadEntireFile(filename, bytes, fileSize) )
 		{
 			LOG(Error, "ReadEntireFile() failed reading %s\n", filename);
 			return -1;
 		}
+		bytes[fileSize] = 0;
+
+		if ( !Cast_Append(globalArena, cast, bytes, fileSize, castConfig) )
+		{
+			LOG(Error, "Cast_Append() failed:\n");
+			LOG(Error, "- file: %s\n", filename);
+			LOG(Error, "- message: %s\n", Cast_GetError());
+			return -1;
+		}
 	}
-	else
-	{
-		LOG(Error, "GetFileSize() failed reading %s\n", filename);
-		return -1;
-	}
-	
+
+	GenerateReflex(&cast, globalArena);
+
 	return 0;
 }
 
