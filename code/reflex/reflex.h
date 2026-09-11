@@ -88,6 +88,7 @@ struct ReflexMember
 {
 	const char *name;
 	const char *hint; // Optional arguments in the tag macro
+	const char *typeName; // As spelled in C, e.g. "unsigned int" or "ID"
 	u16 isConst : 1;
 	u16 pointerCount : 2;
 	u16 isArray : 1;

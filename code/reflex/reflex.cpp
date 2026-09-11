@@ -1,6 +1,7 @@
 #define CAST_IMPLEMENTATION
 #include "cast.h"
 #include "../ilu_core.h"
+#include "reflex.h"
 
 #define StringPrintfArgs(string) string.size, string.str
 
@@ -11,36 +12,172 @@ static const CastConfig castConfig = {
 	.enumTag = "ILU_ENUM",
 };
 
-// Returns the type name of a struct member when its type is an identifier
-// (as opposed to a trivial type or an inline struct/enum), or an empty string.
-static String GetMemberTypeName(const CastStructDeclaration *structDeclaration)
+// The trivial ReflexID enumerators, which the generated code refers to by name
+static const char *TrivialReflexIDNames[] =
 {
-	const CastSpecifierQualifierList *specifierList = CAST_CHILD(structDeclaration, specifierQualifierList);
+	"ReflexID_Void",
+	"ReflexID_Bool",
+	"ReflexID_Char",
+	"ReflexID_UnsignedChar",
+	"ReflexID_Int",
+	"ReflexID_ShortInt",
+	"ReflexID_LongInt",
+	"ReflexID_LongLongInt",
+	"ReflexID_UnsignedInt",
+	"ReflexID_UnsignedShortInt",
+	"ReflexID_UnsignedLongInt",
+	"ReflexID_UnsignedLongLongInt",
+	"ReflexID_Float",
+	"ReflexID_Double",
+};
+CT_ASSERT(ARRAY_COUNT(TrivialReflexIDNames) == ReflexID_TrivialCount);
+
+// Fills the member the way the generated code will. A type named by an identifier keeps
+// ReflexID_Null: its ReflexID only exists in the compiled code, so it is printed by name.
+// Returns false when the type cannot be named at all.
+static bool MakeReflexMember(Arena &arena, const CastStructDeclaration *structDeclaration, ReflexMember &member)
+{
+	const CastTag *tag = structDeclaration->tag;
+	const CastSpecifierQualifierList *specifierQualifierList = structDeclaration->specifierQualifierList;
+	const CastDeclarator *declarator = CAST_CHILD2(structDeclaration, structDeclaratorList, structDeclarator);
+	const CastDirectDeclarator *directDeclarator = CAST_CHILD(declarator, directDeclarator);
+
+	member = {};
+	member.name = directDeclarator ? PushString(arena, directDeclarator->name) : "<none>";
+	member.hint = tag && tag->arguments.size > 0 ? PushString(arena, tag->arguments) : NULL;
+	member.isConst = specifierQualifierList && specifierQualifierList->typeQualifier &&
+		specifierQualifierList->typeQualifier->type == CAST_CONST;
+	member.isArray = directDeclarator && directDeclarator->isArray;
+	member.arrayDim = directDeclarator && directDeclarator->expression ? Cast_EvaluateInt(directDeclarator->expression) : 0;
+	for (const CastPointer *pointer = CAST_CHILD(declarator, pointer); pointer; pointer = pointer->next) {
+		member.pointerCount++;
+	}
+
+	// Type specifiers
+
+	bool isVoid = false;
+	bool isBool = false;
+	bool isChar = false;
+	bool isInt = false;
+	bool isFloat = false;
+	bool isDouble = false;
+	bool isShort = false;
+	bool isLong = false;
+	bool isLongLong = false;
+	bool isUnsigned = false;
+	const char *identifier = NULL;
+
+	const CastSpecifierQualifierList *specifierList = specifierQualifierList;
 	while (specifierList)
 	{
 		const CastTypeSpecifier *typeSpecifier = specifierList->typeSpecifier;
-		if (typeSpecifier && typeSpecifier->type == CAST_IDENTIFIER) {
-			return typeSpecifier->identifier;
+		if (typeSpecifier) {
+			if (typeSpecifier->type == CAST_VOID) {
+				isVoid = true; break;
+			} else if (typeSpecifier->type == CAST_BOOL) {
+				isBool = true; break;
+			} else if (typeSpecifier->type == CAST_CHAR) {
+				isChar = true; break;
+			} else if (typeSpecifier->type == CAST_FLOAT) {
+				isFloat = true; break;
+			} else if (typeSpecifier->type == CAST_DOUBLE) {
+				isDouble = true; break;
+			} else if (typeSpecifier->type == CAST_IDENTIFIER) {
+				identifier = PushString(arena, typeSpecifier->identifier); break;
+			} else if (typeSpecifier->type == CAST_INT) {
+				isInt = true;
+			} else if (typeSpecifier->type == CAST_UNSIGNED) {
+				isUnsigned = true;
+			} else if (typeSpecifier->type == CAST_SHORT) {
+				isShort = true;
+			} else if (typeSpecifier->type == CAST_LONG) {
+				isLongLong = isLong; isLong = true;
+			} else {
+				break;
+			}
 		}
 		specifierList = specifierList->next;
 	}
-	return MakeString("");
+
+	ReflexID reflexId = ReflexID_Null;
+	if (isVoid) {
+		reflexId = ReflexID_Void;
+	} else if (isBool) {
+		reflexId = ReflexID_Bool;
+	} else if (isChar) {
+		if (isUnsigned) reflexId = ReflexID_UnsignedChar;
+		else reflexId = ReflexID_Char;
+	} else if (isInt) {
+		if (isUnsigned) {
+			if (isLongLong) reflexId = ReflexID_UnsignedLongLongInt;
+			else if (isLong) reflexId = ReflexID_UnsignedLongInt;
+			else if (isShort) reflexId = ReflexID_UnsignedShortInt;
+			else reflexId = ReflexID_UnsignedInt;
+		} else {
+			if (isLongLong) reflexId = ReflexID_LongLongInt;
+			else if (isLong) reflexId = ReflexID_LongInt;
+			else if (isShort) reflexId = ReflexID_ShortInt;
+			else reflexId = ReflexID_Int;
+		}
+	} else if (isFloat) {
+		reflexId = ReflexID_Float;
+	} else if (isDouble) {
+		reflexId = ReflexID_Double;
+	}
+
+	member.reflexId = reflexId;
+	member.typeName = ReflexIsTrivial(reflexId) ? ReflexGetTrivial(reflexId)->name : identifier;
+	return member.typeName != NULL;
 }
 
-static bool IsPointerMember(const CastStructDeclaration *structDeclaration)
+static void PrintReflexID(const ReflexMember &member)
 {
-	const CastStructDeclaratorList *structDeclaratorList = CAST_CHILD(structDeclaration, structDeclaratorList);
-	const CastDeclarator *declarator = CAST_CHILD(structDeclaratorList, structDeclarator);
-	const CastPointer *pointer = CAST_CHILD(declarator, pointer);
-	return pointer != NULL;
+	if (ReflexIsTrivial(member.reflexId)) {
+		printf("%s", TrivialReflexIDNames[member.reflexId]);
+	} else {
+		printf("ReflexID_%s", member.typeName);
+	}
 }
 
-void GenerateReflex(const Cast *cast)
+// Prints the member back as a C declaration, e.g. "const char *name;"
+static void PrintMemberDeclaration(const ReflexMember &member)
+{
+	printf("	%s%s ", member.isConst ? "const " : "", member.typeName);
+	for (u32 i = 0; i < member.pointerCount; ++i) {
+		printf("*");
+	}
+	printf("%s", member.name);
+	if (member.isArray) {
+		printf("[%u]", (u32)member.arrayDim);
+	}
+	printf(";\n");
+}
+
+constexpr u32 MAX_STRUCT_MEMBERS = 128;
+void GetStructMemberDeclarations(const CastStructSpecifier *cstruct, const CastStructDeclaration* structDeclarations[MAX_STRUCT_MEMBERS], u32 *structDeclarationCount)
+{
+	ASSERT(structDeclarationCount != nullptr);
+	u32 &declarationCount = *structDeclarationCount;
+
+	// Only members tagged with the field tag macro are reflected
+	declarationCount = 0;
+	const CastStructDeclarationList *structDeclarationList = cstruct->structDeclarationList;
+	while (structDeclarationList) {
+		const CastStructDeclaration *structDeclaration = structDeclarationList->structDeclaration;
+		if (structDeclaration && structDeclaration->tag) {
+			ASSERT(declarationCount < MAX_STRUCT_MEMBERS);
+			structDeclarations[declarationCount++] = structDeclaration;
+		}
+		structDeclarationList = structDeclarationList->next;
+	}
+}
+
+static bool GenerateReflex(const Cast *cast, Arena &arena)
 {
 	const CastStructSpecifier *structs[128];
 	u32 structCount = 0;
 
-	const CastStructDeclaration *structDeclarations[128]; // members
+	const CastStructDeclaration *structDeclarations[MAX_STRUCT_MEMBERS]; // members
 	u32 structDeclarationCount = 0;
 
 	const CastEnumSpecifier *enums[128];
@@ -108,28 +245,50 @@ void GenerateReflex(const Cast *cast)
 		translationUnit = translationUnit->next;
 	}
 
+	ReflexStruct reflexStructs[ARRAY_COUNT(structs)];
+
+	for (u32 index = 0; index < structCount; ++index)
+	{
+		const CastStructSpecifier *cstruct = structs[index];
+
+		GetStructMemberDeclarations(cstruct, structDeclarations, &structDeclarationCount);
+
+		ReflexMember *members = PushArray(arena, ReflexMember, structDeclarationCount);
+		for (u32 memberIndex = 0; memberIndex < structDeclarationCount; ++memberIndex)
+		{
+			ReflexMember &member = members[memberIndex];
+			if (!MakeReflexMember(arena, structDeclarations[memberIndex], member)) {
+				LOG(Error, "Reflex: the type of <%.*s::%s> cannot be reflected\n", StringPrintfArgs(cstruct->name), member.name);
+				return false;
+			}
+		}
+
+		reflexStructs[index] = {
+			.name = PushString(arena, cstruct->name),
+			.hint = cstruct->tag->arguments.size > 0 ? PushString(arena, cstruct->tag->arguments) : NULL,
+			.members = members,
+			.memberCount = (u16)structDeclarationCount,
+		};
+	}
+
 	// Reflected members can point to not reflected types declared in other files.
 	// These are opaque and we call them custom types
-	String customTypeNames[128];
+	const char *customTypeNames[128];
 	bool customTypeIsValue[128];
 	u32 customTypeCount = 0;
 
 	for (u32 index = 0; index < structCount; ++index)
 	{
-		const CastStructDeclarationList *structDeclarationList = structs[index]->structDeclarationList;
-		while (structDeclarationList)
+		const ReflexStruct &reflexStruct = reflexStructs[index];
+
+		for (u32 memberIndex = 0; memberIndex < reflexStruct.memberCount; ++memberIndex)
 		{
-			const CastStructDeclaration *structDeclaration = structDeclarationList->structDeclaration;
-			structDeclarationList = structDeclarationList->next;
-
-			if (!structDeclaration || !structDeclaration->tag) {
+			const ReflexMember &member = reflexStruct.members[memberIndex];
+			if (ReflexIsTrivial(member.reflexId)) {
 				continue;
 			}
 
-			const String typeName = GetMemberTypeName(structDeclaration);
-			if (typeName.size == 0) {
-				continue;
-			}
+			const char *typeName = member.typeName;
 
 			// Types reflected in this file already have a ReflexID
 			bool isReflected = false;
@@ -143,7 +302,7 @@ void GenerateReflex(const Cast *cast)
 				continue;
 			}
 
-			const bool isValue = !IsPointerMember(structDeclaration);
+			const bool isValue = member.pointerCount == 0;
 
 			u32 customIndex = 0;
 			while (customIndex < customTypeCount && !StrEq(customTypeNames[customIndex], typeName)) {
@@ -162,18 +321,40 @@ void GenerateReflex(const Cast *cast)
 	printf("\n");
 	printf("#ifdef REFLEX_GENERATED_DECLARATION\n");
 
+	printf("\n");
+	printf("////////////////////////////////////////////////////////////////////////\n");
+	printf("// Include this file with REFLEX_GENERATED_DECLARATION before reflex.h\n");
+	printf("\n");
+
 	if (customTypeCount > 0)
 	{
-		printf("\n");
-		printf("////////////////////////////////////////////////////////////////////////\n");
-		printf("// Include this file with REFLEX_GENERATED_DECLARATION before reflex.h\n");
-		printf("\n");
-
 		printf("#define REFLEX_ID_CUSTOM_TYPES \\\n");
 		for (u32 index = 0; index < customTypeCount; ++index)
 		{
-			const String typeName = customTypeNames[index];
-			printf("	ReflexID_%.*s, \\\n", StringPrintfArgs(typeName));
+			printf("	ReflexID_%s, \\\n", customTypeNames[index]);
+		}
+	}
+
+	printf("\n");
+
+	printf("\n");
+	printf("////////////////////////////////////////////////////////////////////////\n");
+	printf("// Component descriptors\n");
+	printf("\n");
+
+	for (u32 index = 0; index < structCount; ++index)
+	{
+		const ReflexStruct &reflexStruct = reflexStructs[index];
+
+		if (reflexStruct.hint && StrEq(reflexStruct.hint, "Component"))
+		{
+			printf("struct %sDesc {\n", reflexStruct.name);
+			for (u32 memberIndex = 0; memberIndex < reflexStruct.memberCount; ++memberIndex)
+			{
+				PrintMemberDeclaration(reflexStruct.members[memberIndex]);
+			}
+			printf("};\n");
+			printf("\n");
 		}
 	}
 
@@ -193,19 +374,19 @@ void GenerateReflex(const Cast *cast)
 
 		for (u32 index = 0; index < customTypeCount; ++index)
 		{
-			const String typeName = customTypeNames[index];
+			const char *typeName = customTypeNames[index];
 
 			printf("\n");
 			printf("// ReflexCustom info\n");
-			printf("static const ReflexCustom reflexCustom_%.*s =\n", StringPrintfArgs(typeName));
+			printf("static const ReflexCustom reflexCustom_%s =\n", typeName);
 			printf("{\n");
-			printf("  .name = \"%.*s\",\n", StringPrintfArgs(typeName));
-			printf("  .size = sizeof(%.*s),\n", StringPrintfArgs(typeName));
+			printf("  .name = \"%s\",\n", typeName);
+			printf("  .size = sizeof(%s),\n", typeName);
 			printf("};\n");
 
 			printf("\n");
 			printf("// ReflexCustom registration\n");
-			printf("static const ReflexID ReflexIDStub_%.*s = ReflexRegisterCustom(&reflexCustom_%.*s, ReflexID_%.*s);\n", StringPrintfArgs(typeName), StringPrintfArgs(typeName), StringPrintfArgs(typeName));
+			printf("static const ReflexID ReflexIDStub_%s = ReflexRegisterCustom(&reflexCustom_%s, ReflexID_%s);\n", typeName, typeName, typeName);
 			printf("\n");
 		}
 	}
@@ -260,213 +441,72 @@ void GenerateReflex(const Cast *cast)
 	// Structs
 	for (u32 index = 0; index < structCount; ++index)
 	{
-		const CastStructSpecifier *cstruct = structs[index];
+		const ReflexStruct &reflexStruct = reflexStructs[index];
+		const char *structName = reflexStruct.name;
 
 		printf("\n");
 		printf("////////////////////////////////////////////////////////////////////////\n");
-		printf("// struct %.*s\n", StringPrintfArgs(cstruct->name));
+		printf("// struct %s\n", structName);
 
-		// Only members tagged with the field tag macro are reflected
-		structDeclarationCount = 0;
-		const CastStructDeclarationList *structDeclarationList = cstruct->structDeclarationList;
-		while (structDeclarationList) {
-			const CastStructDeclaration *structDeclaration = structDeclarationList->structDeclaration;
-			if (structDeclaration && structDeclaration->tag) {
-				ASSERT(structDeclarationCount < ARRAY_COUNT(structDeclarations));
-				structDeclarations[structDeclarationCount++] = structDeclaration;
-			}
-			structDeclarationList = structDeclarationList->next;
-		}
-
-		if (structDeclarationCount > 0)
+		if (reflexStruct.memberCount > 0)
 		{
 			printf("\n");
 			printf("// ReflexMember info\n");
-			printf("static const ReflexMember reflexMembers_%.*s[] = {\n", StringPrintfArgs(cstruct->name));
+			printf("static const ReflexMember reflexMembers_%s[] = {\n", structName);
 		}
 
-		for ( u32 memberIndex = 0; memberIndex < structDeclarationCount; ++memberIndex)
+		for ( u32 memberIndex = 0; memberIndex < reflexStruct.memberCount; ++memberIndex)
 		{
-			const CastStructDeclaration *structDeclaration = structDeclarations[memberIndex];
-
-			// Type qualifiers
-
-			const CastSpecifierQualifierList *specifierQualifierList = NULL;
-			if (structDeclaration && structDeclaration->specifierQualifierList) {
-				specifierQualifierList = structDeclaration->specifierQualifierList;
-			}
-
-			const CastTypeQualifier *typeQualifier = NULL;
-			if (specifierQualifierList && specifierQualifierList->typeQualifier) {
-				typeQualifier = specifierQualifierList->typeQualifier;
-			}
-
-			bool isConst = false;
-			if (typeQualifier) {
-				isConst = typeQualifier->type == CAST_CONST;
-			}
-
-			// Type specifiers
-
-			bool isVoid = false;
-			bool isBool = false;
-			bool isChar = false;
-			bool isInt = false;
-			bool isFloat = false;
-			bool isDouble = false;
-			bool isShort = false;
-			bool isLong = false;
-			bool isLongLong = false;
-			bool isUnsigned = false;
-			bool isIdentifier = false;
-			String identifier = MakeString("");
-			char typeNameBuffer[MAX_PATH_LENGTH];
-			String typeName = MakeString("<none>");
-			//bool isStruct = false;
-			//bool isEnum = false;
-
-			const CastTypeSpecifier *typeSpecifier = NULL;
-			if (specifierQualifierList)
-			{
-				const CastSpecifierQualifierList *specifierList = specifierQualifierList;
-				while (specifierList)
-				{
-					typeSpecifier = specifierList->typeSpecifier;
-					if (typeSpecifier) {
-						if (typeSpecifier->type == CAST_VOID) {
-							isVoid = true; break;
-						} else if (typeSpecifier->type == CAST_BOOL) {
-							isBool = true; break;
-						} else if (typeSpecifier->type == CAST_CHAR) {
-							isChar = true; break;
-						} else if (typeSpecifier->type == CAST_FLOAT) {
-							isFloat = true; break;
-						} else if (typeSpecifier->type == CAST_DOUBLE) {
-							isDouble = true; break;
-						} else if (typeSpecifier->type == CAST_IDENTIFIER) {
-							isIdentifier = true; identifier = typeSpecifier->identifier; break;
-						} else if (typeSpecifier->type == CAST_INT) {
-							isInt = true;
-						} else if (typeSpecifier->type == CAST_UNSIGNED) {
-							isUnsigned = true;
-						} else if (typeSpecifier->type == CAST_SHORT) {
-							isShort = true;
-						} else if (typeSpecifier->type == CAST_LONG) {
-							isLongLong = isLong; isLong = true;
-						} else {
-							typeName = MakeString("<error>"); break;
-						}
-					}
-					specifierList = specifierList->next;
-				}
-			}
-
-			if (isVoid) {
-				typeName = MakeString("ReflexID_Void");
-			} else if (isBool) {
-				typeName = MakeString("ReflexID_Bool");
-			} else if (isChar) {
-				if (isUnsigned) typeName = MakeString("ReflexID_UnsignedChar");
-				else typeName = MakeString("ReflexID_Char");
-			} else if (isInt) {
-				if (isUnsigned) {
-					if (isLongLong) typeName = MakeString("ReflexID_UnsignedLongLongInt");
-					else if (isLong) typeName = MakeString("ReflexID_UnsignedLongInt");
-					else if (isShort) typeName = MakeString("ReflexID_UnsignedShortInt");
-					else typeName = MakeString("ReflexID_UnsignedInt");
-				} else {
-					if (isLongLong) typeName = MakeString("ReflexID_LongLongInt");
-					else if (isLong) typeName = MakeString("ReflexID_LongInt");
-					else if (isShort) typeName = MakeString("ReflexID_ShortInt");
-					else typeName = MakeString("ReflexID_Int");
-				}
-			} else if (isFloat) {
-				typeName = MakeString("ReflexID_Float");
-			} else if (isDouble) {
-				typeName = MakeString("ReflexID_Double");
-			} else if (isIdentifier) {
-				StrCopy(typeNameBuffer, "ReflexID_");
-				StrCat(typeNameBuffer, identifier);
-				typeName = MakeString(typeNameBuffer);
-			}
-
-			// Declarator
-
-			const CastDeclarator *declarator = NULL;
-			if (structDeclaration->structDeclaratorList &&
-				structDeclaration->structDeclaratorList->structDeclarator) {
-				declarator = structDeclaration->structDeclaratorList->structDeclarator;
-			}
-
-			String memberName = MakeString("<none>");
-			if (declarator &&
-				declarator->directDeclarator) {
-				memberName = declarator->directDeclarator->name;
-			}
-
-			u32 pointerCount = 0;
-			CastPointer *pointer = declarator->pointer;
-			while (pointer) {
-				pointerCount++;
-				pointer = pointer->next;
-			}
-
-			bool isArray = false;
-			u32 arrayDim = 0;
-			if (declarator && declarator->directDeclarator) {
-				isArray = declarator->directDeclarator->isArray;
-				CastExpression *expression = declarator->directDeclarator->expression;
-				arrayDim = expression ? Cast_EvaluateInt(expression) : 0;
-			}
-
-			const CastTag *memberTag = structDeclaration->tag;
-			const bool hasHint = memberTag && memberTag->arguments.size > 0;
+			const ReflexMember &member = reflexStruct.members[memberIndex];
 
 			printf("  { ");
-			printf(".name = \"%.*s\", ", StringPrintfArgs(memberName));
-			if (hasHint) {
-				printf(".hint = \"%.*s\", ", StringPrintfArgs(memberTag->arguments));
+			printf(".name = \"%s\", ", member.name);
+			if (member.hint) {
+				printf(".hint = \"%s\", ", member.hint);
 			} else {
 				printf(".hint = NULL, ");
 			}
-			printf(".isConst = %s, ", isConst ? "true" : "false");
-			printf(".pointerCount = %u, ", pointerCount);
-			printf(".isArray = %s, ", isArray ? "true" : "false");
-			printf(".arrayDim = %u, ", arrayDim);
-			printf(".reflexId = %.*s, ", StringPrintfArgs(typeName));
-			printf(".offset = OFFSET_OF(%.*s, %.*s) ", StringPrintfArgs(cstruct->name), StringPrintfArgs(memberName));
+			printf(".typeName = \"%s\", ", member.typeName);
+			printf(".isConst = %s, ", member.isConst ? "true" : "false");
+			printf(".pointerCount = %u, ", (u32)member.pointerCount);
+			printf(".isArray = %s, ", member.isArray ? "true" : "false");
+			printf(".arrayDim = %u, ", (u32)member.arrayDim);
+			printf(".reflexId = ");
+			PrintReflexID(member);
+			printf(", ");
+			printf(".offset = OFFSET_OF(%s, %s) ", structName, member.name);
 			printf("},\n");
 		}
 
-		if (structDeclarationCount > 0)
+		if (reflexStruct.memberCount > 0)
 		{
 			printf("};\n");
 		}
 
 		printf("\n");
 		printf("// ReflexStruct info\n");
-		printf("static const ReflexStruct reflexStruct_%.*s =\n", StringPrintfArgs(cstruct->name));
+		printf("static const ReflexStruct reflexStruct_%s =\n", structName);
 		printf("{\n");
-		printf("  .name = \"%.*s\",\n", StringPrintfArgs(cstruct->name));
-		if (cstruct->tag && cstruct->tag->arguments.size > 0) {
-			printf("  .hint = \"%.*s\",\n", StringPrintfArgs(cstruct->tag->arguments));
+		printf("  .name = \"%s\",\n", structName);
+		if (reflexStruct.hint) {
+			printf("  .hint = \"%s\",\n", reflexStruct.hint);
 		} else {
 			printf("  .hint = NULL,\n");
 		}
-		if (structDeclarationCount > 0) {
-			printf("  .members = reflexMembers_%.*s,\n", StringPrintfArgs(cstruct->name));
-			printf("  .memberCount = ARRAY_COUNT(reflexMembers_%.*s),\n", StringPrintfArgs(cstruct->name));
+		if (reflexStruct.memberCount > 0) {
+			printf("  .members = reflexMembers_%s,\n", structName);
+			printf("  .memberCount = ARRAY_COUNT(reflexMembers_%s),\n", structName);
 		} else {
 			// A tagged struct with no tagged members: an empty array is not valid C++
 			printf("  .members = NULL,\n");
 			printf("  .memberCount = 0,\n");
 		}
-		printf("  .size = sizeof(%.*s),\n", StringPrintfArgs(cstruct->name));
+		printf("  .size = sizeof(%s),\n", structName);
 		printf("};\n");
 
 		printf("\n");
 		printf("// ReflexStruct registration\n");
-		printf("static const ReflexID ReflexID_%.*s = ReflexRegisterStruct(&reflexStruct_%.*s);\n", StringPrintfArgs(cstruct->name), StringPrintfArgs(cstruct->name));
+		printf("static const ReflexID ReflexID_%s = ReflexRegisterStruct(&reflexStruct_%s);\n", structName, structName);
 		printf("\n");
 	}
 
@@ -495,6 +535,8 @@ void GenerateReflex(const Cast *cast)
 	printf("\n");
 	printf("#undef REFLEX_GENERATED_IMPLEMENTATION\n");
 	printf("#endif // REFLEX_GENERATED_IMPLEMENTATION\n\n");
+
+	return true;
 }
 
 int main(int argc, char **argv)
@@ -539,7 +581,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-	GenerateReflex(&cast);
+	if ( !GenerateReflex(&cast, globalArena) )
+	{
+		return -1;
+	}
 
 	return 0;
 }

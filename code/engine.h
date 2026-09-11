@@ -77,6 +77,62 @@ struct BinLocation
 
 #pragma pack(pop)
 
+////////////////////////////////////////////////////////////////////////
+// Geometry and vertices
+
+typedef u16 Index;
+
+enum GeometryType
+{
+	GeometryTypeCube,
+	GeometryTypePlane,
+	GeometryTypeScreen,
+	GeometryTypeQuad,
+	GeometryTypeSprite,
+	GeometryTypeCount,
+};
+constexpr const char *GeometryTypeStr[] = {
+	"GeometryTypeCube",
+	"GeometryTypePlane",
+	"GeometryTypeScreen",
+	"GeometryTypeQuad",
+	"GeometryTypeSprite",
+};
+CT_ASSERT(ARRAY_COUNT(GeometryTypeStr) == GeometryTypeCount);
+
+enum ShaderType
+{
+	ShaderTypeVertex,
+	ShaderTypeFragment,
+	ShaderTypeCompute
+};
+
+struct Vertex
+{
+	float3 pos;
+	float3 normal;
+	float2 texCoord;
+};
+
+struct DebugDrawVertex
+{
+	float2 pos;
+	float2 texCoord;
+	rgba color;
+};
+
+struct DebugDrawBatch
+{
+	ImageH imageH;
+	u32 vertexIndex;
+	u32 vertexCount;
+};
+
+enum LightType
+{
+	LightType_Point,
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // TYPES: Reflected properties
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -447,57 +503,6 @@ struct BinMusicFile
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // TYPES: Graphics
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////
-// Geometry and vertices
-
-typedef u16 Index;
-
-enum GeometryType
-{
-	GeometryTypeCube,
-	GeometryTypePlane,
-	GeometryTypeScreen,
-	GeometryTypeQuad,
-	GeometryTypeSprite,
-	GeometryTypeCount,
-};
-constexpr const char *GeometryTypeStr[] = {
-	"GeometryTypeCube",
-	"GeometryTypePlane",
-	"GeometryTypeScreen",
-	"GeometryTypeQuad",
-	"GeometryTypeSprite",
-};
-CT_ASSERT(ARRAY_COUNT(GeometryTypeStr) == GeometryTypeCount);
-
-enum ShaderType
-{
-	ShaderTypeVertex,
-	ShaderTypeFragment,
-	ShaderTypeCompute
-};
-
-struct Vertex
-{
-	float3 pos;
-	float3 normal;
-	float2 texCoord;
-};
-
-struct DebugDrawVertex
-{
-	float2 pos;
-	float2 texCoord;
-	rgba color;
-};
-
-struct DebugDrawBatch
-{
-	ImageH imageH;
-	u32 vertexIndex;
-	u32 vertexCount;
-};
 
 ////////////////////////////////////////////////////////////////////////
 // Textures
@@ -877,12 +882,6 @@ CT_ASSERT(ComponentType_Count < sizeof(ComponentFlags) * 8);
 ////////////////////////////////////////////////////////////////////////
 // Model component
 
-struct ModelComponentDesc
-{
-	ID materialId;
-	GeometryType geometryType;
-};
-
 ILU_STRUCT(Component)
 struct ModelComponent
 {
@@ -902,12 +901,6 @@ struct ModelComponent
 ////////////////////////////////////////////////////////////////////////
 // Sprite component
 
-struct SpriteComponentDesc
-{
-	ID spriteId;
-	ID layerId;
-};
-
 ILU_STRUCT(Component)
 struct SpriteComponent
 {
@@ -925,19 +918,6 @@ struct SpriteComponent
 
 ////////////////////////////////////////////////////////////////////////
 // Light component
-
-enum LightType
-{
-	LightType_Point,
-};
-
-struct LightComponentDesc
-{
-	LightType type;
-	float3 color;
-	f32 intensity;
-	f32 radius;
-};
 
 ILU_STRUCT(Component)
 struct LightComponent
@@ -957,12 +937,6 @@ struct LightComponent
 
 ////////////////////////////////////////////////////////////////////////
 // Particles component
-
-struct ParticlesComponentDesc
-{
-	ID effectId;
-	u8 playOnStart;
-};
 
 ILU_STRUCT(Component)
 struct ParticlesComponent
