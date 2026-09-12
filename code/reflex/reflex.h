@@ -63,6 +63,37 @@ enum // ReflexID
 	ReflexID_Null,
 };
 
+enum ReflexMetaArgType
+{
+	ReflexMeta_Tag, // Any non recognized string
+};
+
+struct ReflexMetaArg
+{
+	ReflexMetaArgType type;
+	union
+	{
+		String tag;
+	};
+};
+
+enum ReflexMetaFlag
+{
+	ReflexMeta_None,
+	ReflexMeta_Component = 1<<0,
+	ReflexMeta_Script = 1<<1,
+	ReflexMeta_Color = 1<<2,
+};
+
+typedef u32 ReflexMetaFlags;
+
+struct ReflexMeta
+{
+	ReflexMetaFlags flags;
+	ReflexMetaArg *args;
+	u8 argCount;
+};
+
 struct ReflexTrivial
 {
 	const char *name;
@@ -82,6 +113,7 @@ struct ReflexEnum
 	const char *hint; // Optional arguments in the tag macro
 	const ReflexEnumerator *enumerators;
 	u16 enumeratorCount;
+	ReflexMeta meta; // Meta info within ILU_ENUM
 };
 
 struct ReflexOps; // Defined by user code
@@ -96,6 +128,7 @@ struct ReflexMember
 	const char *hint; // Optional arguments in the tag macro
 	const char *typeName; // As spelled in C, e.g. "unsigned int" or "ID"
 	const ReflexOps *ops; // User operations
+	ReflexMeta meta; // Meta info within ILU_PROPERTY
 	u16 isConst : 1;
 	u16 pointerCount : 2;
 	u16 isArray : 1;
@@ -109,6 +142,7 @@ struct ReflexStruct
 	const char *name;
 	const char *hint; // Optional arguments in the tag macro
 	const ReflexMember *members;
+	ReflexMeta meta; // Meta info within ILU_STRUCT
 	u16 memberCount;
 	u16 size;
 };
@@ -392,6 +426,14 @@ static ReflexFunctor ReflexGetFunctor(const char *structName, const char *functi
 		}
 	}
 	return nullptr;
+}
+
+static ReflexMetaFlag ReflexGetMetaFlag(const String string)
+{
+	if (StrEq(string, "Color")) return ReflexMeta_Color;
+	if (StrEq(string, "Component")) return ReflexMeta_Component;
+	if (StrEq(string, "Script")) return ReflexMeta_Script;
+	return ReflexMeta_None;
 }
 
 #endif // #ifndef TOOLS_REFLEX_H
