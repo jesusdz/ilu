@@ -800,43 +800,11 @@ struct SceneDesc
 ////////////////////////////////////////////////////////////////////////
 // Components
 
-#define FOREACH_COMPONENT(X) \
-	X(Model, model, MAX_MODEL_COMPONENTS) \
-	X(Sprite, sprite, MAX_SPRITE_COMPONENTS) \
-	X(Light, light, MAX_LIGHT_COMPONENTS) \
-	X(Particles, particles, MAX_PARTICLES_COMPONENTS) \
-	X(Script, script, MAX_SCRIPT_COMPONENTS)
-
-enum ComponentType
-{
-#define COMPONENT_TYPE(Name, name, Max) ComponentType_##Name,
-	FOREACH_COMPONENT(COMPONENT_TYPE)
-#undef COMPONENT_TYPE
-	ComponentType_Count,
-};
-
-enum ComponentBits
-{
-#define COMPONENT_BIT(Name, name, Max) Component_##Name = 1 << ComponentType_##Name,
-	FOREACH_COMPONENT(COMPONENT_BIT)
-#undef COMPONENT_BIT
-};
-
-constexpr const char *ComponentNames[] = {
-#define COMPONENT_NAME(Name, name, Max) #Name,
-	FOREACH_COMPONENT(COMPONENT_NAME)
-#undef COMPONENT_NAME
-};
-
-// As they appear in the entity blocks of the asset files, e.g. ".light = {...}"
-constexpr const char *ComponentFieldNames[] = {
-#define COMPONENT_FIELD_NAME(Name, name, Max) #name,
-	FOREACH_COMPONENT(COMPONENT_FIELD_NAME)
-#undef COMPONENT_FIELD_NAME
-};
+// ComponentType, ComponentBits, ComponentNames and ComponentFieldNames come from the structs
+// tagged ILU_STRUCT(Component) below, through reflex.generated.h
 
 // The component and the descriptor reflex generates for it, e.g. LightComponent and
-// LightComponentDesc. A script component has neither, its properties are the script's.
+// LightComponentDesc. A component with no properties, like a script's, gets no descriptor.
 inline const ReflexStruct *ComponentReflexStruct(ComponentType type)
 {
 	char name[64];
@@ -941,6 +909,9 @@ struct ScriptComponentDesc
 	u32 propertyCount;
 };
 
+// Tagged so it is one of the generated component types, though it has no property of its own:
+// what a script component holds is the script's, and ScriptComponentDesc describes it
+ILU_STRUCT(Component)
 struct ScriptComponent
 {
 	ID entityId;
@@ -1242,9 +1213,12 @@ struct Scene
 	// Each pool is packed, so removing a component swaps the last one down into the
 	// hole. The moved component names its own entity, which is what lets that swap
 	// repoint the entity back at its new slot.
-#define COMPONENT_ARRAY(Name, name, Max) Name##Component name##Components[Max];
-	FOREACH_COMPONENT(COMPONENT_ARRAY)
-#undef COMPONENT_ARRAY
+	// InitializeScene binds one pool per array, and checks that none is left out.
+	ModelComponent modelComponents[MAX_MODEL_COMPONENTS];
+	SpriteComponent spriteComponents[MAX_SPRITE_COMPONENTS];
+	LightComponent lightComponents[MAX_LIGHT_COMPONENTS];
+	ParticlesComponent particlesComponents[MAX_PARTICLES_COMPONENTS];
+	ScriptComponent scriptComponents[MAX_SCRIPT_COMPONENTS];
 
 	u32 particleEffectCount;
 	ParticleEffect particleEffects[MAX_PARTICLE_EFFECTS];

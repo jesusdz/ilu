@@ -149,6 +149,24 @@ static const char *OpsTypeName(const ReflexMember &member)
 	return member.typeName;
 }
 
+// A component's names come from its struct name: LightComponent gives ComponentType_Light,
+// the name "Light" and the ".light" field the asset files use
+static void MakeComponentNames(const char *structName, char *typeName, char *fieldName)
+{
+	StrCopy(typeName, structName);
+
+	const u32 length = StrLen(typeName);
+	const u32 suffixLength = StrLen("Component");
+	if (length > suffixLength && StrEq(typeName + length - suffixLength, "Component")) {
+		typeName[length - suffixLength] = 0;
+	}
+
+	StrCopy(fieldName, typeName);
+	if (fieldName[0] >= 'A' && fieldName[0] <= 'Z') {
+		fieldName[0] = (char)(fieldName[0] - 'A' + 'a');
+	}
+}
+
 // Prints the member back as a C declaration, e.g. "const char *name;"
 static void PrintMemberDeclaration(const ReflexMember &member)
 {
@@ -293,12 +311,35 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 		};
 	}
 
-	// The descriptor printed for each component is reflected too. It shares the component's
-	// members, since their offsets are only printed later, from the name of each struct.
+	// Components, in the order their structs appear in the parsed files
+	u32 componentIndices[ARRAY_COUNT(structs)];
+	const char *componentTypeNames[ARRAY_COUNT(structs)];
+	const char *componentFieldNames[ARRAY_COUNT(structs)];
+	u32 componentCount = 0;
+
 	for (u32 index = 0; index < structCount; ++index)
 	{
-		const ReflexStruct &component = reflexStructs[index];
-		if (component.hint && StrEq(component.hint, "Component"))
+		const ReflexStruct &reflexStruct = reflexStructs[index];
+		if (reflexStruct.hint && StrEq(reflexStruct.hint, "Component"))
+		{
+			char typeName[128];
+			char fieldName[128];
+			MakeComponentNames(reflexStruct.name, typeName, fieldName);
+
+			componentIndices[componentCount] = index;
+			componentTypeNames[componentCount] = PushString(arena, typeName);
+			componentFieldNames[componentCount] = PushString(arena, fieldName);
+			componentCount++;
+		}
+	}
+
+	// The descriptor printed for each component is reflected too. It shares the component's
+	// members, since their offsets are only printed later, from the name of each struct.
+	// A component with no properties has nothing to describe, so it gets no descriptor.
+	for (u32 index = 0; index < componentCount; ++index)
+	{
+		const ReflexStruct &component = reflexStructs[componentIndices[index]];
+		if (component.memberCount > 0)
 		{
 			char descName[128];
 			SPrintf(descName, "%sDesc", component.name);
@@ -364,16 +405,61 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 
 	printf("\n");
 
+	if (componentCount > 0)
+	{
+		printf("\n");
+		printf("////////////////////////////////////////////////////////////////////////\n");
+		printf("// Components, in the order their structs are declared. Saved data refers to\n");
+		printf("// them by these values, so a component that already exists cannot be moved.\n");
+		printf("\n");
+
+		printf("enum ComponentType\n");
+		printf("{\n");
+		for (u32 index = 0; index < componentCount; ++index)
+		{
+			printf("	ComponentType_%s,\n", componentTypeNames[index]);
+		}
+		printf("	ComponentType_Count,\n");
+		printf("};\n");
+		printf("\n");
+
+		printf("enum ComponentBits\n");
+		printf("{\n");
+		for (u32 index = 0; index < componentCount; ++index)
+		{
+			printf("	Component_%s = 1 << ComponentType_%s,\n", componentTypeNames[index], componentTypeNames[index]);
+		}
+		printf("};\n");
+		printf("\n");
+
+		printf("constexpr const char *ComponentNames[] = {\n");
+		for (u32 index = 0; index < componentCount; ++index)
+		{
+			printf("	\"%s\",\n", componentTypeNames[index]);
+		}
+		printf("};\n");
+		printf("\n");
+
+		printf("// As they appear in the entity blocks of the asset files, e.g. \".light = {...}\"\n");
+		printf("constexpr const char *ComponentFieldNames[] = {\n");
+		for (u32 index = 0; index < componentCount; ++index)
+		{
+			printf("	\"%s\",\n", componentFieldNames[index]);
+		}
+		printf("};\n");
+		printf("\n");
+	}
+
 	printf("\n");
 	printf("////////////////////////////////////////////////////////////////////////\n");
 	printf("// Component descriptors\n");
 	printf("\n");
 
-	for (u32 index = 0; index < structCount; ++index)
+	for (u32 index = 0; index < componentCount; ++index)
 	{
-		const ReflexStruct &reflexStruct = reflexStructs[index];
+		const ReflexStruct &reflexStruct = reflexStructs[componentIndices[index]];
 
-		if (reflexStruct.hint && StrEq(reflexStruct.hint, "Component"))
+		if (reflexStruct.memberCount > 0)
 		{
 			printf("struct %sDesc {\n", reflexStruct.name);
 			for (u32 memberIndex = 0; memberIndex < reflexStruct.memberCount; ++memberIndex)

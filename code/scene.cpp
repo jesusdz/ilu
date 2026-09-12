@@ -4,15 +4,30 @@ void InitializeScene(Engine &engine)
 
 	scene.particleRandom = RandomSeed(13);
 
-#define INIT_COMPONENT_POOL(Name, name, Max) \
+#define BIND_COMPONENT_POOL(Name, name) \
 	ASSERT( OFFSET_OF(Name##Component, entityId) == 0 ); \
 	scene.componentPools[ComponentType_##Name] = { \
 		.items = (byte*)scene.name##Components, \
 		.stride = sizeof(Name##Component), \
-		.capacity = Max, \
-	};
-	FOREACH_COMPONENT(INIT_COMPONENT_POOL)
-#undef INIT_COMPONENT_POOL
+		.capacity = ARRAY_COUNT(scene.name##Components), \
+	}
+
+	BIND_COMPONENT_POOL(Model, model);
+	BIND_COMPONENT_POOL(Sprite, sprite);
+	BIND_COMPONENT_POOL(Light, light);
+	BIND_COMPONENT_POOL(Particles, particles);
+	BIND_COMPONENT_POOL(Script, script);
+
+#undef BIND_COMPONENT_POOL
+
+	// A component reflex knows about but nothing bound above would read an empty pool
+	for (u32 type = 0; type < ComponentType_Count; ++type)
+	{
+		const ComponentPool &pool = scene.componentPools[type];
+		const ReflexStruct *reflexStruct = ComponentReflexStruct((ComponentType)type);
+		ASSERT( pool.items && pool.capacity );
+		ASSERT( reflexStruct && pool.stride == reflexStruct->size );
+	}
 
 	// A builtin so it survives CleanScene and keeps the same slot every run, which is
 	// what lets a saved ParticlesComponent still refer to it.
@@ -822,7 +837,7 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 					}
 				}
 			}
-			else ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, (ComponentType)type) )
+			else if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, (ComponentType)type) )
 			{
 				MakeComponentDesc((ComponentType)type, GetComponentSlot(scene, entityId, (ComponentType)type), ComponentDescData(*desc));
 			}
