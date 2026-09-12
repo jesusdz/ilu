@@ -849,6 +849,30 @@ bool StrIsFloat(const char *str)
 	return hasDigit;
 }
 
+void StrSplit(const String &s, char separator, String *outStrings, u32 &outStringCount, u32 maxStringCount)
+{
+	outStringCount = 0;
+
+	const char *begin = s.str;
+	const char *end = s.str + s.size;
+
+	while ( outStringCount < maxStringCount )
+	{
+		const char *tokenEnd = begin;
+		while ( tokenEnd != end && *tokenEnd != separator ) tokenEnd++;
+
+		const char *trimBegin = begin;
+		const char *trimEnd = tokenEnd;
+		while ( trimBegin != trimEnd && *trimBegin == ' ' ) trimBegin++;
+		while ( trimEnd != trimBegin && *(trimEnd - 1) == ' ' ) trimEnd--;
+
+		outStrings[outStringCount++] = MakeString(trimBegin, (u32)(trimEnd - trimBegin));
+
+		if ( tokenEnd == end ) break;
+		begin = tokenEnd + 1;
+	}
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
