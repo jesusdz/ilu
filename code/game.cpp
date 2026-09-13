@@ -11,19 +11,19 @@ struct ScriptPlayerController
 {
 	PlayerState playerState;
 
-	ILU_PROPERTY(Sprite)
+	ILU_PROPERTY(kind=Sprite)
 	ID sprPlayerIdle;
 
-	ILU_PROPERTY(Sprite)
+	ILU_PROPERTY(kind=Sprite)
 	ID sprPlayerRun;
 
-	ILU_PROPERTY(Sprite)
+	ILU_PROPERTY(kind=Sprite)
 	ID sprPlayerJump;
 
-	ILU_PROPERTY(Sprite)
+	ILU_PROPERTY(kind=Sprite)
 	ID sprPlayerFall;
 
-	ILU_PROPERTY(AudioClip)
+	ILU_PROPERTY(kind=AudioClip)
 	ID sndJump;
 
 	ILU_PROPERTY()

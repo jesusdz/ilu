@@ -32,6 +32,175 @@ static const char *TrivialReflexIDNames[] =
 };
 CT_ASSERT(ARRAY_COUNT(TrivialReflexIDNames) == ReflexID_TrivialCount);
 
+// Finds the first '=' in a token, splitting it into a "key=value" pair, e.g. "kind=Sprite"
+// becomes key "kind" and value "Sprite". Returns false when the token has no '='.
+static bool SplitMetaKeyValue(String token, String &key, String &value)
+{
+	u32 equalsIndex = 0;
+	while (equalsIndex < token.size && token.str[equalsIndex] != '=') {
+		equalsIndex++;
+	}
+	if (equalsIndex == token.size) {
+		return false;
+	}
+	key = MakeString(token.str, equalsIndex);
+	value = MakeString(token.str + equalsIndex + 1, token.size - equalsIndex - 1);
+	return true;
+}
+
+// A meta string is a comma separated list of tags, e.g. "Component, Color, kind=Sprite".
+// Tags recognized by ReflexGetMetaFlag become bits in meta.flags. A "key=value" tag becomes
+// a typed ReflexMetaArg (currently only "kind", naming the IDKind of an ID property).
+// Anything else is kept as a plain ReflexMeta_Tag arg so user code can still query it by name.
+static ReflexMeta MakeReflexMeta(Arena &arena, String metaString)
+{
+	ReflexMeta meta = {};
+
+	constexpr u32 MAX_META_ARGS = 16;
+	String tokens[MAX_META_ARGS];
+	u32 tokenCount = 0;
+	if (metaString.size > 0) {
+		StrSplit(metaString, ',', tokens, tokenCount, MAX_META_ARGS);
+	}
+
+	ReflexMetaArg *args = PushArray(arena, ReflexMetaArg, tokenCount);
+	u8 argCount = 0;
+
+	for (u32 i = 0; i < tokenCount; ++i)
+	{
+		const String &token = tokens[i];
+		if (token.size == 0) {
+			continue;
+		}
+
+		String key, value;
+		if (SplitMetaKeyValue(token, key, value))
+		{
+			if (StrEq(key, "kind")) {
+				args[argCount++] = {
+					.type = ReflexMeta_IDKind,
+					.kind = MakeString(PushString(arena, value), value.size),
+				};
+			} else {
+				LOG(Warning, "Reflex: unknown meta key <%.*s> in tag <%.*s>\n", StringPrintfArgs(key), StringPrintfArgs(metaString));
+			}
+			continue;
+		}
+
+		const ReflexMetaFlag flag = ReflexGetMetaFlag(token);
+		if (flag != ReflexMeta_None) {
+			meta.flags |= flag;
+		} else {
+			args[argCount++] = {
+				.type = ReflexMeta_Tag,
+				.tag = MakeString(PushString(arena, token), token.size),
+			};
+		}
+	}
+
+	meta.args = args;
+	meta.argCount = argCount;
+
+	return meta;
+}
+
+// Reverse of MakeReflexMeta: rebuilds the comma separated tag list a ReflexMeta came from
+static String ReflexMetaToString(Arena &arena, const ReflexMeta &meta)
+{
+	static const struct { ReflexMetaFlag flag; const char *name; } flagNames[] = {
+		{ ReflexMeta_Component, "Component" },
+		{ ReflexMeta_Script, "Script" },
+		{ ReflexMeta_Color, "Color" },
+	};
+
+	char buffer[1024] = {};
+
+	for (u32 i = 0; i < ARRAY_COUNT(flagNames); ++i) {
+		if (meta.flags & flagNames[i].flag) {
+			if (buffer[0]) StrCat(buffer, ", ");
+			StrCat(buffer, flagNames[i].name);
+		}
+	}
+
+	for (u32 i = 0; i < meta.argCount; ++i) {
+		if (buffer[0]) StrCat(buffer, ", ");
+		const ReflexMetaArg &arg = meta.args[i];
+		if (arg.type == ReflexMeta_IDKind) {
+			StrCat(buffer, "kind=");
+			StrCat(buffer, arg.kind);
+		} else {
+			StrCat(buffer, arg.tag);
+		}
+	}
+
+	String res = MakeString(PushString(arena, buffer));
+	return res;
+}
+
+// Prints a flags value back as the OR'd ReflexMeta_* names it was built from
+static void PrintReflexMetaFlags(ReflexMetaFlags flags)
+{
+	static const struct { ReflexMetaFlag flag; const char *name; } flagNames[] = {
+		{ ReflexMeta_Component, "ReflexMeta_Component" },
+		{ ReflexMeta_Script, "ReflexMeta_Script" },
+		{ ReflexMeta_Color, "ReflexMeta_Color" },
+	};
+
+	if (flags == ReflexMeta_None) {
+		printf("ReflexMeta_None");
+		return;
+	}
+
+	bool first = true;
+	for (u32 i = 0; i < ARRAY_COUNT(flagNames); ++i) {
+		if (flags & flagNames[i].flag) {
+			printf("%s%s", first ? "" : " | ", flagNames[i].name);
+			first = false;
+		}
+	}
+}
+
+// Prints the standalone ReflexMetaArg array a meta's args point to. Must be printed before
+// the descriptor that references it by name, since it can't be declared inline within
+// another array's initializer. A meta with no args needs no array at all.
+static void PrintReflexMetaArgs(const char *argsName, const ReflexMeta &meta)
+{
+	if (meta.argCount == 0) {
+		return;
+	}
+
+	printf("\n");
+	printf("// ReflexMetaArg info\n");
+	printf("static const ReflexMetaArg reflexMetaArgs_%s[] = {\n", argsName);
+	for (u32 i = 0; i < meta.argCount; ++i)
+	{
+		const ReflexMetaArg &arg = meta.args[i];
+		if (arg.type == ReflexMeta_IDKind) {
+			printf("  { .type = ReflexMeta_IDKind, .kind = MakeString(\"%.*s\") },\n", StringPrintfArgs(arg.kind));
+		} else {
+			printf("  { .type = ReflexMeta_Tag, .tag = MakeString(\"%.*s\") },\n", StringPrintfArgs(arg.tag));
+		}
+	}
+	printf("};\n");
+}
+
+// Prints the ".flags = ..., .args = ..., .argCount = ..." fields of a ReflexMeta literal.
+// reflexMetaArgs_<argsName> must already have been printed by PrintReflexMetaArgs.
+static void PrintReflexMeta(const char *argsName, const ReflexMeta &meta, Arena &arena)
+{
+	const String metaString = ReflexMetaToString(arena, meta);
+	if (metaString.size > 0) {
+		printf("/* %.*s */ ", StringPrintfArgs(metaString));
+	}
+	printf(".flags = ");
+	PrintReflexMetaFlags(meta.flags);
+	if (meta.argCount > 0) {
+		printf(", .args = reflexMetaArgs_%s, .argCount = %u", argsName, (u32)meta.argCount);
+	} else {
+		printf(", .args = NULL, .argCount = 0");
+	}
+}
+
 // Fills the member the way the generated code will. A type named by an identifier keeps
 // ReflexID_Null: its ReflexID only exists in the compiled code, so it is printed by name.
 // Returns false when the type cannot be named at all.
@@ -44,7 +213,6 @@ static bool MakeReflexMember(Arena &arena, const CastStructDeclaration *structDe
 
 	member = {};
 	member.name = directDeclarator ? PushString(arena, directDeclarator->name) : "<none>";
-	member.hint = tag && tag->arguments.size > 0 ? PushString(arena, tag->arguments) : NULL;
 	member.isConst = specifierQualifierList && specifierQualifierList->typeQualifier &&
 		specifierQualifierList->typeQualifier->type == CAST_CONST;
 	member.isArray = directDeclarator && directDeclarator->isArray;
@@ -127,6 +295,11 @@ static bool MakeReflexMember(Arena &arena, const CastStructDeclaration *structDe
 
 	member.reflexId = reflexId;
 	member.typeName = ReflexIsTrivial(reflexId) ? ReflexGetTrivial(reflexId)->name : identifier;
+
+	if ( tag ) {
+		member.meta = MakeReflexMeta(arena, tag->arguments);
+	}
+
 	return member.typeName != NULL;
 }
 
@@ -273,6 +446,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 		translationUnit = translationUnit->next;
 	}
 
+	// Reflex structs
 	ReflexStruct reflexStructs[2 * ARRAY_COUNT(structs)]; // Room for a descriptor per struct
 	u32 reflexStructCount = structCount;
 
@@ -303,11 +477,61 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 			}
 		}
 
+		ReflexMeta meta = {};
+		if (cstruct->tag) {
+			meta = MakeReflexMeta(arena, cstruct->tag->arguments);
+		}
+
 		reflexStructs[index] = {
 			.name = PushString(arena, cstruct->name),
-			.hint = cstruct->tag->arguments.size > 0 ? PushString(arena, cstruct->tag->arguments) : NULL,
 			.members = members,
 			.memberCount = (u16)structDeclarationCount,
+			.meta = meta,
+		};
+	}
+
+	// Reflex enums
+	ReflexEnum reflexEnums[ARRAY_COUNT(enums)];
+
+	for (u32 index = 0; index < enumCount; ++index)
+	{
+		const CastEnumSpecifier *cenum = enums[index];
+
+		// The last enumerator of an enum tagged ILU_ENUM(Count) counts the others, so it
+		// is left out: it is no value the enum can hold
+		u32 enumeratorCount = 0;
+		for (const CastEnumeratorList *it = CAST_CHILD(cenum, enumeratorList); it; it = it->next) {
+			if (CAST_CHILD(it, enumerator)) enumeratorCount++;
+		}
+		if (cenum->tag && StrEq(cenum->tag->arguments, "Count") && enumeratorCount > 0) {
+			enumeratorCount--;
+		}
+
+		ReflexEnumerator *enumerators = PushArray(arena, ReflexEnumerator, enumeratorCount);
+		i32 enumeratorValue = 0;
+		const CastEnumeratorList *enumeratorList = CAST_CHILD(cenum, enumeratorList);
+		while (enumeratorList && (u32)enumeratorValue < enumeratorCount) {
+			const CastEnumerator *enumerator = CAST_CHILD(enumeratorList, enumerator);
+			if (enumerator) {
+				enumerators[enumeratorValue] = {
+					.name = PushString(arena, enumerator->name),
+					.value = enumeratorValue,
+				};
+				enumeratorValue++;
+			}
+			enumeratorList = enumeratorList->next;
+		}
+
+		ReflexMeta meta = {};
+		if (cenum->tag) {
+			meta = MakeReflexMeta(arena, cenum->tag->arguments);
+		}
+
+		reflexEnums[index] = {
+			.name = PushString(arena, cenum->name),
+			.enumerators = enumerators,
+			.enumeratorCount = (u16)enumeratorCount,
+			.meta = meta,
 		};
 	}
 
@@ -320,7 +544,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	for (u32 index = 0; index < structCount; ++index)
 	{
 		const ReflexStruct &reflexStruct = reflexStructs[index];
-		if (reflexStruct.hint && StrEq(reflexStruct.hint, "Component"))
+		if (reflexStruct.meta.flags & ReflexMeta_Component)
 		{
 			char typeName[128];
 			char fieldName[128];
@@ -348,7 +572,6 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 			ReflexStruct &desc = reflexStructs[reflexStructCount++];
 			desc = component;
 			desc.name = PushString(arena, descName);
-			desc.hint = NULL;
 		}
 	}
 
@@ -508,56 +731,41 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	printf("\n");
 	for (u32 index = 0; index < enumCount; ++index)
 	{
-		const CastEnumSpecifier *cenum = enums[index];
+		const ReflexEnum &reflexEnum = reflexEnums[index];
 
 		printf("\n");
 		printf("////////////////////////////////////////////////////////////////////////\n");
-		printf("// enum %.*s\n", StringPrintfArgs(cenum->name));
-
-		// The last enumerator of an enum tagged ILU_ENUM(Count) counts the others, so it
-		// is left out: it is no value the enum can hold
-		u32 enumeratorCount = 0;
-		for (const CastEnumeratorList *it = CAST_CHILD(cenum, enumeratorList); it; it = it->next) {
-			if (CAST_CHILD(it, enumerator)) enumeratorCount++;
-		}
-		if (cenum->tag && StrEq(cenum->tag->arguments, "Count") && enumeratorCount > 0) {
-			enumeratorCount--;
-		}
+		printf("// enum %s\n", reflexEnum.name);
 
 		printf("\n");
 		printf("// ReflexEnumerator info\n");
-		printf("static const ReflexEnumerator reflexEnumerators_%.*s[] = {\n", StringPrintfArgs(cenum->name));
-		i32 enumeratorValue = 0;
-		const CastEnumeratorList *enumeratorList = CAST_CHILD(cenum, enumeratorList);
-		while (enumeratorList && (u32)enumeratorValue < enumeratorCount) {
-			const CastEnumerator *enumerator = CAST_CHILD(enumeratorList, enumerator);
-			if (enumerator) {
-				printf("  { ");
-				printf(".name = \"%.*s\", ", StringPrintfArgs(enumerator->name));
-				printf(".value = %d, ", enumeratorValue++);
-				printf("},\n");
-			}
-			enumeratorList = enumeratorList->next;
+		printf("static const ReflexEnumerator reflexEnumerators_%s[] = {\n", reflexEnum.name);
+		for (u32 enumeratorIndex = 0; enumeratorIndex < reflexEnum.enumeratorCount; ++enumeratorIndex) {
+			const ReflexEnumerator &enumerator = reflexEnum.enumerators[enumeratorIndex];
+			printf("  { ");
+			printf(".name = \"%s\", ", enumerator.name);
+			printf(".value = %d, ", enumerator.value);
+			printf("},\n");
 		}
 		printf("};\n");
 
+		PrintReflexMetaArgs(reflexEnum.name, reflexEnum.meta);
+
 		printf("\n");
 		printf("// ReflexEnum info\n");
-		printf("static const ReflexEnum reflexEnum_%.*s =\n", StringPrintfArgs(cenum->name));
+		printf("static const ReflexEnum reflexEnum_%s =\n", reflexEnum.name);
 		printf("{\n");
-		printf("  .name = \"%.*s\",\n", StringPrintfArgs(cenum->name));
-		if (cenum->tag && cenum->tag->arguments.size > 0) {
-			printf("  .hint = \"%.*s\",\n", StringPrintfArgs(cenum->tag->arguments));
-		} else {
-			printf("  .hint = NULL,\n");
-		}
-		printf("  .enumerators = reflexEnumerators_%.*s,\n", StringPrintfArgs(cenum->name));
-		printf("  .enumeratorCount = ARRAY_COUNT(reflexEnumerators_%.*s),\n", StringPrintfArgs(cenum->name));
+		printf("  .name = \"%s\",\n", reflexEnum.name);
+		printf("  .enumerators = reflexEnumerators_%s,\n", reflexEnum.name);
+		printf("  .enumeratorCount = ARRAY_COUNT(reflexEnumerators_%s),\n", reflexEnum.name);
+		printf("  .meta = { ");
+		PrintReflexMeta(reflexEnum.name, reflexEnum.meta, arena);
+		printf(" },\n");
 		printf("};\n");
 
 		printf("\n");
 		printf("// ReflexEnum registration\n");
-		printf("static const ReflexID ReflexID_%.*s = ReflexRegisterEnum(&reflexEnum_%.*s);\n", StringPrintfArgs(cenum->name), StringPrintfArgs(cenum->name));
+		printf("static const ReflexID ReflexID_%s = ReflexRegisterEnum(&reflexEnum_%s);\n", reflexEnum.name, reflexEnum.name);
 		printf("\n");
 	}
 
@@ -573,6 +781,16 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 
 		if (reflexStruct.memberCount > 0)
 		{
+			// The args array of a member's meta must be printed before reflexMembers_%s[],
+			// since it can't be declared inline within that array's initializer
+			for (u32 memberIndex = 0; memberIndex < reflexStruct.memberCount; ++memberIndex)
+			{
+				const ReflexMember &member = reflexStruct.members[memberIndex];
+				char argsName[256];
+				SPrintf(argsName, "%s_%s", structName, member.name);
+				PrintReflexMetaArgs(argsName, member.meta);
+			}
+
 			printf("\n");
 			printf("// ReflexMember info\n");
 			printf("static const ReflexMember reflexMembers_%s[] = {\n", structName);
@@ -581,14 +799,11 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 		for ( u32 memberIndex = 0; memberIndex < reflexStruct.memberCount; ++memberIndex)
 		{
 			const ReflexMember &member = reflexStruct.members[memberIndex];
+			char argsName[256];
+			SPrintf(argsName, "%s_%s", structName, member.name);
 
 			printf("  { ");
 			printf(".name = \"%s\", ", member.name);
-			if (member.hint) {
-				printf(".hint = \"%s\", ", member.hint);
-			} else {
-				printf(".hint = NULL, ");
-			}
 			printf(".typeName = \"%s\", ", member.typeName);
 			printf(".ops = REFLEX_OPS(%s), ", OpsTypeName(member));
 			printf(".isConst = %s, ", member.isConst ? "true" : "false");
@@ -598,7 +813,10 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 			printf(".reflexId = ");
 			PrintReflexID(member);
 			printf(", ");
-			printf(".offset = OFFSET_OF(%s, %s) ", structName, member.name);
+			printf(".offset = OFFSET_OF(%s, %s), ", structName, member.name);
+			printf(".meta = { ");
+			PrintReflexMeta(argsName, member.meta, arena);
+			printf(" } ");
 			printf("},\n");
 		}
 
@@ -607,16 +825,13 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 			printf("};\n");
 		}
 
+		PrintReflexMetaArgs(structName, reflexStruct.meta);
+
 		printf("\n");
 		printf("// ReflexStruct info\n");
 		printf("static const ReflexStruct reflexStruct_%s =\n", structName);
 		printf("{\n");
 		printf("  .name = \"%s\",\n", structName);
-		if (reflexStruct.hint) {
-			printf("  .hint = \"%s\",\n", reflexStruct.hint);
-		} else {
-			printf("  .hint = NULL,\n");
-		}
 		if (reflexStruct.memberCount > 0) {
 			printf("  .members = reflexMembers_%s,\n", structName);
 			printf("  .memberCount = ARRAY_COUNT(reflexMembers_%s),\n", structName);
@@ -626,6 +841,9 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 			printf("  .memberCount = 0,\n");
 		}
 		printf("  .size = sizeof(%s),\n", structName);
+		printf("  .meta = { ");
+		PrintReflexMeta(structName, reflexStruct.meta, arena);
+		printf(" },\n");
 		printf("};\n");
 
 		printf("\n");

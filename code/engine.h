@@ -165,10 +165,10 @@ inline bool IsIDProperty(PropertyType type)
 	return res;
 }
 
-// The hint in an ID property's tag names the kind of object it refers to, e.g. ILU_PROPERTY(Sprite)
+// The kind in an ID property's tag names the kind of object it refers to, e.g. ILU_PROPERTY(kind=Sprite)
 inline IDKind PropertyIDKind(const ReflexMember &member)
 {
-	const IDKind kind = IsIDProperty(member.reflexId) ? IDKindFromName(member.hint) : IDKind_None;
+	const IDKind kind = IsIDProperty(member.reflexId) ? IDKindFromName(ReflexGetMetaIDKind(member.meta)) : IDKind_None;
 	return kind;
 }
 
@@ -214,7 +214,6 @@ constexpr u16 NULL_SCRIPT = 0; // Registry slot of the script that does nothing
 constexpr u32 MAX_SCRIPT_PROPERTIES = 16;
 
 // Structs tagged ILU_STRUCT(Script) are the ones that can be registered as scripts
-#define SCRIPT_HINT "Script"
 constexpr u32 SCRIPT_DATA_ALIGN = 16;
 
 constexpr u32 SCRIPT_SIZE_CLASS_COUNT = 64;
@@ -832,7 +831,7 @@ struct ModelComponent
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY(Material)
+	ILU_PROPERTY(kind=Material)
 	ID materialId;
 	ILU_PROPERTY()
 	GeometryType geometryType;
@@ -851,9 +850,9 @@ struct SpriteComponent
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY(Sprite)
+	ILU_PROPERTY(kind=Sprite)
 	ID spriteId;
-	ILU_PROPERTY(Layer)
+	ILU_PROPERTY(kind=Layer)
 	ID layerId;
 
 	// Runtime
@@ -888,7 +887,7 @@ struct ParticlesComponent
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY(ParticleEffect)
+	ILU_PROPERTY(kind=ParticleEffect)
 	ID effectId;
 	ILU_PROPERTY(Bool)
 	u8 playOnStart;

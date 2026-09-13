@@ -65,6 +65,7 @@ enum // ReflexID
 
 enum ReflexMetaArgType
 {
+	ReflexMeta_IDKind,
 	ReflexMeta_Tag, // Any non recognized string
 };
 
@@ -74,6 +75,7 @@ struct ReflexMetaArg
 	union
 	{
 		String tag;
+		String kind;
 	};
 };
 
@@ -90,7 +92,7 @@ typedef u32 ReflexMetaFlags;
 struct ReflexMeta
 {
 	ReflexMetaFlags flags;
-	ReflexMetaArg *args;
+	const ReflexMetaArg *args;
 	u8 argCount;
 };
 
@@ -110,7 +112,6 @@ struct ReflexEnumerator
 struct ReflexEnum
 {
 	const char *name;
-	const char *hint; // Optional arguments in the tag macro
 	const ReflexEnumerator *enumerators;
 	u16 enumeratorCount;
 	ReflexMeta meta; // Meta info within ILU_ENUM
@@ -125,26 +126,24 @@ struct ReflexOps; // Defined by user code
 struct ReflexMember
 {
 	const char *name;
-	const char *hint; // Optional arguments in the tag macro
 	const char *typeName; // As spelled in C, e.g. "unsigned int" or "ID"
 	const ReflexOps *ops; // User operations
-	ReflexMeta meta; // Meta info within ILU_PROPERTY
 	u16 isConst : 1;
 	u16 pointerCount : 2;
 	u16 isArray : 1;
 	u16 arrayDim : 12; // 4096 values
 	u16 reflexId;
 	u16 offset;
+	ReflexMeta meta; // Meta info within ILU_PROPERTY
 };
 
 struct ReflexStruct
 {
 	const char *name;
-	const char *hint; // Optional arguments in the tag macro
 	const ReflexMember *members;
-	ReflexMeta meta; // Meta info within ILU_STRUCT
 	u16 memberCount;
 	u16 size;
+	ReflexMeta meta; // Meta info within ILU_STRUCT
 };
 
 struct ReflexCustom
@@ -434,6 +433,40 @@ static ReflexMetaFlag ReflexGetMetaFlag(const String string)
 	if (StrEq(string, "Component")) return ReflexMeta_Component;
 	if (StrEq(string, "Script")) return ReflexMeta_Script;
 	return ReflexMeta_None;
+}
+
+static const ReflexMetaArg *ReflexGetMetaArg(const ReflexMeta &meta, ReflexMetaArgType type)
+{
+	for (u32 i = 0; i < meta.argCount; ++i) {
+		if (meta.args[i].type == type) {
+			return &meta.args[i];
+		}
+	}
+	return nullptr;
+}
+
+// The value of ILU_PROPERTY(kind=X) on an ID property: which IDKind X names.
+// Null when the property carries no kind tag at all.
+static const char *ReflexGetMetaIDKind(const ReflexMeta &meta)
+{
+	const ReflexMetaArg *arg = ReflexGetMetaArg(meta, ReflexMeta_IDKind);
+	return arg ? arg->kind.str : nullptr;
+}
+
+// True when meta carries `tag`, whether as a recognized ReflexMetaFlag (e.g. "Color", folded
+// into meta.flags) or as a plain ReflexMeta_Tag argument (e.g. "Bool")
+static bool ReflexHasMetaTag(const ReflexMeta &meta, const char *tag)
+{
+	const ReflexMetaFlag flag = ReflexGetMetaFlag(MakeString(tag));
+	if (flag != ReflexMeta_None) {
+		return (meta.flags & flag) != 0;
+	}
+	for (u32 i = 0; i < meta.argCount; ++i) {
+		if (meta.args[i].type == ReflexMeta_Tag && StrEq(meta.args[i].tag, tag)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 #endif // #ifndef TOOLS_REFLEX_H
