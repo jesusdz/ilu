@@ -7,9 +7,7 @@
 
 // Macros used in the parsed files to tag reflected structs, properties and enums
 static const CastConfig castConfig = {
-	.structTag = "ILU_STRUCT",
-	.fieldTag = "ILU_PROPERTY",
-	.enumTag = "ILU_ENUM",
+	.tagString = "REFLEX",
 };
 
 // The trivial ReflexID enumerators, which the generated code refers to by name
@@ -423,7 +421,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 				const CastTypeSpecifier *paramTypeSpecifier = (parameterDeclaration && parameterDeclaration->declarationSpecifiers) ?
 					parameterDeclaration->declarationSpecifiers->typeSpecifier : NULL;
 
-				// A script parameter is a struct previously tagged with ILU_STRUCT(Script)
+				// A script parameter is a struct previously tagged with REFLEX(Script)
 				bool hasScriptParameter = false;
 				if (paramTypeSpecifier && paramTypeSpecifier->type == CAST_IDENTIFIER)
 				{
@@ -497,7 +495,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	{
 		const CastEnumSpecifier *cenum = enums[index];
 
-		// The last enumerator of an enum tagged ILU_ENUM(Count) counts the others, so it
+		// The last enumerator of an enum tagged REFLEX(Count) counts the others, so it
 		// is left out: it is no value the enum can hold
 		u32 enumeratorCount = 0;
 		for (const CastEnumeratorList *it = CAST_CHILD(cenum, enumeratorList); it; it = it->next) {
@@ -610,11 +608,11 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	}
 
 	printf("\n");
-	printf("#ifdef REFLEX_GENERATED_DECLARATION\n");
+	printf("#ifdef REFLEX_GENERATED_CUSTOM_TYPES\n");
 
 	printf("\n");
 	printf("////////////////////////////////////////////////////////////////////////\n");
-	printf("// Include this file with REFLEX_GENERATED_DECLARATION before reflex.h\n");
+	printf("// Include this file with REFLEX_GENERATED_CUSTOM_TYPES before reflex.h\n");
 	printf("\n");
 
 	if (customTypeCount > 0)
@@ -626,6 +624,17 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 		}
 	}
 
+	printf("\n");
+	printf("#undef REFLEX_GENERATED_CUSTOM_TYPES\n");
+	printf("#endif // REFLEX_GENERATED_CUSTOM_TYPES\n");
+
+	printf("\n");
+	printf("#ifdef REFLEX_GENERATED_DECLARATION\n");
+
+	printf("\n");
+	printf("////////////////////////////////////////////////////////////////////////\n");
+	printf("// Include this file with REFLEX_GENERATED_DECLARATION once every type used by a\n");
+	printf("// component's members (including ones reflected further down the same file) is declared\n");
 	printf("\n");
 
 	if (componentCount > 0)

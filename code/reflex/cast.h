@@ -23,7 +23,7 @@
  * provided by the user of this file through a `CastConfig` object:
  *
  * const CastConfig config = {
- *   .structTag = "ILU_STRUCT", .fieldTag = "ILU_PROPERTY", .enumTag = "ILU_ENUM",
+ *   .tagString = "REFLEX",
  * };
  * const Cast *cast = Cast_Create(arena, text, textSize, config);
  *
@@ -186,8 +186,8 @@ struct CIdentifierList;
 // Cast tags
 
 // A tag is a user-defined macro placed right before a struct, a struct field or
-// an enum definition (e.g. ILU_STRUCT() / ILU_PROPERTY(...)). Its arguments, if
-// any, are captured verbatim and are not interpreted by the parser.
+// an enum definition (i.e. using REFLEX(...)). Its arguments, if any, are
+// captured verbatim and are not interpreted by the parser.
 struct CastTag
 {
 	CastString name;
@@ -198,9 +198,7 @@ struct CastTag
 // (or empty) are simply not parsed, which is the default behaviour.
 struct CastConfig
 {
-	const char *structTag; // Tag preceding struct definitions
-	const char *fieldTag;  // Tag preceding struct field definitions
-	const char *enumTag;   // Tag preceding enum definitions
+	const char *tagString; // Tag preceding definitions
 };
 
 // Cast functions
@@ -1624,7 +1622,7 @@ static CastStructDeclaration *Cast_ParseStructDeclaration( CParser &parser, CTok
 {
 	CAST_BACKUP();
 	CastStructDeclaration *structDeclaration = NULL;
-	CastTag *tag = Cast_ParseTag(parser, parser.config.fieldTag);
+	CastTag *tag = Cast_ParseTag(parser, parser.config.tagString);
 	CastSpecifierQualifierList *specifierQualifierList = Cast_ParseSpecifierQualifierList(parser, tokenList);
 	if ( specifierQualifierList )
 	{
@@ -1800,30 +1798,22 @@ static CastTypeSpecifier *Cast_ParseTypeSpecifier( CParser &parser, CTokenList &
 	CastString identifier = {};
 	CastStructSpecifier *structSpecifier = NULL;
 	CastEnumSpecifier *enumSpecifier = NULL;
-	CastTag *structTag = Cast_ParseTag(parser, parser.config.structTag);
-	CastTag *enumTag = structTag ? NULL : Cast_ParseTag(parser, parser.config.enumTag);
-	if ( structTag )
+	CastTag *tag = Cast_ParseTag(parser, parser.config.tagString);
+	if ( tag )
 	{
-		// A struct tag was found, so a struct specifier must follow
+		// A tag was found, so a struct or enum specifier must follow
 		type = CAST_STRUCT;
 		structSpecifier = Cast_ParseStructSpecifier(parser, tokenList);
 		if ( structSpecifier ) {
-			structSpecifier->tag = structTag;
+			structSpecifier->tag = tag;
 		} else {
-			CAST_RESTORE();
-			match = false;
-		}
-	}
-	else if ( enumTag )
-	{
-		// An enum tag was found, so an enum specifier must follow
-		type = CAST_ENUM;
-		enumSpecifier = Cast_ParseEnumSpecifier(parser, tokenList);
-		if ( enumSpecifier ) {
-			enumSpecifier->tag = enumTag;
-		} else {
-			CAST_RESTORE();
-			match = false;
+			type = CAST_ENUM;
+			enumSpecifier = Cast_ParseEnumSpecifier(parser, tokenList);
+			if ( enumSpecifier ) {
+				enumSpecifier->tag = tag;
+			} else {
+				match = false;
+			}
 		}
 	}
 	else if ( CParser_TryConsume(parser, TOKEN_VOID) ) type = CAST_VOID;
@@ -1849,12 +1839,12 @@ static CastTypeSpecifier *Cast_ParseTypeSpecifier( CParser &parser, CTokenList &
 		if ( isKnownIdentifier || isMemberType ) {
 			type = CAST_IDENTIFIER;
 		} else {
-			CAST_RESTORE();
 			match = false;
 		}
 	}
 	else
 	{
+		// Untagged struct or enum specifier
 		type = CAST_STRUCT;
 		structSpecifier = Cast_ParseStructSpecifier(parser, tokenList);
 		if ( !structSpecifier )
@@ -1880,6 +1870,11 @@ static CastTypeSpecifier *Cast_ParseTypeSpecifier( CParser &parser, CTokenList &
 			default:;
 		};
 	}
+	else
+	{
+		CAST_RESTORE();
+	}
+
 	return castTypeSpecifier;
 }
 
@@ -2255,9 +2250,7 @@ static CastTranslationUnit *Cast_ParseTranslationUnit( CParser &parser, CTokenLi
 
 			// Tagged definitions are explicitly requested by the user, so failing
 			// to parse one is an error rather than something to silently skip.
-			const bool isTagged =
-				CParser_IsNextTokenNamed(parser, parser.config.structTag) ||
-				CParser_IsNextTokenNamed(parser, parser.config.enumTag);
+			const bool isTagged = CParser_IsNextTokenNamed(parser, parser.config.tagString);
 
 			if ( isTagged || !CParser_SkipExternalDeclaration(parser) )
 			{

@@ -6,6 +6,9 @@
 #ifndef TOOLS_REFLEX_H
 #define TOOLS_REFLEX_H
 
+// Annotation macro used to reflect custom types.
+#define REFLEX(...)
+
 // If user code is going to allow reflecting members of types which are not
 // refected themselves, these types are unknown to the reflection system.
 // You need to provide an ID in advance for every custom type in reflected
@@ -114,7 +117,7 @@ struct ReflexEnum
 	const char *name;
 	const ReflexEnumerator *enumerators;
 	u16 enumeratorCount;
-	ReflexMeta meta; // Meta info within ILU_ENUM
+	ReflexMeta meta; // Meta info within REFLEX macro
 };
 
 struct ReflexOps; // Defined by user code
@@ -134,7 +137,7 @@ struct ReflexMember
 	u16 arrayDim : 12; // 4096 values
 	u16 reflexId;
 	u16 offset;
-	ReflexMeta meta; // Meta info within ILU_PROPERTY
+	ReflexMeta meta; // Meta info within REFLEX macro
 };
 
 struct ReflexStruct
@@ -143,7 +146,7 @@ struct ReflexStruct
 	const ReflexMember *members;
 	u16 memberCount;
 	u16 size;
-	ReflexMeta meta; // Meta info within ILU_STRUCT
+	ReflexMeta meta; // Meta info within REFLEX macro
 };
 
 struct ReflexCustom
@@ -445,7 +448,7 @@ static const ReflexMetaArg *ReflexGetMetaArg(const ReflexMeta &meta, ReflexMetaA
 	return nullptr;
 }
 
-// The value of ILU_PROPERTY(kind=X) on an ID property: which IDKind X names.
+// The value of REFLEX(kind=X) on an ID property: which IDKind X names.
 // Null when the property carries no kind tag at all.
 static const char *ReflexGetMetaIDKind(const ReflexMeta &meta)
 {

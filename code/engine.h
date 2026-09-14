@@ -1,13 +1,35 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
-////////////////////////////////////////////////////////////////////////
-// Reflection annotations
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// TYPES: Reflected properties
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define ILU_STRUCT(...)
-#define ILU_PROPERTY(...)
-#define ILU_ENUM(...)
+// Every type used by a reflected member needs a PropertyOps_<Type>, see properties.cpp
+#define REFLEX_OPS(Type) &PropertyOps_##Type
 
+#define REFLEX_GENERATED_CUSTOM_TYPES
+#include "reflex.generated.h"
+
+#include "reflex\reflex.h"
+
+struct WriteContext;
+struct DParser;
+
+struct ReflexOps
+{
+	bool (*edit)(const ReflexMember &member, void *field);
+	void (*write)(WriteContext &ctx, const ReflexMember &member, const void *field); // The value only
+	bool (*parse)(DParser &parser, const ReflexMember &member, void *field);
+};
+
+typedef ReflexID PropertyType;
+
+inline bool IsIDProperty(PropertyType type)
+{
+	const bool res = type == ReflexID_ID;
+	return res;
+}
 
 ////////////////////////////////////////////////////////////////////////
 // ID kinds
@@ -55,6 +77,28 @@ inline IDKind IDKindFromName(const char *name)
 	return IDKind_None;
 }
 
+// The kind in an ID property's tag names the kind of object it refers to, e.g. REFLEX(kind=Sprite)
+inline IDKind PropertyIDKind(const ReflexMember &member)
+{
+	const IDKind kind = IsIDProperty(member.reflexId) ? IDKindFromName(ReflexGetMetaIDKind(member.meta)) : IDKind_None;
+	return kind;
+}
+
+inline const ReflexMember *FindProperty(const ReflexStruct &type, String name)
+{
+	for (u32 i = 0; i < type.memberCount; ++i) {
+		if ( StrEq(name, type.members[i].name) ) {
+			return &type.members[i];
+		}
+	}
+	return nullptr;
+}
+
+inline const ReflexMember *FindProperty(const ReflexStruct &type, const char *name)
+{
+	return FindProperty(type, MakeString(name));
+}
+
 ////////////////////////////////////////////////////////////////////////
 // Asset flags
 
@@ -90,7 +134,7 @@ struct BinLocation
 
 typedef u16 Index;
 
-ILU_ENUM(Count)
+REFLEX(Count)
 enum GeometryType
 {
 	GeometryTypeCube,
@@ -129,63 +173,11 @@ struct DebugDrawBatch
 	u32 vertexCount;
 };
 
-ILU_ENUM()
+REFLEX()
 enum LightType
 {
 	LightType_Point,
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// TYPES: Reflected properties
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// Every type used by a reflected member needs a PropertyOps_<Type>, see properties.cpp
-#define REFLEX_OPS(Type) &PropertyOps_##Type
-
-#define REFLEX_GENERATED_DECLARATION
-#include "reflex.generated.h"
-
-#include "reflex\reflex.h"
-
-struct WriteContext;
-struct DParser;
-
-struct ReflexOps
-{
-	bool (*edit)(const ReflexMember &member, void *field);
-	void (*write)(WriteContext &ctx, const ReflexMember &member, const void *field); // The value only
-	bool (*parse)(DParser &parser, const ReflexMember &member, void *field);
-};
-
-typedef ReflexID PropertyType;
-
-inline bool IsIDProperty(PropertyType type)
-{
-	const bool res = type == ReflexID_ID;
-	return res;
-}
-
-// The kind in an ID property's tag names the kind of object it refers to, e.g. ILU_PROPERTY(kind=Sprite)
-inline IDKind PropertyIDKind(const ReflexMember &member)
-{
-	const IDKind kind = IsIDProperty(member.reflexId) ? IDKindFromName(ReflexGetMetaIDKind(member.meta)) : IDKind_None;
-	return kind;
-}
-
-inline const ReflexMember *FindProperty(const ReflexStruct &type, String name)
-{
-	for (u32 i = 0; i < type.memberCount; ++i) {
-		if ( StrEq(name, type.members[i].name) ) {
-			return &type.members[i];
-		}
-	}
-	return nullptr;
-}
-
-inline const ReflexMember *FindProperty(const ReflexStruct &type, const char *name)
-{
-	return FindProperty(type, MakeString(name));
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // TYPES: Builtin IDs
@@ -213,7 +205,7 @@ constexpr u32 MAX_SCRIPTS = 64;
 constexpr u16 NULL_SCRIPT = 0; // Registry slot of the script that does nothing
 constexpr u32 MAX_SCRIPT_PROPERTIES = 16;
 
-// Structs tagged ILU_STRUCT(Script) are the ones that can be registered as scripts
+// Structs tagged REFLEX(Script) are the ones that can be registered as scripts
 constexpr u32 SCRIPT_DATA_ALIGN = 16;
 
 constexpr u32 SCRIPT_SIZE_CLASS_COUNT = 64;
@@ -799,11 +791,9 @@ struct SceneDesc
 ////////////////////////////////////////////////////////////////////////
 // Components
 
-// ComponentType, ComponentBits, ComponentNames and ComponentFieldNames come from the structs
-// tagged ILU_STRUCT(Component) below, through reflex.generated.h
+#define REFLEX_GENERATED_DECLARATION
+#include "reflex.generated.h"
 
-// The component and the descriptor reflex generates for it, e.g. LightComponent and
-// LightComponentDesc. A component with no properties, like a script's, gets no descriptor.
 inline const ReflexStruct *ComponentReflexStruct(ComponentType type)
 {
 	char name[64];
@@ -825,15 +815,15 @@ CT_ASSERT(ComponentType_Count < sizeof(ComponentFlags) * 8);
 ////////////////////////////////////////////////////////////////////////
 // Model component
 
-ILU_STRUCT(Component)
+REFLEX(Component)
 struct ModelComponent
 {
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY(kind=Material)
+	REFLEX(kind=Material)
 	ID materialId;
-	ILU_PROPERTY()
+	REFLEX()
 	GeometryType geometryType;
 
 	// Runtime
@@ -844,15 +834,15 @@ struct ModelComponent
 ////////////////////////////////////////////////////////////////////////
 // Sprite component
 
-ILU_STRUCT(Component)
+REFLEX(Component)
 struct SpriteComponent
 {
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY(kind=Sprite)
+	REFLEX(kind=Sprite)
 	ID spriteId;
-	ILU_PROPERTY(kind=Layer)
+	REFLEX(kind=Layer)
 	ID layerId;
 
 	// Runtime
@@ -862,34 +852,34 @@ struct SpriteComponent
 ////////////////////////////////////////////////////////////////////////
 // Light component
 
-ILU_STRUCT(Component)
+REFLEX(Component)
 struct LightComponent
 {
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY()
+	REFLEX()
 	LightType type;
-	ILU_PROPERTY(Color)
+	REFLEX(Color)
 	float3 color;
-	ILU_PROPERTY()
+	REFLEX()
 	f32 intensity;
-	ILU_PROPERTY()
+	REFLEX()
 	f32 radius;
 };
 
 ////////////////////////////////////////////////////////////////////////
 // Particles component
 
-ILU_STRUCT(Component)
+REFLEX(Component)
 struct ParticlesComponent
 {
 	ID entityId;
 
 	// Descriptor
-	ILU_PROPERTY(kind=ParticleEffect)
+	REFLEX(kind=ParticleEffect)
 	ID effectId;
-	ILU_PROPERTY(Bool)
+	REFLEX(Bool)
 	u8 playOnStart;
 
 	// Runtime
@@ -910,7 +900,7 @@ struct ScriptComponentDesc
 
 // Tagged so it is one of the generated component types, though it has no property of its own:
 // what a script component holds is the script's, and ScriptComponentDesc describes it
-ILU_STRUCT(Component)
+REFLEX(Component)
 struct ScriptComponent
 {
 	ID entityId;

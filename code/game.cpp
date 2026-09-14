@@ -6,27 +6,27 @@ enum PlayerState
 	OnAir,
 };
 
-ILU_STRUCT(Script)
+REFLEX(Script)
 struct ScriptPlayerController
 {
 	PlayerState playerState;
 
-	ILU_PROPERTY(kind=Sprite)
+	REFLEX(kind=Sprite)
 	ID sprPlayerIdle;
 
-	ILU_PROPERTY(kind=Sprite)
+	REFLEX(kind=Sprite)
 	ID sprPlayerRun;
 
-	ILU_PROPERTY(kind=Sprite)
+	REFLEX(kind=Sprite)
 	ID sprPlayerJump;
 
-	ILU_PROPERTY(kind=Sprite)
+	REFLEX(kind=Sprite)
 	ID sprPlayerFall;
 
-	ILU_PROPERTY(kind=AudioClip)
+	REFLEX(kind=AudioClip)
 	ID sndJump;
 
-	ILU_PROPERTY()
+	REFLEX()
 	u32 randomProperty;
 
 	Camera camera;
