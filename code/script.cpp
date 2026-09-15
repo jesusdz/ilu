@@ -24,8 +24,7 @@ static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHoo
 		if ( ReflexGetTypeSize(member.reflexId) > MAX_PROPERTY_VALUE_SIZE ) {
 			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> is too large to be stored\n", type->name, member.name, member.typeName);
 		} else if ( IsIDProperty(member.reflexId) && PropertyIDKind(member) == IDKind_None ) {
-			const char *kind = ReflexGetMetaIDKind(member.meta);
-			LOG(Warning, "RegisterScript: <%s> property <%s> has kind <%s>, which names no ID kind (e.g. ILU_PROPERTY(kind=Sprite)), so nothing can be assigned to it in the editor\n", type->name, member.name, kind ? kind : "");
+			LOG(Warning, "RegisterScript: <%s> property <%s> is tagged with no ID kind (e.g. ILU_PROPERTY(Sprite)), so nothing can be assigned to it in the editor\n", type->name, member.name);
 		}
 	}
 
@@ -120,7 +119,7 @@ void RegisterScripts(Engine &engine)
 	for (u32 i = ReflexID_StructBegin; i < ReflexID_StructEnd; ++i)
 	{
 		const ReflexStruct* rstruct = ReflexGetStruct(i);
-		if (rstruct && (rstruct->meta.flags & ReflexMeta_Script))
+		if (rstruct && (rstruct->meta.flags & ReflexMetaFlag_Script))
 		{
 			ScriptHook start = ReflexGetFunctor(rstruct->name, "Start");
 			ScriptHook simulate = ReflexGetFunctor(rstruct->name, "Simulate");

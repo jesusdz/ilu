@@ -68,29 +68,26 @@ enum // ReflexID
 
 enum ReflexMetaArgType
 {
-	ReflexMeta_IDKind,
-	ReflexMeta_Tag, // Any non recognized string
+	ReflexMetaArg_Int,
+	ReflexMetaArg_Float,
+	ReflexMetaArg_String,
 };
 
 struct ReflexMetaArg
 {
+	String name;
 	ReflexMetaArgType type;
 	union
 	{
-		String tag;
-		String kind;
+		i32 intValue;
+		f32 floatValue;
+		String stringValue;
 	};
 };
 
-enum ReflexMetaFlag
-{
-	ReflexMeta_None,
-	ReflexMeta_Component = 1<<0,
-	ReflexMeta_Script = 1<<1,
-	ReflexMeta_Color = 1<<2,
-};
-
-typedef u32 ReflexMetaFlags;
+// Each tag found within REFLEX(...) gets a bit, which only the generated
+// ReflexMetaFlagBits enum names, e.g. REFLEX(Color) sets ReflexMetaFlag_Color
+typedef u64 ReflexMetaFlags;
 
 struct ReflexMeta
 {
@@ -430,46 +427,21 @@ static ReflexFunctor ReflexGetFunctor(const char *structName, const char *functi
 	return nullptr;
 }
 
-static ReflexMetaFlag ReflexGetMetaFlag(const String string)
-{
-	if (StrEq(string, "Color")) return ReflexMeta_Color;
-	if (StrEq(string, "Component")) return ReflexMeta_Component;
-	if (StrEq(string, "Script")) return ReflexMeta_Script;
-	return ReflexMeta_None;
-}
-
-static const ReflexMetaArg *ReflexGetMetaArg(const ReflexMeta &meta, ReflexMetaArgType type)
+static const ReflexMetaArg *ReflexGetMetaArg(const ReflexMeta &meta, const char *name)
 {
 	for (u32 i = 0; i < meta.argCount; ++i) {
-		if (meta.args[i].type == type) {
+		if (StrEq(meta.args[i].name, name)) {
 			return &meta.args[i];
 		}
 	}
 	return nullptr;
 }
 
-// The value of REFLEX(kind=X) on an ID property: which IDKind X names.
-// Null when the property carries no kind tag at all.
-static const char *ReflexGetMetaIDKind(const ReflexMeta &meta)
+// Empty when the meta has no argument of that name, or when its value is not a string
+static String ReflexGetMetaString(const ReflexMeta &meta, const char *name)
 {
-	const ReflexMetaArg *arg = ReflexGetMetaArg(meta, ReflexMeta_IDKind);
-	return arg ? arg->kind.str : nullptr;
-}
-
-// True when meta carries `tag`, whether as a recognized ReflexMetaFlag (e.g. "Color", folded
-// into meta.flags) or as a plain ReflexMeta_Tag argument (e.g. "Bool")
-static bool ReflexHasMetaTag(const ReflexMeta &meta, const char *tag)
-{
-	const ReflexMetaFlag flag = ReflexGetMetaFlag(MakeString(tag));
-	if (flag != ReflexMeta_None) {
-		return (meta.flags & flag) != 0;
-	}
-	for (u32 i = 0; i < meta.argCount; ++i) {
-		if (meta.args[i].type == ReflexMeta_Tag && StrEq(meta.args[i].tag, tag)) {
-			return true;
-		}
-	}
-	return false;
+	const ReflexMetaArg *arg = ReflexGetMetaArg(meta, name);
+	return arg && arg->type == ReflexMetaArg_String ? arg->stringValue : String{};
 }
 
 #endif // #ifndef TOOLS_REFLEX_H

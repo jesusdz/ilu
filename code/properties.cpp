@@ -30,16 +30,16 @@ static bool EditProperty_u32(const ReflexMember &member, void *field)
 	return UI_InputUInt(ui, member.name, (u32*)field);
 }
 
-static bool HasTag(const ReflexMember &member, const char *tag)
+static bool HasFlag(const ReflexMember &member, ReflexMetaFlags flag)
 {
-	return ReflexHasMetaTag(member.meta, tag);
+	return (member.meta.flags & flag) != 0;
 }
 
 static bool EditProperty_u8(const ReflexMember &member, void *field)
 {
 	UI &ui = GetEngine().ui;
 
-	if ( HasTag(member, "Bool") ) {
+	if ( HasFlag(member, ReflexMetaFlag_Bool) ) {
 		bool value = *(u8*)field != 0;
 		const bool changed = UI_Checkbox(ui, member.name, &value);
 		*(u8*)field = value ? 1 : 0;
@@ -62,7 +62,7 @@ static bool EditProperty_float3(const ReflexMember &member, void *field)
 {
 	UI &ui = GetEngine().ui;
 
-	if ( HasTag(member, "Color") )
+	if ( HasFlag(member, ReflexMetaFlag_Color) )
 	{
 		// The picker edits a copy until it is closed, and only one can be open, so the field
 		// it belongs to is what tells the open picker apart from every other color row

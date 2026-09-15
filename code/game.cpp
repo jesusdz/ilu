@@ -11,19 +11,19 @@ struct ScriptPlayerController
 {
 	PlayerState playerState;
 
-	REFLEX(kind=Sprite)
+	REFLEX(Sprite)
 	ID sprPlayerIdle;
 
-	REFLEX(kind=Sprite)
+	REFLEX(Sprite)
 	ID sprPlayerRun;
 
-	REFLEX(kind=Sprite)
+	REFLEX(Sprite)
 	ID sprPlayerJump;
 
-	REFLEX(kind=Sprite)
+	REFLEX(Sprite)
 	ID sprPlayerFall;
 
-	REFLEX(kind=AudioClip)
+	REFLEX(AudioClip)
 	ID sndJump;
 
 	REFLEX()

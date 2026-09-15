@@ -65,25 +65,6 @@ constexpr const char *IDKindNames[] =
 };
 CT_ASSERT(ARRAY_COUNT(IDKindNames) == IDKind_Count);
 
-inline IDKind IDKindFromName(const char *name)
-{
-	if ( name ) {
-		for (u32 kind = IDKind_None + 1; kind < IDKind_Count; ++kind) {
-			if ( StrEq(IDKindNames[kind], name) ) {
-				return (IDKind)kind;
-			}
-		}
-	}
-	return IDKind_None;
-}
-
-// The kind in an ID property's tag names the kind of object it refers to, e.g. REFLEX(kind=Sprite)
-inline IDKind PropertyIDKind(const ReflexMember &member)
-{
-	const IDKind kind = IsIDProperty(member.reflexId) ? IDKindFromName(ReflexGetMetaIDKind(member.meta)) : IDKind_None;
-	return kind;
-}
-
 inline const ReflexMember *FindProperty(const ReflexStruct &type, String name)
 {
 	for (u32 i = 0; i < type.memberCount; ++i) {
@@ -794,6 +775,18 @@ struct SceneDesc
 #define REFLEX_GENERATED_DECLARATION
 #include "reflex.generated.h"
 
+// The kind in an ID property's tag names the kind of object it refers to, e.g. REFLEX(Sprite)
+inline IDKind PropertyIDKind(const ReflexMember &member)
+{
+	const ReflexMetaFlags flags = IsIDProperty(member.reflexId) ? member.meta.flags : 0;
+	if ( flags & ReflexMetaFlag_Material )       return IDKind_Material;
+	if ( flags & ReflexMetaFlag_Sprite )         return IDKind_Sprite;
+	if ( flags & ReflexMetaFlag_Layer )          return IDKind_Layer;
+	if ( flags & ReflexMetaFlag_ParticleEffect ) return IDKind_ParticleEffect;
+	if ( flags & ReflexMetaFlag_AudioClip )      return IDKind_AudioClip;
+	return IDKind_None;
+}
+
 inline const ReflexStruct *ComponentReflexStruct(ComponentType type)
 {
 	char name[64];
@@ -821,7 +814,7 @@ struct ModelComponent
 	ID entityId;
 
 	// Descriptor
-	REFLEX(kind=Material)
+	REFLEX(Material)
 	ID materialId;
 	REFLEX()
 	GeometryType geometryType;
@@ -840,9 +833,9 @@ struct SpriteComponent
 	ID entityId;
 
 	// Descriptor
-	REFLEX(kind=Sprite)
+	REFLEX(Sprite)
 	ID spriteId;
-	REFLEX(kind=Layer)
+	REFLEX(Layer)
 	ID layerId;
 
 	// Runtime
@@ -877,7 +870,7 @@ struct ParticlesComponent
 	ID entityId;
 
 	// Descriptor
-	REFLEX(kind=ParticleEffect)
+	REFLEX(ParticleEffect)
 	ID effectId;
 	REFLEX(Bool)
 	u8 playOnStart;
