@@ -682,7 +682,7 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 static void EditorIDDragSource(ID id, ImageH imageH, float4 uvRect = {0, 0, 1, 1})
 {
 	UI &ui = GetEngine().ui;
-	UI_DragAndDropSource(ui, IDKindNames[GetIDKind(id)], UI_Payload(id.slot), imageH, uvRect);
+	UI_DragAndDropSource(ui, ReflexGetTypeName(GetIDType(id)), UI_Payload(id.slot), imageH, uvRect);
 }
 
 static void EditorEntityDropTarget(ID layerId)
@@ -690,7 +690,7 @@ static void EditorEntityDropTarget(ID layerId)
 	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 
-	if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Entity]) )
+	if ( UI_DragAndDropTarget(ui, ReflexGetTypeName(ReflexID_Entity)) )
 	{
 		const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( droppedId ) {
@@ -1698,7 +1698,7 @@ static void EditorUpdateUI_Inspector()
 				// so the row reads as empty rather than resolving one
 				const Texture *texture = desc.textureId ? &GetTexture(desc.textureId) : nullptr;
 				UI_Text(ui, "Name", "%s", texture ? texture->desc.name : "<none>");
-				if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Texture]) )
+				if ( UI_DragAndDropTarget(ui, ReflexGetTypeName(ReflexID_Texture)) )
 				{
 					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 					if ( droppedId ) {
@@ -1797,7 +1797,7 @@ static void EditorUpdateUI_Inspector()
 						.zw = Float2(sprite.size)/Float2(texture.size),
 					};
 					UI_Text(ui, "Texture", texture.desc.name);
-					if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Texture]) )
+					if ( UI_DragAndDropTarget(ui, ReflexGetTypeName(ReflexID_Texture)) )
 					{
 						ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 						if ( droppedId ) {
@@ -1846,7 +1846,7 @@ static void EditorUpdateUI_Inspector()
 
 				const SpriteDesc *sprite = effect.spriteID ? &GetSprite(effect.spriteID).desc : nullptr;
 				UI_Text(ui, "Sprite", "%s", sprite ? sprite->name : "<none>");
-				if ( UI_DragAndDropTarget(ui, IDKindNames[IDKind_Sprite]) )
+				if ( UI_DragAndDropTarget(ui, ReflexGetTypeName(ReflexID_Sprite)) )
 				{
 					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
 					if ( droppedId ) {
@@ -2199,7 +2199,7 @@ static void EditorUpdateUI_DragAndDropLost()
 	Engine &engine = GetEngine();
 	UI &ui = engine.ui;
 
-	if ( UI_DragAndDropTargetLost(ui, IDKindNames[IDKind_Sprite]) )
+	if ( UI_DragAndDropTargetLost(ui, ReflexGetTypeName(ReflexID_Sprite)) )
 	{
 		const ID spriteId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( spriteId ) {
@@ -2207,7 +2207,7 @@ static void EditorUpdateUI_DragAndDropLost()
 		}
 	}
 
-	if ( UI_DragAndDropTargetLost(ui, IDKindNames[IDKind_Prefab]) )
+	if ( UI_DragAndDropTargetLost(ui, ReflexGetTypeName(ReflexID_Prefab)) )
 	{
 		const ID prefabId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( prefabId ) {
@@ -2215,7 +2215,7 @@ static void EditorUpdateUI_DragAndDropLost()
 		}
 	}
 
-	if ( UI_DragAndDropTargetLost(ui, IDKindNames[IDKind_Texture]) )
+	if ( UI_DragAndDropTargetLost(ui, ReflexGetTypeName(ReflexID_Texture)) )
 	{
 		const ID textureId = { UI_DragAndDropPayload(ui).uvalue };
 		if ( textureId )

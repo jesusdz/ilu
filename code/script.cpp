@@ -23,8 +23,8 @@ static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHoo
 		const ReflexMember &member = type->members[i];
 		if ( ReflexGetTypeSize(member.reflexId) > MAX_PROPERTY_VALUE_SIZE ) {
 			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> is too large to be stored\n", type->name, member.name, member.typeName);
-		} else if ( IsIDProperty(member.reflexId) && PropertyIDKind(member) == IDKind_None ) {
-			LOG(Warning, "RegisterScript: <%s> property <%s> is tagged with no ID kind (e.g. ILU_PROPERTY(Sprite)), so nothing can be assigned to it in the editor\n", type->name, member.name);
+		} else if ( IsIDProperty(member.reflexId) && PropertyIDType(member) == ReflexID_Null ) {
+			LOG(Warning, "RegisterScript: <%s> property <%s> is tagged with no ID type (e.g. ILU_PROPERTY(Sprite)), so nothing can be assigned to it in the editor\n", type->name, member.name);
 		}
 	}
 

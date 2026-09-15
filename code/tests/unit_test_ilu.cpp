@@ -1709,7 +1709,7 @@ static COMPACT_REMOVE(TestCompactRemove)
     }
 }
 
-static const u8 TestCompactKind = 7;
+static const u16 TestCompactType = 7;
 
 // Fills the array with live elements, each bound to a fresh ID
 static void MakeTestElements(TestCompactElement *elements, u32 count, TestCompactPayload &payload)
@@ -1722,7 +1722,7 @@ static void MakeTestElements(TestCompactElement *elements, u32 count, TestCompac
         elements[i].desc.value = 10 * (i + 1);
         elements[i].payload = 100 * (i + 1);
         payload.parallel[i] = 1000 * (i + 1);
-        BindID(&elements[i].desc.id, &elements[i], TestCompactKind);
+        BindID(&elements[i].desc.id, &elements[i], TestCompactType);
     }
 }
 
@@ -1799,8 +1799,8 @@ void TestCompactArray()
              GetObject(elements[2].desc.id) == &elements[2]);
         TEST("Compaction leaves the removed ID invalid", !Valid(removedId));
         TEST("Compaction zeroes the vacated tail", IsZeroedTestElement(elements[3]));
-        TEST("Compaction keeps the kind of the surviving IDs", GetIDKind(survivorId) == TestCompactKind);
-        TEST("Invalidation keeps the kind of the removed ID", GetIDKind(removedId) == TestCompactKind);
+        TEST("Compaction keeps the type of the surviving IDs", GetIDType(survivorId) == TestCompactType);
+        TEST("Invalidation keeps the type of the removed ID", GetIDType(removedId) == TestCompactType);
     }
 
     // Holes at the front, in the middle and at the back

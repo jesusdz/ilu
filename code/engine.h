@@ -31,40 +31,6 @@ inline bool IsIDProperty(PropertyType type)
 	return res;
 }
 
-////////////////////////////////////////////////////////////////////////
-// ID kinds
-
-#define FOREACH_ID_KIND(X) \
-	X(Entity) \
-	X(Texture) \
-	X(Material) \
-	X(Sprite) \
-	X(ParticleEffect) \
-	X(Layer) \
-	X(Room) \
-	X(Prefab) \
-	X(AudioClip) \
-	X(MusicFile)
-
-enum IDKind
-{
-	IDKind_None,
-#define ID_KIND(Name) IDKind_##Name,
-	FOREACH_ID_KIND(ID_KIND)
-#undef ID_KIND
-	IDKind_Count,
-};
-CT_ASSERT(IDKind_Count <= 256);
-
-constexpr const char *IDKindNames[] =
-{
-	"None",
-#define ID_KIND_NAME(Name) #Name,
-	FOREACH_ID_KIND(ID_KIND_NAME)
-#undef ID_KIND_NAME
-};
-CT_ASSERT(ARRAY_COUNT(IDKindNames) == IDKind_Count);
-
 inline const ReflexMember *FindProperty(const ReflexStruct &type, String name)
 {
 	for (u32 i = 0; i < type.memberCount; ++i) {
@@ -294,6 +260,7 @@ struct AudioClipDesc
 	AssetFlags flags;
 };
 
+REFLEX()
 struct AudioClip
 {
 	AudioClipDesc desc;
@@ -346,6 +313,7 @@ struct MusicFileDesc
 	AssetFlags flags;
 };
 
+REFLEX()
 struct MusicFile
 {
 	MusicFileDesc desc;
@@ -441,6 +409,7 @@ struct TextureDesc
 	AssetFlags flags;
 };
 
+REFLEX()
 struct Texture
 {
 	TextureDesc desc;
@@ -463,6 +432,7 @@ struct MaterialDesc
 	AssetFlags flags;
 };
 
+REFLEX()
 struct Material
 {
 	MaterialDesc desc;
@@ -775,16 +745,16 @@ struct SceneDesc
 #define REFLEX_GENERATED_DECLARATION
 #include "reflex.generated.h"
 
-// The kind in an ID property's tag names the kind of object it refers to, e.g. REFLEX(Sprite)
-inline IDKind PropertyIDKind(const ReflexMember &member)
+// The type in an ID property's tag names the type of object it refers to, e.g. REFLEX(Sprite)
+inline ReflexID PropertyIDType(const ReflexMember &member)
 {
 	const ReflexMetaFlags flags = IsIDProperty(member.reflexId) ? member.meta.flags : 0;
-	if ( flags & ReflexMetaFlag_Material )       return IDKind_Material;
-	if ( flags & ReflexMetaFlag_Sprite )         return IDKind_Sprite;
-	if ( flags & ReflexMetaFlag_Layer )          return IDKind_Layer;
-	if ( flags & ReflexMetaFlag_ParticleEffect ) return IDKind_ParticleEffect;
-	if ( flags & ReflexMetaFlag_AudioClip )      return IDKind_AudioClip;
-	return IDKind_None;
+	if ( flags & ReflexMetaFlag_Material )       return ReflexID_Material;
+	if ( flags & ReflexMetaFlag_Sprite )         return ReflexID_Sprite;
+	if ( flags & ReflexMetaFlag_Layer )          return ReflexID_Layer;
+	if ( flags & ReflexMetaFlag_ParticleEffect ) return ReflexID_ParticleEffect;
+	if ( flags & ReflexMetaFlag_AudioClip )      return ReflexID_AudioClip;
+	return ReflexID_Null;
 }
 
 inline const ReflexStruct *ComponentReflexStruct(ComponentType type)
@@ -954,6 +924,7 @@ struct EntityDesc
 	float scale;
 };
 
+REFLEX()
 struct Entity
 {
 	ID id;
@@ -1000,6 +971,7 @@ struct ParticleEffectDesc
 	u8 worldSpace;
 };
 
+REFLEX()
 struct ParticleEffect
 {
 	ParticleEffectDesc desc;
@@ -1032,6 +1004,7 @@ struct SpriteDesc
 
 // Resolved form of the descriptor: size filled in from the texture when the desc left
 // it at zero, frameCount forced to at least one, textureId guaranteed to resolve.
+REFLEX()
 struct Sprite
 {
 	SpriteDesc desc;
@@ -1092,6 +1065,7 @@ union Cell
 	u32 collider;
 };
 
+REFLEX()
 struct Layer
 {
 	bool initialized;
@@ -1105,6 +1079,7 @@ struct Layer
 	f32 depth; // depth in world units
 };
 
+REFLEX()
 struct Room
 {
 	ID id;
@@ -1133,6 +1108,7 @@ struct PrefabDesc
 
 // A named, instantiable template: a fixed set of EntityDescs spawned together and
 // offset by a world position. No hierarchy links between them yet, matching Entity's.
+REFLEX()
 struct Prefab
 {
 	ID id;

@@ -108,7 +108,7 @@ static Sprite *PushSprite(Scene &scene, const SpriteDesc &desc)
 	sprite.desc = desc;
 	scene.spriteAnimStates[index] = {}; // The element held another sprite's animation before
 
-	BindID(&sprite.desc.id, &sprite, IDKind_Sprite);
+	BindID(&sprite.desc.id, &sprite, ReflexID_Sprite);
 
 	return &sprite;
 }
@@ -236,7 +236,7 @@ static ParticleEffect *PushParticleEffect(Scene &scene, const ParticleEffectDesc
 	effect = {};
 	effect.desc = desc;
 
-	BindID(&effect.desc.id, &effect, IDKind_ParticleEffect);
+	BindID(&effect.desc.id, &effect, ReflexID_ParticleEffect);
 
 	return &effect;
 }
@@ -991,7 +991,7 @@ static Entity *PushEntity(Scene &scene, ID entityId)
 		scene.entityComponentIndex[index][type] = NO_COMPONENT;
 	}
 
-	BindID(&entity.id, &entity, IDKind_Entity);
+	BindID(&entity.id, &entity, ReflexID_Entity);
 
 	return &entity;
 }
@@ -1179,7 +1179,7 @@ static Prefab *PushPrefab(Scene &scene, ID id)
 	Prefab &prefab = scene.prefabs[scene.prefabCount++];
 	prefab = { .id = id };
 
-	BindID(&prefab.id, &prefab, IDKind_Prefab);
+	BindID(&prefab.id, &prefab, ReflexID_Prefab);
 
 	return &prefab;
 }
@@ -1447,7 +1447,7 @@ u32 CreateLayer(Room &room, const LayerDesc &desc)
 				layer.size = desc.size;
 				index = i;
 
-				BindID(&layer.id, &layer, IDKind_Layer);
+				BindID(&layer.id, &layer, ReflexID_Layer);
 				break;
 			}
 		}
@@ -1538,7 +1538,7 @@ static Room *PushRoom(Scene &scene, ID id)
 	Room &room = scene.rooms[scene.roomCount++];
 	room = { .id = id };
 
-	BindID(&room.id, &room, IDKind_Room);
+	BindID(&room.id, &room, ReflexID_Room);
 
 	return &room;
 }

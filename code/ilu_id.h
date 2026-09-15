@@ -23,7 +23,7 @@
  * - [ILU_ID_FIRST_DYNAMIC_SLOT, MAX_SLOTS) Dynamic. Handed out by NewID, and persisted
  *                                          with whatever created them.
  *
- * Every slot also records a kind, given to BindID. Its values mean nothing to this file:
+ * Every slot also records a type, given to BindID. Its values mean nothing to this file:
  * user code defines them (what type of object the ID refers to, say), so that any ID
  * can be told apart at runtime without knowing where it came from.
  */
@@ -32,7 +32,7 @@
 #define ILU_ID_H
 
 #ifndef ILU_ID_MAX_SLOTS
-#define ILU_ID_MAX_SLOTS U16_MAX // At 8 bytes per slot plus 1 for its kind, this is 576KB
+#define ILU_ID_MAX_SLOTS U16_MAX // At 8 bytes per slot plus 2 for its type, this is 640KB
 #endif // ILU_ID_MAX_SLOTS
 
 #ifndef ILU_ID_FIRST_DYNAMIC_SLOT
@@ -56,7 +56,7 @@ struct IDPool
 {
 	u32 idCounter = 0;
 	IDSlot slots[ILU_ID_MAX_SLOTS];
-	u8 kinds[ILU_ID_MAX_SLOTS];
+	u16 types[ILU_ID_MAX_SLOTS];
 	u32 firstFree;
 };
 
@@ -79,10 +79,10 @@ void ReserveID(ID id);
 bool IsBuiltin(ID id);
 bool Valid(ID id);
 void Invalidate(ID id);
-void BindID(ID *idPtr, void *object, u8 kind);
+void BindID(ID *idPtr, void *object, u16 type);
 void SetObject(ID id, void *object);
 void *GetObject(ID id);
-u8 GetIDKind(ID id);
+u16 GetIDType(ID id);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -127,7 +127,7 @@ void InitializeIDPool()
 	GetIDPool().idCounter = ILU_ID_FIRST_DYNAMIC_SLOT - 1;
 	GetIDPool().firstFree = 0;
 	ZeroArray(GetIDPool().slots);
-	ZeroArray(GetIDPool().kinds);
+	ZeroArray(GetIDPool().types);
 }
 
 ID NewID()
@@ -153,7 +153,7 @@ void ReserveID(ID id)
 // Points a slot at `object`, minting the ID when the caller has none. Objects loaded from
 // an asset file come with an ID already, and keeping it is what makes references stored
 // in saved data still resolve on the next run.
-void BindID(ID *idPtr, void *object, u8 kind)
+void BindID(ID *idPtr, void *object, u16 type)
 {
 	ASSERT( idPtr );
 
@@ -166,7 +166,7 @@ void BindID(ID *idPtr, void *object, u8 kind)
 	}
 
 	GetIDPool().slots[id.slot].object = object;
-	GetIDPool().kinds[id.slot] = kind;
+	GetIDPool().types[id.slot] = type;
 }
 
 bool IsBuiltin(ID id)
@@ -181,7 +181,7 @@ bool Valid(ID id)
 	return valid;
 }
 
-// The kind is left behind on purpose. Slots are never recycled, so a dangling ID can
+// The type is left behind on purpose. Slots are never recycled, so a dangling ID can
 // still tell what it used to refer to.
 void Invalidate(ID id)
 {
@@ -202,10 +202,10 @@ void *GetObject(ID id)
 	return object;
 }
 
-u8 GetIDKind(ID id)
+u16 GetIDType(ID id)
 {
-	const u8 kind = GetIDPool().kinds[id.slot];
-	return kind;
+	const u16 type = GetIDPool().types[id.slot];
+	return type;
 }
 
 ID::operator bool() const { return Valid(*this); }

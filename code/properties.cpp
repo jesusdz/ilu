@@ -6,18 +6,18 @@ static const char *EditorObjectName(ID id)
 		return "<none>";
 	}
 
-	switch ( GetIDKind(id) )
+	switch ( GetIDType(id) )
 	{
-		case IDKind_Entity:         return GetEntity(id).name;
-		case IDKind_Texture:        return GetTexture(id).desc.name;
-		case IDKind_Material:       return GetMaterial(id).desc.name;
-		case IDKind_Sprite:         return GetSprite(id).desc.name;
-		case IDKind_ParticleEffect: return GetParticleEffect(id).desc.name;
-		case IDKind_Layer:          return GetLayer(id).name;
-		case IDKind_Room:           return GetRoom(id).name;
-		case IDKind_Prefab:         return GetPrefab(id).name;
-		case IDKind_AudioClip:      return GetAudioClip(id).desc.name;
-		case IDKind_MusicFile:      return GetMusicFile(id).desc.name;
+		case ReflexID_Entity:         return GetEntity(id).name;
+		case ReflexID_Texture:        return GetTexture(id).desc.name;
+		case ReflexID_Material:       return GetMaterial(id).desc.name;
+		case ReflexID_Sprite:         return GetSprite(id).desc.name;
+		case ReflexID_ParticleEffect: return GetParticleEffect(id).desc.name;
+		case ReflexID_Layer:          return GetLayer(id).name;
+		case ReflexID_Room:           return GetRoom(id).name;
+		case ReflexID_Prefab:         return GetPrefab(id).name;
+		case ReflexID_AudioClip:      return GetAudioClip(id).desc.name;
+		case ReflexID_MusicFile:      return GetMusicFile(id).desc.name;
 		default:;
 	}
 
@@ -100,8 +100,8 @@ static bool EditProperty_ID(const ReflexMember &member, void *field)
 	ID &id = *(ID*)field;
 	UI_Text(ui, member.name, "%s", EditorObjectName(id));
 
-	const IDKind kind = PropertyIDKind(member);
-	if ( kind != IDKind_None && UI_DragAndDropTarget(ui, IDKindNames[kind]) ) {
+	const ReflexID type = PropertyIDType(member);
+	if ( type != ReflexID_Null && UI_DragAndDropTarget(ui, ReflexGetTypeName(type)) ) {
 		id = { UI_DragAndDropPayload(ui).uvalue };
 		return true;
 	}

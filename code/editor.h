@@ -134,7 +134,7 @@ struct EditorSelection
 {
 	EditorSelectedType type;
 	// Discriminated by `type`. Every asset is an ID now, so nothing but `type` says
-	// which kind this one is: go through the matching EditorSelect* helper.
+	// which type this one is: go through the matching EditorSelect* helper.
 	union
 	{
 		ID id;

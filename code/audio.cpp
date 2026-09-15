@@ -416,7 +416,7 @@ static AudioClip *PushAudioClip(Audio &audio, const AudioClipDesc &desc)
 	audioClip = {};
 	audioClip.desc = desc;
 
-	BindID(&audioClip.desc.id, &audioClip, IDKind_AudioClip);
+	BindID(&audioClip.desc.id, &audioClip, ReflexID_AudioClip);
 
 	return &audioClip;
 }
@@ -871,7 +871,7 @@ static MusicFile *PushMusicFile(Audio &audio, const MusicFileDesc &desc)
 	musicFile = {};
 	musicFile.desc = desc;
 
-	BindID(&musicFile.desc.id, &musicFile, IDKind_MusicFile);
+	BindID(&musicFile.desc.id, &musicFile, ReflexID_MusicFile);
 
 	return &musicFile;
 }

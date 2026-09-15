@@ -23,6 +23,14 @@
 #define REFLEX_ID_CUSTOM_TYPES
 #endif // REFLEX_ID_CUSTOM_TYPES
 
+#ifndef REFLEX_ID_STRUCT_TYPES
+#define REFLEX_ID_STRUCT_TYPES
+#endif // REFLEX_ID_STRUCT_TYPES
+
+#ifndef REFLEX_ID_ENUM_TYPES
+#define REFLEX_ID_ENUM_TYPES
+#endif // REFLEX_ID_ENUM_TYPES
+
 #define REFLEX_MAX_STRUCTS 64
 #define REFLEX_MAX_ENUMS 64
 #define REFLEX_MAX_CUSTOMS 64
@@ -54,10 +62,12 @@ enum // ReflexID
 	// Struct type IDs range
 	ReflexID_StructCount = REFLEX_MAX_STRUCTS,
 	ReflexID_StructBegin = ReflexID_TrivialEnd,
+	REFLEX_ID_STRUCT_TYPES
 	ReflexID_StructEnd = ReflexID_StructBegin + ReflexID_StructCount,
 	// Enum type IDs range
 	ReflexID_EnumCount = REFLEX_MAX_ENUMS,
 	ReflexID_EnumBegin = ReflexID_StructEnd,
+	REFLEX_ID_ENUM_TYPES
 	ReflexID_EnumEnd = ReflexID_EnumBegin + ReflexID_EnumCount,
 	// Custom type IDs range
 	ReflexID_CustomBegin = ReflexID_EnumEnd,
@@ -188,7 +198,7 @@ static bool ReflexIsEnum(ReflexID id)
 
 static bool ReflexIsCustom(ReflexID id)
 {
-	const bool isCustom = id > ReflexID_CustomBegin && id < ReflexID_CustomEnd;
+	const bool isCustom = id >= ReflexID_CustomBegin && id < ReflexID_CustomEnd;
 	return isCustom;
 }
 
@@ -203,7 +213,7 @@ static const ReflexStruct* ReflexGetStruct(ReflexID id)
 static const ReflexCustom* ReflexGetCustom(ReflexID id)
 {
 	ASSERT(ReflexIsCustom(id));
-	ReflexID index = id - ReflexID_CustomBegin - 1; // -1 because the first custom ID comes right after Begin
+	ReflexID index = id - ReflexID_CustomBegin;
 	const ReflexCustom *reflexCustom = gReflexCustoms[index];
 	return reflexCustom;
 }
@@ -229,28 +239,26 @@ static const ReflexEnum* ReflexGetEnum(ReflexID id)
 	return reflexEnum;
 }
 
-static ReflexID ReflexRegisterStruct(const ReflexStruct *reflexStruct)
+static ReflexID ReflexRegisterStruct(const ReflexStruct *reflexStruct, ReflexID reflexID)
 {
-	static ReflexID sReflexIdCounter = 0;
-	ASSERT(sReflexIdCounter < ReflexID_StructCount);
-	gReflexStructs[sReflexIdCounter] = reflexStruct;
-	ReflexID reflexId = ReflexID_StructBegin + sReflexIdCounter++;
-	return reflexId;
+	ASSERT(ReflexIsStruct(reflexID));
+	const u32 index = reflexID - ReflexID_StructBegin;
+	gReflexStructs[index] = reflexStruct;
+	return reflexID;
 }
 
-static ReflexID ReflexRegisterEnum(const ReflexEnum *reflexEnum)
+static ReflexID ReflexRegisterEnum(const ReflexEnum *reflexEnum, ReflexID reflexID)
 {
-	static ReflexID sReflexIdCounter = 0;
-	ASSERT(sReflexIdCounter < ReflexID_EnumCount);
-	gReflexEnums[sReflexIdCounter] = reflexEnum;
-	ReflexID reflexId = ReflexID_EnumBegin + sReflexIdCounter++;
-	return reflexId;
+	ASSERT(ReflexIsEnum(reflexID));
+	const u32 index = reflexID - ReflexID_EnumBegin;
+	gReflexEnums[index] = reflexEnum;
+	return reflexID;
 }
 
 static ReflexID ReflexRegisterCustom(const ReflexCustom *reflexCustom, ReflexID reflexID)
 {
 	ASSERT(ReflexIsCustom(reflexID));
-	const u32 index = reflexID - ReflexID_CustomBegin - 1;
+	const u32 index = reflexID - ReflexID_CustomBegin;
 	ASSERT(index < REFLEX_MAX_CUSTOMS);
 	gReflexCustoms[index] = reflexCustom;
 	return reflexID;

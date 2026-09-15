@@ -492,6 +492,7 @@ enum CTokenId
 	TOKEN_NUMBER,
 	// Keywords
 	TOKEN_STRUCT,
+	TOKEN_UNION,
 	TOKEN_ENUM,
 	TOKEN_TRUE,
 	TOKEN_FALSE,
@@ -561,6 +562,7 @@ static const char *CTokenIdNames[] =
 	"TOKEN_NUMBER",
 	// Keywords
 	"TOKEN_STRUCT",
+	"TOKEN_UNION",
 	"TOKEN_ENUM",
 	"TOKEN_TRUE",
 	"TOKEN_FALSE",
@@ -954,6 +956,7 @@ static void CScanner_ScanToken(CScanner &scanner, CTokenList &tokenList)
 
 				// Keywords // TODO: This keyword search could be much more efficient
 				if      ( CastStrEq( word, "struct" ) )       CScanner_AddToken(scanner, tokenList, TOKEN_STRUCT);
+				else if ( CastStrEq( word, "union" ) )        CScanner_AddToken(scanner, tokenList, TOKEN_UNION);
 				else if ( CastStrEq( word, "enum" ) )         CScanner_AddToken(scanner, tokenList, TOKEN_ENUM);
 				else if ( CastStrEq( word, "true" ) )         CScanner_AddToken(scanner, tokenList, TOKEN_TRUE);
 				else if ( CastStrEq( word, "false" ) )        CScanner_AddToken(scanner, tokenList, TOKEN_FALSE);
@@ -1553,6 +1556,14 @@ static CastDirectDeclarator *Cast_ParseDirectDeclarator( CParser &parser, CToken
 			CAST_RESTORE();
 			return NULL;
 		}
+		while ( CParser_TryConsume(parser, TOKEN_LEFT_BRACKET) )
+		{
+			Cast_ParseExpression(parser, tokenList);
+			if (!CParser_TryConsume(parser, TOKEN_RIGHT_BRACKET)) {
+				CAST_RESTORE();
+				return NULL;
+			}
+		}
 	}
 	else if ( CParser_TryConsume(parser, TOKEN_LEFT_PAREN) )
 	{
@@ -1626,14 +1637,13 @@ static CastStructDeclaration *Cast_ParseStructDeclaration( CParser &parser, CTok
 	CastSpecifierQualifierList *specifierQualifierList = Cast_ParseSpecifierQualifierList(parser, tokenList);
 	if ( specifierQualifierList )
 	{
+		// An anonymous struct or union member declares no name of its own
 		CastStructDeclaratorList *structDeclaratorList = Cast_ParseStructDeclaratorList(parser, tokenList);
-		if ( structDeclaratorList ) {
-			if (CParser_TryConsume(parser, TOKEN_SEMICOLON)) {
-				structDeclaration = CAST_NODE( CastStructDeclaration );
-				structDeclaration->tag = tag;
-				structDeclaration->specifierQualifierList = specifierQualifierList;
-				structDeclaration->structDeclaratorList = structDeclaratorList;
-			}
+		if (CParser_TryConsume(parser, TOKEN_SEMICOLON)) {
+			structDeclaration = CAST_NODE( CastStructDeclaration );
+			structDeclaration->tag = tag;
+			structDeclaration->specifierQualifierList = specifierQualifierList;
+			structDeclaration->structDeclaratorList = structDeclaratorList;
 		}
 	}
 	if ( !structDeclaration ) {
@@ -1670,17 +1680,17 @@ static CastStructDeclarationList *Cast_ParseStructDeclarationList( CParser &pars
 static CastStructSpecifier *Cast_ParseStructSpecifier( CParser &parser, CTokenList &tokenList )
 {
 	CAST_BACKUP();
-	if ( !CParser_TryConsume(parser, TOKEN_STRUCT) ) {
+	if ( !CParser_TryConsume(parser, TOKEN_STRUCT) && !CParser_TryConsume(parser, TOKEN_UNION) ) {
 		CAST_RESTORE();
 		return NULL;
 	}
-	if ( !CParser_TryConsume(parser, TOKEN_IDENTIFIER) ) {
-		CAST_RESTORE();
-		return NULL;
+	// An anonymous struct or union has no name, only a body
+	CastString identifier = {};
+	if ( CParser_TryConsume(parser, TOKEN_IDENTIFIER) ) {
+		const CToken &tokenIdentifier = CParser_GetPreviousToken(parser);
+		identifier = tokenIdentifier.lexeme;
+		CParser_AddIdentifier(parser, identifier);
 	}
-	const CToken &tokenIdentifier = CParser_GetPreviousToken(parser);
-	CastString identifier = tokenIdentifier.lexeme;
-	CParser_AddIdentifier(parser, identifier);
 
 	CastStructDeclarationList* structDeclarationList = NULL;
 	if ( CParser_TryConsume(parser, TOKEN_LEFT_BRACE) )

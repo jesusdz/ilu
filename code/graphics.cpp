@@ -442,7 +442,7 @@ static Texture *PushTexture(Graphics &gfx, const TextureDesc &desc)
 	texture = {};
 	texture.desc = desc;
 
-	BindID(&texture.desc.id, &texture, IDKind_Texture);
+	BindID(&texture.desc.id, &texture, ReflexID_Texture);
 
 	return &texture;
 }
@@ -681,7 +681,7 @@ static Material *PushMaterial(Graphics &gfx, const MaterialDesc &desc)
 	material.desc = desc;
 	material.bufferOffset = MaterialBufferOffset(gfx, index);
 
-	BindID(&material.desc.id, &material, IDKind_Material);
+	BindID(&material.desc.id, &material, ReflexID_Material);
 
 	return &material;
 }

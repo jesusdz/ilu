@@ -586,6 +586,11 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 		}
 	}
 
+	if (reflexStructCount > REFLEX_MAX_STRUCTS || enumCount > REFLEX_MAX_ENUMS) {
+		LOG(Error, "Reflex: too many types, %u structs (max %u) and %u enums (max %u)\n", reflexStructCount, REFLEX_MAX_STRUCTS, enumCount, REFLEX_MAX_ENUMS);
+		return false;
+	}
+
 	// Reflected members can point to not reflected types declared in other files.
 	// These are opaque and we call them custom types
 	const char *customTypeNames[128];
@@ -628,12 +633,32 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	printf("// Include this file with REFLEX_GENERATED_CUSTOM_TYPES before reflex.h\n");
 	printf("\n");
 
+	if (reflexStructCount > 0)
+	{
+		printf("#define REFLEX_ID_STRUCT_TYPES \\\n");
+		for (u32 index = 0; index < reflexStructCount; ++index)
+		{
+			printf("	ReflexID_%s%s, \\\n", reflexStructs[index].name, index == 0 ? " = ReflexID_StructBegin" : "");
+		}
+		printf("\n");
+	}
+
+	if (enumCount > 0)
+	{
+		printf("#define REFLEX_ID_ENUM_TYPES \\\n");
+		for (u32 index = 0; index < enumCount; ++index)
+		{
+			printf("	ReflexID_%s%s, \\\n", reflexEnums[index].name, index == 0 ? " = ReflexID_EnumBegin" : "");
+		}
+		printf("\n");
+	}
+
 	if (customTypeCount > 0)
 	{
 		printf("#define REFLEX_ID_CUSTOM_TYPES \\\n");
 		for (u32 index = 0; index < customTypeCount; ++index)
 		{
-			printf("	ReflexID_%s, \\\n", customTypeNames[index]);
+			printf("	ReflexID_%s%s, \\\n", customTypeNames[index], index == 0 ? " = ReflexID_CustomBegin" : "");
 		}
 	}
 
@@ -802,7 +827,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 
 		printf("\n");
 		printf("// ReflexEnum registration\n");
-		printf("static const ReflexID ReflexID_%s = ReflexRegisterEnum(&reflexEnum_%s);\n", reflexEnum.name, reflexEnum.name);
+		printf("static const ReflexID ReflexIDStub_%s = ReflexRegisterEnum(&reflexEnum_%s, ReflexID_%s);\n", reflexEnum.name, reflexEnum.name, reflexEnum.name);
 		printf("\n");
 	}
 
@@ -885,7 +910,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 
 		printf("\n");
 		printf("// ReflexStruct registration\n");
-		printf("static const ReflexID ReflexID_%s = ReflexRegisterStruct(&reflexStruct_%s);\n", structName, structName);
+		printf("static const ReflexID ReflexIDStub_%s = ReflexRegisterStruct(&reflexStruct_%s, ReflexID_%s);\n", structName, structName, structName);
 		printf("\n");
 	}
 
