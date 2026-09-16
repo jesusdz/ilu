@@ -48,10 +48,6 @@ void Start(ScriptPlayerController &script)
 	script.speed = {};
 	script.accel = 50;
 
-	//script.sprPlayerIdle = FindSprite("spr_playeridle");
-	//script.sprPlayerRun = FindSprite("spr_playerrun");
-	//script.sprPlayerJump = FindSprite("spr_playerjump");
-	//script.sprPlayerFall = FindSprite("spr_playerfall");
 	script.sndJump = GetAudioClip("snd_bell_wav");
 
 	script.camera = {
@@ -133,9 +129,16 @@ void Simulate(ScriptPlayerController &script)
 
 		// Y ///////////////////////////////////////////////////////////
 
-		// Grounded state comes from last frame's collision resolution, before this frame moves the player
+		static f32 secondsSinceJumpPress = 99.9f;
 		if (game.input.jump.press) {
-			if (script.playerState == OnFloor || script.playerState == OnPlatform) {
+			secondsSinceJumpPress = 0.0f;
+		} else {
+			secondsSinceJumpPress += deltaSeconds;
+		}
+
+		// Grounded state comes from last frame's collision resolution, before this frame moves the player
+		if (script.playerState == OnFloor || script.playerState == OnPlatform) {
+			if (secondsSinceJumpPress < 0.2f) {
 				if (game.input.move.y < 0.0 && Abs(game.input.move.y) > Abs(2 * game.input.move.x) && script.playerState == OnPlatform) {
 					pos.y -= 0.1;
 				} else {
