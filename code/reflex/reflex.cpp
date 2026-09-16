@@ -5,6 +5,10 @@
 
 #define StringPrintfArgs(string) string.size, string.str
 
+// The generated code goes to stdout, so diagnostics have to leave through stderr instead
+#undef LOG
+#define LOG(channel, fmt, ...) if ( channel <= LOG_VERBOSITY ) { fprintf(stderr, fmt, ##__VA_ARGS__); }
+
 // Macros used in the parsed files to tag reflected structs, properties and enums
 static const CastConfig castConfig = {
 	.tagString = "REFLEX",
@@ -132,31 +136,39 @@ static ReflexMeta MakeReflexMeta(Arena &arena, String metaString)
 	return meta;
 }
 
+static void SCatPrintf(char *dst, u32 dstSize, const char *format, ...)
+{
+	const u32 length = StrLen(dst);
+	if (length + 1 >= dstSize) {
+		return;
+	}
+	va_list vaList;
+	va_start(vaList, format);
+	VSNPrintf(dst + length, dstSize - length, format, vaList);
+	va_end(vaList);
+}
+
 static String ReflexMetaToString(Arena &arena, const ReflexMeta &meta)
 {
-	char buffer[1024] = {};
+	char buffer[2048] = {};
 
 	for (u32 i = 0; i < gMetaFlagCount; ++i) {
 		if (meta.flags & ((ReflexMetaFlags)1 << i)) {
-			if (buffer[0]) StrCat(buffer, ", ");
-			StrCat(buffer, gMetaFlagNames[i]);
+			if (buffer[0]) SCatPrintf(buffer, sizeof(buffer), ", ");
+			SCatPrintf(buffer, sizeof(buffer), "%.*s", StringPrintfArgs(gMetaFlagNames[i]));
 		}
 	}
 
 	for (u32 i = 0; i < meta.argCount; ++i) {
-		if (buffer[0]) StrCat(buffer, ", ");
+		if (buffer[0]) SCatPrintf(buffer, sizeof(buffer), ", ");
 		const ReflexMetaArg &arg = meta.args[i];
-		StrCat(buffer, arg.name);
-		StrCat(buffer, "=");
-		char number[64];
+		SCatPrintf(buffer, sizeof(buffer), "%.*s=", StringPrintfArgs(arg.name));
 		if (arg.type == ReflexMetaArg_Int) {
-			SPrintf(number, "%d", arg.intValue);
-			StrCat(buffer, number);
+			SCatPrintf(buffer, sizeof(buffer), "%d", arg.intValue);
 		} else if (arg.type == ReflexMetaArg_Float) {
-			SPrintf(number, "%g", arg.floatValue);
-			StrCat(buffer, number);
+			SCatPrintf(buffer, sizeof(buffer), "%g", arg.floatValue);
 		} else {
-			StrCat(buffer, arg.stringValue);
+			SCatPrintf(buffer, sizeof(buffer), "%.*s", StringPrintfArgs(arg.stringValue));
 		}
 	}
 
@@ -228,8 +240,9 @@ static bool MakeReflexMember(Arena &arena, const CastStructDeclaration *structDe
 
 	member = {};
 	member.name = directDeclarator ? PushString(arena, directDeclarator->name) : "<none>";
-	member.isConst = specifierQualifierList && specifierQualifierList->typeQualifier &&
-		specifierQualifierList->typeQualifier->type == CAST_CONST;
+	for (const CastSpecifierQualifierList *it = specifierQualifierList; it && !member.isConst; it = it->next) {
+		member.isConst = it->typeQualifier && it->typeQualifier->type == CAST_CONST;
+	}
 	member.isArray = directDeclarator && directDeclarator->isArray;
 	member.arrayDim = directDeclarator && directDeclarator->expression ? Cast_EvaluateInt(directDeclarator->expression) : 0;
 	for (const CastPointer *pointer = CAST_CHILD(declarator, pointer); pointer; pointer = pointer->next) {

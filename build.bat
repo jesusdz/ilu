@@ -80,6 +80,7 @@ call vcenv.bat
 pushd build
 copy nul ..\code\reflex.generated.h > nul
 reflex.exe ..\code\engine.h ..\code\game.cpp > ..\code\reflex.generated.h
+if errorlevel 1 (popd & exit /b 1)
 set CommonCompilerFlags=%CommonCompilerFlags% -I %RootDir%\vulkan\include
 set CommonLinkerFlags=%CommonLinkerFlags% user32.lib
 cl %CommonCompilerFlags% ..\code\platform.cpp /Feilu.exe /link %CommonLinkerFlags%
@@ -98,6 +99,7 @@ call vcenv.bat
 pushd build
 copy nul ..\code\reflex.generated.h > nul
 reflex.exe ..\code\engine.h ..\code\game.cpp > ..\code\reflex.generated.h
+if errorlevel 1 (popd & exit /b 1)
 set CommonCompilerFlags=%CommonCompilerFlags% -I %RootDir%\vulkan\include
 cl %CommonCompilerFlags% /LD ..\code\engine.cpp /Feengine.dll
 popd

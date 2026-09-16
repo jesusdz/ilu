@@ -42,7 +42,7 @@ main_spirv: directories
 	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/main_spirv code/misc/main_spirv.cpp
 
 reflex: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/reflex code/misc/reflex.cpp
+	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/reflex code/reflex/reflex.cpp
 
 main_reflect_serialize: reflex
 	./build/reflex assets/assets.h > code/assets.reflex.h

@@ -222,7 +222,7 @@ static const ReflexStruct* ReflexGetStructFromName(const char *name)
 {
 	const ReflexStruct **rstruct = gReflexStructs;
 	const ReflexStruct **end = gReflexStructs + ReflexID_StructCount;
-	while (*rstruct && rstruct != end && (*rstruct)->name) {
+	while (rstruct != end && *rstruct && (*rstruct)->name) {
 		if (StrEq((*rstruct)->name, name) ) {
 			return *rstruct;
 		}
@@ -352,7 +352,7 @@ static ReflexID ReflexGetTypeFromName(const char *str)
 			return i;
 		}
 	}
-	for (u32 i = ReflexID_CustomBegin + 1; i < ReflexID_CustomEnd; ++i) {
+	for (u32 i = ReflexID_CustomBegin; i < ReflexID_CustomEnd; ++i) {
 		const ReflexCustom *r = ReflexGetCustom(i);
 		if ( r && r->name && StrEq(str, r->name) ) {
 			return i;
