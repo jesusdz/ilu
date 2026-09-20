@@ -423,6 +423,7 @@ struct CastDeclaration
 
 struct CastFunctionDefinition
 {
+	CastTag *tag;
 	CastDeclarationSpecifiers *declarationSpecifiers;
 	CastDeclarator *declarator;
 };
@@ -2176,7 +2177,8 @@ static CastFunctionDefinition *Cast_ParseFunctionDefinition( CParser &parser, CT
 {
 	CAST_BACKUP();
 	CastFunctionDefinition *functionDefinition = NULL;
-	
+
+	CastTag *tag = Cast_ParseTag(parser, parser.config.tagString);
 	CastDeclarationSpecifiers *declarationSpecifiers = Cast_ParseDeclarationSpecifiers(parser, tokenList);
 	if (declarationSpecifiers)
 	{
@@ -2196,6 +2198,7 @@ static CastFunctionDefinition *Cast_ParseFunctionDefinition( CParser &parser, CT
 			if ( braceDepth == 0 )
 			{
 				functionDefinition = CAST_NODE( CastFunctionDefinition );
+				functionDefinition->tag = tag;
 				functionDefinition->declarationSpecifiers = declarationSpecifiers;
 				functionDefinition->declarator = declarator;
 			}

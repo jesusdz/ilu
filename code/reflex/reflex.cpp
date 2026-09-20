@@ -350,35 +350,6 @@ static const char *OpsTypeName(const ReflexMember &member)
 	return member.typeName;
 }
 
-static void MakeComponentNames(const char *structName, char *typeName, char *fieldName)
-{
-	StrCopy(typeName, structName);
-
-	const u32 length = StrLen(typeName);
-	const u32 suffixLength = StrLen("Component");
-	if (length > suffixLength && StrEq(typeName + length - suffixLength, "Component")) {
-		typeName[length - suffixLength] = 0;
-	}
-
-	StrCopy(fieldName, typeName);
-	if (fieldName[0] >= 'A' && fieldName[0] <= 'Z') {
-		fieldName[0] = (char)(fieldName[0] - 'A' + 'a');
-	}
-}
-
-static void PrintMemberDeclaration(const ReflexMember &member)
-{
-	printf("	%s%s ", member.isConst ? "const " : "", member.typeName);
-	for (u32 i = 0; i < member.pointerCount; ++i) {
-		printf("*");
-	}
-	printf("%s", member.name);
-	if (member.isArray) {
-		printf("[%u]", (u32)member.arrayDim);
-	}
-	printf(";\n");
-}
-
 constexpr u32 MAX_STRUCT_MEMBERS = 128;
 void GetStructMemberDeclarations(const CastStructSpecifier *cstruct, const CastStructDeclaration* structDeclarations[MAX_STRUCT_MEMBERS], u32 *structDeclarationCount)
 {
@@ -411,7 +382,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	u32 enumCount = 0;
 
 	String functions[128];
-	String functionScripts[128];
+	String functionParamTypes[128];
 	u32 functionCount = 0;
 
 	// Get all the global struct and enum specifiers from the AST.
@@ -440,34 +411,35 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 			else if (translationUnit->externalDeclaration->functionDefinition)
 			{
 				const CastFunctionDefinition *func = translationUnit->externalDeclaration->functionDefinition;
-				const bool isVoid = func->declarationSpecifiers &&
-					func->declarationSpecifiers->typeSpecifier &&
-					func->declarationSpecifiers->typeSpecifier->type == CAST_VOID;
 
-				const CastParameterTypeList *parameterTypeList = func->declarator->directDeclarator->parameterTypeList;
-				const CastParameterDeclaration *parameterDeclaration = (parameterTypeList && parameterTypeList->parameterList) ?
-					parameterTypeList->parameterList->parameterDeclaration : NULL;
-				const CastTypeSpecifier *paramTypeSpecifier = (parameterDeclaration && parameterDeclaration->declarationSpecifiers) ?
-					parameterDeclaration->declarationSpecifiers->typeSpecifier : NULL;
-
-				// A script parameter is a struct previously tagged with REFLEX(Script)
-				bool hasScriptParameter = false;
-				if (paramTypeSpecifier && paramTypeSpecifier->type == CAST_IDENTIFIER)
+				// Only functions tagged with the tag macro are reflected
+				if (func->tag)
 				{
-					const String paramTypeName = paramTypeSpecifier->identifier;
-					const ReflexMetaFlags scriptFlag = FindMetaFlag(MakeString("Script"));
-					for (u32 i = 0; i < structCount && !hasScriptParameter; ++i) {
-						hasScriptParameter = StrEq(structs[i]->name, paramTypeName) &&
-							(structMetas[i].flags & scriptFlag);
+					const bool isVoid = func->declarationSpecifiers &&
+						func->declarationSpecifiers->typeSpecifier &&
+						func->declarationSpecifiers->typeSpecifier->type == CAST_VOID;
+
+					const CastParameterTypeList *parameterTypeList = func->declarator->directDeclarator->parameterTypeList;
+					const CastParameterDeclaration *parameterDeclaration = (parameterTypeList && parameterTypeList->parameterList) ?
+						parameterTypeList->parameterList->parameterDeclaration : NULL;
+					const CastTypeSpecifier *paramTypeSpecifier = (parameterDeclaration && parameterDeclaration->declarationSpecifiers) ?
+						parameterDeclaration->declarationSpecifiers->typeSpecifier : NULL;
+
+					const bool hasStructParameter = paramTypeSpecifier && paramTypeSpecifier->type == CAST_IDENTIFIER;
+
+					if (isVoid && hasStructParameter)
+					{
+						ASSERT(functionCount < ARRAY_COUNT(functions));
+						const u32 functionIndex = functionCount++;
+						functions[functionIndex] = func->declarator->directDeclarator->name;
+						functionParamTypes[functionIndex] = paramTypeSpecifier->identifier;
 					}
-				}
-
-				if (isVoid && hasScriptParameter)
-				{
-					ASSERT(functionCount < ARRAY_COUNT(functions));
-					const u32 functionIndex = functionCount++;
-					functions[functionIndex] = func->declarator->directDeclarator->name;
-					functionScripts[functionIndex] = paramTypeSpecifier->identifier;
+					else
+					{
+						LOG(Error, "Reflex: tagged function <%.*s> must return void and take a single struct-typed parameter\n",
+								StringPrintfArgs(func->declarator->directDeclarator->name));
+						return false;
+					}
 				}
 			}
 		}
@@ -475,7 +447,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	}
 
 	// Reflex structs
-	ReflexStruct reflexStructs[2 * ARRAY_COUNT(structs)]; // Room for a descriptor per struct
+	ReflexStruct reflexStructs[ARRAY_COUNT(structs)];
 	u32 reflexStructCount = structCount;
 
 	for (u32 index = 0; index < structCount; ++index)
@@ -556,47 +528,6 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 			.enumeratorCount = (u16)enumeratorCount,
 			.meta = meta,
 		};
-	}
-
-	// Components, in the order their structs appear in the parsed files
-	u32 componentIndices[ARRAY_COUNT(structs)];
-	const char *componentTypeNames[ARRAY_COUNT(structs)];
-	const char *componentFieldNames[ARRAY_COUNT(structs)];
-	u32 componentCount = 0;
-
-	const ReflexMetaFlags componentFlag = FindMetaFlag(MakeString("Component"));
-	for (u32 index = 0; index < structCount; ++index)
-	{
-		const ReflexStruct &reflexStruct = reflexStructs[index];
-		if (reflexStruct.meta.flags & componentFlag)
-		{
-			char typeName[128];
-			char fieldName[128];
-			MakeComponentNames(reflexStruct.name, typeName, fieldName);
-
-			componentIndices[componentCount] = index;
-			componentTypeNames[componentCount] = PushString(arena, typeName);
-			componentFieldNames[componentCount] = PushString(arena, fieldName);
-			componentCount++;
-		}
-	}
-
-	// The descriptor printed for each component is reflected too. It shares the component's
-	// members, since their offsets are only printed later, from the name of each struct.
-	// A component with no properties has nothing to describe, so it gets no descriptor.
-	for (u32 index = 0; index < componentCount; ++index)
-	{
-		const ReflexStruct &component = reflexStructs[componentIndices[index]];
-		if (component.memberCount > 0)
-		{
-			char descName[128];
-			SPrintf(descName, "%sDesc", component.name);
-
-			ASSERT(reflexStructCount < ARRAY_COUNT(reflexStructs));
-			ReflexStruct &desc = reflexStructs[reflexStructCount++];
-			desc = component;
-			desc.name = PushString(arena, descName);
-		}
 	}
 
 	if (reflexStructCount > REFLEX_MAX_STRUCTS || enumCount > REFLEX_MAX_ENUMS) {
@@ -685,7 +616,7 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	printf("\n");
 	printf("////////////////////////////////////////////////////////////////////////\n");
 	printf("// Include this file with REFLEX_GENERATED_DECLARATION once every type used by a\n");
-	printf("// component's members (including ones reflected further down the same file) is declared\n");
+	printf("// reflected struct's members (including ones reflected further down the same file) is declared\n");
 	printf("\n");
 
 	printf("\n");
@@ -702,72 +633,6 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	}
 	printf("};\n");
 	printf("\n");
-
-	if (componentCount > 0)
-	{
-		printf("\n");
-		printf("////////////////////////////////////////////////////////////////////////\n");
-		printf("// Components, in the order their structs are declared. Saved data refers to\n");
-		printf("// them by these values, so a component that already exists cannot be moved.\n");
-		printf("\n");
-
-		printf("enum ComponentType\n");
-		printf("{\n");
-		for (u32 index = 0; index < componentCount; ++index)
-		{
-			printf("	ComponentType_%s,\n", componentTypeNames[index]);
-		}
-		printf("	ComponentType_Count,\n");
-		printf("};\n");
-		printf("\n");
-
-		printf("enum ComponentBits\n");
-		printf("{\n");
-		for (u32 index = 0; index < componentCount; ++index)
-		{
-			printf("	Component_%s = 1 << ComponentType_%s,\n", componentTypeNames[index], componentTypeNames[index]);
-		}
-		printf("};\n");
-		printf("\n");
-
-		printf("constexpr const char *ComponentNames[] = {\n");
-		for (u32 index = 0; index < componentCount; ++index)
-		{
-			printf("	\"%s\",\n", componentTypeNames[index]);
-		}
-		printf("};\n");
-		printf("\n");
-
-		printf("// As they appear in the entity blocks of the asset files, e.g. \".light = {...}\"\n");
-		printf("constexpr const char *ComponentFieldNames[] = {\n");
-		for (u32 index = 0; index < componentCount; ++index)
-		{
-			printf("	\"%s\",\n", componentFieldNames[index]);
-		}
-		printf("};\n");
-		printf("\n");
-	}
-
-	printf("\n");
-	printf("////////////////////////////////////////////////////////////////////////\n");
-	printf("// Component descriptors\n");
-	printf("\n");
-
-	for (u32 index = 0; index < componentCount; ++index)
-	{
-		const ReflexStruct &reflexStruct = reflexStructs[componentIndices[index]];
-
-		if (reflexStruct.memberCount > 0)
-		{
-			printf("struct %sDesc {\n", reflexStruct.name);
-			for (u32 memberIndex = 0; memberIndex < reflexStruct.memberCount; ++memberIndex)
-			{
-				PrintMemberDeclaration(reflexStruct.members[memberIndex]);
-			}
-			printf("};\n");
-			printf("\n");
-		}
-	}
 
 	printf("\n");
 	printf("#undef REFLEX_GENERATED_DECLARATION\n");
@@ -935,18 +800,18 @@ static bool GenerateReflex(const Cast *cast, Arena &arena)
 	for (u32 index = 0; index < functionCount; ++index)
 	{
 		String functionName = functions[index];
-		String scriptName = functionScripts[index];
+		String paramTypeName = functionParamTypes[index];
 		printf("\n");
-		printf("static void %.*s_%.*s(void *instance) {\n", StringPrintfArgs(scriptName), StringPrintfArgs(functionName));
-		printf("	%.*s(*(%.*s*)instance);\n", StringPrintfArgs(functionName), StringPrintfArgs(scriptName));
+		printf("static void %.*s_%.*s(void *instance) {\n", StringPrintfArgs(paramTypeName), StringPrintfArgs(functionName));
+		printf("	%.*s(*(%.*s*)instance);\n", StringPrintfArgs(functionName), StringPrintfArgs(paramTypeName));
 		printf("}\n");
 		printf("static const ReflexFunction reflexFunction_%.*s_%.*s = { \"%.*s\", \"%.*s\", %.*s_%.*s };\n",
-				StringPrintfArgs(scriptName), StringPrintfArgs(functionName),
-				StringPrintfArgs(scriptName), StringPrintfArgs(functionName),
-				StringPrintfArgs(scriptName), StringPrintfArgs(functionName));
+				StringPrintfArgs(paramTypeName), StringPrintfArgs(functionName),
+				StringPrintfArgs(paramTypeName), StringPrintfArgs(functionName),
+				StringPrintfArgs(paramTypeName), StringPrintfArgs(functionName));
 		printf("static const ReflexID ReflexIDStub_%.*s_%.*s = ReflexRegisterFunction(&reflexFunction_%.*s_%.*s);\n",
-				StringPrintfArgs(scriptName), StringPrintfArgs(functionName),
-				StringPrintfArgs(scriptName), StringPrintfArgs(functionName));
+				StringPrintfArgs(paramTypeName), StringPrintfArgs(functionName),
+				StringPrintfArgs(paramTypeName), StringPrintfArgs(functionName));
 	}
 
 	printf("\n");
