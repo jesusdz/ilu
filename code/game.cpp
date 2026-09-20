@@ -38,6 +38,7 @@ struct ScriptPlayerController
 	f32 accel;
 };
 
+REFLEX()
 void Start(ScriptPlayerController &script)
 {
 	script.playerState = OnAir;
@@ -62,6 +63,7 @@ void Start(ScriptPlayerController &script)
 	script.roomId = FindRoom("Room");
 }
 
+REFLEX()
 void Simulate(ScriptPlayerController &script)
 {
 	const Game &game = GetGame();
@@ -243,6 +245,7 @@ void Simulate(ScriptPlayerController &script)
 	}
 }
 
+REFLEX()
 void Update(ScriptPlayerController &script)
 {
 	SetCamera(script.camera);
@@ -252,6 +255,7 @@ void Update(ScriptPlayerController &script)
 	//DrawBox(script.box1.pos, script.box1.size, script.box1.color);
 }
 
+REFLEX()
 void Stop(ScriptPlayerController &script)
 {
 }

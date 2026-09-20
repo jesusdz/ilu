@@ -745,6 +745,48 @@ struct SceneDesc
 #define REFLEX_GENERATED_DECLARATION
 #include "reflex.generated.h"
 
+enum ComponentType
+{
+	ComponentType_Light,
+	ComponentType_Model,
+	ComponentType_Particles,
+	ComponentType_Script,
+	ComponentType_Sprite,
+	ComponentType_Count
+};
+
+enum ComponentBits
+{
+	Component_Light = (1<<ComponentType_Light),
+	Component_Model = (1<<ComponentType_Model),
+	Component_Particles = (1<<ComponentType_Particles),
+	Component_Script = (1<<ComponentType_Script),
+	Component_Sprite = (1<<ComponentType_Sprite),
+};
+
+typedef u32 ComponentFlags;
+
+const char *ComponentNames[] =
+{
+	"Light",
+	"Model",
+	"Particles",
+	"Script",
+	"Sprite",
+};
+
+const char *ComponentFieldNames[] = 
+{
+	"light",
+	"model",
+	"particles",
+	"script",
+	"sprite",
+};
+
+CT_ASSERT(ComponentType_Count == ARRAY_COUNT(ComponentNames));
+CT_ASSERT(ComponentType_Count < sizeof(ComponentFlags) * 8);
+
 // The type in an ID property's tag names the type of object it refers to, e.g. REFLEX(Sprite)
 inline ReflexID PropertyIDType(const ReflexMember &member)
 {
@@ -766,14 +808,8 @@ inline const ReflexStruct *ComponentReflexStruct(ComponentType type)
 
 inline const ReflexStruct *ComponentDescReflexStruct(ComponentType type)
 {
-	char name[64];
-	SPrintf(name, "%sComponentDesc", ComponentNames[type]);
-	return ReflexGetStructFromName(name);
+	return ComponentReflexStruct(type);
 }
-
-typedef u32 ComponentFlags;
-
-CT_ASSERT(ComponentType_Count < sizeof(ComponentFlags) * 8);
 
 ////////////////////////////////////////////////////////////////////////
 // Model component
@@ -882,10 +918,10 @@ struct ComponentDesc
 	ComponentType type;
 	union
 	{
-		ModelComponentDesc model;
-		SpriteComponentDesc sprite;
-		LightComponentDesc light;
-		ParticlesComponentDesc particles;
+		ModelComponent model;
+		SpriteComponent sprite;
+		LightComponent light;
+		ParticlesComponent particles;
 		ScriptComponentDesc script;
 	};
 };
@@ -1229,8 +1265,8 @@ struct BinEntityDesc
 	float scale;
 	GeometryType geometryType;
 	ComponentFlags components;
-	LightComponentDesc light;
-	ParticlesComponentDesc particles;
+	LightComponent light;
+	ParticlesComponent particles;
 	BinScriptDesc script;
 };
 
@@ -1462,9 +1498,8 @@ void RegisterScripts(Engine &engine);
 u32 ScriptCount();
 const Script &GetScriptAt(u32 index);
 
-ScriptComponent *AddScript(Engine &engine, ID entityId);
-ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName);
-ScriptComponent *AddScript(Engine &engine, ID entityId, const ScriptComponentDesc &desc);
+ScriptComponent *AddScript(Scene &scene, ID entityId);
+void SetScript(Engine &engine, ScriptComponent &component, const char *scriptName);
 void RemoveScript(Engine &engine, ID entityId);
 ScriptComponentDesc MakeDesc(const ScriptComponent &comp, ComponentDescPool &pool);
 void ApplyDesc(ScriptComponent &comp, const ScriptComponentDesc &desc);

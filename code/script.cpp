@@ -174,78 +174,29 @@ const Script &GetScriptAt(u32 index)
 	return scriptRegistry.scripts[index];
 }
 
-// Attaches a script component with nothing assigned to it yet. Hooks skip it and the
-// inspector offers a drop target until AddScript points it at a script.
-ScriptComponent *AddScript(Engine &engine, ID entityId)
+void SetScript(Engine &engine, ScriptComponent &component, const char *scriptName)
 {
-	Scene &scene = engine.scene;
-
-	if ( !Valid(entityId) ) {
-		LOG(Warning, "AddScript: entity ID %u does not exist.\n", entityId.slot);
-		return nullptr;
-	}
-
-	if ( HasComponents(scene, entityId, Component_Script) ) {
-		LOG(Warning, "AddScript: the entity already has a script component.\n");
-		return nullptr;
-	}
-
-	ScriptComponent *component = (ScriptComponent*)AddComponentSlot(scene, entityId, ComponentType_Script);
-	return component;
-}
-
-// Points the entity's script component at scriptName, adding the component if it has none
-// and starting the instance over if it was already running something.
-ScriptComponent *AddScript(Engine &engine, ID entityId, const char *scriptName)
-{
-	Scene &scene = engine.scene;
-
-	if ( !Valid(entityId) ) {
-		LOG(Warning, "AddScript: script <%s> refers to entity ID %u, which does not exist.\n", scriptName, entityId.slot);
-		return nullptr;
-	}
-
 	const u32 structIndex = FindScriptIndex(scriptName);
 	if ( structIndex == U32_MAX ) {
-		LOG(Warning, "AddScript: no script named <%s> is registered.\n", scriptName);
-		return nullptr;
+		LOG(Warning, "SetScript: no script named <%s> is registered.\n", scriptName);
+		return;
 	}
-
-	if ( !HasComponents(scene, entityId, Component_Script) && !AddScript(engine, entityId) ) {
-		return nullptr;
-	}
-
-	ScriptComponent &component = GetScript(scene, entityId);
 
 	if ( engine.game.state == GameStateRunning ) {
-		RunScriptHook(engine, entityId, component, ScriptHook_Stop);
+		RunScriptHook(engine, component.entityId, component, ScriptHook_Stop);
 	}
 
 	FreeScriptData(engine, component.data, component.dataSize);
 
 	const u32 dataSize = ScriptDataSize(scriptRegistry.scripts[structIndex]);
-
-	component = {};
-	component.entityId = entityId;
 	component.name = InternString(scriptName);
 	component.structIndex = (u16)structIndex;
 	component.dataSize = dataSize;
 	component.data = AllocScriptData(engine, dataSize);
 
 	if ( engine.game.state == GameStateRunning ) {
-		RunScriptHook(engine, entityId, component, ScriptHook_Start);
+		RunScriptHook(engine, component.entityId, component, ScriptHook_Start);
 	}
-
-	return &component;
-}
-
-ScriptComponent* AddScript(Engine &engine, ID entityId, const ScriptComponentDesc &desc)
-{
-	ScriptComponent *component = AddScript(engine, entityId, desc.name);
-	if ( component ) {
-		ApplyDesc(*component, desc);
-	}
-	return component;
 }
 
 ScriptComponentDesc MakeDesc(const ScriptComponent &comp, ComponentDescPool &pool)

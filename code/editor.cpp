@@ -1421,7 +1421,7 @@ static void EditorUpdateUI_ScriptComponent(Engine &engine, ID entityId)
 	if ( UI_DragAndDropTarget(ui, "Script") )
 	{
 		const Script &script = *(Script*)UI_DragAndDropPayload(ui).ptr;
-		AddScript(engine, entityId, ScriptName(script));
+		SetScript(engine, component, ScriptName(script));
 	}
 
 	if ( component.name ) {

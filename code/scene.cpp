@@ -610,6 +610,22 @@ void SetModelGeometryType(Engine &engine, ModelComponent &model, GeometryType ge
 	UpdateModelGeometry(engine.gfx, model);
 }
 
+ScriptComponent *AddScript(Scene &scene, ID entityId)
+{
+	if ( !Valid(entityId) ) {
+		LOG(Warning, "AddScript: entity ID %u does not exist.\n", entityId.slot);
+		return nullptr;
+	}
+
+	if ( HasComponents(scene, entityId, Component_Script) ) {
+		LOG(Warning, "AddScript: the entity already has a script component.\n");
+		return nullptr;
+	}
+
+	ScriptComponent *component = (ScriptComponent*)AddComponentSlot(scene, entityId, ComponentType_Script);
+	return component;
+}
+
 static SpriteComponent *AddSpriteComponent(Scene &scene, ID entityId)
 {
 	SpriteComponent *sprite = (SpriteComponent*)AddComponentSlot(scene, entityId, ComponentType_Sprite);
@@ -854,16 +870,12 @@ void AddComponent(Engine &engine, ID entityId, ComponentType type)
 
 	switch ( type )
 	{
-		case ComponentType_Model:
-			AddModel(engine, entityId);
-			break;
-
-		case ComponentType_Sprite:
-			AddSpriteComponent(engine.scene, entityId);
-			break;
-
 		case ComponentType_Light:
 			AddLight(engine.scene, entityId);
+			break;
+
+		case ComponentType_Model:
+			AddModel(engine, entityId);
 			break;
 
 		case ComponentType_Particles:
@@ -871,7 +883,11 @@ void AddComponent(Engine &engine, ID entityId, ComponentType type)
 			break;
 
 		case ComponentType_Script:
-			AddScript(engine, entityId);
+			AddScript(engine.scene, entityId);
+			break;
+
+		case ComponentType_Sprite:
+			AddSpriteComponent(engine.scene, entityId);
 			break;
 
 		default:
@@ -903,11 +919,6 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 {
 	if ( !Valid(entityId) ) {
 		LOG(Warning, "AddComponent: entity ID %u does not exist.\n", entityId.slot);
-		return;
-	}
-
-	if ( desc.type == ComponentType_Script ) {
-		AddScript(engine, entityId, desc.script);
 		return;
 	}
 
@@ -956,6 +967,14 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 			}
 			break;
 		}
+
+		case ComponentType_Script:
+		{
+			ScriptComponent &script = *(ScriptComponent*)component;
+			SetScript(engine, script, desc.script.name);
+			ApplyDesc(script, desc.script);
+			break;
+		};
 
 		default:;
 	}
