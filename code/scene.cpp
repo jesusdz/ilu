@@ -791,46 +791,26 @@ ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, Compo
 	return &desc;
 }
 
-// A component and the descriptor reflex generates for it hold the same properties in the same
-// order, only at different offsets, so the copy walks both member lists at once
-static void CopyProperties(const ReflexStruct &dstType, void *dst, const ReflexStruct &srcType, const void *src)
-{
-	ASSERT( dstType.memberCount == srcType.memberCount );
-
-	for (u32 i = 0; i < dstType.memberCount; ++i)
-	{
-		const ReflexMember &dstMember = dstType.members[i];
-		const ReflexMember &srcMember = srcType.members[i];
-		ASSERT( dstMember.reflexId == srcMember.reflexId );
-
-		MemCopy((byte*)dst + dstMember.offset, (const byte*)src + srcMember.offset, ReflexGetTypeSize(dstMember.reflexId));
-	}
-}
-
-static void MakeComponentDesc(ComponentType type, const void *component, void *desc)
+static PropertyGroupDesc MakeComponentDesc(ComponentType type, const void *component, ComponentDescPool &pool)
 {
 	const ReflexStruct *componentType = ComponentReflexStruct(type);
-	const ReflexStruct *descType = ComponentDescReflexStruct(type);
-
-	if ( !componentType || !descType ) {
+	if ( !componentType ) {
 		LOG(Warning, "Component <%s> is not reflected, its descriptor stays empty.\n", ComponentNames[type]);
-		return;
+		return {};
 	}
 
-	CopyProperties(*descType, desc, *componentType, component);
+	return MakePropertyGroupDesc(*componentType, component, pool);
 }
 
-static void ApplyComponentDesc(ComponentType type, void *component, const void *desc)
+static void ApplyComponentDesc(ComponentType type, void *component, const PropertyGroupDesc &desc)
 {
 	const ReflexStruct *componentType = ComponentReflexStruct(type);
-	const ReflexStruct *descType = ComponentDescReflexStruct(type);
-
-	if ( !componentType || !descType ) {
+	if ( !componentType ) {
 		LOG(Warning, "Component <%s> is not reflected, its descriptor is not applied.\n", ComponentNames[type]);
 		return;
 	}
 
-	CopyProperties(*componentType, component, *descType, desc);
+	ApplyPropertyGroupDesc(*componentType, component, desc);
 }
 
 void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &pool)
@@ -849,13 +829,13 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 				if ( script.name )
 				{
 					if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
-						desc->script = MakeDesc(script, pool);
+						desc->properties = MakeDesc(script, pool);
 					}
 				}
 			}
 			else if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, (ComponentType)type) )
 			{
-				MakeComponentDesc((ComponentType)type, GetComponentSlot(scene, entityId, (ComponentType)type), ComponentDescData(*desc));
+				desc->properties = MakeComponentDesc((ComponentType)type, GetComponentSlot(scene, entityId, (ComponentType)type), pool);
 			}
 		}
 	}
@@ -936,7 +916,7 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 
 	void *component = GetComponentSlot(engine.scene, entityId, desc.type);
 
-	ApplyComponentDesc(desc.type, component, ComponentDescData(desc));
+	ApplyComponentDesc(desc.type, component, desc.properties);
 
 	// What the components keep beyond their properties. The IDs saved in a scene are only
 	// checked here, where the entity can still be named in the warning.
@@ -946,9 +926,9 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 		{
 			ModelComponent &model = *(ModelComponent*)component;
 
-			if ( desc.model.materialId.slot != 0 && !Valid(desc.model.materialId) )
+			if ( model.materialId.slot != 0 && !Valid(model.materialId) )
 			{
-				LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n", GetEntity(entityId).name, desc.model.materialId.slot);
+				LOG(Warning, "Entity <%s> refers to material ID %u, which does not exist.\n", GetEntity(entityId).name, model.materialId.slot);
 				model.materialId = engine.gfx.defaultMaterial;
 			}
 
@@ -960,9 +940,9 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 		{
 			SpriteComponent &sprite = *(SpriteComponent*)component;
 
-			if ( desc.sprite.spriteId.slot != 0 && !Valid(desc.sprite.spriteId) )
+			if ( sprite.spriteId.slot != 0 && !Valid(sprite.spriteId) )
 			{
-				LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n", GetEntity(entityId).name, desc.sprite.spriteId.slot);
+				LOG(Warning, "Entity <%s> refers to sprite ID %u, which does not exist.\n", GetEntity(entityId).name, sprite.spriteId.slot);
 				sprite.spriteId = {};
 			}
 			break;
@@ -971,8 +951,8 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 		case ComponentType_Script:
 		{
 			ScriptComponent &script = *(ScriptComponent*)component;
-			SetScript(engine, script, desc.script.name);
-			ApplyDesc(script, desc.script);
+			SetScript(engine, script, desc.properties.name);
+			ApplyDesc(script, desc.properties);
 			break;
 		};
 
@@ -1042,30 +1022,37 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 	if ( desc.components & Component_Model )
 	{
 		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Model) ) {
-			component->model.materialId = desc.materialId;
-			component->model.geometryType = desc.geometryType;
+			const ModelComponent model = { .materialId = desc.materialId, .geometryType = desc.geometryType };
+			component->properties = MakeComponentDesc(ComponentType_Model, &model, pool);
 		}
 	}
 
 	if ( desc.components & Component_Sprite )
 	{
 		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
-			component->sprite.spriteId = desc.spriteId;
-			component->sprite.layerId = desc.layerId;
+			const SpriteComponent sprite = { .spriteId = desc.spriteId, .layerId = desc.layerId };
+			component->properties = MakeComponentDesc(ComponentType_Sprite, &sprite, pool);
 		}
 	}
 
 	if ( desc.components & Component_Light )
 	{
 		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Light) ) {
-			component->light = desc.light;
+			const LightComponent light = {
+				.type = desc.lightType,
+				.color = desc.lightColor,
+				.intensity = desc.lightIntensity,
+				.radius = desc.lightRadius,
+			};
+			component->properties = MakeComponentDesc(ComponentType_Light, &light, pool);
 		}
 	}
 
 	if ( desc.components & Component_Particles )
 	{
 		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Particles) ) {
-			component->particles = desc.particles;
+			const ParticlesComponent particles = { .effectId = desc.particlesEffectId, .playOnStart = desc.particlesPlayOnStart };
+			component->properties = MakeComponentDesc(ComponentType_Particles, &particles, pool);
 		}
 	}
 
@@ -1080,7 +1067,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 		}
 		else if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Script) )
 		{
-			ScriptComponentDesc &script = component->script;
+			PropertyGroupDesc &script = component->properties;
 			script.name = binScript.name;
 			script.properties = pool.properties + pool.propertyCount;
 			script.propertyCount = propertyCount;
@@ -1089,7 +1076,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 			{
 				const BinScriptPropertyDesc &binProperty = binScript.properties[p];
 
-				ScriptPropertyDesc &property = pool.properties[pool.propertyCount++];
+				PropertyDesc &property = pool.properties[pool.propertyCount++];
 				property.name = binProperty.name;
 				property.type = binProperty.type;
 				MemCopy(property.value, binProperty.value, sizeof(property.value));
@@ -1103,7 +1090,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 {
 	ComponentDesc components[ComponentType_Count] = {};
-	ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+	PropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),
@@ -1136,7 +1123,7 @@ void RemoveEntity(Engine &engine, ID id)
 ID DuplicateEntity(Engine &engine, ID entityId)
 {
 	ComponentDesc components[ComponentType_Count] = {};
-	ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+	PropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),
@@ -1241,8 +1228,8 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 			continue;
 		}
 
-		ScriptComponentDesc &script = component.script;
-		const ScriptPropertyDesc *source = script.properties;
+		ScriptComponentDesc &script = component.properties;
+		const PropertyDesc *source = script.properties;
 
 		if ( prefab.scriptPropertyCount + script.propertyCount > ARRAY_COUNT(prefab.scriptProperties) )
 		{
@@ -1265,7 +1252,7 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
 {
 	ComponentDesc components[MAX_PREFAB_COMPONENTS] = {};
-	ScriptPropertyDesc properties[MAX_PREFAB_SCRIPT_PROPERTIES] = {};
+	PropertyDesc properties[MAX_PREFAB_SCRIPT_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),

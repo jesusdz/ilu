@@ -1,4 +1,9 @@
 
+static u32 ScriptDataSize(const Script &script)
+{
+	return AlignUp((u32)script.type->size, SCRIPT_DATA_ALIGN);
+}
+
 // Reflected type information lives in the reflex registry, generated from the
 // tagged structs. This one only binds the hooks reflex cannot see to those types.
 struct ScriptRegistry
@@ -201,53 +206,16 @@ void SetScript(Engine &engine, ScriptComponent &component, const char *scriptNam
 
 ScriptComponentDesc MakeDesc(const ScriptComponent &comp, ComponentDescPool &pool)
 {
-	ScriptComponentDesc desc = {};
+	const ReflexStruct &type = *scriptRegistry.scripts[comp.structIndex].type;
+	ScriptComponentDesc desc = MakePropertyGroupDesc(type, comp.data, pool);
 	desc.name = comp.name;
-	desc.properties = pool.properties + pool.propertyCount;
-
-	const ReflexStruct *type = scriptRegistry.scripts[comp.structIndex].type;
-	for (u32 p = 0; p < type->memberCount; ++p)
-	{
-		const ReflexMember &member = type->members[p];
-		const u32 size = ReflexGetTypeSize(member.reflexId);
-		if ( size <= MAX_PROPERTY_VALUE_SIZE )
-		{
-			if ( pool.propertyCount == pool.propertyCapacity ) {
-				LOG(Warning, "Script <%s> drops property <%s>, the property pool is full.\n", desc.name, member.name);
-				break;
-			}
-
-			ScriptPropertyDesc &propertyDesc = pool.properties[pool.propertyCount++];
-			propertyDesc = {
-				.name = member.name,
-				.type = member.reflexId,
-			};
-			MemCopy(propertyDesc.value, comp.data + member.offset, size);
-			desc.propertyCount++;
-		}
-	}
-
 	return desc;
 }
 
 void ApplyDesc(ScriptComponent &comp, const ScriptComponentDesc &desc)
 {
-	const ReflexStruct *type = scriptRegistry.scripts[comp.structIndex].type;
-
-	for (u32 i = 0; i < desc.propertyCount; ++i)
-	{
-		const ScriptPropertyDesc &propertyDesc = desc.properties[i];
-
-		const ReflexMember *member = FindProperty(*type, propertyDesc.name);
-
-		if ( !member ) {
-			LOG(Warning, "Script <%s> has no property named <%s>, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else if ( member->reflexId != propertyDesc.type ) {
-			LOG(Warning, "Script <%s> property <%s> changed type, its saved value is dropped.\n", desc.name, propertyDesc.name);
-		} else {
-			MemCopy(comp.data + member->offset, propertyDesc.value, ReflexGetTypeSize(member->reflexId));
-		}
-	}
+	const ReflexStruct &type = *scriptRegistry.scripts[comp.structIndex].type;
+	ApplyPropertyGroupDesc(type, comp.data, desc);
 }
 
 void RemoveScript(Engine &engine, ID entityId)

@@ -229,12 +229,18 @@ static void WriteProperty(WriteContext &ctx, const ReflexMember &member, const v
 	NewLine(ctx);
 }
 
-static void WriteProperties(WriteContext &ctx, const ReflexStruct &type, const void *base)
+// Writes every property in `desc`, matched against `type`'s members by name
+static void WritePropertyGroupDesc(WriteContext &ctx, const ReflexStruct &type, const PropertyGroupDesc &desc)
 {
-	for (u32 i = 0; i < type.memberCount; ++i)
+	for (u32 p = 0; p < desc.propertyCount; ++p)
 	{
-		const ReflexMember &member = type.members[i];
-		WriteProperty(ctx, member, (const byte*)base + member.offset);
+		const PropertyDesc &property = desc.properties[p];
+		const ReflexMember *member = FindProperty(type, property.name);
+		if ( member && member->reflexId == property.type ) {
+			WriteProperty(ctx, *member, property.value);
+		} else {
+			LOG(Warning, "<%s> has no property <%s> of its type anymore, it is not saved.\n", type.name, property.name);
+		}
 	}
 }
 
@@ -254,16 +260,7 @@ static void WriteScriptComponentDesc(WriteContext &ctx, const ScriptComponentDes
 	{
 		WriteLine(ctx, ".properties = {");
 		PushIndent(ctx);
-		for (u32 p = 0; p < script.propertyCount; ++p)
-		{
-			const ScriptPropertyDesc &property = script.properties[p];
-			const ReflexMember *member = FindProperty(*type, property.name);
-			if ( member && member->reflexId == property.type ) {
-				WriteProperty(ctx, *member, property.value);
-			} else {
-				LOG(Warning, "Script <%s> has no property <%s> of its type anymore, it is not saved.\n", script.name, property.name);
-			}
-		}
+		WritePropertyGroupDesc(ctx, *type, script);
 		PopIndent(ctx);
 		WriteLine(ctx, "},");
 	}
@@ -275,11 +272,11 @@ static void WriteScriptComponentDesc(WriteContext &ctx, const ScriptComponentDes
 static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &component)
 {
 	if ( component.type == ComponentType_Script ) {
-		WriteScriptComponentDesc(ctx, component.script);
+		WriteScriptComponentDesc(ctx, component.properties);
 		return;
 	}
 
-	const ReflexStruct *type = ComponentDescReflexStruct(component.type);
+	const ReflexStruct *type = ComponentReflexStruct(component.type);
 	if ( !type ) {
 		LOG(Warning, "Component <%s> has no reflected descriptor, it is not saved.\n", ComponentNames[component.type]);
 		return;
@@ -287,7 +284,7 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &component
 
 	WriteLine(ctx, ".%s = {", ComponentFieldNames[component.type]);
 	PushIndent(ctx);
-	WriteProperties(ctx, *type, ComponentDescData(component));
+	WritePropertyGroupDesc(ctx, *type, component.properties);
 	PopIndent(ctx);
 	WriteLine(ctx, "},");
 }
@@ -1121,8 +1118,13 @@ static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member
 	}
 }
 
-static void DParser_ConsumeProperties( DParser &parser, const ReflexStruct &type, void *base )
+// Parses "{ .prop = value, ... }" into freshly pooled properties, matched against `type`'s
+// members by name. Leaves `.name` untouched, since only the caller knows if it applies.
+static PropertyGroupDesc DParser_ConsumePropertyGroupDesc( DParser &parser, const ReflexStruct &type, ComponentDescPool &pool )
 {
+	PropertyGroupDesc desc = {};
+	desc.properties = pool.properties + pool.propertyCount;
+
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
 	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
@@ -1133,29 +1135,44 @@ static void DParser_ConsumeProperties( DParser &parser, const ReflexStruct &type
 
 		DParser_TryConsume(parser, TOKEN_EQUAL);
 
-		if ( const ReflexMember *member = FindProperty(type, field) ) {
-			DParser_ConsumeProperty(parser, *member, (byte*)base + member->offset);
-		} else {
+		const ReflexMember *member = FindProperty(type, field);
+		if ( !member ) {
 			LOG(Warning, "<%s> has no property <%.*s>, its value is skipped.\n", type.name, field.size, field.str);
 			DParser_SkipFieldValue(parser);
+		} else if ( ReflexGetTypeSize(member->reflexId) > MAX_PROPERTY_VALUE_SIZE ) {
+			LOG(Warning, "<%s> property <%s> is too large to be stored, its value is skipped.\n", type.name, member->name);
+			DParser_SkipFieldValue(parser);
+		} else if ( pool.propertyCount == pool.propertyCapacity ) {
+			LOG(Warning, "<%s> drops property <%s>, the property pool is full.\n", type.name, member->name);
+			DParser_SkipFieldValue(parser);
+		} else {
+			PropertyDesc &property = pool.properties[pool.propertyCount++];
+			property = {
+				.name = PushString(*parser.arena, member->name),
+				.type = member->reflexId,
+			};
+			DParser_ConsumeProperty(parser, *member, property.value);
+			desc.propertyCount++;
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
 	}
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+
+	return desc;
 }
 
 static void DParser_ConsumeEntityComponent( DParser &parser, ComponentDescPool &pool, u32 entityIndex, ComponentType componentType )
 {
-	const ReflexStruct *type = ComponentDescReflexStruct(componentType);
+	const ReflexStruct *type = ComponentReflexStruct(componentType);
 	if ( !type ) {
 		LOG(Warning, "Component <%s> has no reflected descriptor, it is skipped.\n", ComponentNames[componentType]);
 	}
 
 	ComponentDesc *component = type ? PushComponentDesc(pool, entityIndex, componentType) : nullptr;
 	if ( component ) {
-		DParser_ConsumeProperties(parser, *type, ComponentDescData(*component));
+		component->properties = DParser_ConsumePropertyGroupDesc(parser, *type, pool);
 	} else {
 		DParser_SkipFieldValue(parser);
 	}
@@ -1197,7 +1214,7 @@ static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &poo
 	}
 
 	if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
-		component->script = scriptDesc;
+		component->properties = scriptDesc;
 	}
 }
 
@@ -1249,7 +1266,7 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 	ComponentDescPool pool = {
 		.components = PushZeroArray(*parser.arena, ComponentDesc, MAX_PREFAB_COMPONENTS),
 		.componentCapacity = MAX_PREFAB_COMPONENTS,
-		.properties = PushZeroArray(*parser.arena, ScriptPropertyDesc, MAX_PREFAB_SCRIPT_PROPERTIES),
+		.properties = PushZeroArray(*parser.arena, PropertyDesc, MAX_PREFAB_SCRIPT_PROPERTIES),
 		.propertyCapacity = MAX_PREFAB_SCRIPT_PROPERTIES,
 	};
 
@@ -1353,43 +1370,9 @@ static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDes
 		return;
 	}
 
-	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
-
-	script.properties = pool.properties + pool.propertyCount;
-	script.propertyCount = 0;
-
-	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
-	{
-		DParser_TryConsume(parser, TOKEN_DOT);
-
-		const String field = DParser_ConsumeLexeme(parser);
-
-		DParser_TryConsume(parser, TOKEN_EQUAL);
-
-		const ReflexMember *member = FindProperty(*type, field);
-		if ( !member ) {
-			LOG(Warning, "Script <%s> has no property <%.*s>, its value is skipped.\n", script.name, field.size, field.str);
-			DParser_SkipFieldValue(parser);
-		} else if ( ReflexGetTypeSize(member->reflexId) > MAX_PROPERTY_VALUE_SIZE ) {
-			LOG(Warning, "Script <%s> property <%s> is too large to be stored, its value is skipped.\n", script.name, member->name);
-			DParser_SkipFieldValue(parser);
-		} else if ( pool.propertyCount == pool.propertyCapacity ) {
-			LOG(Warning, "Script <%s> drops property <%s>, the property pool is full.\n", script.name, member->name);
-			DParser_SkipFieldValue(parser);
-		} else {
-			ScriptPropertyDesc &property = pool.properties[pool.propertyCount++];
-			property = {
-				.name = PushString(*parser.arena, member->name),
-				.type = member->reflexId,
-			};
-			DParser_ConsumeProperty(parser, *member, property.value);
-			script.propertyCount++;
-		}
-
-		DParser_TryConsume(parser, TOKEN_COMMA);
-	}
-
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+	const PropertyGroupDesc properties = DParser_ConsumePropertyGroupDesc(parser, *type, pool);
+	script.properties = properties.properties;
+	script.propertyCount = properties.propertyCount;
 }
 
 static void DParser_ConsumeUntil( DParser &parser, DTokenId tokenId )
@@ -1779,7 +1762,7 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 				descriptors.componentPool.componentCapacity = descriptors.entityDescCount * ComponentType_Count + 1;
 				descriptors.componentPool.components = PushZeroArray(arena, ComponentDesc, descriptors.componentPool.componentCapacity);
 				descriptors.componentPool.propertyCapacity = descriptors.entityDescCount * MAX_SCRIPT_PROPERTIES + 1;
-				descriptors.componentPool.properties = PushZeroArray(arena, ScriptPropertyDesc, descriptors.componentPool.propertyCapacity);
+				descriptors.componentPool.properties = PushZeroArray(arena, PropertyDesc, descriptors.componentPool.propertyCapacity);
 				descriptors.entityDescCount = 0;
 				descriptors.prefabDescs = PushZeroArray(arena, PrefabDesc, descriptors.prefabDescCount);
 				descriptors.prefabDescCount = 0;
@@ -1879,30 +1862,50 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 		switch (component.type)
 		{
 			case ComponentType_Model:
+			{
+				ModelComponent model = {};
+				ApplyPropertyGroupDesc(*ComponentReflexStruct(ComponentType_Model), &model, component.properties);
 				d.components |= Component_Model;
-				d.materialId = component.model.materialId;
-				d.geometryType = component.model.geometryType;
+				d.materialId = model.materialId;
+				d.geometryType = model.geometryType;
 				break;
+			}
 
 			case ComponentType_Sprite:
+			{
+				SpriteComponent sprite = {};
+				ApplyPropertyGroupDesc(*ComponentReflexStruct(ComponentType_Sprite), &sprite, component.properties);
 				d.components |= Component_Sprite;
-				d.spriteId = component.sprite.spriteId;
-				d.layerId = component.sprite.layerId;
+				d.spriteId = sprite.spriteId;
+				d.layerId = sprite.layerId;
 				break;
+			}
 
 			case ComponentType_Light:
+			{
+				LightComponent light = {};
+				ApplyPropertyGroupDesc(*ComponentReflexStruct(ComponentType_Light), &light, component.properties);
 				d.components |= Component_Light;
-				d.light = component.light;
+				d.lightType = light.type;
+				d.lightColor = light.color;
+				d.lightIntensity = light.intensity;
+				d.lightRadius = light.radius;
 				break;
+			}
 
 			case ComponentType_Particles:
+			{
+				ParticlesComponent particles = {};
+				ApplyPropertyGroupDesc(*ComponentReflexStruct(ComponentType_Particles), &particles, component.properties);
 				d.components |= Component_Particles;
-				d.particles = component.particles;
+				d.particlesEffectId = particles.effectId;
+				d.particlesPlayOnStart = particles.playOnStart;
 				break;
+			}
 
 			case ComponentType_Script:
 			{
-				const ScriptComponentDesc &script = component.script;
+				const ScriptComponentDesc &script = component.properties;
 
 				d.components |= Component_Script;
 
@@ -1911,7 +1914,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 				bs.propertyCount = Min(script.propertyCount, (u32)ARRAY_COUNT(bs.properties));
 				for (u32 p = 0; p < bs.propertyCount; ++p)
 				{
-					const ScriptPropertyDesc &property = script.properties[p];
+					const PropertyDesc &property = script.properties[p];
 
 					BinScriptPropertyDesc &pd = bs.properties[p];
 					pd.name  = DataInternString(stringPool, property.name);
@@ -2508,7 +2511,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static EntityDesc entityDescs[MAX_ENTITIES];
 	static ComponentDesc componentDescs[MAX_ENTITIES * ComponentType_Count];
-	static ScriptPropertyDesc scriptPropertyDescs[MAX_ENTITIES * MAX_SCRIPT_PROPERTIES];
+	static PropertyDesc scriptPropertyDescs[MAX_ENTITIES * MAX_SCRIPT_PROPERTIES];
 	ComponentDescPool componentPool = {
 		.components = componentDescs,
 		.componentCapacity = ARRAY_COUNT(componentDescs),

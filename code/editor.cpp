@@ -649,7 +649,7 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 		if (type == EditorSelectedType_Entity && UI_MenuItem(ui, "Create prefab"))
 		{
 			ComponentDesc components[ComponentType_Count] = {};
-			ScriptPropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+			PropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
 			ComponentDescPool pool = {
 				.components = components,
 				.componentCapacity = ARRAY_COUNT(components),
@@ -2165,14 +2165,13 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 		.scale = 1.0f,
 	};
 
-	const ComponentDesc spriteComponent = {
-		.entityIndex = 0,
-		.type = ComponentType_Sprite,
-		.sprite = { .spriteId = spriteId, },
-	};
-
 	const ID entityId = CreateEntity(engine, entityDesc);
-	AddComponent(engine, entityId, spriteComponent);
+	AddComponent(engine, entityId, ComponentType_Sprite);
+	if ( HasComponents(engine.scene, entityId, Component_Sprite) )
+	{
+		SpriteComponent &sprite = *(SpriteComponent*)GetComponentSlot(engine.scene, entityId, ComponentType_Sprite);
+		sprite.spriteId = spriteId;
+	}
 	return entityId;
 }
 

@@ -175,7 +175,7 @@ constexpr u32 MAX_PROPERTY_VALUE_SIZE = 16;
 
 // The value is kept by name rather than as a copy of the whole script, so it still finds
 // its member after a reload moves the members around
-struct ScriptPropertyDesc
+struct PropertyDesc
 {
 	const char *name;
 	byte value[MAX_PROPERTY_VALUE_SIZE]; // The member's bytes
@@ -191,11 +191,6 @@ struct Script
 inline const char *ScriptName(const Script &script)
 {
 	return script.type->name;
-}
-
-inline u32 ScriptDataSize(const Script &script)
-{
-	return AlignUp((u32)script.type->size, SCRIPT_DATA_ALIGN);
 }
 
 struct ScriptDataBlock
@@ -806,11 +801,6 @@ inline const ReflexStruct *ComponentReflexStruct(ComponentType type)
 	return ReflexGetStructFromName(name);
 }
 
-inline const ReflexStruct *ComponentDescReflexStruct(ComponentType type)
-{
-	return ComponentReflexStruct(type);
-}
-
 ////////////////////////////////////////////////////////////////////////
 // Model component
 
@@ -890,15 +880,16 @@ struct ParticlesComponent
 ////////////////////////////////////////////////////////////////////////
 // Script component
 
-struct ScriptComponentDesc
+struct PropertyGroupDesc
 {
 	const char *name;
-	ScriptPropertyDesc *properties;
+	PropertyDesc *properties;
 	u32 propertyCount;
 };
 
-// Tagged so it is one of the generated component types, though it has no property of its own:
-// what a script component holds is the script's, and ScriptComponentDesc describes it
+typedef PropertyGroupDesc ScriptComponentDesc;
+
+
 REFLEX(Component)
 struct ScriptComponent
 {
@@ -916,26 +907,8 @@ struct ComponentDesc
 {
 	u32 entityIndex;
 	ComponentType type;
-	union
-	{
-		ModelComponent model;
-		SpriteComponent sprite;
-		LightComponent light;
-		ParticlesComponent particles;
-		ScriptComponentDesc script;
-	};
+	PropertyGroupDesc properties;
 };
-
-// All the descriptors in the union start at the same address
-inline void *ComponentDescData(ComponentDesc &component)
-{
-	return &component.model;
-}
-
-inline const void *ComponentDescData(const ComponentDesc &component)
-{
-	return &component.model;
-}
 
 struct ComponentDescPool
 {
@@ -943,10 +916,58 @@ struct ComponentDescPool
 	u32 componentCount;
 	u32 componentCapacity;
 
-	ScriptPropertyDesc *properties;
+	PropertyDesc *properties;
 	u32 propertyCount;
 	u32 propertyCapacity;
 };
+
+inline PropertyGroupDesc MakePropertyGroupDesc(const ReflexStruct &type, const void *base, ComponentDescPool &pool)
+{
+	PropertyGroupDesc desc = {};
+	desc.properties = pool.properties + pool.propertyCount;
+
+	for (u32 i = 0; i < type.memberCount; ++i)
+	{
+		const ReflexMember &member = type.members[i];
+		const u32 size = ReflexGetTypeSize(member.reflexId);
+
+		if ( size > MAX_PROPERTY_VALUE_SIZE ) {
+			LOG(Warning, "<%s> property <%s> is too large to be stored, it is skipped.\n", type.name, member.name);
+			continue;
+		}
+		if ( pool.propertyCount == pool.propertyCapacity ) {
+			LOG(Warning, "<%s> drops property <%s>, the property pool is full.\n", type.name, member.name);
+			break;
+		}
+
+		PropertyDesc &property = pool.properties[pool.propertyCount++];
+		property = {
+			.name = member.name,
+			.type = member.reflexId,
+		};
+		MemCopy(property.value, (const byte*)base + member.offset, size);
+		desc.propertyCount++;
+	}
+
+	return desc;
+}
+
+inline void ApplyPropertyGroupDesc(const ReflexStruct &type, void *base, const PropertyGroupDesc &desc)
+{
+	for (u32 i = 0; i < desc.propertyCount; ++i)
+	{
+		const PropertyDesc &property = desc.properties[i];
+		const ReflexMember *member = FindProperty(type, property.name);
+
+		if ( !member ) {
+			LOG(Warning, "<%s> has no property named <%s>, its saved value is dropped.\n", type.name, property.name);
+		} else if ( member->reflexId != property.type ) {
+			LOG(Warning, "<%s> property <%s> changed type, its saved value is dropped.\n", type.name, property.name);
+		} else {
+			MemCopy((byte*)base + member->offset, property.value, ReflexGetTypeSize(member->reflexId));
+		}
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////
 // Entities
@@ -1153,7 +1174,7 @@ struct Prefab
 	u32 entityCount;
 	ComponentDesc components[MAX_PREFAB_COMPONENTS];
 	u32 componentCount;
-	ScriptPropertyDesc scriptProperties[MAX_PREFAB_SCRIPT_PROPERTIES];
+	PropertyDesc scriptProperties[MAX_PREFAB_SCRIPT_PROPERTIES];
 	u32 scriptPropertyCount;
 };
 
@@ -1265,8 +1286,12 @@ struct BinEntityDesc
 	float scale;
 	GeometryType geometryType;
 	ComponentFlags components;
-	LightComponent light;
-	ParticlesComponent particles;
+	LightType lightType;
+	float3 lightColor;
+	f32 lightIntensity;
+	f32 lightRadius;
+	ID particlesEffectId;
+	u8 particlesPlayOnStart;
 	BinScriptDesc script;
 };
 
