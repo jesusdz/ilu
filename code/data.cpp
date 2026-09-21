@@ -1266,8 +1266,8 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 	ComponentDescPool pool = {
 		.components = PushZeroArray(*parser.arena, ComponentDesc, MAX_PREFAB_COMPONENTS),
 		.componentCapacity = MAX_PREFAB_COMPONENTS,
-		.properties = PushZeroArray(*parser.arena, PropertyDesc, MAX_PREFAB_SCRIPT_PROPERTIES),
-		.propertyCapacity = MAX_PREFAB_SCRIPT_PROPERTIES,
+		.properties = PushZeroArray(*parser.arena, PropertyDesc, MAX_PREFAB_PROPERTIES),
+		.propertyCapacity = MAX_PREFAB_PROPERTIES,
 	};
 
 	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
@@ -1761,7 +1761,7 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 				// pools are sized to the worst case an entity could ask for
 				descriptors.componentPool.componentCapacity = descriptors.entityDescCount * ComponentType_Count + 1;
 				descriptors.componentPool.components = PushZeroArray(arena, ComponentDesc, descriptors.componentPool.componentCapacity);
-				descriptors.componentPool.propertyCapacity = descriptors.entityDescCount * MAX_SCRIPT_PROPERTIES + 1;
+				descriptors.componentPool.propertyCapacity = descriptors.entityDescCount * MAX_ENTITY_PROPERTIES + 1;
 				descriptors.componentPool.properties = PushZeroArray(arena, PropertyDesc, descriptors.componentPool.propertyCapacity);
 				descriptors.entityDescCount = 0;
 				descriptors.prefabDescs = PushZeroArray(arena, PrefabDesc, descriptors.prefabDescCount);
@@ -2511,12 +2511,12 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static EntityDesc entityDescs[MAX_ENTITIES];
 	static ComponentDesc componentDescs[MAX_ENTITIES * ComponentType_Count];
-	static PropertyDesc scriptPropertyDescs[MAX_ENTITIES * MAX_SCRIPT_PROPERTIES];
+	const u32 propertyCapacity = engine.scene.entityCount * MAX_ENTITY_PROPERTIES + 1;
 	ComponentDescPool componentPool = {
 		.components = componentDescs,
 		.componentCapacity = ARRAY_COUNT(componentDescs),
-		.properties = scriptPropertyDescs,
-		.propertyCapacity = ARRAY_COUNT(scriptPropertyDescs),
+		.properties = PushZeroArray(arena, PropertyDesc, propertyCapacity),
+		.propertyCapacity = propertyCapacity,
 	};
 
 	u32 entityCount = 0;

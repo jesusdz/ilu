@@ -649,7 +649,7 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 		if (type == EditorSelectedType_Entity && UI_MenuItem(ui, "Create prefab"))
 		{
 			ComponentDesc components[ComponentType_Count] = {};
-			PropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+			PropertyDesc properties[MAX_ENTITY_PROPERTIES] = {};
 			ComponentDescPool pool = {
 				.components = components,
 				.componentCapacity = ARRAY_COUNT(components),

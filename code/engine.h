@@ -271,6 +271,10 @@ static PropertyDesc *AllocProperties(PropertyPool &pool, u32 count)
 				desc = (PropertyDesc*) block;
 			}
 		}
+
+		if ( !desc ) {
+			desc = PushZeroArray(pool.arena, PropertyDesc, count);
+		}
 	}
 
 	return desc;
@@ -961,6 +965,8 @@ struct ComponentDesc
 	PropertyGroupDesc properties;
 };
 
+constexpr u32 MAX_ENTITY_PROPERTIES = ComponentType_Count * MAX_SCRIPT_PROPERTIES;
+
 struct ComponentDescPool
 {
 	ComponentDesc *components;
@@ -1202,7 +1208,7 @@ struct Room
 
 #define MAX_PREFAB_ENTITIES 16
 #define MAX_PREFAB_COMPONENTS 32
-#define MAX_PREFAB_SCRIPT_PROPERTIES 64
+#define MAX_PREFAB_PROPERTIES (MAX_PREFAB_COMPONENTS * MAX_SCRIPT_PROPERTIES)
 
 struct PrefabDesc
 {

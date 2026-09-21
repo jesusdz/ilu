@@ -1090,7 +1090,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 {
 	ComponentDesc components[ComponentType_Count] = {};
-	PropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+	PropertyDesc properties[MAX_ENTITY_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),
@@ -1123,7 +1123,7 @@ void RemoveEntity(Engine &engine, ID id)
 ID DuplicateEntity(Engine &engine, ID entityId)
 {
 	ComponentDesc components[ComponentType_Count] = {};
-	PropertyDesc properties[MAX_SCRIPT_PROPERTIES] = {};
+	PropertyDesc properties[MAX_ENTITY_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),
@@ -1239,7 +1239,7 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
 {
 	ComponentDesc components[MAX_PREFAB_COMPONENTS] = {};
-	PropertyDesc properties[MAX_PREFAB_SCRIPT_PROPERTIES] = {};
+	PropertyDesc properties[MAX_PREFAB_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),
