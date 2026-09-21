@@ -158,6 +158,7 @@ constexpr u32 SCRIPT_DATA_ALIGN = 16;
 constexpr u32 SCRIPT_SIZE_CLASS_COUNT = 64;
 constexpr u32 MAX_POOLED_SCRIPT_DATA_SIZE = SCRIPT_SIZE_CLASS_COUNT * SCRIPT_DATA_ALIGN;
 constexpr u32 SCRIPT_DATA_MEMORY = MB(1);
+constexpr u32 PROPERTY_POOL_MEMORY = MB(1);
 
 enum ScriptHookType
 {
@@ -170,7 +171,7 @@ enum ScriptHookType
 
 typedef ReflexFunctor ScriptHook;
 
-// Room for the largest property type, float3 today
+// Room for the largest property type, float4 today
 constexpr u32 MAX_PROPERTY_VALUE_SIZE = 16;
 
 // The value is kept by name rather than as a copy of the whole script, so it still finds
@@ -180,6 +181,13 @@ struct PropertyDesc
 	const char *name;
 	byte value[MAX_PROPERTY_VALUE_SIZE]; // The member's bytes
 	PropertyType type;
+};
+
+struct PropertyGroupDesc
+{
+	const char *name;
+	PropertyDesc *properties;
+	u32 propertyCount;
 };
 
 struct Script
@@ -227,6 +235,56 @@ struct BinScriptDesc
 };
 
 #pragma pack(pop)
+
+////////////////////////////////////////////////////////////////////////
+// Property pool
+
+constexpr u32 PROPERTY_SIZE_CLASS_COUNT = 64;
+
+// Struct used to store a linked list of free blocks
+struct PropertyBlock
+{
+	PropertyBlock *next;
+};
+
+CT_ASSERT(sizeof(PropertyDesc) >= sizeof(PropertyBlock));
+
+struct PropertyPool
+{
+	Arena arena;
+	PropertyBlock *freeLists[PROPERTY_SIZE_CLASS_COUNT];
+};
+
+static PropertyDesc *AllocProperties(PropertyPool &pool, u32 count)
+{
+	PropertyDesc *desc = nullptr;
+
+	if (count > 0)
+	{
+		if ( count <= PROPERTY_SIZE_CLASS_COUNT )
+		{
+			const u32 sizeClass = count - 1;
+			if ( PropertyBlock *block = pool.freeLists[sizeClass] )
+			{
+				pool.freeLists[sizeClass] = block->next;
+				MemSet(block, count * sizeof(PropertyDesc), 0);
+				desc = (PropertyDesc*) block;
+			}
+		}
+	}
+
+	return desc;
+}
+
+static void FreeProperties(PropertyPool &pool, PropertyDesc *properties, u32 count)
+{
+	if ( properties && count > 0 && count <= PROPERTY_SIZE_CLASS_COUNT )
+	{
+		PropertyBlock *block = (PropertyBlock*) properties;
+		block->next = pool.freeLists[count - 1];
+		pool.freeLists[count - 1] = block;
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // TYPES: Audio
@@ -880,13 +938,6 @@ struct ParticlesComponent
 ////////////////////////////////////////////////////////////////////////
 // Script component
 
-struct PropertyGroupDesc
-{
-	const char *name;
-	PropertyDesc *properties;
-	u32 propertyCount;
-};
-
 typedef PropertyGroupDesc ScriptComponentDesc;
 
 
@@ -1174,8 +1225,6 @@ struct Prefab
 	u32 entityCount;
 	ComponentDesc components[MAX_PREFAB_COMPONENTS];
 	u32 componentCount;
-	PropertyDesc scriptProperties[MAX_PREFAB_SCRIPT_PROPERTIES];
-	u32 scriptPropertyCount;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -1501,6 +1550,7 @@ struct Engine
 	Scene scene;
 	Game game;
 	ScriptDataPool scriptData;
+	PropertyPool propertyPool;
 #if USE_UI
 	UI ui;
 #endif

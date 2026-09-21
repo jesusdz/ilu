@@ -1216,32 +1216,19 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 		LOG(Warning, "Prefab <%s> has %u components, only the first %u are kept.\n", desc.name, desc.componentCount, prefab.componentCount);
 	}
 
-	// A prefab outlives the descriptors it was built from, so the script properties its
-	// components point at are copied into storage the prefab owns
-	prefab.scriptPropertyCount = 0;
 	for (u32 i = 0; i < prefab.componentCount; ++i)
 	{
 		ComponentDesc &component = prefab.components[i];
 		component = desc.components[i];
 
-		if ( component.type != ComponentType_Script ) {
-			continue;
-		}
+		PropertyGroupDesc &group = component.properties;
+		const PropertyDesc *source = group.properties;
 
-		ScriptComponentDesc &script = component.properties;
-		const PropertyDesc *source = script.properties;
-
-		if ( prefab.scriptPropertyCount + script.propertyCount > ARRAY_COUNT(prefab.scriptProperties) )
-		{
-			LOG(Warning, "Prefab <%s> drops the properties of script <%s>, its property storage is full.\n", desc.name, script.name);
-			script.properties = nullptr;
-			script.propertyCount = 0;
-			continue;
-		}
-
-		script.properties = prefab.scriptProperties + prefab.scriptPropertyCount;
-		for (u32 p = 0; p < script.propertyCount; ++p) {
-			prefab.scriptProperties[prefab.scriptPropertyCount++] = source[p];
+		group.properties = AllocProperties(engine.propertyPool, group.propertyCount);
+		if ( group.properties ) {
+			MemCopy(group.properties, source, group.propertyCount * sizeof(PropertyDesc));
+		} else {
+			group.propertyCount = 0;
 		}
 	}
 
@@ -1286,9 +1273,21 @@ void RemovePrefab(Scene &scene, ID id)
 	}
 }
 
+static COMPACT_REMOVE(RemovePrefabProperties)
+{
+	Engine &engine = GetEngine();
+	Prefab &prefab = engine.scene.prefabs[index];
+
+	for (u32 i = 0; i < prefab.componentCount; ++i)
+	{
+		PropertyGroupDesc &group = prefab.components[i].properties;
+		FreeProperties(engine.propertyPool, group.properties, group.propertyCount);
+	}
+}
+
 void CompactPrefabs(Scene &scene)
 {
-	COMPACT_ARRAY_BY_ID(Prefab, scene.prefabs, scene.prefabCount, id, nullptr, nullptr, nullptr);
+	COMPACT_ARRAY_BY_ID(Prefab, scene.prefabs, scene.prefabCount, id, nullptr, RemovePrefabProperties, nullptr);
 }
 
 // Spawns every entity in the prefab, offset by atPosition, as freshly created entities

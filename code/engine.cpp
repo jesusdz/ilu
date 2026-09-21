@@ -248,6 +248,7 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 		InitializeIDPool();
 
 		engine.scriptData.arena = PushSubArena(GlobalArena, SCRIPT_DATA_MEMORY, "Script component data");
+		engine.propertyPool.arena = PushSubArena(GlobalArena, PROPERTY_POOL_MEMORY, "Property pool");
 
 #if USE_DATA_BUILD
 		bool buildAssets = false;
@@ -444,6 +445,7 @@ ENGINE_API void OnPlatformUpdate(Host &host)
 	CompactEntities(engine.scene);
 	CompactSprites(engine.scene);
 	CompactParticleEffects(engine.scene);
+	CompactPrefabs(engine.scene);
 	CompactMaterials(engine.gfx);
 	CompactTextures(engine.gfx);
 }
