@@ -825,11 +825,16 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 
 			if ( type == ComponentType_Script )
 			{
-				const ScriptComponent &script = GetScript(scene, entityId);
-				if ( script.name )
+				const ScriptComponent &scriptComponent = GetScript(scene, entityId);
+				if ( scriptComponent.name )
 				{
 					if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
-						desc->properties = MakeDesc(script, pool);
+						desc->scriptName = scriptComponent.name;
+						if ( scriptComponent.structIndex != NULL_SCRIPT )
+						{
+							const Script &script = GetScriptAt(scriptComponent.structIndex);
+							desc->properties = MakePropertyGroupDesc(*script.type, scriptComponent.data, pool);
+						}
 					}
 				}
 			}
@@ -916,7 +921,9 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 
 	void *component = GetComponentSlot(engine.scene, entityId, desc.type);
 
-	ApplyComponentDesc(desc.type, component, desc.properties);
+	if ( desc.type != ComponentType_Script ) {
+		ApplyComponentDesc(desc.type, component, desc.properties);
+	}
 
 	// What the components keep beyond their properties. The IDs saved in a scene are only
 	// checked here, where the entity can still be named in the warning.
@@ -950,9 +957,13 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 
 		case ComponentType_Script:
 		{
-			ScriptComponent &script = *(ScriptComponent*)component;
-			SetScript(engine, script, desc.properties.name);
-			ApplyDesc(script, desc.properties);
+			ScriptComponent &scriptComponent = *(ScriptComponent*)component;
+			SetScript(engine, scriptComponent, desc.scriptName);
+			if ( scriptComponent.structIndex != NULL_SCRIPT )
+			{
+				const Script &script = GetScriptAt(scriptComponent.structIndex);
+				ApplyPropertyGroupDesc(*script.type, scriptComponent.data, desc.properties);
+			}
 			break;
 		};
 
@@ -1067,8 +1078,9 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 		}
 		else if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Script) )
 		{
+			component->scriptName = binScript.name;
+
 			PropertyGroupDesc &script = component->properties;
-			script.name = binScript.name;
 			script.properties = pool.properties + pool.propertyCount;
 			script.propertyCount = propertyCount;
 

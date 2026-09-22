@@ -244,49 +244,46 @@ static void WritePropertyGroupDesc(WriteContext &ctx, const ReflexStruct &type, 
 	}
 }
 
-static void WriteScriptComponentDesc(WriteContext &ctx, const ScriptComponentDesc &script)
+static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &desc)
 {
-	WriteLine(ctx, ".script = {");
-	PushIndent(ctx);
-
-	WriteLine(ctx, ".name = \"%s\",", script.name);
-
-	const ReflexStruct *type = ReflexGetStructFromName(script.name);
-	if ( script.propertyCount > 0 && !type ) {
-		LOG(Warning, "Script <%s> is not reflected, its properties are not saved.\n", script.name);
-	}
-
-	if ( script.propertyCount > 0 && type )
+	if ( desc.type == ComponentType_Script )
 	{
-		WriteLine(ctx, ".properties = {");
+		WriteLine(ctx, ".script = {");
 		PushIndent(ctx);
-		WritePropertyGroupDesc(ctx, *type, script);
+
+		WriteLine(ctx, ".name = \"%s\",", desc.scriptName);
+
+		const ReflexStruct *type = ReflexGetStructFromName(desc.scriptName);
+		if ( desc.properties.propertyCount > 0 && !type ) {
+			LOG(Warning, "Script <%s> is not reflected, its properties are not saved.\n", desc.scriptName);
+		}
+
+		if ( desc.properties.propertyCount > 0 && type )
+		{
+			WriteLine(ctx, ".properties = {");
+			PushIndent(ctx);
+			WritePropertyGroupDesc(ctx, *type, desc.properties);
+			PopIndent(ctx);
+			WriteLine(ctx, "},");
+		}
+
 		PopIndent(ctx);
 		WriteLine(ctx, "},");
 	}
+	else
+	{
+		const ReflexStruct *type = ComponentReflexStruct(desc.type);
+		if ( !type ) {
+			LOG(Warning, "Component <%s> has no reflected descriptor, it is not saved.\n", ComponentNames[desc.type]);
+			return;
+		}
 
-	PopIndent(ctx);
-	WriteLine(ctx, "},");
-}
-
-static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &component)
-{
-	if ( component.type == ComponentType_Script ) {
-		WriteScriptComponentDesc(ctx, component.properties);
-		return;
+		WriteLine(ctx, ".%s = {", ComponentFieldNames[desc.type]);
+		PushIndent(ctx);
+		WritePropertyGroupDesc(ctx, *type, desc.properties);
+		PopIndent(ctx);
+		WriteLine(ctx, "},");
 	}
-
-	const ReflexStruct *type = ComponentReflexStruct(component.type);
-	if ( !type ) {
-		LOG(Warning, "Component <%s> has no reflected descriptor, it is not saved.\n", ComponentNames[component.type]);
-		return;
-	}
-
-	WriteLine(ctx, ".%s = {", ComponentFieldNames[component.type]);
-	PushIndent(ctx);
-	WritePropertyGroupDesc(ctx, *type, component.properties);
-	PopIndent(ctx);
-	WriteLine(ctx, "},");
 }
 
 static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc, u32 entityIndex,
@@ -1109,7 +1106,7 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script, ComponentDescPool &pool);
+static void DParser_ConsumeScriptProperties( DParser &parser, ComponentDesc &script, ComponentDescPool &pool);
 
 static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member, void *field )
 {
@@ -1118,8 +1115,7 @@ static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member
 	}
 }
 
-// Parses "{ .prop = value, ... }" into freshly pooled properties, matched against `type`'s
-// members by name. Leaves `.name` untouched, since only the caller knows if it applies.
+// Parses "{ .prop = value, ... }" into freshly pooled properties, matched against `type`'s members by name.
 static PropertyGroupDesc DParser_ConsumePropertyGroupDesc( DParser &parser, const ReflexStruct &type, ComponentDescPool &pool )
 {
 	PropertyGroupDesc desc = {};
@@ -1182,7 +1178,7 @@ static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &poo
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
-	ScriptComponentDesc scriptDesc = {};
+	ComponentDesc scriptComponentDesc = {};
 
 	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 	{
@@ -1196,9 +1192,9 @@ static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &poo
 		static const String sProperties = MakeString("properties");
 
 		if ( StrEq( field, sName ) ) {
-			scriptDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
+			scriptComponentDesc.scriptName = PushString(*parser.arena, DParser_ConsumeString(parser));
 		} else if ( StrEq( field, sProperties ) ) {
-			DParser_ConsumeScriptProperties(parser, scriptDesc, pool);
+			DParser_ConsumeScriptProperties(parser, scriptComponentDesc, pool);
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
@@ -1208,13 +1204,14 @@ static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &poo
 
 	// The name is what AddScript resolves the component from, so a block without one
 	// leaves the entity scriptless rather than handing it a null to look up
-	if ( !scriptDesc.name ) {
+	if ( !scriptComponentDesc.scriptName ) {
 		LOG(Warning, "An entity has a script without a name, it is ignored.\n");
 		return;
 	}
 
 	if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
-		component->properties = scriptDesc;
+		component->scriptName = scriptComponentDesc.scriptName;
+		component->properties = scriptComponentDesc.properties;
 	}
 }
 
@@ -1361,18 +1358,16 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 
 // Parsing runs before RegisterScripts, so the script's layout comes from reflex by name. That
 // name is the reason .name has to come before .properties in the script block.
-static void DParser_ConsumeScriptProperties( DParser &parser, ScriptComponentDesc &script, ComponentDescPool &pool)
+static void DParser_ConsumeScriptProperties( DParser &parser, ComponentDesc &scriptComponentDesc, ComponentDescPool &pool)
 {
-	const ReflexStruct *type = script.name ? ReflexGetStructFromName(script.name) : nullptr;
+	const ReflexStruct *type = scriptComponentDesc.scriptName ? ReflexGetStructFromName(scriptComponentDesc.scriptName) : nullptr;
 	if ( !type ) {
-		LOG(Warning, "Script <%s> is not reflected, its properties are skipped.\n", script.name ? script.name : "");
+		LOG(Warning, "Script <%s> is not reflected, its properties are skipped.\n", scriptComponentDesc.scriptName ? scriptComponentDesc.scriptName : "");
 		DParser_SkipFieldValue(parser);
 		return;
 	}
 
-	const PropertyGroupDesc properties = DParser_ConsumePropertyGroupDesc(parser, *type, pool);
-	script.properties = properties.properties;
-	script.propertyCount = properties.propertyCount;
+	scriptComponentDesc.properties = DParser_ConsumePropertyGroupDesc(parser, *type, pool);
 }
 
 static void DParser_ConsumeUntil( DParser &parser, DTokenId tokenId )
@@ -1905,16 +1900,16 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 
 			case ComponentType_Script:
 			{
-				const ScriptComponentDesc &script = component.properties;
+				const PropertyGroupDesc &properties = component.properties;
 
 				d.components |= Component_Script;
 
 				BinScriptDesc &bs = d.script;
-				bs.name = DataInternString(stringPool, script.name);
-				bs.propertyCount = Min(script.propertyCount, (u32)ARRAY_COUNT(bs.properties));
+				bs.name = DataInternString(stringPool, component.scriptName);
+				bs.propertyCount = Min(properties.propertyCount, (u32)ARRAY_COUNT(bs.properties));
 				for (u32 p = 0; p < bs.propertyCount; ++p)
 				{
-					const PropertyDesc &property = script.properties[p];
+					const PropertyDesc &property = properties.properties[p];
 
 					BinScriptPropertyDesc &pd = bs.properties[p];
 					pd.name  = DataInternString(stringPool, property.name);

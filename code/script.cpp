@@ -204,20 +204,6 @@ void SetScript(Engine &engine, ScriptComponent &component, const char *scriptNam
 	}
 }
 
-ScriptComponentDesc MakeDesc(const ScriptComponent &comp, ComponentDescPool &pool)
-{
-	const ReflexStruct &type = *scriptRegistry.scripts[comp.structIndex].type;
-	ScriptComponentDesc desc = MakePropertyGroupDesc(type, comp.data, pool);
-	desc.name = comp.name;
-	return desc;
-}
-
-void ApplyDesc(ScriptComponent &comp, const ScriptComponentDesc &desc)
-{
-	const ReflexStruct &type = *scriptRegistry.scripts[comp.structIndex].type;
-	ApplyPropertyGroupDesc(type, comp.data, desc);
-}
-
 void RemoveScript(Engine &engine, ID entityId)
 {
 	Scene &scene = engine.scene;
