@@ -1,3 +1,83 @@
+////////////////////////////////////////////////////////////////////////
+// Numeric field access
+
+// A machine type reaches REFLEX_OPS under every name C spells it with, so these
+// work off the field's width and spare the ops one implementation per spelling
+
+static i64 ReadSignedField(const void *field, u32 size)
+{
+	switch ( size )
+	{
+		case 1: return *(const i8*)field;
+		case 2: return *(const i16*)field;
+		case 4: return *(const i32*)field;
+		case 8: return *(const i64*)field;
+		default:;
+	}
+	INVALID_CODE_PATH();
+	return 0;
+}
+
+static u64 ReadUnsignedField(const void *field, u32 size)
+{
+	switch ( size )
+	{
+		case 1: return *(const u8*)field;
+		case 2: return *(const u16*)field;
+		case 4: return *(const u32*)field;
+		case 8: return *(const u64*)field;
+		default:;
+	}
+	INVALID_CODE_PATH();
+	return 0;
+}
+
+static f64 ReadFloatField(const void *field, u32 size)
+{
+	switch ( size )
+	{
+		case 4: return *(const f32*)field;
+		case 8: return *(const f64*)field;
+		default:;
+	}
+	INVALID_CODE_PATH();
+	return 0.0;
+}
+
+static void WriteSignedField(void *field, u32 size, i64 value)
+{
+	switch ( size )
+	{
+		case 1: *(i8*)field = (i8)( value < I8_MIN ? I8_MIN : ( value > I8_MAX ? I8_MAX : value ) ); break;
+		case 2: *(i16*)field = (i16)( value < I16_MIN ? I16_MIN : ( value > I16_MAX ? I16_MAX : value ) ); break;
+		case 4: *(i32*)field = (i32)( value < I32_MIN ? I32_MIN : ( value > I32_MAX ? I32_MAX : value ) ); break;
+		case 8: *(i64*)field = value; break;
+		default: INVALID_CODE_PATH();
+	}
+}
+
+static void WriteUnsignedField(void *field, u32 size, u64 value)
+{
+	switch ( size )
+	{
+		case 1: *(u8*)field = (u8)( value > U8_MAX ? U8_MAX : value ); break;
+		case 2: *(u16*)field = (u16)( value > U16_MAX ? U16_MAX : value ); break;
+		case 4: *(u32*)field = (u32)( value > U32_MAX ? U32_MAX : value ); break;
+		case 8: *(u64*)field = value; break;
+		default: INVALID_CODE_PATH();
+	}
+}
+
+static void WriteFloatField(void *field, u32 size, f64 value)
+{
+	switch ( size )
+	{
+		case 4: *(f32*)field = (f32)value; break;
+		case 8: *(f64*)field = value; break;
+		default: INVALID_CODE_PATH();
+	}
+}
+
 #if USE_EDITOR
 
 static const char *EditorObjectName(ID id)
@@ -24,38 +104,75 @@ static const char *EditorObjectName(ID id)
 	return "<unknown>";
 }
 
-static bool EditProperty_u32(const ReflexMember &member, void *field)
-{
-	UI &ui = GetEngine().ui;
-	return UI_InputUInt(ui, member.name, (u32*)field);
-}
-
 static bool HasFlag(const ReflexMember &member, ReflexMetaFlags flag)
 {
 	return (member.meta.flags & flag) != 0;
 }
 
-static bool EditProperty_u8(const ReflexMember &member, void *field)
+static bool EditProperty_Bool(const ReflexMember &member, void *field)
 {
 	UI &ui = GetEngine().ui;
+	return UI_Checkbox(ui, member.name, (bool*)field);
+}
 
-	if ( HasFlag(member, ReflexMetaFlag_Bool) ) {
-		bool value = *(u8*)field != 0;
-		const bool changed = UI_Checkbox(ui, member.name, &value);
-		*(u8*)field = value ? 1 : 0;
-		return changed;
+static bool EditProperty_Int(const ReflexMember &member, void *field)
+{
+	UI &ui = GetEngine().ui;
+	const u32 size = ReflexGetTypeSize(member.reflexId);
+
+	i64 value = ReadSignedField(field, size);
+	const bool changed = UI_InputI64(ui, member.name, &value);
+	if ( changed ) {
+		WriteSignedField(field, size, value);
 	}
-
-	u32 value = *(u8*)field;
-	const bool changed = UI_InputUInt(ui, member.name, &value);
-	*(u8*)field = (u8)Min(value, 255u);
 	return changed;
 }
 
-static bool EditProperty_f32(const ReflexMember &member, void *field)
+static bool EditProperty_UInt(const ReflexMember &member, void *field)
 {
 	UI &ui = GetEngine().ui;
-	return UI_InputFloat(ui, member.name, (f32*)field);
+	const u32 size = ReflexGetTypeSize(member.reflexId);
+
+	if ( HasFlag(member, ReflexMetaFlag_Bool) ) {
+		bool value = ReadUnsignedField(field, size) != 0;
+		const bool changed = UI_Checkbox(ui, member.name, &value);
+		WriteUnsignedField(field, size, value ? 1 : 0);
+		return changed;
+	}
+
+	// UI_InputI64 has no way to carry a value past I64_MAX, so one that big shows up
+	// wrapped and is written back only once the field is really edited
+	i64 value = (i64)ReadUnsignedField(field, size);
+	const bool changed = UI_InputI64(ui, member.name, &value);
+	if ( changed ) {
+		WriteUnsignedField(field, size, value < 0 ? 0 : (u64)value);
+	}
+	return changed;
+}
+
+static bool EditProperty_Float(const ReflexMember &member, void *field)
+{
+	UI &ui = GetEngine().ui;
+	const u32 size = ReflexGetTypeSize(member.reflexId);
+
+	f32 value = (f32)ReadFloatField(field, size);
+	const bool changed = UI_InputFloat(ui, member.name, &value);
+	if ( changed ) {
+		WriteFloatField(field, size, value);
+	}
+	return changed;
+}
+
+static bool EditProperty_int2(const ReflexMember &member, void *field)
+{
+	UI &ui = GetEngine().ui;
+	return UI_InputInt2(ui, member.name, (int2*)field);
+}
+
+static bool EditProperty_uint2(const ReflexMember &member, void *field)
+{
+	UI &ui = GetEngine().ui;
+	return UI_InputUInt2(ui, member.name, (uint2*)field);
 }
 
 static bool EditProperty_float3(const ReflexMember &member, void *field)
@@ -135,38 +252,82 @@ static bool EditProperty_Enum(const ReflexMember &member, void *field)
 
 #if USE_DATA_BUILD
 
-static void WriteProperty_u32(WriteContext &ctx, const ReflexMember &member, const void *field)
+static void WriteProperty_Bool(WriteContext &ctx, const ReflexMember &member, const void *field)
 {
-	WriteText(ctx, "%u", *(const u32*)field);
+	WriteText(ctx, "%u", *(const bool*)field ? 1u : 0u);
 }
 
-static bool ParseProperty_u32(DParser &parser, const ReflexMember &member, void *field)
-{
-	*(u32*)field = DParser_ConsumeU32(parser);
-	return true;
-}
-
-static void WriteProperty_u8(WriteContext &ctx, const ReflexMember &member, const void *field)
-{
-	WriteText(ctx, "%u", (u32)*(const u8*)field);
-}
-
-static bool ParseProperty_u8(DParser &parser, const ReflexMember &member, void *field)
-{
-	*(u8*)field = DParser_ConsumeU8(parser);
-	return true;
-}
-
-static void WriteProperty_f32(WriteContext &ctx, const ReflexMember &member, const void *field)
-{
-	WriteText(ctx, "%f", *(const f32*)field);
-}
-
-static bool ParseProperty_f32(DParser &parser, const ReflexMember &member, void *field)
+// The lexer holds no sign, so a negative value arrives as a minus token of its own
+static bool ParseProperty_Bool(DParser &parser, const ReflexMember &member, void *field)
 {
 	const bool negative = DParser_TryConsume(parser, TOKEN_MINUS);
-	const f32 value = DParser_ConsumeF32(parser);
-	*(f32*)field = negative ? -value : value;
+	const i64 value = StrToI64(DParser_ConsumeLexeme(parser));
+	*(bool*)field = !negative && value != 0;
+	return true;
+}
+
+static void WriteProperty_Int(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	WriteText(ctx, "%lld", ReadSignedField(field, ReflexGetTypeSize(member.reflexId)));
+}
+
+static bool ParseProperty_Int(DParser &parser, const ReflexMember &member, void *field)
+{
+	const bool negative = DParser_TryConsume(parser, TOKEN_MINUS);
+	const i64 value = StrToI64(DParser_ConsumeLexeme(parser));
+	WriteSignedField(field, ReflexGetTypeSize(member.reflexId), negative ? -value : value);
+	return true;
+}
+
+static void WriteProperty_UInt(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	WriteText(ctx, "%llu", ReadUnsignedField(field, ReflexGetTypeSize(member.reflexId)));
+}
+
+// An unsigned field has no negative to hold, so it takes the minus and reads zero
+static bool ParseProperty_UInt(DParser &parser, const ReflexMember &member, void *field)
+{
+	const bool negative = DParser_TryConsume(parser, TOKEN_MINUS);
+	const i64 value = StrToI64(DParser_ConsumeLexeme(parser));
+	WriteUnsignedField(field, ReflexGetTypeSize(member.reflexId), negative || value < 0 ? 0 : (u64)value);
+	return true;
+}
+
+static void WriteProperty_Float(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	WriteText(ctx, "%f", ReadFloatField(field, ReflexGetTypeSize(member.reflexId)));
+}
+
+// StrToFloat is the only float parser there is, so a double round trips through f32 precision
+static bool ParseProperty_Float(DParser &parser, const ReflexMember &member, void *field)
+{
+	const bool negative = DParser_TryConsume(parser, TOKEN_MINUS);
+	const f32 value = StrToFloat(DParser_ConsumeLexeme(parser));
+	WriteFloatField(field, ReflexGetTypeSize(member.reflexId), negative ? -value : value);
+	return true;
+}
+
+static void WriteProperty_int2(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	const int2 &value = *(const int2*)field;
+	WriteText(ctx, "{%d, %d}", value.x, value.y);
+}
+
+static bool ParseProperty_int2(DParser &parser, const ReflexMember &member, void *field)
+{
+	*(int2*)field = DParser_ConsumeInt2(parser);
+	return true;
+}
+
+static void WriteProperty_uint2(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	const uint2 &value = *(const uint2*)field;
+	WriteText(ctx, "{%u, %u}", value.x, value.y);
+}
+
+static bool ParseProperty_uint2(DParser &parser, const ReflexMember &member, void *field)
+{
+	*(uint2*)field = DParser_ConsumeUint2(parser);
 	return true;
 }
 
@@ -229,16 +390,42 @@ static bool ParseProperty_Enum(DParser &parser, const ReflexMember &member, void
 #define PROPERTY_SERIALIZATION(Type)
 #endif // USE_DATA_BUILD
 
-#define PROPERTY_OPS(Type) static const ReflexOps PropertyOps_##Type = { PROPERTY_EDIT(Type) PROPERTY_SERIALIZATION(Type) };
+#define PROPERTY_OPS_AS(Name, Type) static const ReflexOps PropertyOps_##Name = { PROPERTY_EDIT(Type) PROPERTY_SERIALIZATION(Type) };
+#define PROPERTY_OPS(Type) PROPERTY_OPS_AS(Type, Type)
 
+PROPERTY_OPS(Bool)
+PROPERTY_OPS(Int)
+PROPERTY_OPS(UInt)
+PROPERTY_OPS(Float)
 PROPERTY_OPS(ID)
-PROPERTY_OPS(u32)
-PROPERTY_OPS(u8)
-PROPERTY_OPS(f32)
+PROPERTY_OPS(int2)
+PROPERTY_OPS(uint2)
 PROPERTY_OPS(float3)
 PROPERTY_OPS(Enum)
 
+// Aliases
+PROPERTY_OPS_AS(Char, Int)
+PROPERTY_OPS_AS(ShortInt, Int)
+PROPERTY_OPS_AS(LongInt, Int)
+PROPERTY_OPS_AS(LongLongInt, Int)
+PROPERTY_OPS_AS(i8, Int)
+PROPERTY_OPS_AS(i16, Int)
+PROPERTY_OPS_AS(i32, Int)
+PROPERTY_OPS_AS(i64, Int)
+PROPERTY_OPS_AS(UnsignedChar, UInt)
+PROPERTY_OPS_AS(UnsignedShortInt, UInt)
+PROPERTY_OPS_AS(UnsignedInt, UInt)
+PROPERTY_OPS_AS(UnsignedLongInt, UInt)
+PROPERTY_OPS_AS(UnsignedLongLongInt, UInt)
+PROPERTY_OPS_AS(u8, UInt)
+PROPERTY_OPS_AS(u16, UInt)
+PROPERTY_OPS_AS(u32, UInt)
+PROPERTY_OPS_AS(u64, UInt)
+PROPERTY_OPS_AS(Double, Float)
+PROPERTY_OPS_AS(f32, Float)
+PROPERTY_OPS_AS(f64, Float)
+
 #undef PROPERTY_OPS
+#undef PROPERTY_OPS_AS
 #undef PROPERTY_SERIALIZATION
 #undef PROPERTY_EDIT
-
