@@ -777,23 +777,23 @@ void EntitySetPosition(Entity &entity, float3 position)
 	entity.position = position;
 }
 
-ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentType type)
+ComponentDesc *PushComponentDesc(ComponentDescArray &components, ComponentType type)
 {
-	if ( pool.componentCount == pool.componentCapacity ) {
-		LOG(Warning, "Could not push a <%s> component descriptor, the pool is full.\n", ComponentNames[type]);
+	ComponentDesc *desc = PushArrayElement(components);
+	if ( !desc ) {
+		LOG(Warning, "Could not push a <%s> component descriptor, the array is full.\n", ComponentNames[type]);
 		return nullptr;
 	}
 
-	ComponentDesc &desc = pool.components[pool.componentCount++];
-	desc = {};
-	desc.entityIndex = entityIndex;
-	desc.type = type;
-	return &desc;
+	desc->type = type;
+	return desc;
 }
 
-void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &componentPool, PropertyDescPool &propertyPool)
+ComponentDescArray GatherEntityComponentDescs(Engine &engine, ID entityId, ComponentDescPool &componentPool, PropertyDescPool &propertyPool)
 {
 	Scene &scene = engine.scene;
+
+	ComponentDescArray components = AllocEmptyArray(componentPool, ComponentType_Count);
 
 	for (u32 type = 0; type < ComponentType_Count; ++type)
 	{
@@ -806,7 +806,7 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 				const ScriptComponent &scriptComponent = GetScript(scene, entityId);
 				if ( scriptComponent.name )
 				{
-					if ( ComponentDesc *desc = PushComponentDesc(componentPool, entityIndex, ComponentType_Script) ) {
+					if ( ComponentDesc *desc = PushComponentDesc(components, ComponentType_Script) ) {
 						desc->scriptName = scriptComponent.name;
 						if ( scriptComponent.structIndex != NULL_SCRIPT )
 						{
@@ -816,7 +816,7 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 					}
 				}
 			}
-			else if ( ComponentDesc *desc = PushComponentDesc(componentPool, entityIndex, (ComponentType)type) )
+			else if ( ComponentDesc *desc = PushComponentDesc(components, (ComponentType)type) )
 			{
 				void *componentData = GetComponentSlot(scene, entityId, (ComponentType)type);
 				const ReflexStruct *reflexStruct = ComponentReflexStruct((ComponentType)type);
@@ -824,6 +824,8 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 			}
 		}
 	}
+
+	return components;
 }
 
 void AddComponent(Engine &engine, ID entityId, ComponentType type)
@@ -999,21 +1001,29 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	EntitySetPosition(*entity, desc.pos);
 	entity->scale = desc.scale;
 
-	return entity->id;
+	const ID entityId = entity->id;
+	for (u32 i = 0; i < desc.components.count; ++i) {
+		AddComponent(engine, entityId, desc.components[i]);
+	}
+
+	return entityId;
 }
 
-static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, ComponentDescPool &componentPool, PropertyDescPool &propertyPool)
+static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, ComponentDescPool &componentPool, PropertyDescPool &propertyPool)
 {
 	EntityDesc entityDesc = {
 		.id = desc.id,
 		.name = desc.name,
 		.pos = desc.pos,
 		.scale = desc.scale,
+		.components = AllocEmptyArray(componentPool, ComponentType_Count),
 	};
+
+	ComponentDescArray &components = entityDesc.components;
 
 	if ( desc.components & Component_Model )
 	{
-		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Model) ) {
+		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Model) ) {
 			const ModelComponent model = { .materialId = desc.materialId, .geometryType = desc.geometryType };
 			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Model), &model, propertyPool);
 		}
@@ -1021,7 +1031,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 
 	if ( desc.components & Component_Sprite )
 	{
-		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Sprite) ) {
+		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Sprite) ) {
 			const SpriteComponent sprite = { .spriteId = desc.spriteId, .layerId = desc.layerId };
 			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Sprite), &sprite, propertyPool);
 		}
@@ -1029,7 +1039,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 
 	if ( desc.components & Component_Light )
 	{
-		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Light) ) {
+		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Light) ) {
 			const LightComponent light = {
 				.type = desc.lightType,
 				.color = desc.lightColor,
@@ -1042,7 +1052,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 
 	if ( desc.components & Component_Particles )
 	{
-		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Particles) ) {
+		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Particles) ) {
 			const ParticlesComponent particles = { .effectId = desc.particlesEffectId, .playOnStart = desc.particlesPlayOnStart };
 			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Particles), &particles, propertyPool);
 		}
@@ -1053,18 +1063,18 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 		const BinScriptDesc &binScript = desc.script;
 		const u32 propertyCount = Min(binScript.propertyCount, (u32)ARRAY_COUNT(binScript.properties));
 
-		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Script) )
+		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Script) )
 		{
 			component->scriptName = binScript.name;
 
-			PropertyDescArray &script = component->properties;
-			script = AllocArray(propertyPool, propertyCount);
+			PropertyDescArray &properties = component->properties;
+			properties = AllocArray(propertyPool, propertyCount);
 
 			for (u32 p = 0; p < propertyCount; ++p)
 			{
 				const BinScriptPropertyDesc &binProperty = binScript.properties[p];
 
-				PropertyDesc &property = script.array[p];
+				PropertyDesc &property = properties[p];
 				property.name = binProperty.name;
 				property.type = binProperty.type;
 				MemCopy(property.value, binProperty.value, sizeof(property.value));
@@ -1077,22 +1087,12 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 {
-	ComponentDesc components[ComponentType_Count] = {};
-	ComponentDescPool pool = {
-		.components = components,
-		.componentCapacity = ARRAY_COUNT(components),
-	};
-
 	Scratch scratch;
+	ComponentDescPool componentPool = { .arena = &scratch.arena };
 	PropertyDescPool propertyPool = { .arena = &scratch.arena };
 
-	const EntityDesc entityDesc = EntityDescFromBin(desc, 0, pool, propertyPool);
-
-	const ID entityId = CreateEntity(engine, entityDesc);
-	for (u32 i = 0; i < pool.componentCount; ++i) {
-		AddComponent(engine, entityId, pool.components[i]);
-	}
-	return entityId;
+	const EntityDesc entityDesc = EntityDescFromBin(desc, componentPool, propertyPool);
+	return CreateEntity(engine, entityDesc);
 }
 
 void RemoveEntity(Engine &engine, ID id)
@@ -1110,25 +1110,16 @@ void RemoveEntity(Engine &engine, ID id)
 
 ID DuplicateEntity(Engine &engine, ID entityId)
 {
-	ComponentDesc components[ComponentType_Count] = {};
-	ComponentDescPool pool = {
-		.components = components,
-		.componentCapacity = ARRAY_COUNT(components),
-	};
-
 	Scratch scratch;
+	ComponentDescPool componentPool = { .arena = &scratch.arena };
 	PropertyDescPool propertyPool = { .arena = &scratch.arena };
 
 	EntityDesc desc = GetEntityDesc(engine, entityId);
-	GatherEntityComponentDescs(engine, entityId, 0, pool, propertyPool);
+	desc.components = GatherEntityComponentDescs(engine, entityId, componentPool, propertyPool);
 
 	desc.id = {}; // The copy is a new entity, so let the pool hand it its own ID
 
-	const ID copyId = CreateEntity(engine, desc);
-	for (u32 i = 0; i < pool.componentCount; ++i) {
-		AddComponent(engine, copyId, pool.components[i]);
-	}
-	return copyId;
+	return CreateEntity(engine, desc);
 }
 
 
@@ -1180,9 +1171,9 @@ static Prefab *PushPrefab(Scene &scene, ID id)
 
 ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 {
-	if ( desc.entityCount > MAX_PREFAB_ENTITIES )
+	if ( desc.entities.count > MAX_PREFAB_ENTITIES )
 	{
-		LOG(Warning, "Could not create prefab <%s>, it has %u entities, more than the %u max.\n", desc.name, desc.entityCount, MAX_PREFAB_ENTITIES);
+		LOG(Warning, "Could not create prefab <%s>, it has %u entities, more than the %u max.\n", desc.name, desc.entities.count, MAX_PREFAB_ENTITIES);
 		return {};
 	}
 
@@ -1193,28 +1184,30 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 
 	Prefab &prefab = *prefabPtr;
 	prefab.name = InternString(desc.name);
-	prefab.entityCount = desc.entityCount;
-	for (u32 i = 0; i < desc.entityCount; ++i) {
-		prefab.entities[i] = desc.entities[i];
-	}
+	prefab.entities = AllocArray(engine.entityDescPool, desc.entities.count);
 
-	prefab.componentCount = Min(desc.componentCount, (u32)ARRAY_COUNT(prefab.components));
-	if ( desc.componentCount > prefab.componentCount )
+	for (u32 e = 0; e < prefab.entities.count; ++e)
 	{
-		LOG(Warning, "Prefab <%s> has %u components, only the first %u are kept.\n", desc.name, desc.componentCount, prefab.componentCount);
-	}
+		EntityDesc &entity = prefab.entities[e];
+		entity = desc.entities[e];
 
-	for (u32 i = 0; i < prefab.componentCount; ++i)
-	{
-		ComponentDesc &component = prefab.components[i];
-		component = desc.components[i];
+		ComponentDescArray &components = entity.components;
+		const ComponentDesc *sourceComponents = components.array;
 
-		PropertyDescArray &properties = component.properties;
-		const PropertyDesc *source = properties.array;
+		components = AllocArray(engine.componentDescPool, components.count);
 
-		properties = AllocArray(engine.propertyPool, properties.count);
-		if ( properties.array ) {
-			MemCopy(properties.array, source, properties.count * sizeof(PropertyDesc));
+		for (u32 i = 0; i < components.count; ++i)
+		{
+			ComponentDesc &component = components[i];
+			component = sourceComponents[i];
+
+			PropertyDescArray &properties = component.properties;
+			const PropertyDesc *source = properties.array;
+
+			properties = AllocArray(engine.propertyPool, properties.count);
+			if ( properties.array ) {
+				MemCopy(properties.array, source, properties.count * sizeof(PropertyDesc));
+			}
 		}
 	}
 
@@ -1224,27 +1217,20 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 
 ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
 {
-	ComponentDesc components[MAX_PREFAB_COMPONENTS] = {};
-	ComponentDescPool pool = {
-		.components = components,
-		.componentCapacity = ARRAY_COUNT(components),
-	};
-
 	Scratch scratch;
+	EntityDescPool entityPool = { .arena = &scratch.arena };
+	ComponentDescPool componentPool = { .arena = &scratch.arena };
 	PropertyDescPool propertyPool = { .arena = &scratch.arena };
 
 	PrefabDesc prefabDesc = {};
 	prefabDesc.id = desc.id;
 	prefabDesc.name = desc.name;
-	prefabDesc.entityCount = Min(desc.entityCount, (u32)ARRAY_COUNT(prefabDesc.entities));
+	prefabDesc.entities = AllocArray(entityPool, Min(desc.entityCount, (u32)ARRAY_COUNT(desc.entities)));
 
-	for (u32 i = 0; i < prefabDesc.entityCount; ++i)
+	for (u32 i = 0; i < prefabDesc.entities.count; ++i)
 	{
-		prefabDesc.entities[i] = EntityDescFromBin(desc.entities[i], i, pool, propertyPool);
+		prefabDesc.entities[i] = EntityDescFromBin(desc.entities[i], componentPool, propertyPool);
 	}
-
-	prefabDesc.components = pool.components;
-	prefabDesc.componentCount = pool.componentCount;
 
 	return CreatePrefab(engine, prefabDesc);
 }
@@ -1259,20 +1245,26 @@ void RemovePrefab(Scene &scene, ID id)
 	}
 }
 
-static COMPACT_REMOVE(RemovePrefabProperties)
+static COMPACT_REMOVE(RemovePrefabDescs)
 {
 	Engine &engine = GetEngine();
 	Prefab &prefab = engine.scene.prefabs[index];
 
-	for (u32 i = 0; i < prefab.componentCount; ++i)
+	for (u32 e = 0; e < prefab.entities.count; ++e)
 	{
-		FreeArray(engine.propertyPool, prefab.components[i].properties);
+		const ComponentDescArray &components = prefab.entities[e].components;
+		for (u32 i = 0; i < components.count; ++i)
+		{
+			FreeArray(engine.propertyPool, components[i].properties);
+		}
+		FreeArray(engine.componentDescPool, components);
 	}
+	FreeArray(engine.entityDescPool, prefab.entities);
 }
 
 void CompactPrefabs(Scene &scene)
 {
-	COMPACT_ARRAY_BY_ID(Prefab, scene.prefabs, scene.prefabCount, id, nullptr, RemovePrefabProperties, nullptr);
+	COMPACT_ARRAY_BY_ID(Prefab, scene.prefabs, scene.prefabCount, id, nullptr, RemovePrefabDescs, nullptr);
 }
 
 // Spawns every entity in the prefab, offset by atPosition, as freshly created entities
@@ -1282,25 +1274,16 @@ ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition)
 {
 	const Prefab &prefab = GetPrefab(prefabId);
 
-	ID entityIds[MAX_PREFAB_ENTITIES] = {};
 	ID firstEntityId = {};
-	for (u32 i = 0; i < prefab.entityCount; ++i)
+	for (u32 i = 0; i < prefab.entities.count; ++i)
 	{
 		EntityDesc entityDesc = prefab.entities[i];
 		entityDesc.id = {}; // Each instance is a new entity, not the template's own
 		entityDesc.pos = entityDesc.pos + atPosition;
 
-		entityIds[i] = CreateEntity(engine, entityDesc);
+		const ID entityId = CreateEntity(engine, entityDesc);
 		if (i == 0) {
-			firstEntityId = entityIds[i];
-		}
-	}
-
-	for (u32 i = 0; i < prefab.componentCount; ++i)
-	{
-		const ComponentDesc &component = prefab.components[i];
-		if ( component.entityIndex < prefab.entityCount && entityIds[component.entityIndex] ) {
-			AddComponent(engine, entityIds[component.entityIndex], component);
+			firstEntityId = entityId;
 		}
 	}
 

@@ -105,12 +105,12 @@ inline PropertyDescArray MakePropertyDescArray(const ReflexStruct &type, const v
 		members[memberCount++] = &member;
 	}
 
-	PropertyDescArray desc = AllocArray(pool, memberCount);
+	PropertyDescArray properties = AllocArray(pool, memberCount);
 	for (u32 i = 0; i < memberCount; ++i)
 	{
 		const ReflexMember &member = *members[i];
 		const u32 size = ReflexGetTypeSize(member.reflexId);
-		PropertyDesc &property = desc.array[i];
+		PropertyDesc &property = properties[i];
 		property = {
 			.name = member.name,
 			.type = member.reflexId,
@@ -118,14 +118,14 @@ inline PropertyDescArray MakePropertyDescArray(const ReflexStruct &type, const v
 		MemCopy(property.value, (const byte*)base + member.offset, size);
 	}
 
-	return desc;
+	return properties;
 }
 
-inline void ApplyPropertyDescArray(const ReflexStruct &type, void *base, const PropertyDescArray &desc)
+inline void ApplyPropertyDescArray(const ReflexStruct &type, void *base, const PropertyDescArray &properties)
 {
-	for (u32 i = 0; i < desc.count; ++i)
+	for (u32 i = 0; i < properties.count; ++i)
 	{
-		const PropertyDesc &property = desc.array[i];
+		const PropertyDesc &property = properties[i];
 		const ReflexMember *member = FindProperty(type, property.name);
 
 		if ( !member ) {
@@ -238,6 +238,7 @@ constexpr u32 SCRIPT_SIZE_CLASS_COUNT = 64;
 constexpr u32 MAX_POOLED_SCRIPT_DATA_SIZE = SCRIPT_SIZE_CLASS_COUNT * SCRIPT_DATA_ALIGN;
 constexpr u32 SCRIPT_DATA_MEMORY = MB(1);
 constexpr u32 PROPERTY_POOL_MEMORY = MB(1);
+constexpr u32 DESC_POOL_MEMORY = MB(1);
 
 enum ScriptHookType
 {
@@ -954,18 +955,15 @@ struct ScriptComponent
 
 struct ComponentDesc
 {
-	u32 entityIndex;
 	ComponentType type;
 	const char *scriptName; // Only for ScriptComponents
 	PropertyDescArray properties;
 };
 
-struct ComponentDescPool
-{
-	ComponentDesc *components;
-	u32 componentCount;
-	u32 componentCapacity;
-};
+#define ARRAY_POOL_NAME ComponentDescPool
+#define ARRAY_POOL_TYPE ComponentDesc
+#define ARRAY_POOL_SIZE_CLASS_COUNT ComponentType_Count
+#include "ilu_array_pool.h"
 
 ////////////////////////////////////////////////////////////////////////
 // Entities
@@ -977,7 +975,16 @@ struct EntityDesc
 	// Transform
 	float3 pos;
 	float scale;
+
+	ComponentDescArray components;
 };
+
+#define MAX_PREFAB_ENTITIES 16
+
+#define ARRAY_POOL_NAME EntityDescPool
+#define ARRAY_POOL_TYPE EntityDesc
+#define ARRAY_POOL_SIZE_CLASS_COUNT MAX_PREFAB_ENTITIES
+#include "ilu_array_pool.h"
 
 REFLEX()
 struct Entity
@@ -1147,31 +1154,16 @@ struct Room
 ////////////////////////////////////////////////////////////////////////
 // Prefabs
 
-#define MAX_PREFAB_ENTITIES 16
-#define MAX_PREFAB_COMPONENTS 32
-
-struct PrefabDesc
-{
-	ID id;
-	const char *name;
-	EntityDesc entities[MAX_PREFAB_ENTITIES];
-	u32 entityCount;
-	const ComponentDesc *components;
-	u32 componentCount;
-};
-
-// A named, instantiable template: a fixed set of EntityDescs spawned together and
-// offset by a world position. No hierarchy links between them yet, matching Entity's.
 REFLEX()
 struct Prefab
 {
 	ID id;
 	const char *name;
-	EntityDesc entities[MAX_PREFAB_ENTITIES];
-	u32 entityCount;
-	ComponentDesc components[MAX_PREFAB_COMPONENTS];
-	u32 componentCount;
+	EntityDescArray entities;
 };
+
+// Prefab themselves are descriptors
+typedef Prefab PrefabDesc;
 
 ////////////////////////////////////////////////////////////////////////
 // Scene state
@@ -1408,8 +1400,6 @@ struct AssetDescriptors
 	EntityDesc *entityDescs;
 	u32 entityDescCount;
 
-	ComponentDescPool componentPool;
-
 	PrefabDesc *prefabDescs;
 	u32 prefabDescCount;
 
@@ -1498,6 +1488,9 @@ struct Engine
 	ScriptDataPool scriptData;
 	Arena propertyArena;
 	PropertyDescPool propertyPool;
+	Arena descArena;
+	EntityDescPool entityDescPool;
+	ComponentDescPool componentDescPool;
 #if USE_UI
 	UI ui;
 #endif
@@ -1746,8 +1739,8 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc);
 void AddComponent(Engine &engine, ID entityId, ComponentType type);
 void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc);
 void RemoveComponent(Engine &engine, ID entityId, ComponentType type);
-void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &componentPool, PropertyDescPool &propertyPool);
-ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentType type);
+ComponentDescArray GatherEntityComponentDescs(Engine &engine, ID entityId, ComponentDescPool &componentPool, PropertyDescPool &propertyPool);
+ComponentDesc *PushComponentDesc(ComponentDescArray &components, ComponentType type);
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc);
 void RemoveEntity(Engine &engine, ID entityId);
 ID DuplicateEntity(Engine &engine, ID entityId);

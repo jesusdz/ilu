@@ -250,6 +250,9 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 		engine.scriptData.arena = PushSubArena(GlobalArena, SCRIPT_DATA_MEMORY, "Script component data");
 		engine.propertyArena = PushSubArena(GlobalArena, PROPERTY_POOL_MEMORY, "Property pool");
 		engine.propertyPool.arena = &engine.propertyArena;
+		engine.descArena = PushSubArena(GlobalArena, DESC_POOL_MEMORY, "Descriptor pools");
+		engine.entityDescPool.arena = &engine.descArena;
+		engine.componentDescPool.arena = &engine.descArena;
 
 #if USE_DATA_BUILD
 		bool buildAssets = false;

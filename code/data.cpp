@@ -229,12 +229,12 @@ static void WriteProperty(WriteContext &ctx, const ReflexMember &member, const v
 	NewLine(ctx);
 }
 
-// Writes every property in `desc`, matched against `type`'s members by name
-static void WritePropertyDescArray(WriteContext &ctx, const ReflexStruct &type, const PropertyDescArray &desc)
+// Writes every property in `properties`, matched against `type`'s members by name
+static void WritePropertyDescArray(WriteContext &ctx, const ReflexStruct &type, const PropertyDescArray &properties)
 {
-	for (u32 p = 0; p < desc.count; ++p)
+	for (u32 p = 0; p < properties.count; ++p)
 	{
-		const PropertyDesc &property = desc.array[p];
+		const PropertyDesc &property = properties[p];
 		const ReflexMember *member = FindProperty(type, property.name);
 		if ( member && member->reflexId == property.type ) {
 			WriteProperty(ctx, *member, property.value);
@@ -286,17 +286,14 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &desc)
 	}
 }
 
-static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc, u32 entityIndex,
-		const ComponentDesc *components, u32 componentCount)
+static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
 {
 	WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
 	WriteLine(ctx, ".scale = %f,", desc.scale);
 
-	for (u32 i = 0; i < componentCount; ++i)
+	for (u32 i = 0; i < desc.components.count; ++i)
 	{
-		if (components[i].entityIndex == entityIndex) {
-			WriteComponentDesc(ctx, components[i]);
-		}
+		WriteComponentDesc(ctx, desc.components[i]);
 	}
 }
 
@@ -399,7 +396,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 		PushIndent(ctx);
 		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		WriteEntityDescBody(ctx, desc, i, assets.componentPool.components, assets.componentPool.componentCount);
+		WriteEntityDescBody(ctx, desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -419,14 +416,14 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, ".entities = {");
 		PushIndent(ctx);
 
-		for (u32 e = 0; e < desc.entityCount; ++e)
+		for (u32 e = 0; e < desc.entities.count; ++e)
 		{
 			const EntityDesc &entity = desc.entities[e];
 
 			WriteLine(ctx, "{");
 			PushIndent(ctx);
 			WriteLine(ctx, ".name = \"%s\",", entity.name);
-			WriteEntityDescBody(ctx, entity, e, desc.components, desc.componentCount);
+			WriteEntityDescBody(ctx, entity);
 			PopIndent(ctx);
 			WriteLine(ctx, "},");
 		}
@@ -868,6 +865,8 @@ struct DParser
 	bool hasFinished;
 	AssetDescriptors *descriptors;
 	PropertyDescPool propertyPool;
+	ComponentDescPool componentPool;
+	EntityDescPool entityPool;
 };
 
 
@@ -878,6 +877,8 @@ static DParser DParser_Init(const DTokenList &tokenList, Arena &arena, AssetDesc
 		.arena = &arena,
 		.descriptors = &descriptors,
 		.propertyPool = { .arena = &arena },
+		.componentPool = { .arena = &arena },
+		.entityPool = { .arena = &arena },
 	};
 	return parser;
 }
@@ -1121,8 +1122,7 @@ static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member
 static PropertyDescArray DParser_ConsumePropertyDescArray( DParser &parser, const ReflexStruct &type )
 {
 	// Each member is stored at most once, so the members bound the properties before any is read
-	PropertyDescArray desc = AllocArray(parser.propertyPool, type.memberCount);
-	desc.count = 0;
+	PropertyDescArray properties = AllocEmptyArray(parser.propertyPool, type.memberCount);
 
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
@@ -1143,13 +1143,13 @@ static PropertyDescArray DParser_ConsumePropertyDescArray( DParser &parser, cons
 			DParser_SkipFieldValue(parser);
 		} else {
 			PropertyDesc *property = nullptr;
-			for (u32 i = 0; i < desc.count && !property; ++i) {
-				if ( StrEq(desc.array[i].name, member->name) ) {
-					property = &desc.array[i];
+			for (u32 i = 0; i < properties.count && !property; ++i) {
+				if ( StrEq(properties[i].name, member->name) ) {
+					property = &properties[i];
 				}
 			}
 			if ( !property ) {
-				property = &desc.array[desc.count++];
+				property = PushArrayElement(properties);
 				*property = {
 					.name = PushString(*parser.arena, member->name),
 					.type = member->reflexId,
@@ -1163,17 +1163,17 @@ static PropertyDescArray DParser_ConsumePropertyDescArray( DParser &parser, cons
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 
-	return desc;
+	return properties;
 }
 
-static void DParser_ConsumeEntityComponent( DParser &parser, ComponentDescPool &pool, u32 entityIndex, ComponentType componentType )
+static void DParser_ConsumeEntityComponent( DParser &parser, EntityDesc &entity, ComponentType componentType )
 {
 	const ReflexStruct *type = ComponentReflexStruct(componentType);
 	if ( !type ) {
 		LOG(Warning, "Component <%s> has no reflected descriptor, it is skipped.\n", ComponentNames[componentType]);
 	}
 
-	ComponentDesc *component = type ? PushComponentDesc(pool, entityIndex, componentType) : nullptr;
+	ComponentDesc *component = type ? PushComponentDesc(entity.components, componentType) : nullptr;
 	if ( component ) {
 		component->properties = DParser_ConsumePropertyDescArray(parser, *type);
 	} else {
@@ -1181,7 +1181,7 @@ static void DParser_ConsumeEntityComponent( DParser &parser, ComponentDescPool &
 	}
 }
 
-static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &pool, u32 entityIndex )
+static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
@@ -1216,13 +1216,13 @@ static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &poo
 		return;
 	}
 
-	if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
+	if ( ComponentDesc *component = PushComponentDesc(entity.components, ComponentType_Script) ) {
 		component->scriptName = scriptComponentDesc.scriptName;
 		component->properties = scriptComponentDesc.properties;
 	}
 }
 
-static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDesc &entity, ComponentDescPool &pool, u32 entityIndex )
+static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDesc &entity )
 {
 	static const String sId = MakeString("id");
 	static const String sName = MakeString("name");
@@ -1248,9 +1248,9 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 		if ( StrEq( field, ComponentFieldNames[type] ) )
 		{
 			if ( type == ComponentType_Script ) {
-				DParser_ConsumeEntityScript(parser, pool, entityIndex);
+				DParser_ConsumeEntityScript(parser, entity);
 			} else {
-				DParser_ConsumeEntityComponent(parser, pool, entityIndex, (ComponentType)type);
+				DParser_ConsumeEntityComponent(parser, entity, (ComponentType)type);
 			}
 			return true;
 		}
@@ -1267,15 +1267,13 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
-	ComponentDescPool pool = {
-		.components = PushZeroArray(*parser.arena, ComponentDesc, MAX_PREFAB_COMPONENTS),
-		.componentCapacity = MAX_PREFAB_COMPONENTS,
-	};
+	prefab.entities = AllocEmptyArray(parser.entityPool, MAX_PREFAB_ENTITIES);
 
 	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
 	{
-		EntityDesc entityDesc = {};
-		const u32 entityIndex = prefab.entityCount;
+		EntityDesc entityDesc = {
+			.components = AllocEmptyArray(parser.componentPool, ComponentType_Count),
+		};
 
 		while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
 		{
@@ -1285,7 +1283,7 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 
 			DParser_TryConsume(parser, TOKEN_EQUAL);
 
-			if ( !DParser_ConsumeEntityField(parser, field, entityDesc, pool, entityIndex) ) {
+			if ( !DParser_ConsumeEntityField(parser, field, entityDesc) ) {
 				LOG(Warning, "Unknown prefab entity field <%.*s>.\n", field.size, field.str);
 				DParser_SkipFieldValue(parser);
 			}
@@ -1296,13 +1294,10 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 		DParser_TryConsume(parser, TOKEN_COMMA);
 
-		if ( prefab.entityCount < ARRAY_COUNT(prefab.entities) ) {
-			prefab.entities[prefab.entityCount++] = entityDesc;
+		if ( EntityDesc *entity = PushArrayElement(prefab.entities) ) {
+			*entity = entityDesc;
 		}
 	}
-
-	prefab.components = pool.components;
-	prefab.componentCount = pool.componentCount;
 
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
@@ -1575,6 +1570,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				EntityDesc &desc = descriptors.entityDescs[index];
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
+				desc.components = AllocEmptyArray(parser.componentPool, ComponentType_Count);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
 				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
@@ -1585,7 +1581,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 					DParser_TryConsume( parser, TOKEN_EQUAL );
 
-					if ( !DParser_ConsumeEntityField( parser, field, desc, descriptors.componentPool, index ) ) {
+					if ( !DParser_ConsumeEntityField( parser, field, desc ) ) {
 						LOG(Warning, "Unknown Entity field <%.*s>.\n", field.size, field.str);
 					}
 
@@ -1757,10 +1753,6 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 				descriptors.materialDescs = PushZeroArray(arena, MaterialDesc, descriptors.materialDescCount);
 				descriptors.materialDescCount = 0;
 				descriptors.entityDescs = PushZeroArray(arena, EntityDesc, descriptors.entityDescCount);
-				// The counting pass does not descend into entity bodies, so the component
-				// pools are sized to the worst case an entity could ask for
-				descriptors.componentPool.componentCapacity = descriptors.entityDescCount * ComponentType_Count + 1;
-				descriptors.componentPool.components = PushZeroArray(arena, ComponentDesc, descriptors.componentPool.componentCapacity);
 				descriptors.entityDescCount = 0;
 				descriptors.prefabDescs = PushZeroArray(arena, PrefabDesc, descriptors.prefabDescCount);
 				descriptors.prefabDescCount = 0;
@@ -1842,7 +1834,7 @@ static const char *DataGetString( const char *stringPool, const char *offsetPtr 
 	return str;
 }
 
-static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 entityIndex, const ComponentDesc *components, u32 componentCount, DataStringPool &stringPool)
+static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStringPool &stringPool)
 {
 	d = {};
 	d.id           = desc.id;
@@ -1850,12 +1842,9 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 	d.pos          = desc.pos;
 	d.scale        = desc.scale;
 
-	for (u32 i = 0; i < componentCount; ++i)
+	for (u32 i = 0; i < desc.components.count; ++i)
 	{
-		const ComponentDesc &component = components[i];
-		if (component.entityIndex != entityIndex) {
-			continue;
-		}
+		const ComponentDesc &component = desc.components[i];
 
 		switch (component.type)
 		{
@@ -1912,7 +1901,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 				bs.propertyCount = Min(properties.count, (u32)ARRAY_COUNT(bs.properties));
 				for (u32 p = 0; p < bs.propertyCount; ++p)
 				{
-					const PropertyDesc &property = properties.array[p];
+					const PropertyDesc &property = properties[p];
 
 					BinScriptPropertyDesc &pd = bs.properties[p];
 					pd.name  = DataInternString(stringPool, property.name);
@@ -2158,8 +2147,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		// Entities
 		for (u32 i = 0; i < entityCount; ++i)
 		{
-			BuildBinEntityDesc(binEntityDescs[i], descriptors.entityDescs[i], i,
-					descriptors.componentPool.components, descriptors.componentPool.componentCount, stringPool);
+			BuildBinEntityDesc(binEntityDescs[i], descriptors.entityDescs[i], stringPool);
 		}
 
 		// Prefabs
@@ -2171,11 +2159,11 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			d = {};
 			d.id = desc.id;
 			d.name = DataInternString(stringPool, desc.name);
-			d.entityCount = desc.entityCount;
+			d.entityCount = Min(desc.entities.count, (u32)ARRAY_COUNT(d.entities));
 
-			for (u32 e = 0; e < desc.entityCount; ++e)
+			for (u32 e = 0; e < d.entityCount; ++e)
 			{
-				BuildBinEntityDesc(d.entities[e], desc.entities[e], e, desc.components, desc.componentCount, stringPool);
+				BuildBinEntityDesc(d.entities[e], desc.entities[e], stringPool);
 			}
 		}
 
@@ -2508,21 +2496,16 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	}
 
 	static EntityDesc entityDescs[MAX_ENTITIES];
-	static ComponentDesc componentDescs[MAX_ENTITIES * ComponentType_Count];
-	ComponentDescPool componentPool = {
-		.components = componentDescs,
-		.componentCapacity = ARRAY_COUNT(componentDescs),
-	};
+	ComponentDescPool componentPool = { .arena = &arena };
 	PropertyDescPool propertyPool = { .arena = &arena };
 
 	u32 entityCount = 0;
 	for (u16 i = 0; i < engine.scene.entityCount; ++i) {
 		const Entity &entity = engine.scene.entities[i];
 		if ( !entity.id ) { continue; }
-		const u32 entityIndex = entityCount++;
-		EntityDesc &desc = entityDescs[entityIndex];
+		EntityDesc &desc = entityDescs[entityCount++];
 		desc = GetEntityDesc(engine, entity.id);
-		GatherEntityComponentDescs(engine, entity.id, entityIndex, componentPool, propertyPool);
+		desc.components = GatherEntityComponentDescs(engine, entity.id, componentPool, propertyPool);
 	}
 
 	static PrefabDesc prefabDescs[MAX_PREFABS];
@@ -2530,15 +2513,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	for (u32 i = 0; i < engine.scene.prefabCount; ++i) {
 		const Prefab &prefab = engine.scene.prefabs[i];
 		if ( !prefab.id ) { continue; }
-		PrefabDesc &desc = prefabDescs[prefabCount++];
-		desc.id = prefab.id;
-		desc.name = prefab.name;
-		desc.entityCount = prefab.entityCount;
-		for (u32 e = 0; e < prefab.entityCount; ++e) {
-			desc.entities[e] = prefab.entities[e];
-		}
-		desc.components = prefab.components;
-		desc.componentCount = prefab.componentCount;
+		prefabDescs[prefabCount++] = prefab;
 	}
 
 	static RoomDesc roomDescs[MAX_ROOMS];
@@ -2636,7 +2611,6 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		.materialDescCount = materialCount,
 		.entityDescs = entityDescs,
 		.entityDescCount = entityCount,
-		.componentPool = componentPool,
 		.prefabDescs = prefabDescs,
 		.prefabDescCount = prefabCount,
 		.roomDescs = roomDescs,
@@ -2706,15 +2680,7 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 		// Entities
 		for (u32 i = 0; i < assetDescriptors.entityDescCount; ++i)
 		{
-			const ID entityId = CreateEntity(engine, assetDescriptors.entityDescs[i]);
-
-			const ComponentDescPool &pool = assetDescriptors.componentPool;
-			for (u32 c = 0; c < pool.componentCount; ++c)
-			{
-				if ( pool.components[c].entityIndex == i ) {
-					AddComponent(engine, entityId, pool.components[c]);
-				}
-			}
+			CreateEntity(engine, assetDescriptors.entityDescs[i]);
 		}
 
 		// Prefabs

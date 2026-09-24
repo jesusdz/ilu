@@ -12,10 +12,12 @@
  * - ARRAY_POOL_SIZE_CLASS_COUNT  The longest array that gets recycled
  * All three are undefined again at the end of this file.
  *
- * Each pool also declares <ARRAY_POOL_TYPE>Array, e.g. PropertyDescArray, holding an array
- * and its count, and gets its own AllocArray/FreeArray overloads, picked by the pool's type.
- * FreeArray relies on count still being the one the array was allocated with, blocks
- * carry no header.
+ * Each pool also declares <ARRAY_POOL_TYPE>Array, e.g. PropertyDescArray, holding an array,
+ * its count and its capacity, and gets its own overloads, picked by the pool's type:
+ * - AllocArray        count elements, all in use
+ * - AllocEmptyArray   room for capacity elements, none in use, filled with PushArrayElement
+ * - PushArrayElement  the next unused element, or null once the array is full
+ * - FreeArray         files the block under its capacity, blocks carry no header
  *
  * Requires ilu_core.h.
  */
@@ -54,6 +56,10 @@ struct ARRAY_POOL_ARRAY
 {
 	ARRAY_POOL_TYPE *array;
 	u32 count;
+	u32 capacity;
+
+	ARRAY_POOL_TYPE &operator[](u32 index) { ASSERT( index < count ); return array[index]; }
+	const ARRAY_POOL_TYPE &operator[](u32 index) const { ASSERT( index < count ); return array[index]; }
 };
 
 struct ARRAY_POOL_NAME
@@ -62,29 +68,44 @@ struct ARRAY_POOL_NAME
 	ArrayPoolBlock *freeLists[ARRAY_POOL_SIZE_CLASS_COUNT];
 };
 
-static ARRAY_POOL_ARRAY AllocArray(ARRAY_POOL_NAME &pool, u32 count)
+static ARRAY_POOL_ARRAY AllocEmptyArray(ARRAY_POOL_NAME &pool, u32 capacity)
 {
 	ARRAY_POOL_ARRAY array = {};
-	if ( count == 0 ) {
+	if ( capacity == 0 ) {
 		return array;
 	}
 
-	array.count = count;
+	array.capacity = capacity;
 
-	if ( count <= ARRAY_POOL_SIZE_CLASS_COUNT )
+	if ( capacity <= ARRAY_POOL_SIZE_CLASS_COUNT )
 	{
-		const u32 sizeClass = count - 1;
+		const u32 sizeClass = capacity - 1;
 		if ( ArrayPoolBlock *block = pool.freeLists[sizeClass] )
 		{
 			pool.freeLists[sizeClass] = block->next;
-			MemSet(block, count * sizeof(ARRAY_POOL_TYPE), 0);
+			MemSet(block, capacity * sizeof(ARRAY_POOL_TYPE), 0);
 			array.array = (ARRAY_POOL_TYPE*) block;
 			return array;
 		}
 	}
 
-	array.array = PushZeroArray(*pool.arena, ARRAY_POOL_TYPE, count);
+	array.array = PushZeroArray(*pool.arena, ARRAY_POOL_TYPE, capacity);
 	return array;
+}
+
+static ARRAY_POOL_ARRAY AllocArray(ARRAY_POOL_NAME &pool, u32 count)
+{
+	ARRAY_POOL_ARRAY array = AllocEmptyArray(pool, count);
+	array.count = count;
+	return array;
+}
+
+static ARRAY_POOL_TYPE *PushArrayElement(ARRAY_POOL_ARRAY &array)
+{
+	if ( array.count == array.capacity ) {
+		return nullptr;
+	}
+	return &array.array[array.count++];
 }
 
 static void FreeArray(ARRAY_POOL_NAME &pool, ARRAY_POOL_ARRAY array)
@@ -93,11 +114,11 @@ static void FreeArray(ARRAY_POOL_NAME &pool, ARRAY_POOL_ARRAY array)
 	// its own memory is gone. Transient pools are never freed into, their arena drops everything.
 	ASSERT( !array.array || ( (byte*)array.array >= pool.arena->base && (byte*)array.array < pool.arena->base + pool.arena->size ) );
 
-	if ( array.array && array.count > 0 && array.count <= ARRAY_POOL_SIZE_CLASS_COUNT )
+	if ( array.array && array.capacity > 0 && array.capacity <= ARRAY_POOL_SIZE_CLASS_COUNT )
 	{
 		ArrayPoolBlock *block = (ArrayPoolBlock*) array.array;
-		block->next = pool.freeLists[array.count - 1];
-		pool.freeLists[array.count - 1] = block;
+		block->next = pool.freeLists[array.capacity - 1];
+		pool.freeLists[array.capacity - 1] = block;
 	}
 }
 
