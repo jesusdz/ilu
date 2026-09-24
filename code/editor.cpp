@@ -169,14 +169,12 @@ static void EditorUpdateUI_MenuBar()
 
 			if ( UI_MenuItem(ui, "Load scene (BIN)") )
 			{
-				const EditorCommand command = { .type = EditorCommandLoadBin };
-				AddEditorCommand(command);
+				editor.showLoadSceneBin = true;
 			}
 
 			if ( UI_MenuItem(ui, "Build scene (BIN)") )
 			{
-				const EditorCommand command = { .type = EditorCommandBuildBin };
-				AddEditorCommand(command);
+				editor.showBuildSceneBin = true;
 			}
 
 			UI_Separator(ui);
@@ -2456,7 +2454,7 @@ static const EditorFileDialogStrings EditorFileDialogStringsArray[] = {
 };
 CT_ASSERT( ARRAY_COUNT(EditorFileDialogStringsArray) == EditorFileDialogModeCount );
 
-static bool EditorFileDialog(EditorFileDialogMode mode, const char *extension, bool *isOpen, FilePath *filePath)
+static bool EditorFileDialog(EditorFileDialogMode mode, const char *directory, const char *extension, bool *isOpen, FilePath *filePath)
 {
 	Engine &engine = GetEngine();
 	bool ret = false;
@@ -2480,7 +2478,7 @@ static bool EditorFileDialog(EditorFileDialogMode mode, const char *extension, b
 	UI_BeginWindow(ui, caption, isOpen);
 
 	Dir dir;
-	if ( OpenDir(dir, AssetDir) )
+	if ( OpenDir(dir, directory) )
 	{
 		DirEntry entry;
 		while ( ReadDir(dir, entry) )
@@ -2503,7 +2501,7 @@ static bool EditorFileDialog(EditorFileDialogMode mode, const char *extension, b
 	}
 
 	if ( UI_Button(ui, button) && !StrEq(filename, "") ) {
-		*filePath = MakePath(AssetDir, filename);
+		*filePath = MakePath(directory, filename);
 		*isOpen = false;
 		ret = true;
 	}
@@ -2529,7 +2527,7 @@ static void EditorUpdateUI()
 	if ( editor.showLoadScene )
 	{
 		static FilePath filePath = {};
-		if ( EditorFileDialog(EditorFileDialog_LoadFile, "txt", &editor.showLoadScene, &filePath) )
+		if ( EditorFileDialog(EditorFileDialog_LoadFile, AssetDir, "txt", &editor.showLoadScene, &filePath) )
 		{
 			const EditorCommand command = { .type = EditorCommandLoadTxt, .filepath = filePath.str };
 			AddEditorCommand(command);
@@ -2540,7 +2538,7 @@ static void EditorUpdateUI()
 	static bool saveScene = false;
 	if ( editor.showSaveScene )
 	{
-		if ( EditorFileDialog(EditorFileDialog_SaveFile, "txt", &editor.showSaveScene, &saveSceneFilepath) )
+		if ( EditorFileDialog(EditorFileDialog_SaveFile, AssetDir, "txt", &editor.showSaveScene, &saveSceneFilepath) )
 		{
 			saveScene = true;
 		}
@@ -2566,6 +2564,26 @@ static void EditorUpdateUI()
 			AddEditorCommand(command);
 
 			saveScene = false;
+		}
+	}
+
+	if ( editor.showLoadSceneBin )
+	{
+		static FilePath filePath = {};
+		if ( EditorFileDialog(EditorFileDialog_LoadFile, DataDir, "dat", &editor.showLoadSceneBin, &filePath) )
+		{
+			const EditorCommand command = { .type = EditorCommandLoadBin, .filepath = filePath.str };
+			AddEditorCommand(command);
+		}
+	}
+
+	if ( editor.showBuildSceneBin )
+	{
+		static FilePath filePath = {};
+		if ( EditorFileDialog(EditorFileDialog_SaveFile, DataDir, "dat", &editor.showBuildSceneBin, &filePath) )
+		{
+			const EditorCommand command = { .type = EditorCommandBuildBin, .filepath = filePath.str };
+			AddEditorCommand(command);
 		}
 	}
 
@@ -3056,14 +3074,12 @@ static void EditorProcessCommands(Arena scratch)
 				{
 					EditorUnselectAll();
 					CleanScene(engine);
-					LoadSceneFromBin(engine);
+					LoadSceneFromBin(engine, command.filepath);
 					break;
 				}
 				case EditorCommandBuildBin:
 				{
-					const FilePath assetsFilepath = MakePath(DataDir, "assets.dat");
-					const FilePath descriptorsFilepath = MakePath(AssetDir, "assets.txt");
-					BuildAssetsFromTxt(engine, descriptorsFilepath.str, assetsFilepath.str);
+					SaveSceneToBin(engine, command.filepath);
 					break;
 				}
 

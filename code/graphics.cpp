@@ -526,7 +526,12 @@ ID CreateTexture(Graphics &gfx, const BinImage &binImage)
 
 	const ImageH imageHandle = GfxCreateImage(gfx, name, width, height, channels, mipmap, pixels);
 
-	const TextureDesc textureDesc = { .id = desc.id, .name = desc.name };
+	const TextureDesc textureDesc = {
+		.id = desc.id,
+		.name = desc.name,
+		.filename = desc.filename,
+		.mipmap = desc.mipmap,
+	};
 	Texture *texture = PushTexture(gfx, textureDesc);
 	if ( !texture ) {
 		DestroyImageH(gfx.device, imageHandle);
@@ -535,6 +540,7 @@ ID CreateTexture(Graphics &gfx, const BinImage &binImage)
 
 	texture->image = imageHandle;
 	texture->ownsImage = true;
+	texture->size = { width, height };
 
 	return texture->desc.id;
 }

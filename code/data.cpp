@@ -2045,6 +2045,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			BinImageDesc &d = binImageDescs[i];
 			d.id       = desc.id;
 			d.name     = DataInternString(stringPool, desc.name);
+			d.filename = DataInternString(stringPool, desc.filename);
 			d.width    = I32ToU16(texWidth);
 			d.height   = I32ToU16(texHeight);
 			d.channels = I32ToU8(texChannels);
@@ -2348,7 +2349,8 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	for (u32 i = 0; i < assets.header.imageCount; ++i)
 	{
 		BinImageDesc &d = binImageDescs[i];
-		d.name = DataGetString( stringPool, d.name );
+		d.name     = DataGetString( stringPool, d.name );
+		d.filename = DataGetString( stringPool, d.filename );
 		assets.images[i].desc   = &d;
 		assets.images[i].pixels = PushDataFromFile(dataArena, file, d.location.offset, d.location.size);
 	}
@@ -2721,6 +2723,14 @@ void SaveSceneToTxt(Engine &engine, const char *filepath)
 
 	SaveAssetDescriptors(filepath, assetDescs);
 }
+
+void SaveSceneToBin(Engine &engine, const char *filepath)
+{
+	Scratch scratch(MB(16)); // holds the tile lists of all rooms
+	const AssetDescriptors assetDescs = GetAssetDescriptors(engine, scratch.arena);
+
+	BuildAssets(assetDescs, filepath, scratch.arena);
+}
 #endif // USE_DATA_BUILD
 
 void LoadShadersFromBin(Engine &engine)
@@ -2729,12 +2739,11 @@ void LoadShadersFromBin(Engine &engine)
 	engine.shaderAssets = OpenAssets(DataArena, filepath.str);
 }
 
-void LoadSceneFromBin(Engine &engine)
+void LoadSceneFromBin(Engine &engine, const char *filepath)
 {
 	if (PushDataArenaState(engine))
 	{
-		const FilePath filepath = MakePath(DataDir, "assets.dat");
-		engine.assets = OpenAssets(DataArena, filepath.str);
+		engine.assets = OpenAssets(DataArena, filepath);
 
 		engine.scene.projectionType = engine.assets.scene.projectionType;
 		engine.scene.ambientLight = engine.assets.scene.ambientLight;

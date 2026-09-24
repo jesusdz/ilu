@@ -760,6 +760,7 @@ struct BinImageDesc
 {
 	ID id;
 	const char *name;
+	const char *filename;
 	u16 width;
 	u16 height;
 	u8  channels;
@@ -1416,7 +1417,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 16; // 16: script property values stored as the member's bytes
+constexpr u32 BinAssetsVersion = 17; // 17: image filenames stored
 
 #pragma pack(push, 1)
 
@@ -1905,11 +1906,12 @@ bool PopDataArenaState(Engine &engine);
 // Scene serialization
 
 void LoadShadersFromBin(Engine &engine);
-void LoadSceneFromBin(Engine &engine);
+void LoadSceneFromBin(Engine &engine, const char *filepath);
 
 #if USE_DATA_BUILD
 void LoadSceneFromTxt(Engine &engine, const char *filepath);
 void SaveSceneToTxt(Engine &engine, const char *filepath);
+void SaveSceneToBin(Engine &engine, const char *filepath);
 void BuildShaders(Engine &engine, const char *outBinFilepath);
 void BuildAssetsFromTxt(Engine &engine, const char *inTxtFilepath, const char *outBinFilepath);
 #endif // USE_DATA_BUILD

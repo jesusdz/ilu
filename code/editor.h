@@ -179,6 +179,8 @@ struct Editor
 {
 	bool showLoadScene;
 	bool showSaveScene;
+	bool showLoadSceneBin;
+	bool showBuildSceneBin;
 	bool showDebugUI;
 	bool showOutliner;
 	bool showAssets;

@@ -1592,6 +1592,7 @@ ID CreateRoom(Engine &engine, const BinRoom &binRoom)
 	{
 		const BinLayerDesc &ld = bin.layers[l];
 		desc.layers[desc.layerCount++] = {
+			.id = ld.id,
 			.name = ld.name,
 			.isBase = ld.isBase != 0,
 			.visible = ld.visible != 0,
