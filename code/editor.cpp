@@ -660,6 +660,7 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 			EntityDesc entityDesc = GetEntityDesc(engine, assetId);
 			GatherEntityComponentDescs(engine, assetId, 0, pool);
 			entityDesc.id = {}; // The prefab holds a template, not this entity's own identity
+			entityDesc.pos = {}; // Instances are placed relative to where the prefab is dropped
 
 			PrefabDesc prefabDesc = {};
 			prefabDesc.name = entityDesc.name;
