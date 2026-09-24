@@ -210,6 +210,14 @@ static bool EditProperty_float3(const ReflexMember &member, void *field)
 	return UI_InputFloat3(ui, member.name, (float3*)field);
 }
 
+static bool EditProperty_CString(const ReflexMember &member, void *field)
+{
+	UI &ui = GetEngine().ui;
+	const char *value = *(const char **)field;
+	UI_Text(ui, member.name, "%s", value ? value : "");
+	return false;
+}
+
 // Today's body of EditorUpdateUI_Property, working on the field directly
 static bool EditProperty_ID(const ReflexMember &member, void *field)
 {
@@ -307,6 +315,22 @@ static bool ParseProperty_Float(DParser &parser, const ReflexMember &member, voi
 	return true;
 }
 
+static void WriteProperty_CString(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	const char *value = *(const char *const *)field;
+	WriteText(ctx, "\"%s\"", value ? value : "");
+}
+
+static bool ParseProperty_CString(DParser &parser, const ReflexMember &member, void *field)
+{
+	if ( !DParser_IsNextToken(parser, TOKEN_STRING) ) {
+		DParser_Consume(parser);
+		return false;
+	}
+	*(const char **)field = PushString(*parser.arena, DParser_ConsumeString(parser));
+	return true;
+}
+
 static void WriteProperty_int2(WriteContext &ctx, const ReflexMember &member, const void *field)
 {
 	const int2 &value = *(const int2*)field;
@@ -397,6 +421,7 @@ PROPERTY_OPS(Bool)
 PROPERTY_OPS(Int)
 PROPERTY_OPS(UInt)
 PROPERTY_OPS(Float)
+PROPERTY_OPS(CString)
 PROPERTY_OPS(ID)
 PROPERTY_OPS(int2)
 PROPERTY_OPS(uint2)

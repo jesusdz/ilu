@@ -55,6 +55,7 @@ enum // ReflexID
 	ReflexID_UnsignedLongLongInt,
 	ReflexID_Float,
 	ReflexID_Double,
+	ReflexID_CString,
 	// Trivial type IDs range
 	ReflexID_TrivialCount,
 	ReflexID_TrivialBegin = ReflexID_Void,
@@ -307,6 +308,7 @@ static const ReflexTrivial* ReflexGetTrivial(ReflexID id)
 		{ .name = "unsigned long long int", .reflexId = ReflexID_UnsignedLongLongInt, .size = sizeof(unsigned long long int) },
 		{ .name = "float", .reflexId = ReflexID_Float, .size = sizeof(float) },
 		{ .name = "double", .reflexId = ReflexID_Double, .size = sizeof(double) },
+		{ .name = "char *", .reflexId = ReflexID_CString, .size = sizeof(char *) },
 	};
 	CT_ASSERT(ARRAY_COUNT(trivials) == ReflexID_TrivialCount);
 	return &trivials[id];

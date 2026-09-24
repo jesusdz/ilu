@@ -490,13 +490,15 @@ struct Texture
 ////////////////////////////////////////////////////////////////////////
 // Materials
 
+REFLEX()
 struct MaterialDesc
 {
 	ID id;
+	REFLEX()
 	const char *name;
 	ID textureId;
 	const char *pipelineName;
-	float uvScale;
+	f32 uvScale;
 	AssetFlags flags;
 };
 
@@ -775,7 +777,7 @@ struct BinMaterialDesc
 	const char *name;
 	ID textureId;
 	const char *pipelineName;
-	float uvScale;
+	f32 uvScale;
 };
 
 struct BinShader
@@ -975,7 +977,7 @@ struct EntityDesc
 	const char *name;
 	// Transform
 	float3 pos;
-	float scale;
+	f32 scale;
 
 	ComponentDescArray components;
 };
@@ -994,7 +996,7 @@ struct Entity
 	const char *name;
 	// Transform
 	float3 position;
-	float scale;
+	f32 scale;
 
 	bool visible;
 	bool culled;
@@ -1271,7 +1273,7 @@ struct BinEntityDesc
 	ID spriteId;
 	ID layerId;
 	float3 pos;
-	float scale;
+	f32 scale;
 	GeometryType geometryType;
 	ComponentFlags components;
 	LightType lightType;
@@ -1417,7 +1419,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 17; // 17: image filenames stored
+constexpr u32 BinAssetsVersion = 18; // 18: ReflexID_CString shifts the stored property types
 
 #pragma pack(push, 1)
 

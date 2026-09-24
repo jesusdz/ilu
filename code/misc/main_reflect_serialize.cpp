@@ -50,17 +50,15 @@ static const char *Indentation()
 
 #include "assets.reflex.h"
 
-void PrintTrivial(const void *data, const ReflexID id, bool isString)
+void PrintTrivial(const void *data, const ReflexID id)
 {
 	const ReflexTrivial *trivial = ReflexGetTrivial(id);
-
-	ASSERT(!isString || id == ReflexID_Char)
 
 	if (id == ReflexID_Bool) {
 		const bool val = *((bool*)data);
 		Printf("%d", val ? 1 : 0);
-	} else if (isString) {
-		const char *val = (const char *)data;
+	} else if (id == ReflexID_CString) {
+		const char *val = *((const char **)data);
 		Printf("\"%s\"", val);
 	} else if (id == ReflexID_Char) {
 		const char val = *((char*)data);
@@ -149,7 +147,6 @@ void PrintStruct(const void *data, const ReflexID id)
 			}
 		}
 
-		const bool isString = isPointer && reflexId == ReflexID_Char;
 		const void *memberPtr = ReflexGetMemberPtr(structPtr, member);
 
 		u32 indirections = pointerCount;
@@ -172,7 +169,7 @@ void PrintStruct(const void *data, const ReflexID id)
 			}
 
 			if (isTrivial) {
-				PrintTrivial(elemPtr, reflexId, isString);
+				PrintTrivial(elemPtr, reflexId);
 			} else if (isEnum) {
 				PrintEnum(elemPtr, reflexId);
 			} else if (isStruct) {

@@ -31,6 +31,7 @@ static const char *TrivialReflexIDNames[] =
 	"ReflexID_UnsignedLongLongInt",
 	"ReflexID_Float",
 	"ReflexID_Double",
+	"ReflexID_CString",
 };
 CT_ASSERT(ARRAY_COUNT(TrivialReflexIDNames) == ReflexID_TrivialCount);
 
@@ -301,7 +302,10 @@ static bool MakeReflexMember(Arena &arena, const CastStructDeclaration *structDe
 	} else if (isBool) {
 		reflexId = ReflexID_Bool;
 	} else if (isChar) {
+		// A string is reflected as a value of its own, so the pointer that makes it one
+		// leaves pointerCount: only the indirections beyond it are left to count
 		if (isUnsigned) reflexId = ReflexID_UnsignedChar;
+		else if (member.pointerCount > 0) { reflexId = ReflexID_CString; member.pointerCount--; }
 		else reflexId = ReflexID_Char;
 	} else if (isInt) {
 		if (isUnsigned) {

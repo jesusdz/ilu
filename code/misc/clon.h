@@ -265,9 +265,7 @@ void ClonFillStruct(const Clon *clon, Arena *arena, void *structData, const Refl
 
 			byte *elemPtr = memberPtr + elemIndex * elemSize;
 
-			const bool isString = member->pointerCount == 1 && member->reflexId == ReflexID_Char;
-
-			if (member->pointerCount == 0 || isString)
+			if (member->pointerCount == 0)
 			{
 				if (ReflexIsTrivial(member->reflexId))
 				{
