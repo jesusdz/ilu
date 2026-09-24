@@ -320,10 +320,13 @@ enum AudioClipLoadSource
 	AUDIO_CLIP_LOAD_SOURCE_ASSETS,
 };
 
+REFLEX()
 struct AudioClipDesc
 {
+	REFLEX()
 	ID id;
 	const char *name;
+	REFLEX()
 	const char *filename;
 	AssetFlags flags;
 };
@@ -373,10 +376,13 @@ enum LoadSource
 	LOAD_SOURCE_ASSET_FILE,
 };
 
+REFLEX()
 struct MusicFileDesc
 {
+	REFLEX()
 	ID id;
 	const char *name;
+	REFLEX()
 	const char *filename;
 	AssetFlags flags;
 };
@@ -468,11 +474,15 @@ struct BinMusicFile
 ////////////////////////////////////////////////////////////////////////
 // Textures
 
+REFLEX()
 struct TextureDesc
 {
+	REFLEX()
 	ID id;
 	const char *name;
+	REFLEX()
 	const char *filename;
+	REFLEX()
 	u8 mipmap;
 	AssetFlags flags;
 };
@@ -1058,15 +1068,23 @@ struct Particle
 ////////////////////////////////////////////////////////////////////////
 // Sprites
 
+REFLEX()
 struct SpriteDesc
 {
+	REFLEX()
 	ID id;
 	const char *name;
+	REFLEX()
 	ID textureId;
+	REFLEX()
 	uint2 pos;
+	REFLEX()
 	uint2 size;
+	REFLEX()
 	u32 frameCount;
+	REFLEX()
 	u32 fps;
+	REFLEX()
 	u8 loop;
 };
 

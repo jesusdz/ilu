@@ -340,9 +340,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Texture %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		WriteLine(ctx, ".filename = \"%s\",", desc.filename);
-		WriteLine(ctx, ".mipmap = %d,", desc.mipmap);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_TextureDesc), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -358,18 +356,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Sprite %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		WriteLine(ctx, ".textureId = %u,", desc.textureId.slot);
-		if (desc.pos.x || desc.pos.y)
-			WriteLine(ctx, ".pos = {%u, %u},", desc.pos.x, desc.pos.y);
-		if (desc.size.x || desc.size.y)
-			WriteLine(ctx, ".size = {%u, %u},", desc.size.x, desc.size.y);
-		if (desc.frameCount > 1)
-		{
-			WriteLine(ctx, ".frameCount = %u,", desc.frameCount);
-			WriteLine(ctx, ".fps = %u,", desc.fps);
-			WriteLine(ctx, ".loop = %d,", desc.loop);
-		}
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_SpriteDesc), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -515,8 +502,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "AudioClip %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		WriteLine(ctx, ".filename = \"%s\",", desc.filename);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_AudioClipDesc), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -532,8 +518,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "MusicFile %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		WriteLine(ctx, ".filename = \"%s\",", desc.filename);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_MusicFileDesc), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -1454,24 +1439,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				String field;
-				while ( DParser_NextField( parser, field ) )
-				{
-					static const String sId = MakeString("id");
-					static const String sFilename = MakeString("filename");
-					static const String sMipmap = MakeString("mipmap");
-					if ( StrEq( field, sId ) ) {
-						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sFilename ) ) {
-						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser));
-					} else if ( StrEq( field, sMipmap ) ) {
-						desc.mipmap = DParser_ConsumeU8(parser);
-					} else {
-						LOG(Warning, "Unknown Texture field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
-					}
-				}
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_TextureDesc), &desc );
 
 			// Material
 			} else if ( StrEq(type, sMaterialStr) ) {
@@ -1495,37 +1463,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				String field;
-				while ( DParser_NextField( parser, field ) )
-				{
-					static const String sId         = MakeString("id");
-					static const String sTextureId = MakeString("textureId");
-					static const String sPos        = MakeString("pos");
-					static const String sSize       = MakeString("size");
-					static const String sFrameCount = MakeString("frameCount");
-					static const String sFps        = MakeString("fps");
-					static const String sLoop       = MakeString("loop");
-
-					if ( StrEq( field, sId ) ) {
-						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sTextureId ) ) {
-						desc.textureId = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sPos ) ) {
-						desc.pos = DParser_ConsumeUint2(parser);
-					} else if ( StrEq( field, sSize ) ) {
-						desc.size = DParser_ConsumeUint2(parser);
-					} else if ( StrEq( field, sFrameCount ) ) {
-						desc.frameCount = (u32)StrToInt(DParser_ConsumeLexeme(parser));
-					} else if ( StrEq( field, sFps ) ) {
-						desc.fps = (u32)StrToInt(DParser_ConsumeLexeme(parser));
-					} else if ( StrEq( field, sLoop ) ) {
-						desc.loop = DParser_ConsumeU8(parser);
-					} else {
-						LOG(Warning, "Unknown Sprite field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
-					}
-				}
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_SpriteDesc), &desc );
 
 			// Entity
 			} else if ( StrEq(type, sEntityStr) ) {
@@ -1615,21 +1553,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				String field;
-				while ( DParser_NextField( parser, field ) )
-				{
-					static const String sId = MakeString("id");
-					static const String sFilename = MakeString("filename");
-					if ( StrEq( field, sId ) ) {
-						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sFilename ) ) {
-						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
-					} else {
-						LOG(Warning, "Unknown AudioClip field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
-					}
-				}
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_AudioClipDesc), &desc );
 
 			// MusicFile
 			} else if ( StrEq(type, sMusicFileStr) ) {
@@ -1641,21 +1565,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				String field;
-				while ( DParser_NextField( parser, field ) )
-				{
-					static const String sId = MakeString("id");
-					static const String sFilename = MakeString("filename");
-					if ( StrEq( field, sId ) ) {
-						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sFilename ) ) {
-						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
-					} else {
-						LOG(Warning, "Unknown MusicFile field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
-					}
-				}
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_MusicFileDesc), &desc );
 
 			// Unknown
 			} else {
