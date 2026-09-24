@@ -1026,6 +1026,20 @@ static void DParser_SkipFieldValue( DParser &parser )
 	}
 }
 
+static bool DParser_NextField( DParser &parser, String &field )
+{
+	DParser_TryConsume(parser, TOKEN_COMMA);
+
+	if ( DParser_HasFinished(parser) || DParser_TryConsume(parser, TOKEN_RIGHT_BRACE) ) {
+		return false;
+	}
+
+	DParser_TryConsume(parser, TOKEN_DOT);
+	field = DParser_ConsumeLexeme(parser);
+	DParser_TryConsume(parser, TOKEN_EQUAL);
+	return true;
+}
+
 static uint2 DParser_ConsumeUint2( DParser &parser )
 {
 	uint2 res = {};
@@ -1126,14 +1140,9 @@ static PropertyDescArray DParser_ConsumePropertyDescArray( DParser &parser, cons
 
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
-	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
+	String field;
+	while ( DParser_NextField(parser, field) )
 	{
-		DParser_TryConsume(parser, TOKEN_DOT);
-
-		const String field = DParser_ConsumeLexeme(parser);
-
-		DParser_TryConsume(parser, TOKEN_EQUAL);
-
 		const ReflexMember *member = FindProperty(type, field);
 		if ( !member ) {
 			LOG(Warning, "<%s> has no property <%.*s>, its value is skipped.\n", type.name, field.size, field.str);
@@ -1157,11 +1166,7 @@ static PropertyDescArray DParser_ConsumePropertyDescArray( DParser &parser, cons
 			}
 			DParser_ConsumeProperty(parser, *member, property->value);
 		}
-
-		DParser_TryConsume(parser, TOKEN_COMMA);
 	}
-
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 
 	return properties;
 }
@@ -1187,14 +1192,9 @@ static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 
 	ComponentDesc scriptComponentDesc = {};
 
-	while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
+	String field;
+	while ( DParser_NextField(parser, field) )
 	{
-		DParser_TryConsume(parser, TOKEN_DOT);
-
-		const String field = DParser_ConsumeLexeme(parser);
-
-		DParser_TryConsume(parser, TOKEN_EQUAL);
-
 		static const String sName = MakeString("name");
 		static const String sProperties = MakeString("properties");
 
@@ -1202,12 +1202,11 @@ static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 			scriptComponentDesc.scriptName = PushString(*parser.arena, DParser_ConsumeString(parser));
 		} else if ( StrEq( field, sProperties ) ) {
 			DParser_ConsumeScriptProperties(parser, scriptComponentDesc);
+		} else {
+			LOG(Warning, "Unknown script field <%.*s>.\n", field.size, field.str);
+			DParser_SkipFieldValue(parser);
 		}
-
-		DParser_TryConsume(parser, TOKEN_COMMA);
 	}
-
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 
 	// The name is what AddScript resolves the component from, so a block without one
 	// leaves the entity scriptless rather than handing it a null to look up
@@ -1275,23 +1274,15 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 			.components = AllocEmptyArray(parser.componentPool, ComponentType_Count),
 		};
 
-		while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
+		String field;
+		while ( DParser_NextField(parser, field) )
 		{
-			DParser_TryConsume(parser, TOKEN_DOT);
-
-			const String field = DParser_ConsumeLexeme(parser);
-
-			DParser_TryConsume(parser, TOKEN_EQUAL);
-
 			if ( !DParser_ConsumeEntityField(parser, field, entityDesc) ) {
 				LOG(Warning, "Unknown prefab entity field <%.*s>.\n", field.size, field.str);
 				DParser_SkipFieldValue(parser);
 			}
-
-			DParser_TryConsume(parser, TOKEN_COMMA);
 		}
 
-		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 		DParser_TryConsume(parser, TOKEN_COMMA);
 
 		if ( EntityDesc *entity = PushArrayElement(prefab.entities) ) {
@@ -1310,14 +1301,9 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 	{
 		LayerDesc layerDesc = {};
 
-		while ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) && !DParser_HasFinished(parser) )
+		String field;
+		while ( DParser_NextField(parser, field) )
 		{
-			DParser_TryConsume(parser, TOKEN_DOT);
-
-			const String field = DParser_ConsumeLexeme(parser);
-
-			DParser_TryConsume(parser, TOKEN_EQUAL);
-
 			static const String sId = MakeString("id");
 			static const String sName = MakeString("name");
 			static const String sIsBase = MakeString("isBase");
@@ -1340,12 +1326,12 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 				layerDesc.size = DParser_ConsumeUint2(parser);
 			} else if ( StrEq( field, sTiles ) ) {
 				DParser_ConsumeTiles(parser, layerDesc);
+			} else {
+				LOG(Warning, "Unknown Layer field <%.*s>.\n", field.size, field.str);
+				DParser_SkipFieldValue(parser);
 			}
-
-			DParser_TryConsume(parser, TOKEN_COMMA);
 		}
 
-		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 		DParser_TryConsume(parser, TOKEN_COMMA);
 
 		if ( room.layerCount < ARRAY_COUNT(room.layers) ) {
@@ -1417,14 +1403,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					static const String sProjectionType = MakeString("projectionType");
 					static const String sAmbientLight = MakeString("ambientLight");
 					if ( StrEq( field, sProjectionType ) ) {
@@ -1432,6 +1413,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						desc.projectionType = StrToProjectionType( cstr );
 					} else if ( StrEq( field, sAmbientLight ) ) {
 						desc.ambientLight = DParser_ConsumeFloat3(parser);
+					} else {
+						LOG(Warning, "Unknown Scene field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
 				}
 			}
@@ -1447,14 +1431,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					static const String sId = MakeString("id");
 					static const String sFilename = MakeString("filename");
 					static const String sMipmap = MakeString("mipmap");
@@ -1468,8 +1447,6 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						LOG(Warning, "Unknown Texture field <%.*s>.\n", field.size, field.str);
 						DParser_SkipFieldValue(parser);
 					}
-
-					DParser_TryConsume( parser, TOKEN_COMMA );
 				}
 
 			// Material
@@ -1483,14 +1460,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					static const String sId = MakeString("id");
 					static const String sTextureId = MakeString("textureId");
 					static const String sPipelineName = MakeString("pipelineName");
@@ -1508,8 +1480,6 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						LOG(Warning, "Unknown Material field <%.*s>.\n", field.size, field.str);
 						DParser_SkipFieldValue(parser);
 					}
-
-					DParser_TryConsume( parser, TOKEN_COMMA );
 				}
 
 			// Sprite
@@ -1523,14 +1493,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					static const String sId         = MakeString("id");
 					static const String sTextureId = MakeString("textureId");
 					static const String sPos        = MakeString("pos");
@@ -1557,8 +1522,6 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						LOG(Warning, "Unknown Sprite field <%.*s>.\n", field.size, field.str);
 						DParser_SkipFieldValue(parser);
 					}
-
-					DParser_TryConsume( parser, TOKEN_COMMA );
 				}
 
 			// Entity
@@ -1573,19 +1536,13 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.components = AllocEmptyArray(parser.componentPool, ComponentType_Count);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					if ( !DParser_ConsumeEntityField( parser, field, desc ) ) {
 						LOG(Warning, "Unknown Entity field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
-
-					DParser_ConsumeUntil( parser, TOKEN_COMMA );
 				}
 
 			// Prefab
@@ -1599,14 +1556,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) && !DParser_HasFinished( parser ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					static const String sId = MakeString("id");
 					static const String sEntities = MakeString("entities");
 
@@ -1614,9 +1566,10 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sEntities ) ) {
 						DParser_ConsumePrefabEntities(parser, desc);
+					} else {
+						LOG(Warning, "Unknown Prefab field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
-
-					DParser_TryConsume( parser, TOKEN_COMMA );
 				}
 
 			// Room
@@ -1630,14 +1583,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) && !DParser_HasFinished( parser ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					static const String sId = MakeString("id");
 					static const String sPos = MakeString("pos");
 					static const String sLayers = MakeString("layers");
@@ -1648,9 +1596,10 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 						desc.pos = DParser_ConsumeInt2(parser);
 					} else if ( StrEq( field, sLayers ) ) {
 						DParser_ConsumeRoomLayers(parser, desc);
+					} else {
+						LOG(Warning, "Unknown Room field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
-
-					DParser_TryConsume( parser, TOKEN_COMMA );
 				}
 
 			// AudioClip
@@ -1664,23 +1613,19 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					static const String sId = MakeString("id");
 					static const String sFilename = MakeString("filename");
 					if ( StrEq( field, sId ) ) {
 						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
+					} else {
+						LOG(Warning, "Unknown AudioClip field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
-
-					DParser_TryConsume( parser, TOKEN_COMMA );
 				}
 
 			// MusicFile
@@ -1694,23 +1639,19 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				while ( !DParser_IsNextToken( parser, TOKEN_RIGHT_BRACE ) )
+				String field;
+				while ( DParser_NextField( parser, field ) )
 				{
-					DParser_TryConsume( parser, TOKEN_DOT );
-
-					const String field = DParser_ConsumeLexeme( parser );
-
-					DParser_TryConsume( parser, TOKEN_EQUAL );
-
 					static const String sId = MakeString("id");
 					static const String sFilename = MakeString("filename");
 					if ( StrEq( field, sId ) ) {
 						desc.id = DParser_ConsumeID(parser);
 					} else if ( StrEq( field, sFilename ) ) {
 						desc.filename = PushString(*parser.arena, DParser_ConsumeString(parser) );
+					} else {
+						LOG(Warning, "Unknown MusicFile field <%.*s>.\n", field.size, field.str);
+						DParser_SkipFieldValue(parser);
 					}
-
-					DParser_TryConsume( parser, TOKEN_COMMA );
 				}
 
 			// Unknown
