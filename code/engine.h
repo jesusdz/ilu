@@ -2,16 +2,22 @@
 #define ENGINE_H
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// TYPES: Reflected properties
+// Reflection engine
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Reflex consumes what it produces, so it's included right before including reflex.h
+#define REFLEX_GENERATED_DECLARATION
+#include "reflex.generated.h"
 
 // Every type used by a reflected member needs a PropertyOps_<Type>, see properties.cpp
 #define REFLEX_OPS(Type) &PropertyOps_##Type
 
-#define REFLEX_GENERATED_CUSTOM_TYPES
-#include "reflex.generated.h"
-
 #include "reflex\reflex.h"
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// TYPES: Reflected properties
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct WriteContext;
 struct DParser;
@@ -29,6 +35,17 @@ inline bool IsIDProperty(PropertyType type)
 {
 	const bool res = type == ReflexID_ID;
 	return res;
+}
+
+inline ReflexID PropertyIDType(const ReflexMember &member)
+{
+	const ReflexMetaFlags flags = IsIDProperty(member.reflexId) ? member.meta.flags : 0;
+	if ( flags & ReflexMetaFlag_Material )       return ReflexID_Material;
+	if ( flags & ReflexMetaFlag_Sprite )         return ReflexID_Sprite;
+	if ( flags & ReflexMetaFlag_Layer )          return ReflexID_Layer;
+	if ( flags & ReflexMetaFlag_ParticleEffect ) return ReflexID_ParticleEffect;
+	if ( flags & ReflexMetaFlag_AudioClip )      return ReflexID_AudioClip;
+	return ReflexID_Null;
 }
 
 inline const ReflexMember *FindProperty(const ReflexStruct &type, String name)
@@ -137,19 +154,6 @@ enum AssetFlags
 // The desc fields below are typed AssetFlags, but combining two enumerators yields an int that C++
 // will not convert back to the enum on its own, so give the type the operator it is used as if it had.
 inline AssetFlags operator|(AssetFlags a, AssetFlags b) { return (AssetFlags)((u32)a | (u32)b); }
-
-////////////////////////////////////////////////////////////////////////
-// Binary data
-
-#pragma pack(push, 1)
-
-struct BinLocation
-{
-	u32 offset;
-	u32 size;
-};
-
-#pragma pack(pop)
 
 ////////////////////////////////////////////////////////////////////////
 // Geometry and vertices
@@ -276,6 +280,12 @@ struct ScriptDataPool
 
 #pragma pack(push, 1)
 
+struct BinLocation
+{
+	u32 offset;
+	u32 size;
+};
+
 struct BinScriptPropertyDesc
 {
 	const char *name;
@@ -295,8 +305,6 @@ struct BinScriptDesc
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // TYPES: Audio
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#include "libs/ibxm/ibxm.h"
 
 #define MAX_AUDIO_CLIPS 16
 #define MAX_AUDIO_SOURCES 16
@@ -413,9 +421,9 @@ struct Audio
 
 	// MOD tracks
 	Arena moduleArena;
-	struct module *module;
 	u32 moduleSampleCount;
-	struct replay *moduleReplay;
+	struct module *module; // ibxm.h type
+	struct replay *moduleReplay; // ibxm.h type
 
 	bool initialized;
 };
@@ -529,10 +537,12 @@ enum ProjectionType
 	ProjectionOrthographic,
 	ProjectionTypeCount,
 };
+
 constexpr const char *ProjectionTypeStr[] = {
 	"ProjectionPerspective",
 	"ProjectionOrthographic",
 };
+
 CT_ASSERT(ARRAY_COUNT(ProjectionTypeStr) == ProjectionTypeCount);
 
 // The light culling shader branches on globals.projectionType
@@ -801,9 +811,6 @@ struct SceneDesc
 ////////////////////////////////////////////////////////////////////////
 // Components
 
-#define REFLEX_GENERATED_DECLARATION
-#include "reflex.generated.h"
-
 enum ComponentType
 {
 	ComponentType_Light,
@@ -845,18 +852,6 @@ const char *ComponentFieldNames[] =
 
 CT_ASSERT(ComponentType_Count == ARRAY_COUNT(ComponentNames));
 CT_ASSERT(ComponentType_Count < sizeof(ComponentFlags) * 8);
-
-// The type in an ID property's tag names the type of object it refers to, e.g. REFLEX(Sprite)
-inline ReflexID PropertyIDType(const ReflexMember &member)
-{
-	const ReflexMetaFlags flags = IsIDProperty(member.reflexId) ? member.meta.flags : 0;
-	if ( flags & ReflexMetaFlag_Material )       return ReflexID_Material;
-	if ( flags & ReflexMetaFlag_Sprite )         return ReflexID_Sprite;
-	if ( flags & ReflexMetaFlag_Layer )          return ReflexID_Layer;
-	if ( flags & ReflexMetaFlag_ParticleEffect ) return ReflexID_ParticleEffect;
-	if ( flags & ReflexMetaFlag_AudioClip )      return ReflexID_AudioClip;
-	return ReflexID_Null;
-}
 
 inline const ReflexStruct *ComponentReflexStruct(ComponentType type)
 {
