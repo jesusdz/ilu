@@ -1,7 +1,7 @@
 
 static u32 ScriptDataSize(const Script &script)
 {
-	return AlignUp((u32)script.type->size, SCRIPT_DATA_ALIGN);
+	return AlignUp((u32)script.reflexStruct->size, SCRIPT_DATA_ALIGN);
 }
 
 // Reflected type information lives in the reflex registry, generated from the
@@ -14,28 +14,28 @@ struct ScriptRegistry
 
 static ScriptRegistry scriptRegistry = {};
 
-static void RegisterScript(const ReflexStruct *type, ScriptHook start, ScriptHook simulate, ScriptHook update, ScriptHook stop)
+static void RegisterScript(const ReflexStruct *reflexStruct, ScriptHook start, ScriptHook simulate, ScriptHook update, ScriptHook stop)
 {
 	if ( scriptRegistry.scriptCount == ARRAY_COUNT(scriptRegistry.scripts) ) {
-		LOG(Warning, "RegisterScript: the script registry is full (%u), <%s> is dropped.\n", MAX_SCRIPTS, type->name);
+		LOG(Warning, "RegisterScript: the script registry is full (%u), <%s> is dropped.\n", MAX_SCRIPTS, reflexStruct->name);
 		return;
 	}
 
 	// Every reflected member was tagged on purpose, so one the engine cannot
 	// store is a mistake worth reporting instead of silently dropping it
-	for (u32 i = 0; i < type->memberCount; ++i)
+	for (u32 i = 0; i < reflexStruct->memberCount; ++i)
 	{
-		const ReflexMember &member = type->members[i];
+		const ReflexMember &member = reflexStruct->members[i];
 		if ( ReflexGetTypeSize(member.reflexId) > MAX_PROPERTY_VALUE_SIZE ) {
-			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> is too large to be stored\n", type->name, member.name, member.typeName);
+			LOG(Warning, "RegisterScript: <%s> property <%s> of type <%s> is too large to be stored\n", reflexStruct->name, member.name, member.typeName);
 		} else if ( IsIDProperty(member.reflexId) && PropertyIDType(member) == ReflexID_Null ) {
-			LOG(Warning, "RegisterScript: <%s> property <%s> is tagged with no ID type (e.g. ILU_PROPERTY(Sprite)), so nothing can be assigned to it in the editor\n", type->name, member.name);
+			LOG(Warning, "RegisterScript: <%s> property <%s> is tagged with no ID type (e.g. ILU_PROPERTY(Sprite)), so nothing can be assigned to it in the editor\n", reflexStruct->name, member.name);
 		}
 	}
 
 	Script &script = scriptRegistry.scripts[scriptRegistry.scriptCount++];
 	script = {
-		.type = type,
+		.reflexStruct = reflexStruct,
 		.hooks = { start, simulate, update, stop },
 	};
 }

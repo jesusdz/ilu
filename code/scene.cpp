@@ -791,29 +791,7 @@ ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, Compo
 	return &desc;
 }
 
-static PropertyGroupDesc MakeComponentDesc(ComponentType type, const void *component, ComponentDescPool &pool)
-{
-	const ReflexStruct *componentType = ComponentReflexStruct(type);
-	if ( !componentType ) {
-		LOG(Warning, "Component <%s> is not reflected, its descriptor stays empty.\n", ComponentNames[type]);
-		return {};
-	}
-
-	return MakePropertyGroupDesc(*componentType, component, pool);
-}
-
-static void ApplyComponentDesc(ComponentType type, void *component, const PropertyGroupDesc &desc)
-{
-	const ReflexStruct *componentType = ComponentReflexStruct(type);
-	if ( !componentType ) {
-		LOG(Warning, "Component <%s> is not reflected, its descriptor is not applied.\n", ComponentNames[type]);
-		return;
-	}
-
-	ApplyPropertyGroupDesc(*componentType, component, desc);
-}
-
-void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &pool)
+void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &componentPool, PropertyPool &propertyPool)
 {
 	Scene &scene = engine.scene;
 
@@ -828,19 +806,21 @@ void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, Co
 				const ScriptComponent &scriptComponent = GetScript(scene, entityId);
 				if ( scriptComponent.name )
 				{
-					if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, ComponentType_Script) ) {
+					if ( ComponentDesc *desc = PushComponentDesc(componentPool, entityIndex, ComponentType_Script) ) {
 						desc->scriptName = scriptComponent.name;
 						if ( scriptComponent.structIndex != NULL_SCRIPT )
 						{
 							const Script &script = GetScriptAt(scriptComponent.structIndex);
-							desc->properties = MakePropertyGroupDesc(*script.type, scriptComponent.data, pool);
+							desc->properties = MakePropertyGroupDesc(*script.reflexStruct, scriptComponent.data, propertyPool);
 						}
 					}
 				}
 			}
-			else if ( ComponentDesc *desc = PushComponentDesc(pool, entityIndex, (ComponentType)type) )
+			else if ( ComponentDesc *desc = PushComponentDesc(componentPool, entityIndex, (ComponentType)type) )
 			{
-				desc->properties = MakeComponentDesc((ComponentType)type, GetComponentSlot(scene, entityId, (ComponentType)type), pool);
+				void *componentData = GetComponentSlot(scene, entityId, (ComponentType)type);
+				const ReflexStruct *reflexStruct = ComponentReflexStruct((ComponentType)type);
+				desc->properties = MakePropertyGroupDesc(*reflexStruct, componentData, propertyPool);
 			}
 		}
 	}
@@ -919,10 +899,11 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 		return;
 	}
 
+	const ReflexStruct *reflexStruct = ComponentReflexStruct(desc.type);
 	void *component = GetComponentSlot(engine.scene, entityId, desc.type);
 
 	if ( desc.type != ComponentType_Script ) {
-		ApplyComponentDesc(desc.type, component, desc.properties);
+		ApplyPropertyGroupDesc(*reflexStruct, component, desc.properties);
 	}
 
 	// What the components keep beyond their properties. The IDs saved in a scene are only
@@ -962,7 +943,7 @@ void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc)
 			if ( scriptComponent.structIndex != NULL_SCRIPT )
 			{
 				const Script &script = GetScriptAt(scriptComponent.structIndex);
-				ApplyPropertyGroupDesc(*script.type, scriptComponent.data, desc.properties);
+				ApplyPropertyGroupDesc(*script.reflexStruct, scriptComponent.data, desc.properties);
 			}
 			break;
 		};
@@ -1021,7 +1002,7 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	return entity->id;
 }
 
-static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, ComponentDescPool &pool)
+static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, ComponentDescPool &componentPool, PropertyPool &propertyPool)
 {
 	EntityDesc entityDesc = {
 		.id = desc.id,
@@ -1032,38 +1013,38 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 
 	if ( desc.components & Component_Model )
 	{
-		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Model) ) {
+		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Model) ) {
 			const ModelComponent model = { .materialId = desc.materialId, .geometryType = desc.geometryType };
-			component->properties = MakeComponentDesc(ComponentType_Model, &model, pool);
+			component->properties = MakePropertyGroupDesc(*ComponentReflexStruct(ComponentType_Model), &model, propertyPool);
 		}
 	}
 
 	if ( desc.components & Component_Sprite )
 	{
-		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Sprite) ) {
+		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Sprite) ) {
 			const SpriteComponent sprite = { .spriteId = desc.spriteId, .layerId = desc.layerId };
-			component->properties = MakeComponentDesc(ComponentType_Sprite, &sprite, pool);
+			component->properties = MakePropertyGroupDesc(*ComponentReflexStruct(ComponentType_Sprite), &sprite, propertyPool);
 		}
 	}
 
 	if ( desc.components & Component_Light )
 	{
-		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Light) ) {
+		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Light) ) {
 			const LightComponent light = {
 				.type = desc.lightType,
 				.color = desc.lightColor,
 				.intensity = desc.lightIntensity,
 				.radius = desc.lightRadius,
 			};
-			component->properties = MakeComponentDesc(ComponentType_Light, &light, pool);
+			component->properties = MakePropertyGroupDesc(*ComponentReflexStruct(ComponentType_Light), &light, propertyPool);
 		}
 	}
 
 	if ( desc.components & Component_Particles )
 	{
-		if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Particles) ) {
+		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Particles) ) {
 			const ParticlesComponent particles = { .effectId = desc.particlesEffectId, .playOnStart = desc.particlesPlayOnStart };
-			component->properties = MakeComponentDesc(ComponentType_Particles, &particles, pool);
+			component->properties = MakePropertyGroupDesc(*ComponentReflexStruct(ComponentType_Particles), &particles, propertyPool);
 		}
 	}
 
@@ -1072,23 +1053,18 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 		const BinScriptDesc &binScript = desc.script;
 		const u32 propertyCount = Min(binScript.propertyCount, (u32)ARRAY_COUNT(binScript.properties));
 
-		if ( pool.propertyCount + propertyCount > pool.propertyCapacity )
-		{
-			LOG(Warning, "Entity <%s> drops its script properties, the property pool is full.\n", desc.name);
-		}
-		else if ( ComponentDesc *component = PushComponentDesc(pool, entityIndex, ComponentType_Script) )
+		if ( ComponentDesc *component = PushComponentDesc(componentPool, entityIndex, ComponentType_Script) )
 		{
 			component->scriptName = binScript.name;
 
 			PropertyGroupDesc &script = component->properties;
-			script.properties = pool.properties + pool.propertyCount;
-			script.propertyCount = propertyCount;
+			script = AllocProperties(propertyPool, propertyCount);
 
 			for (u32 p = 0; p < propertyCount; ++p)
 			{
 				const BinScriptPropertyDesc &binProperty = binScript.properties[p];
 
-				PropertyDesc &property = pool.properties[pool.propertyCount++];
+				PropertyDesc &property = script.properties[p];
 				property.name = binProperty.name;
 				property.type = binProperty.type;
 				MemCopy(property.value, binProperty.value, sizeof(property.value));
@@ -1102,15 +1078,15 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, u32 entityIndex, 
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc)
 {
 	ComponentDesc components[ComponentType_Count] = {};
-	PropertyDesc properties[MAX_ENTITY_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),
-		.properties = properties,
-		.propertyCapacity = ARRAY_COUNT(properties),
 	};
 
-	const EntityDesc entityDesc = EntityDescFromBin(desc, 0, pool);
+	Scratch scratch;
+	PropertyPool propertyPool = { .arena = &scratch.arena };
+
+	const EntityDesc entityDesc = EntityDescFromBin(desc, 0, pool, propertyPool);
 
 	const ID entityId = CreateEntity(engine, entityDesc);
 	for (u32 i = 0; i < pool.componentCount; ++i) {
@@ -1135,16 +1111,16 @@ void RemoveEntity(Engine &engine, ID id)
 ID DuplicateEntity(Engine &engine, ID entityId)
 {
 	ComponentDesc components[ComponentType_Count] = {};
-	PropertyDesc properties[MAX_ENTITY_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),
-		.properties = properties,
-		.propertyCapacity = ARRAY_COUNT(properties),
 	};
 
+	Scratch scratch;
+	PropertyPool propertyPool = { .arena = &scratch.arena };
+
 	EntityDesc desc = GetEntityDesc(engine, entityId);
-	GatherEntityComponentDescs(engine, entityId, 0, pool);
+	GatherEntityComponentDescs(engine, entityId, 0, pool, propertyPool);
 
 	desc.id = {}; // The copy is a new entity, so let the pool hand it its own ID
 
@@ -1236,11 +1212,9 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 		PropertyGroupDesc &group = component.properties;
 		const PropertyDesc *source = group.properties;
 
-		group.properties = AllocProperties(engine.propertyPool, group.propertyCount);
+		group = AllocProperties(engine.propertyPool, group.propertyCount);
 		if ( group.properties ) {
 			MemCopy(group.properties, source, group.propertyCount * sizeof(PropertyDesc));
-		} else {
-			group.propertyCount = 0;
 		}
 	}
 
@@ -1251,13 +1225,13 @@ ID CreatePrefab(Engine &engine, const PrefabDesc &desc)
 ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
 {
 	ComponentDesc components[MAX_PREFAB_COMPONENTS] = {};
-	PropertyDesc properties[MAX_PREFAB_PROPERTIES] = {};
 	ComponentDescPool pool = {
 		.components = components,
 		.componentCapacity = ARRAY_COUNT(components),
-		.properties = properties,
-		.propertyCapacity = ARRAY_COUNT(properties),
 	};
+
+	Scratch scratch;
+	PropertyPool propertyPool = { .arena = &scratch.arena };
 
 	PrefabDesc prefabDesc = {};
 	prefabDesc.id = desc.id;
@@ -1266,7 +1240,7 @@ ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc)
 
 	for (u32 i = 0; i < prefabDesc.entityCount; ++i)
 	{
-		prefabDesc.entities[i] = EntityDescFromBin(desc.entities[i], i, pool);
+		prefabDesc.entities[i] = EntityDescFromBin(desc.entities[i], i, pool, propertyPool);
 	}
 
 	prefabDesc.components = pool.components;
@@ -1292,8 +1266,7 @@ static COMPACT_REMOVE(RemovePrefabProperties)
 
 	for (u32 i = 0; i < prefab.componentCount; ++i)
 	{
-		PropertyGroupDesc &group = prefab.components[i].properties;
-		FreeProperties(engine.propertyPool, group.properties, group.propertyCount);
+		FreeProperties(engine.propertyPool, prefab.components[i].properties);
 	}
 }
 

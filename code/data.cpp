@@ -867,6 +867,7 @@ struct DParser
 	bool hasErrors;
 	bool hasFinished;
 	AssetDescriptors *descriptors;
+	PropertyPool propertyPool;
 };
 
 
@@ -876,6 +877,7 @@ static DParser DParser_Init(const DTokenList &tokenList, Arena &arena, AssetDesc
 		.tokenList = &tokenList,
 		.arena = &arena,
 		.descriptors = &descriptors,
+		.propertyPool = { .arena = &arena },
 	};
 	return parser;
 }
@@ -1106,7 +1108,7 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 }
 
-static void DParser_ConsumeScriptProperties( DParser &parser, ComponentDesc &script, ComponentDescPool &pool);
+static void DParser_ConsumeScriptProperties( DParser &parser, ComponentDesc &script );
 
 static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member, void *field )
 {
@@ -1116,10 +1118,11 @@ static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member
 }
 
 // Parses "{ .prop = value, ... }" into freshly pooled properties, matched against `type`'s members by name.
-static PropertyGroupDesc DParser_ConsumePropertyGroupDesc( DParser &parser, const ReflexStruct &type, ComponentDescPool &pool )
+static PropertyGroupDesc DParser_ConsumePropertyGroupDesc( DParser &parser, const ReflexStruct &type )
 {
-	PropertyGroupDesc desc = {};
-	desc.properties = pool.properties + pool.propertyCount;
+	// Each member is stored at most once, so the members bound the properties before any is read
+	PropertyGroupDesc desc = AllocProperties(parser.propertyPool, type.memberCount);
+	desc.propertyCount = 0;
 
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
@@ -1138,17 +1141,21 @@ static PropertyGroupDesc DParser_ConsumePropertyGroupDesc( DParser &parser, cons
 		} else if ( ReflexGetTypeSize(member->reflexId) > MAX_PROPERTY_VALUE_SIZE ) {
 			LOG(Warning, "<%s> property <%s> is too large to be stored, its value is skipped.\n", type.name, member->name);
 			DParser_SkipFieldValue(parser);
-		} else if ( pool.propertyCount == pool.propertyCapacity ) {
-			LOG(Warning, "<%s> drops property <%s>, the property pool is full.\n", type.name, member->name);
-			DParser_SkipFieldValue(parser);
 		} else {
-			PropertyDesc &property = pool.properties[pool.propertyCount++];
-			property = {
-				.name = PushString(*parser.arena, member->name),
-				.type = member->reflexId,
-			};
-			DParser_ConsumeProperty(parser, *member, property.value);
-			desc.propertyCount++;
+			PropertyDesc *property = nullptr;
+			for (u32 i = 0; i < desc.propertyCount && !property; ++i) {
+				if ( StrEq(desc.properties[i].name, member->name) ) {
+					property = &desc.properties[i];
+				}
+			}
+			if ( !property ) {
+				property = &desc.properties[desc.propertyCount++];
+				*property = {
+					.name = PushString(*parser.arena, member->name),
+					.type = member->reflexId,
+				};
+			}
+			DParser_ConsumeProperty(parser, *member, property->value);
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
@@ -1168,7 +1175,7 @@ static void DParser_ConsumeEntityComponent( DParser &parser, ComponentDescPool &
 
 	ComponentDesc *component = type ? PushComponentDesc(pool, entityIndex, componentType) : nullptr;
 	if ( component ) {
-		component->properties = DParser_ConsumePropertyGroupDesc(parser, *type, pool);
+		component->properties = DParser_ConsumePropertyGroupDesc(parser, *type);
 	} else {
 		DParser_SkipFieldValue(parser);
 	}
@@ -1194,7 +1201,7 @@ static void DParser_ConsumeEntityScript( DParser &parser, ComponentDescPool &poo
 		if ( StrEq( field, sName ) ) {
 			scriptComponentDesc.scriptName = PushString(*parser.arena, DParser_ConsumeString(parser));
 		} else if ( StrEq( field, sProperties ) ) {
-			DParser_ConsumeScriptProperties(parser, scriptComponentDesc, pool);
+			DParser_ConsumeScriptProperties(parser, scriptComponentDesc);
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
@@ -1263,8 +1270,6 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 	ComponentDescPool pool = {
 		.components = PushZeroArray(*parser.arena, ComponentDesc, MAX_PREFAB_COMPONENTS),
 		.componentCapacity = MAX_PREFAB_COMPONENTS,
-		.properties = PushZeroArray(*parser.arena, PropertyDesc, MAX_PREFAB_PROPERTIES),
-		.propertyCapacity = MAX_PREFAB_PROPERTIES,
 	};
 
 	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
@@ -1358,7 +1363,7 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 
 // Parsing runs before RegisterScripts, so the script's layout comes from reflex by name. That
 // name is the reason .name has to come before .properties in the script block.
-static void DParser_ConsumeScriptProperties( DParser &parser, ComponentDesc &scriptComponentDesc, ComponentDescPool &pool)
+static void DParser_ConsumeScriptProperties( DParser &parser, ComponentDesc &scriptComponentDesc )
 {
 	const ReflexStruct *type = scriptComponentDesc.scriptName ? ReflexGetStructFromName(scriptComponentDesc.scriptName) : nullptr;
 	if ( !type ) {
@@ -1367,7 +1372,7 @@ static void DParser_ConsumeScriptProperties( DParser &parser, ComponentDesc &scr
 		return;
 	}
 
-	scriptComponentDesc.properties = DParser_ConsumePropertyGroupDesc(parser, *type, pool);
+	scriptComponentDesc.properties = DParser_ConsumePropertyGroupDesc(parser, *type);
 }
 
 static void DParser_ConsumeUntil( DParser &parser, DTokenId tokenId )
@@ -1756,8 +1761,6 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 				// pools are sized to the worst case an entity could ask for
 				descriptors.componentPool.componentCapacity = descriptors.entityDescCount * ComponentType_Count + 1;
 				descriptors.componentPool.components = PushZeroArray(arena, ComponentDesc, descriptors.componentPool.componentCapacity);
-				descriptors.componentPool.propertyCapacity = descriptors.entityDescCount * MAX_ENTITY_PROPERTIES + 1;
-				descriptors.componentPool.properties = PushZeroArray(arena, PropertyDesc, descriptors.componentPool.propertyCapacity);
 				descriptors.entityDescCount = 0;
 				descriptors.prefabDescs = PushZeroArray(arena, PrefabDesc, descriptors.prefabDescCount);
 				descriptors.prefabDescCount = 0;
@@ -2506,13 +2509,11 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 
 	static EntityDesc entityDescs[MAX_ENTITIES];
 	static ComponentDesc componentDescs[MAX_ENTITIES * ComponentType_Count];
-	const u32 propertyCapacity = engine.scene.entityCount * MAX_ENTITY_PROPERTIES + 1;
 	ComponentDescPool componentPool = {
 		.components = componentDescs,
 		.componentCapacity = ARRAY_COUNT(componentDescs),
-		.properties = PushZeroArray(arena, PropertyDesc, propertyCapacity),
-		.propertyCapacity = propertyCapacity,
 	};
+	PropertyPool propertyPool = { .arena = &arena };
 
 	u32 entityCount = 0;
 	for (u16 i = 0; i < engine.scene.entityCount; ++i) {
@@ -2521,7 +2522,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		const u32 entityIndex = entityCount++;
 		EntityDesc &desc = entityDescs[entityIndex];
 		desc = GetEntityDesc(engine, entity.id);
-		GatherEntityComponentDescs(engine, entity.id, entityIndex, componentPool);
+		GatherEntityComponentDescs(engine, entity.id, entityIndex, componentPool, propertyPool);
 	}
 
 	static PrefabDesc prefabDescs[MAX_PREFABS];

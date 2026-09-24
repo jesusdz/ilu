@@ -649,16 +649,16 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 		if (type == EditorSelectedType_Entity && UI_MenuItem(ui, "Create prefab"))
 		{
 			ComponentDesc components[ComponentType_Count] = {};
-			PropertyDesc properties[MAX_ENTITY_PROPERTIES] = {};
 			ComponentDescPool pool = {
 				.components = components,
 				.componentCapacity = ARRAY_COUNT(components),
-				.properties = properties,
-				.propertyCapacity = ARRAY_COUNT(properties),
 			};
 
+			Scratch scratch;
+			PropertyPool propertyPool = { .arena = &scratch.arena };
+
 			EntityDesc entityDesc = GetEntityDesc(engine, assetId);
-			GatherEntityComponentDescs(engine, assetId, 0, pool);
+			GatherEntityComponentDescs(engine, assetId, 0, pool, propertyPool);
 			entityDesc.id = {}; // The prefab holds a template, not this entity's own identity
 			entityDesc.pos = {}; // Instances are placed relative to where the prefab is dropped
 
@@ -1409,7 +1409,7 @@ static void EditorUpdateUI_ScriptComponent(Engine &engine, ID entityId)
 	if ( component.structIndex != NULL_SCRIPT )
 	{
 		const Script &script = GetScriptAt(component.structIndex);
-		EditorUpdateUI_InspectorProperties(component.name, script.type->members, script.type->memberCount, component.data);
+		EditorUpdateUI_InspectorProperties(component.name, script.reflexStruct->members, script.reflexStruct->memberCount, component.data);
 		return;
 	}
 

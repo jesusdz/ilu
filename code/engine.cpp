@@ -248,7 +248,8 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 		InitializeIDPool();
 
 		engine.scriptData.arena = PushSubArena(GlobalArena, SCRIPT_DATA_MEMORY, "Script component data");
-		engine.propertyPool.arena = PushSubArena(GlobalArena, PROPERTY_POOL_MEMORY, "Property pool");
+		engine.propertyArena = PushSubArena(GlobalArena, PROPERTY_POOL_MEMORY, "Property pool");
+		engine.propertyPool.arena = &engine.propertyArena;
 
 #if USE_DATA_BUILD
 		bool buildAssets = false;
