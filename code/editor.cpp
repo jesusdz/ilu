@@ -655,7 +655,7 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 			};
 
 			Scratch scratch;
-			PropertyPool propertyPool = { .arena = &scratch.arena };
+			PropertyDescPool propertyPool = { .arena = &scratch.arena };
 
 			EntityDesc entityDesc = GetEntityDesc(engine, assetId);
 			GatherEntityComponentDescs(engine, assetId, 0, pool, propertyPool);

@@ -78,72 +78,15 @@ struct PropertyDesc
 	PropertyType type;
 };
 
-struct PropertyGroupDesc
-{
-	PropertyDesc *properties;
-	u32 propertyCount;
-};
-
 ////////////////////////////////////////////////////////////////////////
 // Property pool
 
-constexpr u32 PROPERTY_SIZE_CLASS_COUNT = 64;
+#define ARRAY_POOL_NAME PropertyDescPool
+#define ARRAY_POOL_TYPE PropertyDesc
+#define ARRAY_POOL_SIZE_CLASS_COUNT 64
+#include "ilu_array_pool.h"
 
-// Struct used to store a linked list of free blocks
-struct PropertyBlock
-{
-	PropertyBlock *next;
-};
-
-CT_ASSERT(sizeof(PropertyDesc) >= sizeof(PropertyBlock));
-
-struct PropertyPool
-{
-	Arena *arena;
-	PropertyBlock *freeLists[PROPERTY_SIZE_CLASS_COUNT];
-};
-
-static PropertyGroupDesc AllocProperties(PropertyPool &pool, u32 count)
-{
-	PropertyGroupDesc desc = {};
-	desc.propertyCount = count;
-
-	if (count > 0)
-	{
-		if ( count <= PROPERTY_SIZE_CLASS_COUNT )
-		{
-			const u32 sizeClass = count - 1;
-			if ( PropertyBlock *block = pool.freeLists[sizeClass] )
-			{
-				pool.freeLists[sizeClass] = block->next;
-				MemSet(block, count * sizeof(PropertyDesc), 0);
-				desc.properties = (PropertyDesc*) block;
-			}
-		}
-
-		if ( !desc.properties ) {
-			desc.properties = PushZeroArray(*pool.arena, PropertyDesc, count);
-		}
-	}
-
-	return desc;
-}
-
-static void FreeProperties(PropertyPool &pool, PropertyGroupDesc desc)
-{
-	// A block from another pool would join this one's free lists and be handed out again after
-	// its own memory is gone. Transient pools are never freed into, their arena drops everything.
-	ASSERT( !desc.properties || ( (byte*)desc.properties >= pool.arena->base && (byte*)desc.properties < pool.arena->base + pool.arena->size ) );
-
-	if ( desc.properties && desc.propertyCount > 0 && desc.propertyCount <= PROPERTY_SIZE_CLASS_COUNT )
-	{
-		PropertyBlock *block = (PropertyBlock*) desc.properties;
-		block->next = pool.freeLists[desc.propertyCount - 1];
-		pool.freeLists[desc.propertyCount - 1] = block;
-	}
-}
-
-inline PropertyGroupDesc MakePropertyGroupDesc(const ReflexStruct &type, const void *base, PropertyPool &pool)
+inline PropertyDescArray MakePropertyDescArray(const ReflexStruct &type, const void *base, PropertyDescPool &pool)
 {
 	const ReflexMember *members[128] = {};
 	u32 memberCount = 0;
@@ -162,12 +105,12 @@ inline PropertyGroupDesc MakePropertyGroupDesc(const ReflexStruct &type, const v
 		members[memberCount++] = &member;
 	}
 
-	PropertyGroupDesc desc = AllocProperties(pool, memberCount);
+	PropertyDescArray desc = AllocArray(pool, memberCount);
 	for (u32 i = 0; i < memberCount; ++i)
 	{
 		const ReflexMember &member = *members[i];
 		const u32 size = ReflexGetTypeSize(member.reflexId);
-		PropertyDesc &property = desc.properties[i];
+		PropertyDesc &property = desc.array[i];
 		property = {
 			.name = member.name,
 			.type = member.reflexId,
@@ -178,11 +121,11 @@ inline PropertyGroupDesc MakePropertyGroupDesc(const ReflexStruct &type, const v
 	return desc;
 }
 
-inline void ApplyPropertyGroupDesc(const ReflexStruct &type, void *base, const PropertyGroupDesc &desc)
+inline void ApplyPropertyDescArray(const ReflexStruct &type, void *base, const PropertyDescArray &desc)
 {
-	for (u32 i = 0; i < desc.propertyCount; ++i)
+	for (u32 i = 0; i < desc.count; ++i)
 	{
-		const PropertyDesc &property = desc.properties[i];
+		const PropertyDesc &property = desc.array[i];
 		const ReflexMember *member = FindProperty(type, property.name);
 
 		if ( !member ) {
@@ -1014,7 +957,7 @@ struct ComponentDesc
 	u32 entityIndex;
 	ComponentType type;
 	const char *scriptName; // Only for ScriptComponents
-	PropertyGroupDesc properties;
+	PropertyDescArray properties;
 };
 
 struct ComponentDescPool
@@ -1554,7 +1497,7 @@ struct Engine
 	Game game;
 	ScriptDataPool scriptData;
 	Arena propertyArena;
-	PropertyPool propertyPool;
+	PropertyDescPool propertyPool;
 #if USE_UI
 	UI ui;
 #endif
@@ -1803,7 +1746,7 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc);
 void AddComponent(Engine &engine, ID entityId, ComponentType type);
 void AddComponent(Engine &engine, ID entityId, const ComponentDesc &desc);
 void RemoveComponent(Engine &engine, ID entityId, ComponentType type);
-void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &componentPool, PropertyPool &propertyPool);
+void GatherEntityComponentDescs(Engine &engine, ID entityId, u32 entityIndex, ComponentDescPool &componentPool, PropertyDescPool &propertyPool);
 ComponentDesc *PushComponentDesc(ComponentDescPool &pool, u32 entityIndex, ComponentType type);
 ID CreateEntity(Engine &engine, const BinEntityDesc &desc);
 void RemoveEntity(Engine &engine, ID entityId);

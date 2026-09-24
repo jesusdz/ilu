@@ -230,11 +230,11 @@ static void WriteProperty(WriteContext &ctx, const ReflexMember &member, const v
 }
 
 // Writes every property in `desc`, matched against `type`'s members by name
-static void WritePropertyGroupDesc(WriteContext &ctx, const ReflexStruct &type, const PropertyGroupDesc &desc)
+static void WritePropertyDescArray(WriteContext &ctx, const ReflexStruct &type, const PropertyDescArray &desc)
 {
-	for (u32 p = 0; p < desc.propertyCount; ++p)
+	for (u32 p = 0; p < desc.count; ++p)
 	{
-		const PropertyDesc &property = desc.properties[p];
+		const PropertyDesc &property = desc.array[p];
 		const ReflexMember *member = FindProperty(type, property.name);
 		if ( member && member->reflexId == property.type ) {
 			WriteProperty(ctx, *member, property.value);
@@ -254,15 +254,15 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &desc)
 		WriteLine(ctx, ".name = \"%s\",", desc.scriptName);
 
 		const ReflexStruct *type = ReflexGetStructFromName(desc.scriptName);
-		if ( desc.properties.propertyCount > 0 && !type ) {
+		if ( desc.properties.count > 0 && !type ) {
 			LOG(Warning, "Script <%s> is not reflected, its properties are not saved.\n", desc.scriptName);
 		}
 
-		if ( desc.properties.propertyCount > 0 && type )
+		if ( desc.properties.count > 0 && type )
 		{
 			WriteLine(ctx, ".properties = {");
 			PushIndent(ctx);
-			WritePropertyGroupDesc(ctx, *type, desc.properties);
+			WritePropertyDescArray(ctx, *type, desc.properties);
 			PopIndent(ctx);
 			WriteLine(ctx, "},");
 		}
@@ -280,7 +280,7 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &desc)
 
 		WriteLine(ctx, ".%s = {", ComponentFieldNames[desc.type]);
 		PushIndent(ctx);
-		WritePropertyGroupDesc(ctx, *type, desc.properties);
+		WritePropertyDescArray(ctx, *type, desc.properties);
 		PopIndent(ctx);
 		WriteLine(ctx, "},");
 	}
@@ -867,7 +867,7 @@ struct DParser
 	bool hasErrors;
 	bool hasFinished;
 	AssetDescriptors *descriptors;
-	PropertyPool propertyPool;
+	PropertyDescPool propertyPool;
 };
 
 
@@ -1118,11 +1118,11 @@ static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member
 }
 
 // Parses "{ .prop = value, ... }" into freshly pooled properties, matched against `type`'s members by name.
-static PropertyGroupDesc DParser_ConsumePropertyGroupDesc( DParser &parser, const ReflexStruct &type )
+static PropertyDescArray DParser_ConsumePropertyDescArray( DParser &parser, const ReflexStruct &type )
 {
 	// Each member is stored at most once, so the members bound the properties before any is read
-	PropertyGroupDesc desc = AllocProperties(parser.propertyPool, type.memberCount);
-	desc.propertyCount = 0;
+	PropertyDescArray desc = AllocArray(parser.propertyPool, type.memberCount);
+	desc.count = 0;
 
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
 
@@ -1143,13 +1143,13 @@ static PropertyGroupDesc DParser_ConsumePropertyGroupDesc( DParser &parser, cons
 			DParser_SkipFieldValue(parser);
 		} else {
 			PropertyDesc *property = nullptr;
-			for (u32 i = 0; i < desc.propertyCount && !property; ++i) {
-				if ( StrEq(desc.properties[i].name, member->name) ) {
-					property = &desc.properties[i];
+			for (u32 i = 0; i < desc.count && !property; ++i) {
+				if ( StrEq(desc.array[i].name, member->name) ) {
+					property = &desc.array[i];
 				}
 			}
 			if ( !property ) {
-				property = &desc.properties[desc.propertyCount++];
+				property = &desc.array[desc.count++];
 				*property = {
 					.name = PushString(*parser.arena, member->name),
 					.type = member->reflexId,
@@ -1175,7 +1175,7 @@ static void DParser_ConsumeEntityComponent( DParser &parser, ComponentDescPool &
 
 	ComponentDesc *component = type ? PushComponentDesc(pool, entityIndex, componentType) : nullptr;
 	if ( component ) {
-		component->properties = DParser_ConsumePropertyGroupDesc(parser, *type);
+		component->properties = DParser_ConsumePropertyDescArray(parser, *type);
 	} else {
 		DParser_SkipFieldValue(parser);
 	}
@@ -1372,7 +1372,7 @@ static void DParser_ConsumeScriptProperties( DParser &parser, ComponentDesc &scr
 		return;
 	}
 
-	scriptComponentDesc.properties = DParser_ConsumePropertyGroupDesc(parser, *type);
+	scriptComponentDesc.properties = DParser_ConsumePropertyDescArray(parser, *type);
 }
 
 static void DParser_ConsumeUntil( DParser &parser, DTokenId tokenId )
@@ -1862,7 +1862,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 			case ComponentType_Model:
 			{
 				ModelComponent model = {};
-				ApplyPropertyGroupDesc(*ComponentReflexStruct(ComponentType_Model), &model, component.properties);
+				ApplyPropertyDescArray(*ComponentReflexStruct(ComponentType_Model), &model, component.properties);
 				d.components |= Component_Model;
 				d.materialId = model.materialId;
 				d.geometryType = model.geometryType;
@@ -1872,7 +1872,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 			case ComponentType_Sprite:
 			{
 				SpriteComponent sprite = {};
-				ApplyPropertyGroupDesc(*ComponentReflexStruct(ComponentType_Sprite), &sprite, component.properties);
+				ApplyPropertyDescArray(*ComponentReflexStruct(ComponentType_Sprite), &sprite, component.properties);
 				d.components |= Component_Sprite;
 				d.spriteId = sprite.spriteId;
 				d.layerId = sprite.layerId;
@@ -1882,7 +1882,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 			case ComponentType_Light:
 			{
 				LightComponent light = {};
-				ApplyPropertyGroupDesc(*ComponentReflexStruct(ComponentType_Light), &light, component.properties);
+				ApplyPropertyDescArray(*ComponentReflexStruct(ComponentType_Light), &light, component.properties);
 				d.components |= Component_Light;
 				d.lightType = light.type;
 				d.lightColor = light.color;
@@ -1894,7 +1894,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 			case ComponentType_Particles:
 			{
 				ParticlesComponent particles = {};
-				ApplyPropertyGroupDesc(*ComponentReflexStruct(ComponentType_Particles), &particles, component.properties);
+				ApplyPropertyDescArray(*ComponentReflexStruct(ComponentType_Particles), &particles, component.properties);
 				d.components |= Component_Particles;
 				d.particlesEffectId = particles.effectId;
 				d.particlesPlayOnStart = particles.playOnStart;
@@ -1903,16 +1903,16 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, u32 ent
 
 			case ComponentType_Script:
 			{
-				const PropertyGroupDesc &properties = component.properties;
+				const PropertyDescArray &properties = component.properties;
 
 				d.components |= Component_Script;
 
 				BinScriptDesc &bs = d.script;
 				bs.name = DataInternString(stringPool, component.scriptName);
-				bs.propertyCount = Min(properties.propertyCount, (u32)ARRAY_COUNT(bs.properties));
+				bs.propertyCount = Min(properties.count, (u32)ARRAY_COUNT(bs.properties));
 				for (u32 p = 0; p < bs.propertyCount; ++p)
 				{
-					const PropertyDesc &property = properties.properties[p];
+					const PropertyDesc &property = properties.array[p];
 
 					BinScriptPropertyDesc &pd = bs.properties[p];
 					pd.name  = DataInternString(stringPool, property.name);
@@ -2513,7 +2513,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		.components = componentDescs,
 		.componentCapacity = ARRAY_COUNT(componentDescs),
 	};
-	PropertyPool propertyPool = { .arena = &arena };
+	PropertyDescPool propertyPool = { .arena = &arena };
 
 	u32 entityCount = 0;
 	for (u16 i = 0; i < engine.scene.entityCount; ++i) {
