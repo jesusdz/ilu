@@ -493,11 +493,14 @@ struct Texture
 REFLEX()
 struct MaterialDesc
 {
-	ID id;
 	REFLEX()
+	ID id;
 	const char *name;
+	REFLEX()
 	ID textureId;
+	REFLEX()
 	const char *pipelineName;
+	REFLEX()
 	f32 uvScale;
 	AssetFlags flags;
 };

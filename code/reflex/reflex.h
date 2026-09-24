@@ -284,6 +284,12 @@ static i32 ReflexGetEnumValue(const ReflexEnum *reflexEnum, const char *enumerat
 	return 0;
 }
 
+static void *ReflexGetMemberPtr(void *structBase, const ReflexMember *member)
+{
+	void *memberPtr = (u8*)structBase + member->offset;
+	return memberPtr;
+}
+
 static const void *ReflexGetMemberPtr(const void *structBase, const ReflexMember *member)
 {
 	const void *memberPtr = (u8*)structBase + member->offset;

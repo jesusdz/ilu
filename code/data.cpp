@@ -244,6 +244,15 @@ static void WritePropertyDescArray(WriteContext &ctx, const ReflexStruct &type, 
 	}
 }
 
+static void WriteStruct(WriteContext &ctx, const ReflexStruct &type, const void *base)
+{
+	for (u32 i = 0; i < type.memberCount; ++i)
+	{
+		const ReflexMember &member = type.members[i];
+		WriteProperty(ctx, member, ReflexGetMemberPtr(base, &member));
+	}
+}
+
 static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &desc)
 {
 	if ( desc.type == ComponentType_Script )
@@ -376,10 +385,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Material %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		WriteLine(ctx, ".textureId = %u,", desc.textureId.slot);
-		WriteLine(ctx, ".pipelineName = \"%s\",", desc.pipelineName);
-		WriteLine(ctx, ".uvScale = %f,", desc.uvScale);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_MaterialDesc), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -1132,6 +1138,24 @@ static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member
 	}
 }
 
+static void DParser_ConsumeStruct( DParser &parser, const ReflexStruct &reflexStruct, void *structPtr )
+{
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+
+	String field;
+	while ( DParser_NextField(parser, field) )
+	{
+		const ReflexMember *member = FindProperty(reflexStruct, field);
+		if ( !member ) {
+			LOG(Warning, "<%s> has no property <%.*s>, its value is skipped.\n", reflexStruct.name, field.size, field.str);
+			DParser_SkipFieldValue(parser);
+		} else {
+			void *fieldPtr = ReflexGetMemberPtr(structPtr, member);
+			DParser_ConsumeProperty(parser, *member, fieldPtr);
+		}
+	}
+}
+
 // Parses "{ .prop = value, ... }" into freshly pooled properties, matched against `type`'s members by name.
 static PropertyDescArray DParser_ConsumePropertyDescArray( DParser &parser, const ReflexStruct &type )
 {
@@ -1459,28 +1483,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				String field;
-				while ( DParser_NextField( parser, field ) )
-				{
-					static const String sId = MakeString("id");
-					static const String sTextureId = MakeString("textureId");
-					static const String sPipelineName = MakeString("pipelineName");
-					static const String sUvScale = MakeString("uvScale");
-
-					if ( StrEq( field, sId ) ) {
-						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sTextureId ) ) {
-						desc.textureId = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sPipelineName ) ) {
-						desc.pipelineName = PushString(*parser.arena, DParser_ConsumeString(parser));
-					} else if ( StrEq( field, sUvScale ) ) {
-						desc.uvScale = DParser_ConsumeF32(parser);
-					} else {
-						LOG(Warning, "Unknown Material field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
-					}
-				}
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_MaterialDesc), &desc );
 
 			// Sprite
 			} else if ( StrEq(type, sSpriteStr) ) {
