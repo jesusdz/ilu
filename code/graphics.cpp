@@ -467,24 +467,45 @@ ID CreateTexture(Graphics &gfx, const TextureDesc &desc)
 {
 	ID id = {};
 
-	Scratch scratch;
-	const FilePath imagePath = MakePath(AssetDir, desc.filename);
-	ImagePixels img;
-	if ( ReadImagePixels(scratch.arena, imagePath.str, img) )
+	// Not the exact size: a scratch slot too small for a request is never grown, so asking for
+	// every texture's own size would take a new slot for each larger one until they run out
+	Scratch scratch(Max(desc.location.size, (u32)MB(16)));
+
+	if ( desc.flags & AssetFlag_Bin )
 	{
-		const ImageH imageHandle = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
+		const byte *pixels = PushDataFromFile(scratch.arena, gfx.assetsFile, desc.location.offset, desc.location.size);
+
+		const ImageH imageHandle = GfxCreateImage(gfx, desc.name, desc.width, desc.height, desc.channels, desc.mipmap, pixels);
 
 		id = CreateTexture(gfx, desc, imageHandle);
 
-		if ( id )
-		{
-			Texture &texture = GetTexture(id);
-			texture.ownsImage = true;
-			GetFileLastWriteTimestamp(imagePath.str, texture.ts);
-		}
-		else
-		{
+		if ( id ) {
+			GetTexture(id).ownsImage = true;
+		} else {
 			DestroyImageH(gfx.device, imageHandle);
+		}
+
+	}
+	else
+	{
+		const FilePath imagePath = MakePath(AssetDir, desc.filename);
+		ImagePixels img;
+		if ( ReadImagePixels(scratch.arena, imagePath.str, img) )
+		{
+			const ImageH imageHandle = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
+
+			id = CreateTexture(gfx, desc, imageHandle);
+
+			if ( id )
+			{
+				Texture &texture = GetTexture(id);
+				texture.ownsImage = true;
+				GetFileLastWriteTimestamp(imagePath.str, texture.ts);
+			}
+			else
+			{
+				DestroyImageH(gfx.device, imageHandle);
+			}
 		}
 	}
 
@@ -500,6 +521,7 @@ ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 	{
 		const Texture &texture = gfx.textures[i];
 		const TextureDesc &desc = texture.desc;
+		if ( desc.flags & AssetFlag_Bin ) { continue; }
 		const FilePath imagePath2 = MakePath(AssetDir, desc.filename);
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(imagePath.str, imagePath2.str)) {
 			id = desc.id;
@@ -512,31 +534,6 @@ ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 		id = CreateTexture(gfx, desc);
 	}
 	return id;
-}
-
-ID CreateTexture(Graphics &gfx, const BinImage &binImage)
-{
-	const BinImageDesc &desc = *binImage.desc;
-	const char *name = desc.desc.name;
-	const u32 width = desc.width;
-	const u32 height = desc.height;
-	const u32 channels = desc.channels;
-	const u32 mipmap = desc.desc.mipmap;
-	const u8 *pixels = binImage.pixels;
-
-	const ImageH imageHandle = GfxCreateImage(gfx, name, width, height, channels, mipmap, pixels);
-
-	Texture *texture = PushTexture(gfx, desc.desc);
-	if ( !texture ) {
-		DestroyImageH(gfx.device, imageHandle);
-		return {};
-	}
-
-	texture->image = imageHandle;
-	texture->ownsImage = true;
-	texture->size = { width, height };
-
-	return texture->desc.id;
 }
 
 ImageH GetTextureImage(Graphics &gfx, ID id, ImageH imageH)
@@ -594,7 +591,7 @@ static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
 
 	if ( !desc.id ) { return; }
 
-	// TODO(jesus): Textures loaded from bin data file do not have descriptor...
+	if ( desc.flags & AssetFlag_Bin ) { return; }
 	if ( StrEq(desc.filename, "") ) { return; };
 
 	const FilePath imagePath = MakePath(AssetDir, desc.filename);

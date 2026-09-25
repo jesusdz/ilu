@@ -450,6 +450,9 @@ PROPERTY_OPS_AS(Double, Float)
 PROPERTY_OPS_AS(f32, Float)
 PROPERTY_OPS_AS(f64, Float)
 
+// Only REFLEX(Bin) members have this type, and those never reach text or the editor
+static const ReflexOps PropertyOps_BinLocation = {};
+
 #undef PROPERTY_OPS
 #undef PROPERTY_OPS_AS
 #undef PROPERTY_SERIALIZATION

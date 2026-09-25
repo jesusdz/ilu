@@ -149,6 +149,9 @@ enum AssetFlags
 	// Owned by the engine, not by the scene, so CleanScene must leave it alone. These assets hold the
 	// shared images bound in the global bind group, which nothing recreates after initialization.
 	AssetFlag_Builtin = 1 << 1,
+	// Loaded from the .dat, so its REFLEX(Bin) fields are filled and its REFLEX(Dev) ones are not.
+	// Never stored: OpenAssets sets it on what it reads.
+	AssetFlag_Bin = 1 << 2,
 };
 
 // The desc fields below are typed AssetFlags, but combining two enumerators yields an int that C++
@@ -327,8 +330,18 @@ struct AudioClipDesc
 	ID id;
 	REFLEX()
 	const char *name;
-	REFLEX()
+	REFLEX(Dev)
 	const char *filename;
+	REFLEX(Bin)
+	u32 sampleCount;
+	REFLEX(Bin)
+	u32 samplingRate;
+	REFLEX(Bin)
+	u16 sampleSize;
+	REFLEX(Bin)
+	u16 channelCount;
+	REFLEX(Bin)
+	BinLocation location;
 	AssetFlags flags;
 };
 
@@ -384,8 +397,10 @@ struct MusicFileDesc
 	ID id;
 	REFLEX()
 	const char *name;
-	REFLEX()
+	REFLEX(Dev)
 	const char *filename;
+	REFLEX(Bin)
+	BinLocation location;
 	AssetFlags flags;
 };
 
@@ -438,36 +453,6 @@ struct Audio
 };
 
 
-#pragma pack(push, 1)
-
-struct BinAudioClipDesc
-{
-	AudioClipDesc desc;
-	u32 sampleCount;
-	u32 samplingRate;
-	u16 sampleSize;
-	u16 channelCount;
-	BinLocation location;
-};
-
-struct BinMusicFileDesc
-{
-	MusicFileDesc desc;
-	BinLocation location;
-};
-
-struct BinAudioClip
-{
-	BinAudioClipDesc *desc;
-};
-
-struct BinMusicFile
-{
-	BinMusicFileDesc *desc;
-};
-
-#pragma pack(pop)
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // TYPES: Graphics
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -482,10 +467,18 @@ struct TextureDesc
 	ID id;
 	REFLEX()
 	const char *name;
-	REFLEX()
+	REFLEX(Dev)
 	const char *filename;
 	REFLEX()
 	u8 mipmap;
+	REFLEX(Bin)
+	u16 width;
+	REFLEX(Bin)
+	u16 height;
+	REFLEX(Bin)
+	u8 channels;
+	REFLEX(Bin)
+	BinLocation location;
 	AssetFlags flags;
 };
 
@@ -718,6 +711,7 @@ struct Graphics
 
 	u32 textureCount;
 	Texture textures[MAX_TEXTURES];
+	File assetsFile; // The open .dat, where textures flagged AssetFlag_Bin read their pixels from
 
 	u32 materialCount;
 	Material materials[MAX_MATERIALS];
@@ -774,32 +768,12 @@ struct BinShaderDesc
 	BinLocation location;
 };
 
-struct BinImageDesc
-{
-	TextureDesc desc;
-	u16 width;
-	u16 height;
-	u8  channels;
-	u8  unused[3];
-	BinLocation location;
-};
-
 struct BinShader
 {
 	BinShaderDesc *desc;
 	byte *spirv;
 };
 
-struct BinImage
-{
-	BinImageDesc *desc;
-	byte *pixels;
-};
-
-struct BinMaterial
-{
-	MaterialDesc *desc;
-};
 
 #pragma pack(pop)
 
@@ -1313,11 +1287,6 @@ struct BinPrefabDesc
 	BinEntityDesc entities[MAX_PREFAB_ENTITIES];
 };
 
-struct BinSprite
-{
-	SpriteDesc *desc;
-};
-
 struct BinEntity
 {
 	BinEntityDesc *desc;
@@ -1461,11 +1430,11 @@ struct BinAssets
 
 	BinSceneDesc scene;
 	BinShader *shaders;
-	BinImage *images;
-	BinAudioClip *audioClips;
-	BinMusicFile *musicFiles;
-	BinMaterial *materials;
-	BinSprite *sprites;
+	TextureDesc *images;
+	AudioClipDesc *audioClips;
+	MusicFileDesc *musicFiles;
+	MaterialDesc *materials;
+	SpriteDesc *sprites;
 	BinEntity *entities;
 	BinPrefab *prefabs;
 	BinRoom *rooms;
@@ -1538,7 +1507,6 @@ bool LoadAudioClipFromWAVFile(const char *filename, Arena &arena, AudioClip &aud
 bool LoadSamplesFromWAVFile(const char *filename, void *samples, u32 firstSampleIndex, u32 sampleCount);
 
 AudioClip &GetAudioClip(ID clipId);
-ID CreateAudioClip(Audio &audio, const BinAudioClip &binAudioClip);
 ID CreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc);
 ID GetOrCreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc);
 void RemoveAudioClip(ID clipId); // Deferred, takes effect on the next CompactAudio
@@ -1554,7 +1522,6 @@ void PreRenderAudio(Audio &audio);
 void RenderAudio(Engine &engine, SoundBuffer &soundBuffer); // Streams clips from engine.assets
 
 MusicFile &GetMusicFile(ID musicId);
-ID CreateMusicFile(Audio &audio, const BinMusicFile &binMusicFile);
 ID CreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc);
 ID GetOrCreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc);
 void DestroyMusicFile(ID musicId);
@@ -1619,7 +1586,6 @@ Texture &GetTextureAt(Graphics &gfx, u32 index);
 ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH);
 ID CreateTexture(Graphics &gfx, const TextureDesc &desc);
 ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc);
-ID CreateTexture(Graphics &gfx, const BinImage &binImage);
 ImageH GetTextureImage(Graphics &gfx, ID textureId, ImageH imageH);
 void RemoveTexture(Graphics &gfx, ID textureId);
 void CompactTextures(Graphics &gfx);

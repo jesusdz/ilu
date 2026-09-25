@@ -1679,6 +1679,7 @@ void CleanScene(Engine &engine)
 	// The audio pools are not compacted here: only the mixing thread may move that
 
 	CloseAssets(engine.assets);
+	engine.gfx.assetsFile = {};
 
 	engine.gfx.shouldUpdateMaterials = true;
 	engine.gfx.shouldUpdateMaterialBindGroups = true;

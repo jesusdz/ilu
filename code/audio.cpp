@@ -423,41 +423,34 @@ static AudioClip *PushAudioClip(Audio &audio, const AudioClipDesc &desc)
 	return &audioClip;
 }
 
-ID CreateAudioClip(Audio &audio, const BinAudioClip &binAudioClip)
-{
-	const BinAudioClipDesc &desc = *binAudioClip.desc;
-
-	AudioClip *audioClip = PushAudioClip(audio, desc.desc);
-	if ( !audioClip ) {
-		return {};
-	}
-
-	audioClip->sampleSize = desc.sampleSize;
-	audioClip->samplingRate = desc.samplingRate;
-	audioClip->channelCount = desc.channelCount;
-	audioClip->sampleCount = desc.sampleCount;
-	audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_ASSETS;
-	audioClip->location = desc.location;
-
-	return audioClip->desc.id;
-}
-
 ID CreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc)
 {
 	AudioClip *audioClip = PushAudioClip(audio, audioClipDesc);
 	if ( !audioClip ) {
-		LOG(Warning, "Could not load audio clip %s (no more space left for audio clips)\n", audioClipDesc.filename);
+		LOG(Warning, "Could not load audio clip %s (no more space left for audio clips)\n", audioClipDesc.name);
 		return {};
 	}
 
-	if ( !LoadAudioClipFromWAVFile(audioClipDesc.filename, *audioClip) )
+	if ( audioClipDesc.flags & AssetFlag_Bin )
 	{
-		LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
-		RemoveAudioClip(audioClip->desc.id);
-		return {};
+		audioClip->sampleSize = audioClipDesc.sampleSize;
+		audioClip->samplingRate = audioClipDesc.samplingRate;
+		audioClip->channelCount = audioClipDesc.channelCount;
+		audioClip->sampleCount = audioClipDesc.sampleCount;
+		audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_ASSETS;
+		audioClip->location = audioClipDesc.location;
 	}
+	else
+	{
+		if ( !LoadAudioClipFromWAVFile(audioClipDesc.filename, *audioClip) )
+		{
+			LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
+			RemoveAudioClip(audioClip->desc.id);
+			return {};
+		}
 
-	audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_WAV;
+		audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_WAV;
+	}
 
 	return audioClip->desc.id;
 }
@@ -878,31 +871,24 @@ static MusicFile *PushMusicFile(Audio &audio, const MusicFileDesc &desc)
 	return &musicFile;
 }
 
-ID CreateMusicFile(Audio &audio, const BinMusicFile &binMusicFile)
-{
-	const BinMusicFileDesc &desc = *binMusicFile.desc;
-
-	MusicFile *musicFile = PushMusicFile(audio, desc.desc);
-	if ( !musicFile ) {
-		return {};
-	}
-
-	musicFile->loadSource = LOAD_SOURCE_ASSET_FILE;
-	musicFile->location = desc.location;
-
-	return musicFile->desc.id;
-}
-
 ID CreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc)
 {
 	MusicFile *musicFile = PushMusicFile(audio, musicFileDesc);
 	if ( !musicFile ) {
-		LOG(Warning, "Could not load music file %s (no more space left for music files)\n", musicFileDesc.filename);
+		LOG(Warning, "Could not load music file %s (no more space left for music files)\n", musicFileDesc.name);
 		return {};
 	}
 
-	musicFile->loadSource = LOAD_SOURCE_MOD_FILE;
-	musicFile->filename = musicFileDesc.filename;
+	if ( musicFileDesc.flags & AssetFlag_Bin )
+	{
+		musicFile->loadSource = LOAD_SOURCE_ASSET_FILE;
+		musicFile->location = musicFileDesc.location;
+	}
+	else
+	{
+		musicFile->loadSource = LOAD_SOURCE_MOD_FILE;
+		musicFile->filename = musicFileDesc.filename;
+	}
 
 	return musicFile->desc.id;
 }
