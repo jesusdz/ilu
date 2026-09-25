@@ -427,7 +427,7 @@ ID CreateAudioClip(Audio &audio, const BinAudioClip &binAudioClip)
 {
 	const BinAudioClipDesc &desc = *binAudioClip.desc;
 
-	AudioClip *audioClip = PushAudioClip(audio, { .id = desc.id });
+	AudioClip *audioClip = PushAudioClip(audio, desc.desc);
 	if ( !audioClip ) {
 		return {};
 	}
@@ -882,7 +882,7 @@ ID CreateMusicFile(Audio &audio, const BinMusicFile &binMusicFile)
 {
 	const BinMusicFileDesc &desc = *binMusicFile.desc;
 
-	MusicFile *musicFile = PushMusicFile(audio, { .id = desc.id, .name = desc.name });
+	MusicFile *musicFile = PushMusicFile(audio, desc.desc);
 	if ( !musicFile ) {
 		return {};
 	}

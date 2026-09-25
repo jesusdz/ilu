@@ -244,11 +244,22 @@ static void WritePropertyDescArray(WriteContext &ctx, const ReflexStruct &type, 
 	}
 }
 
+static void WritePropertyDescArrayField(WriteContext &ctx, const char *fieldName, const ReflexStruct &type, const PropertyDescArray &properties)
+{
+	WriteLine(ctx, ".%s = {", fieldName);
+	PushIndent(ctx);
+	WritePropertyDescArray(ctx, type, properties);
+	PopIndent(ctx);
+	WriteLine(ctx, "},");
+}
+
 static void WriteStruct(WriteContext &ctx, const ReflexStruct &type, const void *base)
 {
 	for (u32 i = 0; i < type.memberCount; ++i)
 	{
 		const ReflexMember &member = type.members[i];
+		// The name is written as the identifier of the declaration instead
+		if ( StrEq(member.name, "name") ) { continue; }
 		WriteProperty(ctx, member, ReflexGetMemberPtr(base, &member));
 	}
 }
@@ -269,11 +280,7 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &desc)
 
 		if ( desc.properties.count > 0 && type )
 		{
-			WriteLine(ctx, ".properties = {");
-			PushIndent(ctx);
-			WritePropertyDescArray(ctx, *type, desc.properties);
-			PopIndent(ctx);
-			WriteLine(ctx, "},");
+			WritePropertyDescArrayField(ctx, "properties", *type, desc.properties);
 		}
 
 		PopIndent(ctx);
@@ -287,11 +294,7 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &desc)
 			return;
 		}
 
-		WriteLine(ctx, ".%s = {", ComponentFieldNames[desc.type]);
-		PushIndent(ctx);
-		WritePropertyDescArray(ctx, *type, desc.properties);
-		PopIndent(ctx);
-		WriteLine(ctx, "},");
+		WritePropertyDescArrayField(ctx, ComponentFieldNames[desc.type], *type, desc.properties);
 	}
 }
 
@@ -1688,6 +1691,42 @@ static const char *DataGetString( const char *stringPool, const char *offsetPtr 
 	return str;
 }
 
+static bool IsCStringMember( const ReflexMember &member )
+{
+	return member.reflexId == ReflexID_CString && member.pointerCount == 0 && !member.isArray;
+}
+
+// Member by member onto zeroed memory, so neither padding nor the untagged members, which
+// hold runtime state, reach the file with whatever bytes the source had in them
+static void DataPackStruct( DataStringPool &stringPool, const ReflexStruct &type, void *dst, const void *src )
+{
+	MemSet(dst, type.size, 0);
+	for (u32 i = 0; i < type.memberCount; ++i)
+	{
+		const ReflexMember &member = type.members[i];
+		const u32 elemSize = member.pointerCount > 0 ? sizeof(void*) : ReflexGetTypeSize(member.reflexId);
+		const u32 size = member.isArray ? elemSize * member.arrayDim : elemSize;
+		void *dstMember = ReflexGetMemberPtr(dst, &member);
+		MemCopy(dstMember, ReflexGetMemberPtr(src, &member), size);
+		if ( IsCStringMember(member) ) {
+			const char *&str = *(const char **)dstMember;
+			str = DataInternString(stringPool, str);
+		}
+	}
+}
+
+static void DataResolveStrings( const char *stringPool, const ReflexStruct &type, void *base )
+{
+	for (u32 i = 0; i < type.memberCount; ++i)
+	{
+		const ReflexMember &member = type.members[i];
+		if ( IsCStringMember(member) ) {
+			const char *&str = *(const char **)ReflexGetMemberPtr(base, &member);
+			str = DataGetString(stringPool, str);
+		}
+	}
+}
+
 static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStringPool &stringPool)
 {
 	d = {};
@@ -1801,11 +1840,11 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		const u32 musicFilesOffset = PostIncrement(&offset, musicFilesSize);
 
 		const u32 materialCount = descriptors.materialDescCount;
-		const u32 materialsSize = materialCount * sizeof(BinMaterialDesc);
+		const u32 materialsSize = materialCount * sizeof(MaterialDesc);
 		const u32 materialsOffset = PostIncrement(&offset, materialsSize);
 
 		const u32 spriteCount = descriptors.spriteDescCount;
-		const u32 spritesSize = spriteCount * sizeof(BinSpriteDesc);
+		const u32 spritesSize = spriteCount * sizeof(SpriteDesc);
 		const u32 spritesOffset = PostIncrement(&offset, spritesSize);
 
 		const u32 entityCount = descriptors.entityDescCount;
@@ -1826,11 +1865,11 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 		// Reserve space for asset descs
 		BinShaderDesc *binShaderDescs = PushArray(tempArena, BinShaderDesc, shaderCount);
-		BinImageDesc *binImageDescs = PushArray(tempArena, BinImageDesc, imageCount);
-		BinAudioClipDesc *binAudioClipDescs = PushArray(tempArena, BinAudioClipDesc, audioClipCount);
-		BinMusicFileDesc *binMusicFileDescs = PushArray(tempArena, BinMusicFileDesc, musicFileCount);
-		BinMaterialDesc *binMaterialDescs = PushArray(tempArena, BinMaterialDesc, materialCount);
-		BinSpriteDesc *binSpriteDescs = PushArray(tempArena, BinSpriteDesc, spriteCount);
+		BinImageDesc *binImageDescs = PushZeroArray(tempArena, BinImageDesc, imageCount);
+		BinAudioClipDesc *binAudioClipDescs = PushZeroArray(tempArena, BinAudioClipDesc, audioClipCount);
+		BinMusicFileDesc *binMusicFileDescs = PushZeroArray(tempArena, BinMusicFileDesc, musicFileCount);
+		MaterialDesc *binMaterialDescs = PushZeroArray(tempArena, MaterialDesc, materialCount);
+		SpriteDesc *binSpriteDescs = PushZeroArray(tempArena, SpriteDesc, spriteCount);
 		BinEntityDesc *binEntityDescs = PushArray(tempArena, BinEntityDesc, entityCount);
 		BinPrefabDesc *binPrefabDescs = PushArray(tempArena, BinPrefabDesc, prefabCount);
 		BinRoomDesc *binRoomDescs = PushArray(tempArena, BinRoomDesc, roomCount);
@@ -1897,14 +1936,10 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			const u64 payloadSize = texWidth * texHeight * texChannels;
 
 			BinImageDesc &d = binImageDescs[i];
-			d.id       = desc.id;
-			d.name     = DataInternString(stringPool, desc.name);
-			d.filename = DataInternString(stringPool, desc.filename);
+			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_TextureDesc), &d.desc, &desc);
 			d.width    = I32ToU16(texWidth);
 			d.height   = I32ToU16(texHeight);
 			d.channels = I32ToU8(texChannels);
-			d.mipmap   = desc.mipmap;
-			d.unused   = 0;
 			d.location.offset = PostIncrement(&offset, payloadSize);
 			d.location.size   = U64ToU32(payloadSize);
 
@@ -1925,8 +1960,8 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 			const u64 payloadSize = audioClip.sampleCount * audioClip.sampleSize;
 
-			const BinAudioClipDesc d = {
-				.id = desc.id,
+			BinAudioClipDesc &d = binAudioClipDescs[i];
+			d = {
 				.sampleCount = audioClip.sampleCount,
 				.samplingRate = audioClip.samplingRate,
 				.sampleSize = audioClip.sampleSize,
@@ -1936,7 +1971,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 					.size = U64ToU32(payloadSize),
 				},
 			};
-			binAudioClipDescs[i] = d;
+			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_AudioClipDesc), &d.desc, &desc);
 
 			if ( ok ) {
 				fwrite(samples, payloadSize, 1, file);
@@ -1961,8 +1996,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			const u64 payloadSize = fileChunk->size;
 
 			BinMusicFileDesc &d = binMusicFileDescs[i];
-			d.id              = desc.id;
-			d.name            = DataInternString(stringPool, desc.name);
+			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_MusicFileDesc), &d.desc, &desc);
 			d.location.offset = PostIncrement(&offset, payloadSize);
 			d.location.size   = U64ToU32(payloadSize);
 
@@ -1972,31 +2006,13 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		// Materials
 		for (u32 i = 0; i < materialCount; ++i)
 		{
-			const MaterialDesc &desc = descriptors.materialDescs[i];
-
-			BinMaterialDesc &d = binMaterialDescs[i];
-			d.id           = desc.id;
-			d.name         = DataInternString(stringPool, desc.name);
-			d.textureId    = desc.textureId;
-			d.pipelineName = DataInternString(stringPool, desc.pipelineName);
-			d.uvScale = desc.uvScale;
+			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_MaterialDesc), &binMaterialDescs[i], &descriptors.materialDescs[i]);
 		}
 
 		// Sprites
 		for (u32 i = 0; i < spriteCount; ++i)
 		{
-			const SpriteDesc &desc = descriptors.spriteDescs[i];
-
-			BinSpriteDesc &d = binSpriteDescs[i];
-			d.id          = desc.id;
-			d.name        = DataInternString(stringPool, desc.name);
-			d.textureId   = desc.textureId;
-			d.pos  = desc.pos;
-			d.size = desc.size;
-			d.frameCount = desc.frameCount;
-			d.fps        = desc.fps;
-			d.loop       = desc.loop;
-			d._pad[0] = d._pad[1] = d._pad[2] = 0;
+			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_SpriteDesc), &binSpriteDescs[i], &descriptors.spriteDescs[i]);
 		}
 
 		// Entities
@@ -2203,8 +2219,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	for (u32 i = 0; i < assets.header.imageCount; ++i)
 	{
 		BinImageDesc &d = binImageDescs[i];
-		d.name     = DataGetString( stringPool, d.name );
-		d.filename = DataGetString( stringPool, d.filename );
+		DataResolveStrings( stringPool, *ReflexGetStruct(ReflexID_TextureDesc), &d.desc );
 		assets.images[i].desc   = &d;
 		assets.images[i].pixels = PushDataFromFile(dataArena, file, d.location.offset, d.location.size);
 	}
@@ -2214,7 +2229,9 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 		dataArena, file, assets.header.audioClipsOffset, assets.header.audioClipCount * sizeof(BinAudioClipDesc));
 	for (u32 i = 0; i < assets.header.audioClipCount; ++i)
 	{
-		assets.audioClips[i].desc = binAudioClipDescs + i;
+		BinAudioClipDesc &d = binAudioClipDescs[i];
+		DataResolveStrings( stringPool, *ReflexGetStruct(ReflexID_AudioClipDesc), &d.desc );
+		assets.audioClips[i].desc = &d;
 	}
 
 	// MusicFiles
@@ -2223,30 +2240,29 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 	for (u32 i = 0; i < assets.header.musicFileCount; ++i)
 	{
 		BinMusicFileDesc &d = binMusicFileDescs[i];
-		d.name = DataGetString( stringPool, d.name );
+		DataResolveStrings( stringPool, *ReflexGetStruct(ReflexID_MusicFileDesc), &d.desc );
 		assets.musicFiles[i].desc = &d;
 	}
 
 	// Materials
-	BinMaterialDesc *materialDescs = (BinMaterialDesc*)PushDataFromFile(
-		dataArena, file, assets.header.materialsOffset, assets.header.materialCount * sizeof(BinMaterialDesc));
+	MaterialDesc *materialDescs = (MaterialDesc*)PushDataFromFile(
+		dataArena, file, assets.header.materialsOffset, assets.header.materialCount * sizeof(MaterialDesc));
 	for (u32 i = 0; i < assets.header.materialCount; ++i)
 	{
-		BinMaterialDesc &d = materialDescs[i];
-		d.name         = DataGetString( stringPool, d.name );
-		d.pipelineName = DataGetString( stringPool, d.pipelineName );
+		MaterialDesc &d = materialDescs[i];
+		DataResolveStrings( stringPool, *ReflexGetStruct(ReflexID_MaterialDesc), &d );
 		assets.materials[i].desc = &d;
 	}
 
 	// Sprites
 	if (assets.header.spriteCount > 0)
 	{
-		BinSpriteDesc *spriteDescs = (BinSpriteDesc*)PushDataFromFile(
-			dataArena, file, assets.header.spritesOffset, assets.header.spriteCount * sizeof(BinSpriteDesc));
+		SpriteDesc *spriteDescs = (SpriteDesc*)PushDataFromFile(
+			dataArena, file, assets.header.spritesOffset, assets.header.spriteCount * sizeof(SpriteDesc));
 		for (u32 i = 0; i < assets.header.spriteCount; ++i)
 		{
-			BinSpriteDesc &d = spriteDescs[i];
-			d.name        = DataGetString(stringPool, d.name);
+			SpriteDesc &d = spriteDescs[i];
+			DataResolveStrings(stringPool, *ReflexGetStruct(ReflexID_SpriteDesc), &d);
 			assets.sprites[i].desc = &d;
 		}
 	}

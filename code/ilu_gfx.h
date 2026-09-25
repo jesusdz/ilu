@@ -2926,7 +2926,7 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 
 	// Create heaps
 	device.heaps[HeapType_General] = CreateHeap(device, HeapType_General, HeapSize_General, false);
-	device.heaps[HeapType_RTs] = CreateHeap(device, HeapType_RTs, MB(64), false);
+	device.heaps[HeapType_RTs] = CreateHeap(device, HeapType_RTs, MB(128), false);
 	device.heaps[HeapType_Staging] = CreateHeap(device, HeapType_Staging, MB(16), true);
 	device.heaps[HeapType_Dynamic] = CreateHeap(device, HeapType_Dynamic, MB(32), true);
 	device.heaps[HeapType_Readback] = CreateHeap(device, HeapType_Readback, MB(1), true);

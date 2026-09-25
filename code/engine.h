@@ -325,6 +325,7 @@ struct AudioClipDesc
 {
 	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
 	REFLEX()
 	const char *filename;
@@ -381,6 +382,7 @@ struct MusicFileDesc
 {
 	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
 	REFLEX()
 	const char *filename;
@@ -440,7 +442,7 @@ struct Audio
 
 struct BinAudioClipDesc
 {
-	ID id;
+	AudioClipDesc desc;
 	u32 sampleCount;
 	u32 samplingRate;
 	u16 sampleSize;
@@ -450,8 +452,7 @@ struct BinAudioClipDesc
 
 struct BinMusicFileDesc
 {
-	ID id;
-	const char *name;
+	MusicFileDesc desc;
 	BinLocation location;
 };
 
@@ -479,6 +480,7 @@ struct TextureDesc
 {
 	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
 	REFLEX()
 	const char *filename;
@@ -505,6 +507,7 @@ struct MaterialDesc
 {
 	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
 	REFLEX()
 	ID textureId;
@@ -773,24 +776,12 @@ struct BinShaderDesc
 
 struct BinImageDesc
 {
-	ID id;
-	const char *name;
-	const char *filename;
+	TextureDesc desc;
 	u16 width;
 	u16 height;
 	u8  channels;
-	u8  mipmap;
-	u16 unused;
+	u8  unused[3];
 	BinLocation location;
-};
-
-struct BinMaterialDesc
-{
-	ID id;
-	const char *name;
-	ID textureId;
-	const char *pipelineName;
-	f32 uvScale;
 };
 
 struct BinShader
@@ -807,7 +798,7 @@ struct BinImage
 
 struct BinMaterial
 {
-	BinMaterialDesc *desc;
+	MaterialDesc *desc;
 };
 
 #pragma pack(pop)
@@ -1073,6 +1064,7 @@ struct SpriteDesc
 {
 	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
 	REFLEX()
 	ID textureId;
@@ -1273,19 +1265,6 @@ struct BinSceneDesc
 	float3 ambientLight;
 };
 
-struct BinSpriteDesc
-{
-	ID id;
-	const char *name;
-	ID textureId;
-	uint2 pos;
-	uint2 size;
-	u32 frameCount;
-	u32 fps;
-	u8 loop;
-	u8 _pad[3];
-};
-
 struct BinEntityDesc
 {
 	ID id;
@@ -1336,7 +1315,7 @@ struct BinPrefabDesc
 
 struct BinSprite
 {
-	BinSpriteDesc *desc;
+	SpriteDesc *desc;
 };
 
 struct BinEntity
@@ -1440,7 +1419,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 18; // 18: ReflexID_CString shifts the stored property types
+constexpr u32 BinAssetsVersion = 19; // 19: asset descs are stored as they are, with their strings interned
 
 #pragma pack(push, 1)
 
@@ -1654,7 +1633,6 @@ Material &GetMaterial(ID id);
 u16 GetMaterialIndex(const Graphics &gfx, ID materialId);
 ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc);
 ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc);
-ID CreateMaterial(Graphics &gfx, const BinMaterialDesc &desc);
 void RemoveMaterial(Graphics &gfx, ID materialId);
 void CompactMaterials(Graphics &gfx);
 
@@ -1744,7 +1722,6 @@ void ClearParticles(Scene &scene);
 Sprite &GetSprite(ID spriteId);
 u16 GetSpriteIndex(const Scene &scene, ID spriteId);
 ID CreateSprite(Engine &engine, const SpriteDesc &desc);
-ID CreateSprite(Engine &engine, const BinSpriteDesc &desc);
 ID FindSprite(const Scene &scene, const char *name);
 ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size);
 ID GetOrCreateSprite(Engine &engine, const SpriteDesc &desc);

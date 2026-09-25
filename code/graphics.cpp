@@ -517,22 +517,16 @@ ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 ID CreateTexture(Graphics &gfx, const BinImage &binImage)
 {
 	const BinImageDesc &desc = *binImage.desc;
-	const char *name = desc.name;
+	const char *name = desc.desc.name;
 	const u32 width = desc.width;
 	const u32 height = desc.height;
 	const u32 channels = desc.channels;
-	const u32 mipmap = desc.mipmap;
+	const u32 mipmap = desc.desc.mipmap;
 	const u8 *pixels = binImage.pixels;
 
 	const ImageH imageHandle = GfxCreateImage(gfx, name, width, height, channels, mipmap, pixels);
 
-	const TextureDesc textureDesc = {
-		.id = desc.id,
-		.name = desc.name,
-		.filename = desc.filename,
-		.mipmap = desc.mipmap,
-	};
-	Texture *texture = PushTexture(gfx, textureDesc);
+	Texture *texture = PushTexture(gfx, desc.desc);
 	if ( !texture ) {
 		DestroyImageH(gfx.device, imageHandle);
 		return {};
@@ -737,19 +731,6 @@ ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 	{
 		id = CreateMaterial(gfx, desc);
 	}
-	return id;
-}
-
-ID CreateMaterial( Graphics &gfx, const BinMaterialDesc &desc)
-{
-	const MaterialDesc materialDesc = {
-		.id = desc.id,
-		.name = desc.name,
-		.textureId = desc.textureId,
-		.pipelineName = desc.pipelineName,
-		.uvScale = desc.uvScale,
-	};
-	const ID id = CreateMaterial(gfx, materialDesc);
 	return id;
 }
 

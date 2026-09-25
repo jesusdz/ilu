@@ -138,21 +138,6 @@ ID CreateSprite(Engine &engine, const SpriteDesc &desc)
 	return sprite->desc.id;
 }
 
-ID CreateSprite(Engine &engine, const BinSpriteDesc &desc)
-{
-	const SpriteDesc txtDesc = {
-		.id          = desc.id,
-		.name        = desc.name,
-		.textureId   = desc.textureId,
-		.pos         = desc.pos,
-		.size        = desc.size,
-		.frameCount  = desc.frameCount,
-		.fps         = desc.fps,
-		.loop        = desc.loop,
-	};
-	return CreateSprite(engine, txtDesc);
-};
-
 ID FindSprite(const Scene &scene, const char *name)
 {
 	if (!name) return {};
