@@ -940,6 +940,30 @@ static void EditorUpdateUI_Outliner()
 
 			EditorAssetContextMenu("ParticleEffectContext", EditorSelectedType_ParticleEffect, desc.id);
 		}
+
+		if ( UI_Button(ui, "Create particle effect") )
+		{
+			const char *name = MakeName("fx");
+			for (u32 attempt = 1; FindParticleEffect(scene, name); ++attempt) {
+				name = MakeName("fx_%u", attempt);
+			}
+
+			const ParticleEffectDesc desc = {
+				.name = name,
+				.color = { .min = { 1.0f, 1.0f, 1.0f, 1.0f }, .max = { 1.0f, 1.0f, 1.0f, 0.0f } },
+				.size = { .min = 1.0f, .max = 1.0f },
+				.rate = 20.0f,
+				.loop = 1,
+				.lifetime = { .min = 1.0f, .max = 1.0f },
+				.speed = { .min = 1.0f, .max = 1.0f },
+				.angle = { .min = 0.0f, .max = 360.0f },
+				.worldSpace = 1,
+			};
+			const ID effectId = CreateParticleEffect(engine, desc);
+			if ( effectId ) {
+				EditorSelectParticleEffect(effectId);
+			}
+		}
 	}
 
 	if ( UI_Section(ui, "Materials") )
@@ -1833,88 +1857,13 @@ static void EditorUpdateUI_Inspector()
 				UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
 				effect.name = InternString(name);
 
-				UI_SeparatorLabel(ui, "Look");
-
-				const SpriteDesc *sprite = effect.spriteID ? &GetSprite(effect.spriteID).desc : nullptr;
-				UI_Text(ui, "Sprite", "%s", sprite ? sprite->name : "<none>");
-				if ( UI_DragAndDropTarget(ui, ReflexGetTypeName(ReflexID_Sprite)) )
+				const ReflexStruct &type = *ReflexGetStruct(ReflexID_ParticleEffectDesc);
+				for (u32 i = 0; i < type.memberCount; ++i)
 				{
-					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
-					if ( droppedId ) {
-						effect.spriteID = droppedId;
-					}
+					const ReflexMember &member = type.members[i];
+					if ( StrEq(member.name, "id") || StrEq(member.name, "name") ) { continue; }
+					EditorUpdateUI_Property(member, &effect);
 				}
-
-				// color and size read begin -> end over the particle's life
-				float4 *colors[] = { &effect.color.min, &effect.color.max };
-				const char *colorLabels[] = { "Color begin", "Color end" };
-
-				// Which of the two pickers is open, remembered by effect so that
-				// selecting another one closes it
-				static ID colorEffect = {};
-				static u32 colorIndex = 0;
-				static float4 colorToEdit = {};
-
-				for (u32 c = 0; c < ARRAY_COUNT(colors); ++c)
-				{
-					if ( UI_ColorButton(ui, colorLabels[c], *colors[c]) )
-					{
-						colorToEdit = *colors[c];
-						colorEffect = inspector.selected.id;
-						colorIndex = c;
-					}
-
-					if ( colorEffect == inspector.selected.id && colorIndex == c )
-					{
-						bool isOpen = true;
-						UI_ColorPicker(ui, &colorToEdit, &isOpen);
-						*colors[c] = colorToEdit;
-						if ( !isOpen ) {
-							colorEffect = {};
-						}
-					}
-				}
-
-				float2 size = { effect.size.min, effect.size.max };
-				UI_InputFloat2(ui, "Size", &size);
-				effect.size = { size.x, size.y };
-
-				UI_SeparatorLabel(ui, "Emission");
-
-				UI_InputFloat(ui, "Rate", &effect.rate);
-				i32 burstCount = (i32)effect.burstCount;
-				UI_InputInt(ui, "Burst count", &burstCount);
-				effect.burstCount = (u32)Max(0, burstCount);
-				UI_InputFloat(ui, "Duration", &effect.duration);
-				bool loop = effect.loop != 0;
-				UI_Checkbox(ui, "Loop", &loop);
-				effect.loop = loop ? 1 : 0;
-
-				UI_SeparatorLabel(ui, "Particle");
-
-				// Sampled per particle, between min and max
-				float2 lifetime = { effect.lifetime.min, effect.lifetime.max };
-				float2 speed    = { effect.speed.min,    effect.speed.max    };
-				float2 angle    = { effect.angle.min,    effect.angle.max    };
-				UI_InputFloat2(ui, "Lifetime", &lifetime);
-				UI_InputFloat2(ui, "Speed", &speed);
-				UI_InputFloat2(ui, "Angle", &angle);
-				effect.lifetime = { lifetime.x, lifetime.y };
-				effect.speed    = { speed.x,    speed.y    };
-				effect.angle    = { angle.x,    angle.y    };
-
-				UI_SeparatorLabel(ui, "Shape");
-
-				UI_InputFloat2(ui, "Spawn offset", &effect.spawnOffset);
-				UI_InputFloat2(ui, "Spawn extent", &effect.spawnExtent);
-
-				UI_SeparatorLabel(ui, "Simulation");
-
-				UI_InputFloat2(ui, "Gravity", &effect.gravity);
-				UI_InputFloat(ui, "Drag", &effect.drag);
-				bool worldSpace = effect.worldSpace != 0;
-				UI_Checkbox(ui, "World space", &worldSpace);
-				effect.worldSpace = worldSpace ? 1 : 0;
 			}
 		}
 	}

@@ -175,6 +175,66 @@ static bool EditProperty_uint2(const ReflexMember &member, void *field)
 	return UI_InputUInt2(ui, member.name, (uint2*)field);
 }
 
+static bool EditProperty_float2(const ReflexMember &member, void *field)
+{
+	UI &ui = GetEngine().ui;
+	return UI_InputFloat2(ui, member.name, (float2*)field);
+}
+
+static bool EditProperty_f32_range(const ReflexMember &member, void *field)
+{
+	UI &ui = GetEngine().ui;
+	f32_range &range = *(f32_range*)field;
+	float2 value = { range.min, range.max };
+	const bool changed = UI_InputFloat2(ui, member.name, &value);
+	range = { value.x, value.y };
+	return changed;
+}
+
+static bool EditProperty_float4_range(const ReflexMember &member, void *field)
+{
+	UI &ui = GetEngine().ui;
+	float4_range &range = *(float4_range*)field;
+	char label[UI_LABEL_BUFFER_SIZE];
+	bool changed = false;
+
+	if ( HasFlag(member, ReflexMetaFlag_Color) )
+	{
+		static const void *openField = nullptr;
+		static float4 color = {};
+
+		float4 *ends[] = { &range.min, &range.max };
+		const char *suffixes[] = { "begin", "end" };
+
+		for (u32 i = 0; i < ARRAY_COUNT(ends); ++i)
+		{
+			SPrintf(label, "%s %s", member.name, suffixes[i]);
+			if ( UI_ColorButton(ui, label, *ends[i]) ) {
+				openField = ends[i];
+				color = *ends[i];
+			}
+
+			if ( openField == ends[i] )
+			{
+				bool isOpen = true;
+				UI_ColorPicker(ui, &color, &isOpen);
+				changed |= !( ends[i]->x == color.x && ends[i]->y == color.y && ends[i]->z == color.z && ends[i]->w == color.w );
+				*ends[i] = color;
+				if ( !isOpen ) {
+					openField = nullptr;
+				}
+			}
+		}
+		return changed;
+	}
+
+	SPrintf(label, "%s min", member.name);
+	changed |= UI_InputFloat4(ui, label, &range.min);
+	SPrintf(label, "%s max", member.name);
+	changed |= UI_InputFloat4(ui, label, &range.max);
+	return changed;
+}
+
 static bool EditProperty_float3(const ReflexMember &member, void *field)
 {
 	UI &ui = GetEngine().ui;
@@ -355,6 +415,50 @@ static bool ParseProperty_uint2(DParser &parser, const ReflexMember &member, voi
 	return true;
 }
 
+static void WriteProperty_float2(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	const float2 &value = *(const float2*)field;
+	WriteText(ctx, "{%f, %f}", value.x, value.y);
+}
+
+static bool ParseProperty_float2(DParser &parser, const ReflexMember &member, void *field)
+{
+	*(float2*)field = DParser_ConsumeFloat2(parser);
+	return true;
+}
+
+static void WriteProperty_f32_range(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	const f32_range &value = *(const f32_range*)field;
+	WriteText(ctx, "{%f, %f}", value.min, value.max);
+}
+
+static bool ParseProperty_f32_range(DParser &parser, const ReflexMember &member, void *field)
+{
+	const float2 value = DParser_ConsumeFloat2(parser);
+	*(f32_range*)field = { value.x, value.y };
+	return true;
+}
+
+static void WriteProperty_float4_range(WriteContext &ctx, const ReflexMember &member, const void *field)
+{
+	const float4_range &value = *(const float4_range*)field;
+	WriteText(ctx, "{{%f, %f, %f, %f}, {%f, %f, %f, %f}}",
+			value.min.x, value.min.y, value.min.z, value.min.w,
+			value.max.x, value.max.y, value.max.z, value.max.w);
+}
+
+static bool ParseProperty_float4_range(DParser &parser, const ReflexMember &member, void *field)
+{
+	float4_range &value = *(float4_range*)field;
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+	value.min = DParser_ConsumeFloat4(parser);
+	DParser_TryConsume(parser, TOKEN_COMMA);
+	value.max = DParser_ConsumeFloat4(parser);
+	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+	return true;
+}
+
 static void WriteProperty_float3(WriteContext &ctx, const ReflexMember &member, const void *field)
 {
 	const float3 &value = *(const float3*)field;
@@ -425,7 +529,10 @@ PROPERTY_OPS(CString)
 PROPERTY_OPS(ID)
 PROPERTY_OPS(int2)
 PROPERTY_OPS(uint2)
+PROPERTY_OPS(float2)
 PROPERTY_OPS(float3)
+PROPERTY_OPS(f32_range)
+PROPERTY_OPS(float4_range)
 PROPERTY_OPS(Enum)
 
 // Aliases

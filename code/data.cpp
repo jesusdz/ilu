@@ -383,6 +383,22 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		NewLine(ctx);
 	}
 
+	WriteSectionLine(ctx, "ParticleEffects");
+
+	for (u32 i = 0; i < assets.particleEffectDescCount; ++i)
+	{
+		const ParticleEffectDesc &desc = assets.particleEffectDescs[i];
+
+		WriteLine(ctx, "ParticleEffect %s = {", desc.name);
+
+		PushIndent(ctx);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_ParticleEffectDesc), &desc);
+		PopIndent(ctx);
+
+		WriteLine(ctx, "};");
+		NewLine(ctx);
+	}
+
 	WriteSectionLine(ctx, "Entities");
 
 	for (u32 i = 0; i < assets.entityDescCount; ++i)
@@ -1081,6 +1097,29 @@ static float3 DParser_ConsumeFloat3( DParser &parser )
 	return res;
 }
 
+static float4 DParser_ConsumeFloat4( DParser &parser )
+{
+	float4 res = {};
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+	const bool sx = DParser_TryConsume(parser, TOKEN_MINUS);
+	res.x = DParser_ConsumeF32(parser);
+	res.x = sx ? -res.x : res.x;
+	DParser_TryConsume(parser, TOKEN_COMMA);
+	const bool sy = DParser_TryConsume(parser, TOKEN_MINUS);
+	res.y = DParser_ConsumeF32(parser);
+	res.y = sy ? -res.y : res.y;
+	DParser_TryConsume(parser, TOKEN_COMMA);
+	const bool sz = DParser_TryConsume(parser, TOKEN_MINUS);
+	res.z = DParser_ConsumeF32(parser);
+	res.z = sz ? -res.z : res.z;
+	DParser_TryConsume(parser, TOKEN_COMMA);
+	const bool sw = DParser_TryConsume(parser, TOKEN_MINUS);
+	res.w = DParser_ConsumeF32(parser);
+	res.w = sw ? -res.w : res.w;
+	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+	return res;
+}
+
 static int2 DParser_ConsumeInt2( DParser &parser )
 {
 	int2 res = {};
@@ -1384,6 +1423,7 @@ static const String sSceneStr = MakeString("Scene");
 static const String sMaterialStr = MakeString("Material");
 static const String sTextureStr = MakeString("Texture");
 static const String sSpriteStr = MakeString("Sprite");
+static const String sParticleEffectStr = MakeString("ParticleEffect");
 static const String sEntityStr = MakeString("Entity");
 static const String sPrefabStr = MakeString("Prefab");
 static const String sRoomStr = MakeString("Room");
@@ -1468,6 +1508,18 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_SpriteDesc), &desc );
+
+			// ParticleEffect
+			} else if ( StrEq(type, sParticleEffectStr) ) {
+
+				const u32 index = descriptors.particleEffectDescCount++;
+				if ( countOnly ) goto parse_descriptors_continue;
+
+				ParticleEffectDesc &desc = descriptors.particleEffectDescs[index];
+				const String name = DParser_ConsumeLexeme( parser );
+				desc.name = PushString(*parser.arena, name);
+				DParser_TryConsume( parser, TOKEN_EQUAL );
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_ParticleEffectDesc), &desc );
 
 			// Entity
 			} else if ( StrEq(type, sEntityStr) ) {
@@ -1610,6 +1662,8 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 				descriptors.spriteDescCount = 0;
 				descriptors.materialDescs = PushZeroArray(arena, MaterialDesc, descriptors.materialDescCount);
 				descriptors.materialDescCount = 0;
+				descriptors.particleEffectDescs = PushZeroArray(arena, ParticleEffectDesc, descriptors.particleEffectDescCount);
+				descriptors.particleEffectDescCount = 0;
 				descriptors.entityDescs = PushZeroArray(arena, EntityDesc, descriptors.entityDescCount);
 				descriptors.entityDescCount = 0;
 				descriptors.prefabDescs = PushZeroArray(arena, PrefabDesc, descriptors.prefabDescCount);
@@ -1849,6 +1903,10 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		const u32 spritesSize = spriteCount * sizeof(SpriteDesc);
 		const u32 spritesOffset = PostIncrement(&offset, spritesSize);
 
+		const u32 particleEffectCount = descriptors.particleEffectDescCount;
+		const u32 particleEffectsSize = particleEffectCount * sizeof(ParticleEffectDesc);
+		const u32 particleEffectsOffset = PostIncrement(&offset, particleEffectsSize);
+
 		const u32 entityCount = descriptors.entityDescCount;
 		const u32 entitiesSize = entityCount * sizeof(BinEntityDesc);
 		const u32 entitiesOffset = PostIncrement(&offset, entitiesSize);
@@ -1872,6 +1930,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		MusicFileDesc *binMusicFileDescs = PushZeroArray(tempArena, MusicFileDesc, musicFileCount);
 		MaterialDesc *binMaterialDescs = PushZeroArray(tempArena, MaterialDesc, materialCount);
 		SpriteDesc *binSpriteDescs = PushZeroArray(tempArena, SpriteDesc, spriteCount);
+		ParticleEffectDesc *binParticleEffectDescs = PushZeroArray(tempArena, ParticleEffectDesc, particleEffectCount);
 		BinEntityDesc *binEntityDescs = PushArray(tempArena, BinEntityDesc, entityCount);
 		BinPrefabDesc *binPrefabDescs = PushArray(tempArena, BinPrefabDesc, prefabCount);
 		BinRoomDesc *binRoomDescs = PushArray(tempArena, BinRoomDesc, roomCount);
@@ -2013,6 +2072,12 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_SpriteDesc), &binSpriteDescs[i], &descriptors.spriteDescs[i]);
 		}
 
+		// ParticleEffects
+		for (u32 i = 0; i < particleEffectCount; ++i)
+		{
+			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_ParticleEffectDesc), &binParticleEffectDescs[i], &descriptors.particleEffectDescs[i]);
+		}
+
 		// Entities
 		for (u32 i = 0; i < entityCount; ++i)
 		{
@@ -2087,6 +2152,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		fwrite(binMusicFileDescs, sizeof(binMusicFileDescs[0]), musicFileCount, file);
 		fwrite(binMaterialDescs,  sizeof(binMaterialDescs[0]),  materialCount,  file);
 		fwrite(binSpriteDescs,    sizeof(binSpriteDescs[0]),    spriteCount,    file);
+		fwrite(binParticleEffectDescs, sizeof(binParticleEffectDescs[0]), particleEffectCount, file);
 		fwrite(binEntityDescs,    sizeof(binEntityDescs[0]),    entityCount,    file);
 		fwrite(binPrefabDescs,    sizeof(binPrefabDescs[0]),    prefabCount,    file);
 		fwrite(binRoomDescs,      sizeof(binRoomDescs[0]),      roomCount,      file);
@@ -2108,6 +2174,8 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			.materialCount    = materialCount,
 			.spritesOffset    = spritesOffset,
 			.spriteCount      = spriteCount,
+			.particleEffectsOffset = particleEffectsOffset,
+			.particleEffectCount   = particleEffectCount,
 			.entitiesOffset   = entitiesOffset,
 			.entityCount      = entityCount,
 			.prefabsOffset    = prefabsOffset,
@@ -2252,6 +2320,17 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 		}
 	}
 
+	// ParticleEffects
+	if (assets.header.particleEffectCount > 0)
+	{
+		assets.particleEffects = (ParticleEffectDesc*)PushDataFromFile(
+			dataArena, file, assets.header.particleEffectsOffset, assets.header.particleEffectCount * sizeof(ParticleEffectDesc));
+		for (u32 i = 0; i < assets.header.particleEffectCount; ++i)
+		{
+			DataResolveStrings(stringPool, *ReflexGetStruct(ReflexID_ParticleEffectDesc), &assets.particleEffects[i]);
+		}
+	}
+
 	// Entities
 	BinEntityDesc *entityDescs = (BinEntityDesc*)PushDataFromFile(
 		dataArena, file, assets.header.entitiesOffset, assets.header.entityCount * sizeof(BinEntityDesc));
@@ -2350,6 +2429,14 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		if ( !( materialDescs[materialCount].flags & AssetFlag_Ghost ) ) {
 			materialCount++;
 		}
+	}
+
+	static ParticleEffectDesc particleEffectDescs[MAX_PARTICLE_EFFECTS];
+	u32 particleEffectCount = 0;
+	for (u32 i = 0; i < engine.scene.particleEffectCount; ++i) {
+		const ParticleEffectDesc &desc = engine.scene.particleEffects[i].desc;
+		if ( !desc.id || IsBuiltin(desc.id) ) { continue; }
+		particleEffectDescs[particleEffectCount++] = desc;
 	}
 
 	static EntityDesc entityDescs[MAX_ENTITIES];
@@ -2466,6 +2553,8 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		.spriteDescCount = spriteCount,
 		.materialDescs = materialDescs,
 		.materialDescCount = materialCount,
+		.particleEffectDescs = particleEffectDescs,
+		.particleEffectDescCount = particleEffectCount,
 		.entityDescs = entityDescs,
 		.entityDescCount = entityCount,
 		.prefabDescs = prefabDescs,
@@ -2532,6 +2621,12 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 		for (u32 i = 0; i < assetDescriptors.spriteDescCount; ++i)
 		{
 			CreateSprite(engine, assetDescriptors.spriteDescs[i]);
+		}
+
+		// ParticleEffects
+		for (u32 i = 0; i < assetDescriptors.particleEffectDescCount; ++i)
+		{
+			CreateParticleEffect(engine, assetDescriptors.particleEffectDescs[i]);
 		}
 
 		// Entities
@@ -2636,6 +2731,12 @@ void LoadSceneFromBin(Engine &engine, const char *filepath)
 		for (u32 i = 0; i < engine.assets.header.spriteCount; ++i)
 		{
 			CreateSprite(engine, engine.assets.sprites[i]);
+		}
+
+		// ParticleEffects
+		for (u32 i = 0; i < engine.assets.header.particleEffectCount; ++i)
+		{
+			CreateParticleEffect(engine, engine.assets.particleEffects[i]);
 		}
 
 		// Entities

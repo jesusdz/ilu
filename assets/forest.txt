@@ -33,7 +33,11 @@ Texture tex_spritesheet_png = {
 Sprite spr_tilesheet_png = {
  .id = 1003,
  .textureId = 1000,
+ .pos = {0, 0},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_1 = {
@@ -41,6 +45,9 @@ Sprite spr_tilesheet_png_1 = {
  .textureId = 1000,
  .pos = {16, 0},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_2 = {
@@ -48,6 +55,9 @@ Sprite spr_tilesheet_png_2 = {
  .textureId = 1000,
  .pos = {32, 0},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_3 = {
@@ -55,6 +65,9 @@ Sprite spr_tilesheet_png_3 = {
  .textureId = 1000,
  .pos = {0, 16},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_4 = {
@@ -62,6 +75,9 @@ Sprite spr_tilesheet_png_4 = {
  .textureId = 1000,
  .pos = {16, 16},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_5 = {
@@ -69,6 +85,9 @@ Sprite spr_tilesheet_png_5 = {
  .textureId = 1000,
  .pos = {32, 16},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_6 = {
@@ -86,6 +105,9 @@ Sprite spr_tilesheet_png_9 = {
  .textureId = 1000,
  .pos = {48, 0},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_10 = {
@@ -93,12 +115,19 @@ Sprite spr_tilesheet_png_10 = {
  .textureId = 1000,
  .pos = {64, 0},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_new = {
  .id = 1017,
  .textureId = 1002,
+ .pos = {0, 0},
  .size = {320, 180},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_13 = {
@@ -106,6 +135,9 @@ Sprite spr_tilesheet_png_13 = {
  .textureId = 1000,
  .pos = {0, 64},
  .size = {48, 144},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_14 = {
@@ -113,6 +145,9 @@ Sprite spr_tilesheet_png_14 = {
  .textureId = 1000,
  .pos = {48, 64},
  .size = {48, 144},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_playerrun = {
@@ -128,7 +163,11 @@ Sprite spr_playerrun = {
 Sprite spr_playeridle = {
  .id = 1032,
  .textureId = 1023,
+ .pos = {0, 0},
  .size = {16, 32},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_playerfall = {
@@ -136,6 +175,9 @@ Sprite spr_playerfall = {
  .textureId = 1023,
  .pos = {16, 0},
  .size = {16, 32},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_playerjump = {
@@ -143,6 +185,9 @@ Sprite spr_playerjump = {
  .textureId = 1023,
  .pos = {32, 0},
  .size = {16, 32},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_flower01 = {
@@ -150,6 +195,9 @@ Sprite spr_flower01 = {
  .textureId = 1000,
  .pos = {48, 16},
  .size = {16, 16},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_15 = {
@@ -157,6 +205,9 @@ Sprite spr_tilesheet_png_15 = {
  .textureId = 1000,
  .pos = {160, 128},
  .size = {32, 80},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_16 = {
@@ -164,6 +215,9 @@ Sprite spr_tilesheet_png_16 = {
  .textureId = 1000,
  .pos = {192, 128},
  .size = {32, 80},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_17 = {
@@ -171,6 +225,9 @@ Sprite spr_tilesheet_png_17 = {
  .textureId = 1000,
  .pos = {96, 64},
  .size = {64, 64},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 Sprite spr_tilesheet_png_18 = {
@@ -178,10 +235,35 @@ Sprite spr_tilesheet_png_18 = {
  .textureId = 1000,
  .pos = {96, 128},
  .size = {64, 48},
+ .frameCount = 1,
+ .fps = 0,
+ .loop = 0,
 };
 
 
 // Materials ///////////////////////////////////////////////////////////
+
+
+// ParticleEffects /////////////////////////////////////////////////////
+
+ParticleEffect waterfallfx = {
+ .id = 1046,
+ .spriteID = 0,
+ .color = {{0.327383, 0.654836, 0.903125, 0.434375}, {0.028828, 0.231045, 0.384375, 0.353125}},
+ .size = {1.000000, 3.000000},
+ .rate = 500.199951,
+ .burstCount = 0,
+ .duration = 0.000000,
+ .loop = 1,
+ .lifetime = {1.050000, 0.900000},
+ .speed = {-1.900001, 0.000000},
+ .angle = {-90.000008, -90.000000},
+ .spawnOffset = {0.000000, 0.000000},
+ .spawnExtent = {0.700000, 0.000000},
+ .gravity = {0.000000, -9.800000},
+ .drag = 0.000000,
+ .worldSpace = 1,
+};
 
 
 // Entities ////////////////////////////////////////////////////////////
@@ -190,11 +272,8 @@ Entity player = {
  .id = 1027,
  .pos = {1.000000, 1.000000, 0.000000},
  .scale = 1.000000,
- .sprite = {
-  .spriteId = 1032,
-  .layerId = 1022,
- },
  .light = {
+  .type = LightType_Point,
   .color = {1.000000, 0.584102, 0.268750},
   .intensity = 2.000000,
   .radius = 10.000000,
@@ -210,6 +289,10 @@ Entity player = {
    .randomProperty = 0,
   },
  },
+ .sprite = {
+  .spriteId = 1032,
+  .layerId = 1022,
+ },
 };
 
 Entity light = {
@@ -217,6 +300,7 @@ Entity light = {
  .pos = {9.000000, 1.000000, 0.000000},
  .scale = 1.000000,
  .light = {
+  .type = LightType_Point,
   .color = {1.000000, 0.506250, 0.000000},
   .intensity = 4.000000,
   .radius = 5.000000,
@@ -232,6 +316,7 @@ Entity light = {
  .pos = {19.000000, 1.000000, 0.000000},
  .scale = 1.000000,
  .light = {
+  .type = LightType_Point,
   .color = {1.000000, 0.506250, 0.000000},
   .intensity = 4.000000,
   .radius = 5.000000,
@@ -247,12 +332,23 @@ Entity light = {
  .pos = {32.000000, 1.000000, 0.000000},
  .scale = 1.000000,
  .light = {
+  .type = LightType_Point,
   .color = {1.000000, 0.506250, 0.000000},
   .intensity = 4.000000,
   .radius = 5.000000,
  },
  .particles = {
   .effectId = 5,
+  .playOnStart = 1,
+ },
+};
+
+Entity particles = {
+ .id = 1047,
+ .pos = {22.724094, 4.900259, 0.000000},
+ .scale = 1.000000,
+ .particles = {
+  .effectId = 1046,
   .playOnStart = 1,
  },
 };

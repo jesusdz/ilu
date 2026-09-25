@@ -983,34 +983,53 @@ struct Entity
 ////////////////////////////////////////////////////////////////////////
 // Effects
 
+REFLEX()
 struct ParticleEffectDesc
 {
+	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
 
 	// Look
+	REFLEX(Sprite)
 	ID spriteID;
+	// color and size read begin -> end over the particle's life
+	REFLEX(Color)
 	float4_range color;
+	REFLEX()
 	f32_range size;
 
 	// Emission
+	REFLEX()
 	f32 rate;
+	REFLEX()
 	u32 burstCount;
+	REFLEX()
 	f32 duration;
+	REFLEX(Bool)
 	u8 loop;
 
 	// Per-particle spawn ranges
+	REFLEX()
 	f32_range lifetime;
+	REFLEX()
 	f32_range speed;
+	REFLEX()
 	f32_range angle;
 
 	// Shape
+	REFLEX()
 	float2 spawnOffset;
+	REFLEX()
 	float2 spawnExtent;
 
 	// Simulation
+	REFLEX()
 	float2 gravity;
+	REFLEX()
 	f32 drag;
+	REFLEX(Bool)
 	u8 worldSpace;
 };
 
@@ -1369,6 +1388,9 @@ struct AssetDescriptors
 	MaterialDesc *materialDescs;
 	u32 materialDescCount;
 
+	ParticleEffectDesc *particleEffectDescs;
+	u32 particleEffectDescCount;
+
 	EntityDesc *entityDescs;
 	u32 entityDescCount;
 
@@ -1388,7 +1410,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 19; // 19: asset descs are stored as they are, with their strings interned
+constexpr u32 BinAssetsVersion = 20; // 20: particle effects
 
 #pragma pack(push, 1)
 
@@ -1409,6 +1431,8 @@ struct BinAssetsHeader
 	u32 materialCount;
 	u32 spritesOffset;
 	u32 spriteCount;
+	u32 particleEffectsOffset;
+	u32 particleEffectCount;
 	u32 entitiesOffset;
 	u32 entityCount;
 	u32 prefabsOffset;
@@ -1435,6 +1459,7 @@ struct BinAssets
 	MusicFileDesc *musicFiles;
 	MaterialDesc *materials;
 	SpriteDesc *sprites;
+	ParticleEffectDesc *particleEffects;
 	BinEntity *entities;
 	BinPrefab *prefabs;
 	BinRoom *rooms;
