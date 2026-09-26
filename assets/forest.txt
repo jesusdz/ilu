@@ -265,6 +265,25 @@ ParticleEffect waterfallfx = {
  .worldSpace = 1,
 };
 
+ParticleEffect fx = {
+ .id = 1048,
+ .spriteID = 0,
+ .color = {{1.000000, 1.000000, 1.000000, 1.000000}, {1.000000, 1.000000, 1.000000, 0.000000}},
+ .size = {1.000000, 1.000000},
+ .rate = 20.000000,
+ .burstCount = 0,
+ .duration = 0.000000,
+ .loop = 1,
+ .lifetime = {1.000000, 1.000000},
+ .speed = {1.000000, 1.000000},
+ .angle = {0.000000, 360.000000},
+ .spawnOffset = {0.000000, 0.000000},
+ .spawnExtent = {0.000000, 0.000000},
+ .gravity = {0.000000, 0.000000},
+ .drag = 0.000000,
+ .worldSpace = 1,
+};
+
 
 // Entities ////////////////////////////////////////////////////////////
 
@@ -343,12 +362,22 @@ Entity light = {
  },
 };
 
-Entity particles = {
+Entity waterfall = {
  .id = 1047,
  .pos = {22.724094, 4.900259, 0.000000},
  .scale = 1.000000,
  .particles = {
   .effectId = 1046,
+  .playOnStart = 1,
+ },
+};
+
+Entity fireflies = {
+ .id = 1049,
+ .pos = {7.784261, 9.466666, 0.000000},
+ .scale = 1.000000,
+ .particles = {
+  .effectId = 4,
   .playOnStart = 1,
  },
 };
