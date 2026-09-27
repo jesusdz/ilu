@@ -246,7 +246,7 @@ Sprite spr_tilesheet_png_18 = {
 
 // ParticleEffects /////////////////////////////////////////////////////
 
-ParticleEffect waterfallfx = {
+ParticleEffect waterfall_fx = {
  .id = 1046,
  .spriteID = 0,
  .color = {{0.327383, 0.654836, 0.903125, 0.434375}, {0.028828, 0.231045, 0.384375, 0.353125}},
@@ -265,20 +265,20 @@ ParticleEffect waterfallfx = {
  .worldSpace = 1,
 };
 
-ParticleEffect fx = {
+ParticleEffect fireflies_fx = {
  .id = 1048,
  .spriteID = 0,
- .color = {{1.000000, 1.000000, 1.000000, 1.000000}, {1.000000, 1.000000, 1.000000, 0.000000}},
- .size = {1.000000, 1.000000},
- .rate = 20.000000,
+ .color = {{1.000000, 0.881250, 0.000000, 1.000000}, {1.000000, 0.656250, 0.000000, 0.000000}},
+ .size = {0.500000, 0.500000},
+ .rate = 10.000000,
  .burstCount = 0,
  .duration = 0.000000,
  .loop = 1,
- .lifetime = {1.000000, 1.000000},
- .speed = {1.000000, 1.000000},
+ .lifetime = {5.000000, 1.000000},
+ .speed = {0.100000, 0.500000},
  .angle = {0.000000, 360.000000},
  .spawnOffset = {0.000000, 0.000000},
- .spawnExtent = {0.000000, 0.000000},
+ .spawnExtent = {20.000000, 5.000000},
  .gravity = {0.000000, 0.000000},
  .drag = 0.000000,
  .worldSpace = 1,
@@ -374,10 +374,10 @@ Entity waterfall = {
 
 Entity fireflies = {
  .id = 1049,
- .pos = {7.784261, 9.466666, 0.000000},
+ .pos = {20.000000, 7.000000, 0.000000},
  .scale = 1.000000,
  .particles = {
-  .effectId = 4,
+  .effectId = 1048,
   .playOnStart = 1,
  },
 };
