@@ -138,6 +138,82 @@ static SnapshotNode *EditorGetOrCreateSnapshotNode(const char *filepath)
 	return snapshot;
 }
 
+static constexpr ComponentType kIconOrder[] = { ComponentType_Light, ComponentType_Particles, ComponentType_Script };
+
+struct EditorEntityIcon
+{
+	ID entityId;
+	ImageH image;
+	float2 pos;
+	float2 size;
+};
+
+static u32 EditorEntityIconSlot(const Scene &scene, const Entity &entity)
+{
+	for (u32 slot = 0; slot < ARRAY_COUNT(kIconOrder); ++slot)
+	{
+		if ( HasComponents(scene, entity.id, 1u << kIconOrder[slot]) )
+		{
+			return slot;
+		}
+	}
+	return ARRAY_COUNT(kIconOrder);
+}
+
+// Ordered by kIconOrder: consecutive icons share an image and DebugDrawAppendBatch
+// merges them, one batch per icon type
+static u32 EditorGatherEntityIcons(Arena &arena, EditorEntityIcon *&outIcons)
+{
+	const Engine &engine = GetEngine();
+	const Editor &editor = GetEditor();
+	const Scene &scene = engine.scene;
+	const Camera &camera = editor.camera[editor.cameraType];
+	const f32 worldPerPixel = 2.0f * camera.height / GetWindow().height;
+	const float2 size = 32.0f * float2{ worldPerPixel, worldPerPixel };
+
+	EditorEntityIcon *icons = PushArray(arena, EditorEntityIcon, scene.entityCount);
+	u32 iconCount = 0;
+	for (u32 slot = 0; slot < ARRAY_COUNT(kIconOrder); ++slot)
+	{
+		for (u32 i = 0; i < scene.entityCount; ++i)
+		{
+			const Entity &entity = scene.entities[i];
+			if ( entity.visible && EditorEntityIconSlot(scene, entity) == slot )
+			{
+				icons[iconCount++] = {
+					.entityId = entity.id,
+					.image = editor.gizmoIcons[kIconOrder[slot]],
+					.pos = entity.position.xy - 0.5f * size,
+					.size = size,
+				};
+			}
+		}
+	}
+
+	outIcons = icons;
+	return iconCount;
+}
+
+static ID EditorPickEntityIcon(const float2 mouseWorldPos)
+{
+	Scratch scratch;
+	EditorEntityIcon *icons;
+	const u32 iconCount = EditorGatherEntityIcons(scratch.arena, icons);
+
+	// Reverse draw order, so the icon drawn on top of an overlap is the one picked
+	for (u32 i = iconCount; i-- > 0; )
+	{
+		const EditorEntityIcon &icon = icons[i];
+		const float2 max = icon.pos + icon.size;
+		if ( mouseWorldPos.x >= icon.pos.x && mouseWorldPos.x < max.x &&
+		     mouseWorldPos.y >= icon.pos.y && mouseWorldPos.y < max.y )
+		{
+			return icon.entityId;
+		}
+	}
+	return {};
+}
+
 static void EditorUpdateUI_MenuBar()
 {
 	Engine &engine = GetEngine();
@@ -219,6 +295,10 @@ static void EditorUpdateUI_MenuBar()
 			if ( UI_MenuItem(ui, "Grid", editor.showGrid) )
 			{
 				editor.showGrid = !editor.showGrid;
+			}
+			if ( UI_MenuItem(ui, "Icons", editor.showIcons) )
+			{
+				editor.showIcons = !editor.showIcons;
 			}
 
 			UI_Separator(ui);
@@ -2862,6 +2942,7 @@ static void EditorBeginSceneEditing(bool handleInput)
 	Engine &engine = GetEngine();
 	Editor &editor = GetEditor();
 	Scene &scene = engine.scene;
+	const Camera &camera = editor.camera[ProjectionOrthographic];
 
 	if ( handleInput )
 	{
@@ -2870,7 +2951,13 @@ static void EditorBeginSceneEditing(bool handleInput)
 
 		if (!tileEditMode && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) && !editor.isTranslating)
 		{
-			editor.selectEntity = true;
+			const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
+			const ID iconHit = editor.showIcons && EditorMode2D() ? EditorPickEntityIcon(mouseWorldPos) : ID{};
+			if ( iconHit ) {
+				EditorSelectEntity(iconHit);
+			} else {
+				editor.selectEntity = true;
+			}
 		}
 		else if ( editor.selectEntity )
 		{
@@ -2897,7 +2984,6 @@ static void EditorBeginSceneEditing(bool handleInput)
 			Layer *contextLayer = EditorGetContextLayer();
 			if (contextLayer)
 			{
-				const Camera &camera = editor.camera[ProjectionOrthographic];
 				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos) - EditorGetContextRoom()->pos;
 
 				Layer &layer = *contextLayer;
@@ -2976,6 +3062,19 @@ void EditorDebugDraw()
 	}
 	else if (contextRoom != nullptr)
 	{
+	}
+
+	if (editor.showIcons && EditorMode2D())
+	{
+		const ID selected = EditorGetSelectedEntity(editor);
+		Scratch scratch;
+		EditorEntityIcon *icons;
+		const u32 iconCount = EditorGatherEntityIcons(scratch.arena, icons);
+		for (u32 i = 0; i < iconCount; ++i)
+		{
+			const EditorEntityIcon &icon = icons[i];
+			DrawImage(icon.image, icon.pos, icon.size, icon.entityId == selected ? ColorOrange : ColorWhite);
+		}
 	}
 }
 
@@ -3086,6 +3185,7 @@ void EditorInitialize(Engine &engine)
 	editor.showProfiler = false;
 	editor.showDebugUI = false;
 	editor.showGrid = true;
+	editor.showIcons = true;
 	editor.showAbout = false;
 	editor.showSettings = false;
 	editor.showQuit = false;
@@ -3123,6 +3223,10 @@ void EditorInitialize(Engine &engine)
 	editor.iconMod = EditorLoadIcon("editor/mod_32x32.png", "mod_32x32");
 	editor.iconImg = EditorLoadIcon("editor/img_32x32.png", "img_32x32");
 	editor.iluLogo = EditorLoadIcon("editor/ilu_logo.png", "ilu_logo");
+
+	editor.gizmoIcons[ComponentType_Light] = EditorLoadIcon("editor/light_16.png", "light_16");
+	editor.gizmoIcons[ComponentType_Particles] = EditorLoadIcon("editor/particles_16.png", "particles_16");
+	editor.gizmoIcons[ComponentType_Script] = EditorLoadIcon("editor/script_16.png", "script_16");
 
 	EditorUnselectAll();
 
@@ -3168,6 +3272,11 @@ static bool EditorHandleKeyboardShortcuts()
 	const Window &window = GetWindow();
 
 	bool handleInput = true;
+
+	if (KeyPress(window.keyboard, K_I) && !engine.ui.wantsInput)
+	{
+		editor.showIcons = !editor.showIcons;
+	}
 
 	// Delete takes any selection, the rest of the shortcuts only act on an entity
 	if (KeyPress(window.keyboard, K_DELETE))

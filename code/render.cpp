@@ -33,12 +33,36 @@ static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 	batch.vertexCount = vertexCount;
 }
 
-void DrawSprite(ID spriteId, float2 worldPos, float4 pcolor)
+static void DrawImage(ImageH imageH, float2 worldPos, float2 worldSize, float2 uvPos, float2 uvSize, float4 color)
 {
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
 	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
+
+	const rgba rgbaColor = Rgba(color);
+	DebugDrawVertex *v = gfx.debugDrawVerticesCPU + gfx.debugDrawVertexCount;
+	v[0] = DebugDrawVertex{ worldPos + float2{0, 0},                     uvPos + float2{0, uvSize.y}, rgbaColor };
+	v[1] = DebugDrawVertex{ worldPos + float2{worldSize.x, worldSize.y}, uvPos + float2{uvSize.x, 0}, rgbaColor };
+	v[2] = DebugDrawVertex{ worldPos + float2{0, worldSize.y},           uvPos,                       rgbaColor };
+	v[3] = DebugDrawVertex{ worldPos + float2{0, 0},                     uvPos + float2{0, uvSize.y}, rgbaColor };
+	v[4] = DebugDrawVertex{ worldPos + float2{worldSize.x, 0},           uvPos + uvSize,              rgbaColor };
+	v[5] = DebugDrawVertex{ worldPos + float2{worldSize.x, worldSize.y}, uvPos + float2{uvSize.x, 0}, rgbaColor };
+	gfx.debugDrawVertexCount += 6;
+
+	DebugDrawAppendBatch(gfx, imageH, 6);
+}
+
+static void DrawImage(ImageH imageH, float2 worldPos, float2 worldSize, float4 color)
+{
+	DrawImage(imageH, worldPos, worldSize, {0, 0}, {1, 1}, color);
+}
+
+
+void DrawSprite(ID spriteId, float2 worldPos, float4 color)
+{
+	Engine &engine = GetEngine();
+	Graphics &gfx = engine.gfx;
 
 	const SpriteDesc &sprite = GetSprite(spriteId).desc;
 	const Texture &texture = GetTexture(sprite.textureId);
@@ -46,19 +70,11 @@ void DrawSprite(ID spriteId, float2 worldPos, float4 pcolor)
 	const float2 uvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
 	const float2 uvSize = { (f32)sprite.size.x / texture.size.x, (f32)sprite.size.y / texture.size.y };
 	const float2 worldSize = float2{ (f32)sprite.size.x, (f32)sprite.size.y } / PIXELS_PER_METER;
-	const rgba color = Rgba(pcolor);
 
-	DebugDrawVertex *v = gfx.debugDrawVerticesCPU + gfx.debugDrawVertexCount;
-	v[0] = DebugDrawVertex{ worldPos + float2{0, 0},                     uvPos + float2{0, uvSize.y}, color };
-	v[1] = DebugDrawVertex{ worldPos + float2{worldSize.x, worldSize.y}, uvPos + float2{uvSize.x, 0}, color };
-	v[2] = DebugDrawVertex{ worldPos + float2{0, worldSize.y},           uvPos,                       color };
-	v[3] = DebugDrawVertex{ worldPos + float2{0, 0},                     uvPos + float2{0, uvSize.y}, color };
-	v[4] = DebugDrawVertex{ worldPos + float2{worldSize.x, 0},           uvPos + uvSize,               color };
-	v[5] = DebugDrawVertex{ worldPos + float2{worldSize.x, worldSize.y}, uvPos + float2{uvSize.x, 0}, color };
-	gfx.debugDrawVertexCount += 6;
+	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
 
 	const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
-	DebugDrawAppendBatch(gfx, imageH, 6);
+	DrawImage(imageH, worldPos, worldSize, uvPos, uvSize, color);
 }
 
 

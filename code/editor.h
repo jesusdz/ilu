@@ -188,6 +188,7 @@ struct Editor
 	bool showSpriteSheet;
 	bool showProfiler;
 	bool showGrid;
+	bool showIcons;
 	bool showAbout;
 	bool showContextMenu;
 	bool showSettings;
@@ -213,6 +214,7 @@ struct Editor
 	ImageH iconMod;
 	ImageH iconImg;
 	ImageH iluLogo;
+	ImageH gizmoIcons[ComponentType_Count];
 
 	SnapshotNode *snapshots;
 
