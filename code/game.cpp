@@ -1,4 +1,7 @@
 
+constexpr f32 LOW_SCENE_WIDTH = 320;
+constexpr f32 LOW_SCENE_HEIGHT = 180;
+
 enum PlayerState
 {
 	OnFloor,
@@ -51,6 +54,7 @@ void Start(ScriptPlayerController &script)
 
 	script.sndJump = GetAudioClip("snd_bell_wav");
 
+#if 1
 	script.camera = {
 		.projectionType = ProjectionOrthographic,
 		.position = {0, 0, -1},
@@ -59,6 +63,23 @@ void Start(ScriptPlayerController &script)
 		//.height = 180.0f / PIXELS_PER_METER,
 		.height = 90.0f / PIXELS_PER_METER,
 	};
+#else
+	// How far does the camera need to be so that the visible
+	// height at 0 is the scene resolution height in world pos?
+	const f32 fovyDeg = 60.0f;
+	const f32 fovyRad = fovyDeg * ToRadians;
+	const f32 halfHeightWorldUnits = 0.5f * LOW_SCENE_HEIGHT / PIXELS_PER_METER;
+	const f32 zcam = halfHeightWorldUnits / Tan(0.5f * fovyRad);
+
+	script.camera = {
+		.projectionType = ProjectionPerspective,
+		.position = {0, 0, zcam},
+		.orientation = { 0, 0 },
+		.znear = 1.0f,
+		.zfar = 1000.0f,
+		.fovy = fovyDeg,
+	};
+#endif
 
 	script.roomId = FindRoom("Room");
 }
@@ -225,7 +246,7 @@ void Simulate(ScriptPlayerController &script)
 	{
 		const float2 playerPos = player.position.xy;
 
-		const float2 halfSceneSize = 0.5f * float2{SCENE_WIDTH, SCENE_HEIGHT} / PIXELS_PER_METER;
+		const float2 halfSceneSize = 0.5f * float2{LOW_SCENE_WIDTH, LOW_SCENE_HEIGHT} / PIXELS_PER_METER;
 		const f32 cameraLeft = screenLeft + halfSceneSize.x;
 		const f32 cameraRight = screenRight - halfSceneSize.x;
 		const f32 cameraBottom = screenBottom + halfSceneSize.y;

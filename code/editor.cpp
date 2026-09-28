@@ -169,7 +169,8 @@ static u32 EditorGatherEntityIcons(Arena &arena, EditorEntityIcon *&outIcons)
 	const Scene &scene = engine.scene;
 	const Camera &camera = editor.camera[editor.cameraType];
 	const f32 worldPerPixel = 2.0f * camera.height / GetWindow().height;
-	const float2 size = 32.0f * float2{ worldPerPixel, worldPerPixel };
+	const f32 iconSizePixels = 32.0f;
+	const float2 size = iconSizePixels * float2{ worldPerPixel, worldPerPixel };
 
 	EditorEntityIcon *icons = PushArray(arena, EditorEntityIcon, scene.entityCount);
 	u32 iconCount = 0;
@@ -3224,9 +3225,9 @@ void EditorInitialize(Engine &engine)
 	editor.iconImg = EditorLoadIcon("editor/img_32x32.png", "img_32x32");
 	editor.iluLogo = EditorLoadIcon("editor/ilu_logo.png", "ilu_logo");
 
-	editor.gizmoIcons[ComponentType_Light] = EditorLoadIcon("editor/light_16.png", "light_16");
-	editor.gizmoIcons[ComponentType_Particles] = EditorLoadIcon("editor/particles_16.png", "particles_16");
-	editor.gizmoIcons[ComponentType_Script] = EditorLoadIcon("editor/script_16.png", "script_16");
+	editor.gizmoIcons[ComponentType_Light] = EditorLoadIcon("editor/light_32.png", "icon_light");
+	editor.gizmoIcons[ComponentType_Particles] = EditorLoadIcon("editor/fx_32.png", "icon_fx");
+	editor.gizmoIcons[ComponentType_Script] = EditorLoadIcon("editor/script_32.png", "icon_script");
 
 	EditorUnselectAll();
 

@@ -158,6 +158,8 @@ float Fbm(float2 p, float t)
 	return sum / totalAmplitude;
 }
 
+#define FOG_PLANE_Z -0.5
+
 struct VertexInput
 {
 	float3 position : POSITION;
@@ -183,9 +185,21 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 	// The 2D view matrix is a pure translation, so undoing it takes us to world space.
 	float2 cameraTranslation = float2(globals.cameraView[0][3], globals.cameraView[1][3]);
 
+	float2 positionWs = posVs.xy - cameraTranslation;
+
+	float3 planeWs = float3(positionWs, FOG_PLANE_Z);
+	if (globals.projectionType == PROJECTION_PERSPECTIVE)
+	{
+		float3 dirWs = mul(globals.cameraViewInv, float4(posVs, 0.0)).xyz;
+		float3 eyeWs = globals.eyePosition.xyz;
+		planeWs = eyeWs + ((FOG_PLANE_Z - eyeWs.z) / dirWs.z) * dirWs;
+	}
+
+	// Emitting the real clip position (w included) makes the rasterizer draw the fog plane itself, so
+	// perspective-correct interpolation gives the exact world position and depth at every pixel.
 	VertexOutput OUT;
-	OUT.position = float4(IN.position.xy, 0.50, 1.0);
-	OUT.positionWs = posVs.xy - cameraTranslation;
+	OUT.position = mul(globals.cameraProj, mul(globals.cameraView, float4(planeWs, 1.0)));
+	OUT.positionWs = planeWs.xy;
 	OUT.texCoord = IN.texCoord;
 	return OUT;
 }

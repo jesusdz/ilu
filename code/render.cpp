@@ -274,9 +274,9 @@ static void GetSpriteBounds(const SpriteDesc &sprite, float2 bounds[4])
 {
 	const float2 size = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
 	bounds[0] = { 0, 0 };
-	bounds[1] = { (f32)sprite.size.x, 0 };
-	bounds[3] = { 0, (f32)sprite.size.y };
-	bounds[2] = { (f32)sprite.size.x, (f32)sprite.size.y };
+	bounds[1] = { size.x, 0 };
+	bounds[3] = { 0, size.y };
+	bounds[2] = { size.x, size.y };
 }
 
 static bool EntityIsInFrustum3D(const Entity &entity, ID spriteId, const FrustumPlanes &frustum)
@@ -293,7 +293,7 @@ static bool EntityIsInFrustum3D(const Entity &entity, ID spriteId, const Frustum
 		GetSpriteBounds(sprite, sbounds);
 
 		for (u32 i = 0; i < ARRAY_COUNT(sbounds); ++i) {
-			points[pointCount++] = Float3(sbounds[i], 0.0f);
+			points[pointCount++] = Add(entity.position, Float3(sbounds[i], 0.0f));
 		}
 	}
 	else
@@ -421,14 +421,17 @@ bool RenderGraphics(Engine &engine)
 	float4 frustumTopLeft = {};
 	float4 frustumBottomRight = {};
 
+	Camera camera = engine.gfx.camera;
+
+	const bool is2D = camera.projectionType == ProjectionOrthographic;
+
 	// In game mode the scene renders to a low-res target; snap the camera and
 	// entity positions to the pixel grid so sprites don't shimmer at sub-pixel
 	// offsets. The game keeps its own unsnapped camera, so smooth movements
 	// (e.g. lerps) are not affected by this.
-	const bool snapToPixelGrid = engine.game.state == GameStateRunning;
+	const bool snapToPixelGrid = is2D && engine.game.state == GameStateRunning;
 	constexpr f32 pixelSize = 1.0f / PIXELS_PER_METER;
 
-	Camera camera = engine.gfx.camera;
 	if (snapToPixelGrid && camera.projectionType == ProjectionOrthographic)
 	{
 		camera.position.x = Round(camera.position.x / pixelSize) * pixelSize;
@@ -643,7 +646,8 @@ bool RenderGraphics(Engine &engine)
 
 
 	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / PIXELS_PER_METER;
-	const bool parallaxEnabled = engine.game.state == GameStateRunning; // The editor shows all layers unshifted
+
+	const bool parallaxEnabled = is2D && engine.game.state == GameStateRunning; // The editor shows all layers unshifted
 
 	// Tiles are only culled under the 2D camera: cameraMinMaxRect comes from the orthographic
 	// height, which says nothing about what a perspective camera can see.

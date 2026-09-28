@@ -1183,6 +1183,8 @@ typedef Prefab PrefabDesc;
 #define MAX_PREFABS 256
 #define MAX_TILES 16 * 16 * 8 * MAX_ROOMS
 
+//constexpr u32 SCENE_WIDTH = 1280;
+//constexpr u32 SCENE_HEIGHT = 720;
 constexpr u32 SCENE_WIDTH = 320;
 constexpr u32 SCENE_HEIGHT = 180;
 
