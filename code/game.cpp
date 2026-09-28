@@ -78,6 +78,7 @@ void Start(ScriptPlayerController &script)
 		.fovy = fovyDeg,
 	};
 #endif
+	SetCamera(script.camera);
 
 	script.roomId = FindRoom("Room");
 }
@@ -265,14 +266,13 @@ void Simulate(ScriptPlayerController &script)
 		script.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
 		script.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
+		SetCamera(script.camera);
 	}
 }
 
 REFLEX()
 void Update(ScriptPlayerController &script)
 {
-	SetCamera(script.camera);
-
 	//const Room *roomPtr = TryGetRoom(script.roomId);
 	//DrawBoxOutline(Float2(roomPtr->pos), LayerSize(roomPtr->layers[0]), ColorOrange);
 	//DrawBox(script.box1.pos, script.box1.size, script.box1.color);

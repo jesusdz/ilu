@@ -993,6 +993,7 @@ struct Entity
 	const char *name;
 	// Transform
 	float3 position;
+	float3 prevPosition;
 	f32 scale;
 
 	bool visible;
@@ -1386,6 +1387,7 @@ struct Game
 
 	f32 deltaSeconds;
 	f32 accumulatedSeconds;
+	float3 prevCameraPosition;
 
 	ID currentEntity;
 };

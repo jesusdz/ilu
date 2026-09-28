@@ -421,7 +421,13 @@ bool RenderGraphics(Engine &engine)
 	float4 frustumTopLeft = {};
 	float4 frustumBottomRight = {};
 
+	const bool interpolate = engine.game.state == GameStateRunning;
+	const f32 interpolationAlpha = engine.game.accumulatedSeconds / SIMULATE_SECONDS;
+
 	Camera camera = engine.gfx.camera;
+	if (interpolate) {
+		camera.position = Lerp(engine.game.prevCameraPosition, camera.position, interpolationAlpha);
+	}
 
 	const bool is2D = camera.projectionType == ProjectionOrthographic;
 
@@ -740,7 +746,7 @@ bool RenderGraphics(Engine &engine)
 	{
 		const Entity &entity = scene.entities[i];
 		float3 entityScale = Float3(entity.scale);
-		float3 entityPosition = entity.position;
+		float3 entityPosition = interpolate ? Lerp(entity.prevPosition, entity.position, interpolationAlpha) : entity.position;
 		const ID layerId = EntityLayerId(scene, entity.id);
 		if (Valid(layerId)) {
 			const Layer &layer = GetLayer(layerId);

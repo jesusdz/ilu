@@ -783,6 +783,7 @@ void CompactEntities(Scene &scene)
 void EntitySetPosition(Entity &entity, float3 position)
 {
 	entity.position = position;
+	entity.prevPosition = position;
 }
 
 ComponentDesc *PushComponentDesc(ComponentDescArray &components, ComponentType type)

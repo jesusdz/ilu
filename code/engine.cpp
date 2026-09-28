@@ -120,6 +120,15 @@ static void GameStop(Engine &engine)
 	}
 }
 
+static void SnapshotPositions(Engine &engine)
+{
+	Scene &scene = engine.scene;
+	for (u32 i = 0; i < scene.entityCount; ++i) {
+		scene.entities[i].prevPosition = scene.entities[i].position;
+	}
+	engine.game.prevCameraPosition = engine.gfx.camera.position;
+}
+
 void GameUpdate(Engine &engine, const Host &host)
 {
 	Game &game = engine.game;
@@ -135,6 +144,7 @@ void GameUpdate(Engine &engine, const Host &host)
 
 		StartParticles(engine.scene);
 		RunScriptHooks(engine, ScriptHook_Start);
+		SnapshotPositions(engine);
 		game.state = GameStateRunning;
 	}
 
@@ -151,6 +161,7 @@ void GameUpdate(Engine &engine, const Host &host)
 		{
 			game.deltaSeconds = fixedStepSeconds;
 			GameSetInput(game, game.accumulatedInput);
+			SnapshotPositions(engine);
 			RunScriptHooks(engine, ScriptHook_Simulate);
 			SimulateParticles(engine.scene, fixedStepSeconds);
 			InputConsume(game.accumulatedInput);
