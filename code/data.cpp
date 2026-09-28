@@ -1839,6 +1839,16 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 				break;
 			}
 
+			case ComponentType_Collider:
+			{
+				ColliderComponent collider = {};
+				ApplyPropertyDescArray(*ComponentReflexStruct(ComponentType_Collider), &collider, component.properties);
+				d.components |= Component_Collider;
+				d.colliderSize = collider.size;
+				d.colliderOffset = collider.offset;
+				break;
+			}
+
 			case ComponentType_Script:
 			{
 				const PropertyDescArray &properties = component.properties;

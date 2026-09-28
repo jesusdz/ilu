@@ -36,7 +36,6 @@ struct ScriptPlayerController
 
 	ID roomId;
 
-	float2 colliderSize;
 	float2 speed;
 	f32 accel;
 };
@@ -48,7 +47,6 @@ void Start(ScriptPlayerController &script)
 
 	Entity &player = GetSelf();
 	player.position.xy = float2{1, 1};
-	script.colliderSize = float2{player.scale, player.scale};
 	script.speed = {};
 	script.accel = 50;
 
@@ -98,6 +96,7 @@ void Simulate(ScriptPlayerController &script)
 	const Room &room = *roomPtr;
 	Entity &player = GetSelf();
 	SpriteComponent &sprite = GetSprite(GetEngine().scene, player.id);
+	const ColliderComponent &collider = GetCollider(GetEngine().scene, player.id);
 
 	const f32 screenLeft = room.pos.x;
 	const f32 screenRight = room.pos.x + RoomSize(room).x;
@@ -106,9 +105,9 @@ void Simulate(ScriptPlayerController &script)
 
 	// Player entity
 	{
-		const float2 size = script.colliderSize;
+		const float2 size = collider.size;
 		const f32 accel = script.accel;
-		float2 &pos = player.position.xy;
+		float2 pos = player.position.xy + collider.offset;
 		float2 &speed = script.speed;
 
 		f32 direction = game.input.move.x;
@@ -196,9 +195,10 @@ void Simulate(ScriptPlayerController &script)
 
 		if (speed.y < 0.0)
 		{
-			const float2 prevVertical = {pos.x, prevY};
+			const f32 centerX = pos.x + 0.5f * size.x;
+			const float2 prevVertical = {centerX, prevY};
 			if (GetColliderAtWorldPos(prevVertical) == 0 &&
-				GetColliderAtWorldPos(pos) == 2) {
+				GetColliderAtWorldPos(float2{centerX, pos.y}) == 2) {
 				if (prevY > pos.y) {
 					pos.y = Floor(prevY);
 					speed.y = 0.0f;
@@ -216,6 +216,8 @@ void Simulate(ScriptPlayerController &script)
 		// Player bounds
 		pos.x = Clamp(pos.x, screenLeft, screenRight - size.x);
 		pos.y = Clamp(pos.y, screenBottom, screenTop - size.y);
+
+		player.position.xy = pos - collider.offset;
 
 		// Animation
 		if ( script.playerState == OnFloor || script.playerState == OnPlatform )

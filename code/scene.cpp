@@ -16,6 +16,7 @@ void InitializeScene(Engine &engine)
 	BIND_COMPONENT_POOL(Sprite, sprite);
 	BIND_COMPONENT_POOL(Light, light);
 	BIND_COMPONENT_POOL(Particles, particles);
+	BIND_COMPONENT_POOL(Collider, collider);
 	BIND_COMPONENT_POOL(Script, script);
 
 #undef BIND_COMPONENT_POOL
@@ -703,6 +704,28 @@ const ParticlesComponent &GetParticles(const Scene &scene, ID entityId)
 	return particles;
 }
 
+static ColliderComponent *AddCollider(Scene &scene, ID entityId)
+{
+	ColliderComponent *collider = (ColliderComponent*)AddComponentSlot(scene, entityId, ComponentType_Collider);
+	if ( collider )
+	{
+		collider->size = float2{1.0f, 1.0f};
+	}
+	return collider;
+}
+
+ColliderComponent &GetCollider(Scene &scene, ID entityId)
+{
+	ColliderComponent &collider = *(ColliderComponent*)GetComponentSlot(scene, entityId, ComponentType_Collider);
+	return collider;
+}
+
+const ColliderComponent &GetCollider(const Scene &scene, ID entityId)
+{
+	const ColliderComponent &collider = *(const ColliderComponent*)GetComponentSlot(scene, entityId, ComponentType_Collider);
+	return collider;
+}
+
 ScriptComponent &GetScript(Scene &scene, ID entityId)
 {
 	ScriptComponent &script = *(ScriptComponent*)GetComponentSlot(scene, entityId, ComponentType_Script);
@@ -822,6 +845,10 @@ void AddComponent(Engine &engine, ID entityId, ComponentType type)
 
 	switch ( type )
 	{
+		case ComponentType_Collider:
+			AddCollider(engine.scene, entityId);
+			break;
+
 		case ComponentType_Light:
 			AddLight(engine.scene, entityId);
 			break;
@@ -1040,6 +1067,14 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, ComponentDescPool
 		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Particles) ) {
 			const ParticlesComponent particles = { .effectId = desc.particlesEffectId, .playOnStart = desc.particlesPlayOnStart };
 			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Particles), &particles, propertyPool);
+		}
+	}
+
+	if ( desc.components & Component_Collider )
+	{
+		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Collider) ) {
+			const ColliderComponent collider = { .size = desc.colliderSize, .offset = desc.colliderOffset };
+			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Collider), &collider, propertyPool);
 		}
 	}
 

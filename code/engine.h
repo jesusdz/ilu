@@ -795,6 +795,7 @@ struct SceneDesc
 
 enum ComponentType
 {
+	ComponentType_Collider,
 	ComponentType_Light,
 	ComponentType_Model,
 	ComponentType_Particles,
@@ -805,6 +806,7 @@ enum ComponentType
 
 enum ComponentBits
 {
+	Component_Collider = (1<<ComponentType_Collider),
 	Component_Light = (1<<ComponentType_Light),
 	Component_Model = (1<<ComponentType_Model),
 	Component_Particles = (1<<ComponentType_Particles),
@@ -816,6 +818,7 @@ typedef u32 ComponentFlags;
 
 const char *ComponentNames[] =
 {
+	"Collider",
 	"Light",
 	"Model",
 	"Particles",
@@ -823,8 +826,9 @@ const char *ComponentNames[] =
 	"Sprite",
 };
 
-const char *ComponentFieldNames[] = 
+const char *ComponentFieldNames[] =
 {
+	"collider",
 	"light",
 	"model",
 	"particles",
@@ -896,6 +900,21 @@ struct LightComponent
 	f32 intensity;
 	REFLEX()
 	f32 radius;
+};
+
+////////////////////////////////////////////////////////////////////////
+// Collider component
+
+REFLEX(Component)
+struct ColliderComponent
+{
+	ID entityId;
+
+	// Descriptor
+	REFLEX()
+	float2 size;
+	REFLEX()
+	float2 offset;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -1195,6 +1214,7 @@ constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 #define MAX_SPRITE_COMPONENTS 1024
 #define MAX_LIGHT_COMPONENTS 1024
 #define MAX_PARTICLES_COMPONENTS 1024
+#define MAX_COLLIDER_COMPONENTS 1024
 #define MAX_SCRIPT_COMPONENTS 1024
 
 constexpr u16 NO_COMPONENT = U16_MAX;
@@ -1231,6 +1251,7 @@ struct Scene
 	SpriteComponent spriteComponents[MAX_SPRITE_COMPONENTS];
 	LightComponent lightComponents[MAX_LIGHT_COMPONENTS];
 	ParticlesComponent particlesComponents[MAX_PARTICLES_COMPONENTS];
+	ColliderComponent colliderComponents[MAX_COLLIDER_COMPONENTS];
 	ScriptComponent scriptComponents[MAX_SCRIPT_COMPONENTS];
 
 	u32 particleEffectCount;
@@ -1277,6 +1298,8 @@ struct BinEntityDesc
 	f32 lightRadius;
 	ID particlesEffectId;
 	u8 particlesPlayOnStart;
+	float2 colliderSize;
+	float2 colliderOffset;
 	BinScriptDesc script;
 };
 
@@ -1412,7 +1435,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 20; // 20: particle effects
+constexpr u32 BinAssetsVersion = 21; // 21: collider component
 
 #pragma pack(push, 1)
 
@@ -1768,6 +1791,9 @@ const LightComponent &GetLight(const Scene &scene, ID entityId);
 
 ParticlesComponent &GetParticles(Scene &scene, ID entityId);
 const ParticlesComponent &GetParticles(const Scene &scene, ID entityId);
+
+ColliderComponent &GetCollider(Scene &scene, ID entityId);
+const ColliderComponent &GetCollider(const Scene &scene, ID entityId);
 
 ScriptComponent &GetScript(Scene &scene, ID entityId);
 const ScriptComponent &GetScript(const Scene &scene, ID entityId);
