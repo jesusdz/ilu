@@ -704,7 +704,7 @@ void ProfileGpuBeginEvent(const CommandList &commandList, u16 nameId)
 		return;
 	}
 
-	const u32 queryIndex = WriteTimestamp(commandList, slot.pool, PipelineStageTop);
+	const u32 queryIndex = WriteTimestamp(commandList, slot.pool, PipelineStageBottom);
 	slot.events[slot.eventCount++] = {
 		.nameId = nameId,
 		.queryIndex = (u16)queryIndex,

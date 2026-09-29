@@ -3328,14 +3328,12 @@ void EditorUpdate(Engine &engine)
 		}
 	}
 
-	if ( engine.game.state != GameStateStopped )
+	if ( engine.game.state == GameStateStopped )
 	{
-		return;
+		// Particles keep moving while editing, so an effect can be tuned in place. Variable
+		// delta rather than the fixed step: this is a preview, not the simulation.
+		SimulateParticles(engine.scene, gfx.deltaSeconds);
 	}
-
-	// Particles keep moving while editing, so an effect can be tuned in place. Variable
-	// delta rather than the fixed step: this is a preview, not the simulation.
-	SimulateParticles(engine.scene, gfx.deltaSeconds);
 
 	EditorUpdateInspectedAsset();
 
@@ -3344,6 +3342,12 @@ void EditorUpdate(Engine &engine)
 	bool handleInput = !engine.ui.wantsInput && engine.game.state == GameStateStopped;
 
 	EditorHandleKeyboardShortcuts();
+
+	// Avoid Editor interaction
+	if ( engine.game.state != GameStateStopped )
+	{
+		return;
+	}
 
 	if ( handleInput )
 	{

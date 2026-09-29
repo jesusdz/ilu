@@ -1458,7 +1458,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			.name = "display_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = format, .loadOp = LoadOpClear, .storeOp = StoreOpStore, .isSwapchain = true },
+				{ .format = format, .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = true },
 			},
 			.hasDepthAttachment = false,
 		};

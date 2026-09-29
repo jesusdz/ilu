@@ -438,6 +438,8 @@ bool RenderGraphics(Engine &engine)
 	const bool snapToPixelGrid = is2D && engine.game.state == GameStateRunning;
 	constexpr f32 pixelSize = 1.0f / PIXELS_PER_METER;
 
+	const float3 unsnappedCameraPosition = camera.position;
+
 	if (snapToPixelGrid && camera.projectionType == ProjectionOrthographic)
 	{
 		camera.position.x = Round(camera.position.x / pixelSize) * pixelSize;
@@ -529,6 +531,44 @@ bool RenderGraphics(Engine &engine)
 	const u32 selectedEntityDrawId = selectedEntity
 		? EntityDrawId(scene, selectedEntity) : 0xFFFFFFFF;
 
+	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
+	{
+		Room &room = scene.rooms[roomIndex];
+		const float2 roomMin = Float2(room.pos);
+
+		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+		{
+			Layer &layer = room.layers[i];
+			layer.depth = -(f32)i;
+			layer.renderOffset = {0.0f, 0.0f};
+			layer.renderScale = 1.0f;
+
+			if (layer.initialized && StrEq(layer.name, "Background") && engine.game.state == GameStateRunning)
+			{
+				float2 viewMin;
+				float2 viewSize;
+				if (camera.projectionType == ProjectionPerspective)
+				{
+					// Assumes the camera looks down -z, as the game camera does.
+					const f32 distance = camera.position.z - layer.depth;
+					const f32 halfHeight = distance * Tan(0.5f * camera.fovy * ToRadians);
+					viewSize = float2{2.0f * halfHeight * ar, 2.0f * halfHeight};
+					viewMin = camera.position.xy - 0.5f * viewSize;
+				}
+				else
+				{
+					viewMin = cameraMinMaxRect.xy;
+					viewSize = cameraMinMaxRect.zw - cameraMinMaxRect.xy;
+				}
+				const float2 layerSize = Float2(layer.size);
+				const f32 layerScale = Max(viewSize.x / layerSize.x, viewSize.y / layerSize.y);
+				const float2 layerOrigin = viewMin + 0.5f * (viewSize - layerScale * layerSize);
+				layer.renderOffset = layerOrigin - layerScale * roomMin;
+				layer.renderScale = layerScale;
+			}
+		}
+	}
+
 	// Gather visible lights
 	const uint2 sceneSize = GetFramebufferSize(gfx.renderTargets.sceneFramebuffer);
 	const uint2 lightGridSize = {
@@ -550,17 +590,27 @@ bool RenderGraphics(Engine &engine)
 
 		const LightComponent &light = GetLight(scene, entity.id);
 
+		float3 lightPosition = entity.position;
+		f32 lightRadius = light.radius;
+		const ID layerId = EntityLayerId(scene, entity.id);
+		if (Valid(layerId)) {
+			const Layer &layer = GetLayer(layerId);
+			lightPosition.z = layer.depth;
+			lightPosition.xy = layer.renderScale * lightPosition.xy + layer.renderOffset;
+			lightRadius *= layer.renderScale;
+		}
+
 		if ( cullLights )
 		{
-			const float2 lightMin = { entity.position.x - light.radius, entity.position.y - light.radius };
-			const float2 lightMax = { entity.position.x + light.radius, entity.position.y + light.radius };
+			const float2 lightMin = { lightPosition.x - lightRadius, lightPosition.y - lightRadius };
+			const float2 lightMax = { lightPosition.x + lightRadius, lightPosition.y + lightRadius };
 			if ( !Intersects(lightMin, lightMax, cameraMinMaxRect.xy, cameraMinMaxRect.zw) ) {
 				continue;
 			}
 		}
 
-		lightData[lightCount].positionWs = entity.position;
-		lightData[lightCount].radius = Max(light.radius, 0.0001f);
+		lightData[lightCount].positionWs = lightPosition;
+		lightData[lightCount].radius = Max(lightRadius, 0.0001f);
 		lightData[lightCount].color = light.color;
 		lightData[lightCount].intensity = light.intensity;
 		lightCount++;
@@ -683,14 +733,19 @@ bool RenderGraphics(Engine &engine)
 		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 		{
 			Layer &layer = room.layers[i];
-			layer.depth = -(f32)i;
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{
+				bool isBackground = false;
+				if ( StrEq(layer.name, "Background") ) {
+					isBackground = true;
+				}
+
 				currInstanceTileData = nullptr;
 
-				const float2 parallax = parallaxEnabled ? GetParallaxOffset(scrollRatio, roomSize, layer.size, viewportSizeWorld) : float2{0.0f, 0.0f};
-				const float2 layerOrigin = roomMin + parallax;
+				const float2 parallax = parallaxEnabled && !isBackground ? GetParallaxOffset(scrollRatio, roomSize, layer.size, viewportSizeWorld) : float2{0.0f, 0.0f};
+				const f32 layerScale = layer.renderScale;
+				const float2 layerOrigin = layerScale * roomMin + layer.renderOffset + parallax;
 
 				for (i32 y = 0; y < layer.size.y; ++y)
 				{
@@ -702,8 +757,8 @@ bool RenderGraphics(Engine &engine)
 						}
 
 						const SpriteDesc &sprite = GetSprite(spriteId).desc;
-						const float2 tileSize = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
-						const float2 tileMin = layerOrigin + Float2(int2{x, y});
+						const float2 tileSize = layerScale * float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
+						const float2 tileMin = layerOrigin + layerScale * Float2(int2{x, y});
 						const float2 tileMax = tileMin + tileSize;
 
 						// The cell range above is conservative; this trims the cells whose own
@@ -715,6 +770,7 @@ bool RenderGraphics(Engine &engine)
 						tileData[tileCount].pos.xy = tileMin;
 						tileData[tileCount].pos.z = -(float)i;
 						tileData[tileCount].spriteIndex = GetSpriteIndex(scene, spriteId);
+						tileData[tileCount].scale = layerScale;
 						tileSpriteIds[tileCount] = spriteId;
 						tileCount++;
 
@@ -751,11 +807,17 @@ bool RenderGraphics(Engine &engine)
 		if (Valid(layerId)) {
 			const Layer &layer = GetLayer(layerId);
 			entityPosition.z = layer.depth;
+			entityPosition.xy = layer.renderScale * entityPosition.xy + layer.renderOffset;
+			entityScale.x *= layer.renderScale;
+			entityScale.y *= layer.renderScale;
 		}
 		if (snapToPixelGrid)
 		{
-			entityPosition.x = Round(entityPosition.x / pixelSize) * pixelSize;
-			entityPosition.y = Round(entityPosition.y / pixelSize) * pixelSize;
+			// Rounding relative to the camera keeps a followed entity at a fixed screen pixel;
+			// rounding both independently makes it flicker 1px while the camera eases.
+			const float2 offset = entityPosition.xy - unsnappedCameraPosition.xy;
+			entityPosition.x = camera.position.x + Round(offset.x / pixelSize) * pixelSize;
+			entityPosition.y = camera.position.y + Round(offset.y / pixelSize) * pixelSize;
 		}
 		const float4x4 worldMatrix = Mul(Translate(entityPosition), Scale(entityScale)); // TODO: Apply also rotation
 		entities[i].world = worldMatrix;
@@ -1056,7 +1118,7 @@ bool RenderGraphics(Engine &engine)
 		}
 
 		// Sky
-		if (camera.projectionType == ProjectionPerspective)
+		if (camera.projectionType == ProjectionPerspective && engine.game.state == GameStateStopped)
 		{
 			PROFILE_GFX_BLOCK(commandList, Sky);
 
@@ -1207,7 +1269,10 @@ bool RenderGraphics(Engine &engine)
 		TransitionImageLayout(commandList, gfx.renderTargets.sceneImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
 		const Framebuffer displayFramebuffer = GetDisplayFramebuffer(gfx);
+		{
+		PROFILE_GFX_BLOCK(commandList, BeginRenderPass);
 		BeginRenderPass(commandList, displayFramebuffer);
+		}
 
 		const uint2 displaySize = GetFramebufferSize(displayFramebuffer);
 		SetViewportAndScissor(commandList, displaySize);

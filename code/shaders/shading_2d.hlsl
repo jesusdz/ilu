@@ -42,7 +42,7 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 	uint tileIndex = instanceID;
 	STileData tile = tileData.Load<STileData>(tileIndex * sizeof(STileData));
 	SSpriteData sprite = spriteData.Load<SSpriteData>(tile.spriteIndex * sizeof(SSpriteData));
-	float3 posOs = float3(IN.position.xy * sprite.worldSize, IN.position.z);
+	float3 posOs = float3(IN.position.xy * sprite.worldSize * tile.scale, IN.position.z);
 	float3 disp = tile.pos;
 	float4 posWs = float4(posOs + disp, 1.0);
 

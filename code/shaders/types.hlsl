@@ -55,6 +55,7 @@ struct STileData
 {
 	float3 pos;
 	uint spriteIndex;
+	float scale;
 };
 
 struct SMaterial

@@ -1168,6 +1168,8 @@ struct Layer
 	uint2 size;
 	Cell cells[TILE_GRID_SIZE_X][TILE_GRID_SIZE_Y]; // sprite per cell, an invalid ID if empty
 	f32 depth; // depth in world units
+	float2 renderOffset; // rendered xy = renderScale * xy + renderOffset
+	f32 renderScale;
 };
 
 REFLEX()
@@ -1203,10 +1205,10 @@ typedef Prefab PrefabDesc;
 #define MAX_PREFABS 256
 #define MAX_TILES 16 * 16 * 8 * MAX_ROOMS
 
-//constexpr u32 SCENE_WIDTH = 1280;
-//constexpr u32 SCENE_HEIGHT = 720;
-constexpr u32 SCENE_WIDTH = 320;
-constexpr u32 SCENE_HEIGHT = 180;
+constexpr u32 SCENE_WIDTH = 1920;
+constexpr u32 SCENE_HEIGHT = 1080;
+//constexpr u32 SCENE_WIDTH = 320;
+//constexpr u32 SCENE_HEIGHT = 180;
 
 constexpr u32 MAX_PARTICLES = 1024;
 constexpr u32 MAX_PARTICLE_EFFECTS = 64;

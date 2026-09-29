@@ -386,6 +386,22 @@ Entity fireflies = {
  },
 };
 
+Entity light = {
+ .id = 1050,
+ .pos = {14.061110, 9.777778, -6.000000},
+ .scale = 1.000000,
+ .light = {
+  .type = LightType_Point,
+  .color = {1.000000, 1.000000, 1.000000},
+  .intensity = 10.000000,
+  .radius = 4.000000,
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1035,
+ },
+};
+
 
 // Prefabs /////////////////////////////////////////////////////////////
 

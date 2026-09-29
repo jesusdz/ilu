@@ -33,6 +33,8 @@ struct ScriptPlayerController
 	u32 randomProperty;
 
 	Camera camera;
+	f32 cameraTargetX;
+	f32 cameraTargetY;
 
 	ID roomId;
 
@@ -52,7 +54,7 @@ void Start(ScriptPlayerController &script)
 
 	script.sndJump = GetAudioClip("snd_bell_wav");
 
-#if 1
+#if 0
 	script.camera = {
 		.projectionType = ProjectionOrthographic,
 		.position = {0, 0, -1},
@@ -121,7 +123,8 @@ void Simulate(ScriptPlayerController &script)
 		constexpr f32 gravityFall = -50.0f; // ~1.8x rise: stronger gravity while falling for a snappier landing
 		constexpr f32 terminalSpeed = -25.0f; // Keeps a long fall under one tile per step so collision can't tunnel
 		constexpr f32 jumpCutMultiplier = 0.35f; // Kills upward speed quickly if the button is released early
-		constexpr f32 SPEED_EPSILON = 0.01;
+		//constexpr f32 ADVANCE_EPSILON = 0.5f / PIXELS_PER_METER;
+		constexpr f32 SPEED_EPSILON = 0.05f;
 
 		// Speed epsilon ///////////////////////////////////////////////
 
@@ -140,6 +143,9 @@ void Simulate(ScriptPlayerController &script)
 
 		speed.x = Clamp(speed.x, -9.0f, 9.0f);
 
+		//// Only without input: the first accelerating step advances less than the epsilon,
+		//// so the player could never start moving.
+		//if ( !direction && Abs(speed.x * deltaSeconds) < ADVANCE_EPSILON ) { speed.x = 0.0f; }
 		if ( Abs(speed.x) < SPEED_EPSILON ) { speed.x = 0.0f; }
 
 		const f32 prevX = pos.x;
@@ -254,15 +260,25 @@ void Simulate(ScriptPlayerController &script)
 		const f32 cameraRight = screenRight - halfSceneSize.x;
 		const f32 cameraBottom = screenBottom + halfSceneSize.y;
 		const f32 cameraTop = screenTop - halfSceneSize.y;
-		//const f32 cameraX = Lerp(script.camera.position.x, playerPos.x, 0.2f);
-		//const f32 cameraY = Lerp(script.camera.position.y, playerPos.y, 0.2f);
-		float2 cameraPos = script.camera.position.xy;
-		cameraPos.x = cameraPos.x < playerPos.x - 1.0 ? playerPos.x - 1.0 : cameraPos.x;
-		cameraPos.x = cameraPos.x > playerPos.x + 1.0 ? playerPos.x + 1.0 : cameraPos.x;
-		cameraPos.y = cameraPos.y < playerPos.y - 1.0 ? playerPos.y - 1.0 : cameraPos.y;
-		cameraPos.y = cameraPos.y > playerPos.y + 1.0 ? playerPos.y + 1.0 : cameraPos.y;
-		if ( game.input.move.x == 0.0f ) { cameraPos.x = Lerp(cameraPos.x, playerPos.x, 0.2f); }
-		if ( game.input.move.y == 0.0f ) { cameraPos.y = Lerp(cameraPos.y, playerPos.y, 0.2f); }
+
+		constexpr f32 lookAheadSeconds = 0.25f;
+		constexpr f32 verticalWindow = 1.5f;
+		constexpr f32 followAt60Hz = 0.05f;
+		constexpr f32 snapEpsilon = 1.0f / PIXELS_PER_METER;
+
+		if (script.playerState == OnFloor || script.playerState == OnPlatform) {
+			script.cameraTargetY = playerPos.y;
+		}
+		script.cameraTargetX = playerPos.x + script.speed.x * lookAheadSeconds;
+		script.cameraTargetY = Clamp(script.cameraTargetY, playerPos.y - verticalWindow, playerPos.y + verticalWindow);
+
+		const float2 target = { script.cameraTargetX, script.cameraTargetY };
+		const f32 t = 1.0f - Pow(1.0f - followAt60Hz, deltaSeconds * 60.0f);
+		float2 cameraPos = Lerp(script.camera.position.xy, target, t);
+		if (Length(target - cameraPos) < snapEpsilon) {
+			cameraPos = target;
+		}
+
 		script.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
 		script.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
 
