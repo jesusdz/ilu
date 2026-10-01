@@ -1330,7 +1330,7 @@ float2 GetWorld2DCoord(const Engine &engine, const Camera &camera, int2 pixelCoo
 int2 GetGridTileCoord(const Engine &engine, const Camera &camera, int2 pixelCoord)
 {
 	const float2 worldCoords = GetWorld2DCoord(engine, camera, pixelCoord);
-	const f32 cellWorldSize = TILE_SIZE_PIXELS / PIXELS_PER_METER;
+	const f32 cellWorldSize = TILE_SIZE_PIXELS / ART_PIXELS_PER_METER;
 	const int2 res = {(i32)Floor(worldCoords.x / cellWorldSize), (i32)Floor(worldCoords.y / cellWorldSize)};
 	//LOG(Debug, "Tile coord: (%f, %f)\n", uvCoords.x, uvCoords.y);
 	//LOG(Debug, "Tile coord: (%d, %d)\n", res.x, res.y);
@@ -1357,7 +1357,7 @@ void SetGridTileAtCoord(Engine &engine, Layer &layer, ID spriteId, int2 coord)
 
 static int2 WorldPosToGridCoord(float2 worldPos)
 {
-	const f32 cellWorldSize = TILE_SIZE_PIXELS / PIXELS_PER_METER;
+	const f32 cellWorldSize = TILE_SIZE_PIXELS / ART_PIXELS_PER_METER;
 	return int2{ (i32)Floor(worldPos.x / cellWorldSize), (i32)Floor(worldPos.y / cellWorldSize) };
 }
 

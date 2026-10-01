@@ -821,9 +821,37 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	const Format depthFormat = gfx.device.defaultDepthFormat;
 	const u32 swapchainWidth = gfx.device.swapchain.extent.width;
 	const u32 swapchainHeight = gfx.device.swapchain.extent.height;
-	if (sceneWidth == 0) sceneWidth = swapchainWidth;
-	if (sceneHeight == 0) sceneHeight = swapchainHeight;
+	f32 scenePixelsPerMeter = ART_PIXELS_PER_METER;
+
+	// Editor
+	if (sceneWidth == 0 || sceneHeight == 0)
+	{
+		sceneWidth = swapchainWidth;
+		sceneHeight = swapchainHeight;
+	}
+	// Game
+	else
+	{
+		// Keep scene size at a multiple of art resolution
+		u32 xmul = sceneWidth / ART_WIDTH;
+		u32 ymul = sceneHeight / ART_HEIGHT;
+		sceneWidth = ART_WIDTH * xmul--;
+		sceneHeight = ART_HEIGHT * ymul--;
+		while ( sceneWidth > swapchainWidth || sceneHeight > swapchainHeight )
+		{
+			sceneWidth = ART_WIDTH * xmul--;
+			sceneHeight = ART_HEIGHT * ymul--;
+		}
+		if ( sceneWidth < ART_WIDTH || sceneHeight < ART_HEIGHT )
+		{
+			sceneWidth = ART_WIDTH;
+			sceneHeight = ART_HEIGHT;
+		}
+		scenePixelsPerMeter = (f32)ART_PIXELS_PER_METER * sceneHeight / ART_HEIGHT;
+	}
+
 	renderTargets.sceneSize = { sceneWidth, sceneHeight };
+	renderTargets.scenePixelsPerMeter = scenePixelsPerMeter;
 
 	// Depth buffer
 	renderTargets.depthImage = CreateImage(gfx.device,

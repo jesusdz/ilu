@@ -69,7 +69,7 @@ void DrawSprite(ID spriteId, float2 worldPos, float4 color)
 
 	const float2 uvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
 	const float2 uvSize = { (f32)sprite.size.x / texture.size.x, (f32)sprite.size.y / texture.size.y };
-	const float2 worldSize = float2{ (f32)sprite.size.x, (f32)sprite.size.y } / PIXELS_PER_METER;
+	const float2 worldSize = float2{ (f32)sprite.size.x, (f32)sprite.size.y } / ART_PIXELS_PER_METER;
 
 	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
 
@@ -103,7 +103,7 @@ void DrawBox(float2 pos, float2 size, float4 color)
 
 void DrawBoxOutline(float2 pos, float2 size, float4 color)
 {
-	constexpr f32 d = 1.0f / PIXELS_PER_METER;
+	constexpr f32 d = 1.0f / ART_PIXELS_PER_METER;
 	DrawBox(pos, float2{size.x, d}, color);
 	DrawBox(pos, float2{d, size.y}, color);
 	DrawBox(pos + dX(size) - float2{d, 0}, float2{d, size.y}, color);
@@ -141,7 +141,7 @@ void DrawParticles(const Scene &scene)
 			//	DrawSpriteCentered(effect.spriteID, pos, color, size);
 			//} else {
 				// No sprite assigned: a plain quad, so a new effect still shows something
-				const float2 boxSize = (size * 2.0f / PIXELS_PER_METER) * float2{1, 1};
+				const float2 boxSize = (size * 2.0f / ART_PIXELS_PER_METER) * float2{1, 1};
 				DrawBox(pos - 0.5f * boxSize, boxSize, color);
 			//}
 		}
@@ -272,7 +272,7 @@ static bool PointsAreInFrustum(const float3 *points, u32 pointCount, const Frust
 
 static void GetSpriteBounds(const SpriteDesc &sprite, float2 bounds[4])
 {
-	const float2 size = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
+	const float2 size = float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
 	bounds[0] = { 0, 0 };
 	bounds[1] = { size.x, 0 };
 	bounds[3] = { 0, size.y };
@@ -341,7 +341,7 @@ static bool EntityIsInFrustum2D(const Entity &entity, ID spriteId, float2 rectMi
 	if (spriteId)
 	{
 		const SpriteDesc &sprite = GetSprite(spriteId).desc;
-		halfSize = 0.5f * float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
+		halfSize = 0.5f * float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
 	}
 
 	const float2 entityMin = entity.position.xy;// { entity.position.x - halfSize.x, entity.position.y - halfSize.y };
@@ -376,7 +376,7 @@ static float2 GetParallaxOffset(const float2 &scrollRatio, const uint2 &baseLaye
 	const float2 maxSlack = Max(Float2(baseLayerSize) - viewportSizeWorld, float2{0.0f, 0.0f});
 	const float2 slack = Min(Max(Float2(baseLayerSize) - Float2(layerSize), float2{0.0f, 0.0f}), maxSlack);
 	const float2 offset = scrollRatio * slack;
-	constexpr f32 pixelSize = 1.0f / PIXELS_PER_METER;
+	constexpr f32 pixelSize = 1.0f / ART_PIXELS_PER_METER;
 	return pixelSize * Floor(offset / pixelSize);
 }
 
@@ -435,12 +435,10 @@ bool RenderGraphics(Engine &engine)
 	// entity positions to the pixel grid so sprites don't shimmer at sub-pixel
 	// offsets. The game keeps its own unsnapped camera, so smooth movements
 	// (e.g. lerps) are not affected by this.
-	const bool snapToPixelGrid = is2D && engine.game.state == GameStateRunning;
-	constexpr f32 pixelSize = 1.0f / PIXELS_PER_METER;
+	const bool snapToPixelGrid = engine.game.state == GameStateRunning;
+	const f32 pixelSize = 1.0f / gfx.renderTargets.scenePixelsPerMeter;
 
-	const float3 unsnappedCameraPosition = camera.position;
-
-	if (snapToPixelGrid && camera.projectionType == ProjectionOrthographic)
+	if (snapToPixelGrid)
 	{
 		camera.position.x = Round(camera.position.x / pixelSize) * pixelSize;
 		camera.position.y = Round(camera.position.y / pixelSize) * pixelSize;
@@ -675,7 +673,7 @@ bool RenderGraphics(Engine &engine)
 			const float frameOffsetU = sprite.frameCount > 1
 				? scene.spriteAnimStates[i].currentFrame * frameUvSize.x
 				: 0.0f;
-			const float2 worldSize = float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
+			const float2 worldSize = float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
 			spriteDataPtr[i].uvOffset  = {frameUvPos.x + frameOffsetU, frameUvPos.y};
 			spriteDataPtr[i].uvSize    = frameUvSize;
 			spriteDataPtr[i].worldSize = worldSize;
@@ -701,7 +699,7 @@ bool RenderGraphics(Engine &engine)
 	u32 instanceTileDataCount = 0;
 
 
-	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / PIXELS_PER_METER;
+	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / gfx.renderTargets.scenePixelsPerMeter;
 
 	const bool parallaxEnabled = is2D && engine.game.state == GameStateRunning; // The editor shows all layers unshifted
 
@@ -757,7 +755,7 @@ bool RenderGraphics(Engine &engine)
 						}
 
 						const SpriteDesc &sprite = GetSprite(spriteId).desc;
-						const float2 tileSize = layerScale * float2{(f32)sprite.size.x, (f32)sprite.size.y} / PIXELS_PER_METER;
+						const float2 tileSize = layerScale * float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
 						const float2 tileMin = layerOrigin + layerScale * Float2(int2{x, y});
 						const float2 tileMax = tileMin + tileSize;
 
@@ -813,11 +811,8 @@ bool RenderGraphics(Engine &engine)
 		}
 		if (snapToPixelGrid)
 		{
-			// Rounding relative to the camera keeps a followed entity at a fixed screen pixel;
-			// rounding both independently makes it flicker 1px while the camera eases.
-			const float2 offset = entityPosition.xy - unsnappedCameraPosition.xy;
-			entityPosition.x = camera.position.x + Round(offset.x / pixelSize) * pixelSize;
-			entityPosition.y = camera.position.y + Round(offset.y / pixelSize) * pixelSize;
+			entityPosition.x = Round(entityPosition.x / pixelSize) * pixelSize;
+			entityPosition.y = Round(entityPosition.y / pixelSize) * pixelSize;
 		}
 		const float4x4 worldMatrix = Mul(Translate(entityPosition), Scale(entityScale)); // TODO: Apply also rotation
 		entities[i].world = worldMatrix;
@@ -1283,7 +1278,7 @@ bool RenderGraphics(Engine &engine)
 			BeginDebugGroup(commandList, "Blit", ColorBlack);
 
 			const uint2 sceneSize = gfx.renderTargets.sceneSize;
-			const u32 multiplier = Min(displaySize.x / sceneSize.x, displaySize.y / sceneSize.y);
+			const u32 multiplier = Max(1u, Min(displaySize.x / sceneSize.x, displaySize.y / sceneSize.y));
 			const uint2 scaledSceneSize = multiplier * sceneSize;
 			const rect viewport = {
 				displaySize.x > scaledSceneSize.x ? (i32)(displaySize.x - scaledSceneSize.x) / 2 : 0,
@@ -1291,8 +1286,9 @@ bool RenderGraphics(Engine &engine)
 				scaledSceneSize.x,
 				scaledSceneSize.y,
 			};
+			const rect scissor = { viewport.pos, Min(viewport.size, displaySize) }; // In case the viewport is bigger than the display
 			SetViewport(commandList, viewport);
-			SetScissor(commandList, viewport);
+			SetScissor(commandList, scissor);
 
 			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Blit]);
 			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];

@@ -529,6 +529,7 @@ struct Material
 struct RenderTargets
 {
 	uint2 sceneSize;
+	f32 scenePixelsPerMeter;
 	ImageH depthImage;
 	ImageH sceneImage;
 	Framebuffer sceneFramebuffer;
@@ -1114,10 +1115,10 @@ struct SpriteAnimState
 ////////////////////////////////////////////////////////////////////////
 // Tile grid, rooms and layers
 
-#define PIXELS_PER_METER 16
+#define ART_PIXELS_PER_METER 16
 #define TILE_GRID_SIZE_X 40
 #define TILE_GRID_SIZE_Y 30
-#define TILE_SIZE_PIXELS 16.0f // size of each grid cell, in pixels (at PIXELS_PER_METER scale)
+#define TILE_SIZE_PIXELS 16.0f // size of each grid cell, in pixels (at ART_PIXELS_PER_METER scale)
 #define MAX_LAYERS 4
 
 struct TileDesc
