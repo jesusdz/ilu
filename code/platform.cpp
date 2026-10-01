@@ -1,3 +1,4 @@
+#include "ilu.h"
 
 #define TOOLS_GFX_FUNCTION_PROTOTYPES
 #include "ilu_gfx.h"

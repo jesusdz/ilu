@@ -2,15 +2,13 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
-#include "ilu_core.h"
+#ifndef ILU_H
+#error "ilu.h must be included before this header"
+#endif
 
 #ifndef ILU_GFX_H
 #error "ilu_gfx.h must be included before this header"
 #endif
-
-// Defined here and not in engine.cpp because it changes the layout of Host below. The
-// platform and the engine module must be compiled against the same one.
-#define USE_EDITOR ( PLATFORM_LINUX || PLATFORM_WINDOWS )
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

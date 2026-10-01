@@ -1,6 +1,10 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
+#ifndef ILU_H
+#error "ilu.h must be included before this header"
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Reflection engine
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1204,11 +1208,6 @@ typedef Prefab PrefabDesc;
 #define MAX_ROOMS 256
 #define MAX_PREFABS 256
 #define MAX_TILES 16 * 16 * 8 * MAX_ROOMS
-
-constexpr u32 SCENE_WIDTH = 1920;
-constexpr u32 SCENE_HEIGHT = 1080;
-//constexpr u32 SCENE_WIDTH = 320;
-//constexpr u32 SCENE_HEIGHT = 180;
 
 constexpr u32 MAX_PARTICLES = 1024;
 constexpr u32 MAX_PARTICLE_EFFECTS = 64;

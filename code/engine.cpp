@@ -1,7 +1,4 @@
-#include "ilu_core.h"
-
-#define USE_UI ( PLATFORM_LINUX || PLATFORM_WINDOWS )
-#define USE_DATA_BUILD ( PLATFORM_LINUX || PLATFORM_WINDOWS )
+#include "ilu.h"
 
 #if USE_UI
 
@@ -52,6 +49,12 @@ static constexpr bool sLoadShadersFromText = true;
 #else
 static constexpr bool sLoadShadersFromText = false;
 #endif
+
+constexpr u32 SCENE_WIDTH = 1920;
+constexpr u32 SCENE_HEIGHT = 1080;
+//constexpr u32 SCENE_WIDTH = 320;
+//constexpr u32 SCENE_HEIGHT = 180;
+
 
 // Access to singletons
 inline Host &GetHost() { return *sHost; }
