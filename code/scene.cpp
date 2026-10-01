@@ -1315,6 +1315,183 @@ ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition)
 ////////////////////////////////////////////////////////////////////////
 // Tile grid management
 
+// A room spans its base layer and its collider layers together
+void UpdateRoomBounds(Room &room)
+{
+	int2 min = {};
+	int2 max = {};
+	bool empty = true;
+	for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+	{
+		const Layer &layer = room.layers[i];
+		if (!layer.initialized || layer.size.x == 0 || !(layer.isBase || layer.isCollider)) {
+			continue;
+		}
+		const int2 layerMax = layer.pos + layer.size;
+		min = empty ? layer.pos : Min(min, layer.pos);
+		max = empty ? layerMax : Max(max, layerMax);
+		empty = false;
+	}
+	room.pos = min;
+	room.size = { (u32)(max.x - min.x), (u32)(max.y - min.y) };
+}
+
+void UpdateLayerBounds(Layer &layer)
+{
+	int2 min = {};
+	int2 max = {};
+	bool empty = true;
+	for (u32 i = 0; i < ARRAY_COUNT(layer.cells.chunks); ++i)
+	{
+		for (const CellChunk *chunk = layer.cells.chunks[i]; chunk; chunk = chunk->next)
+		{
+			for (i32 x = 0; x < CELL_CHUNK_SIZE; ++x)
+			{
+				for (i32 y = 0; y < CELL_CHUNK_SIZE; ++y)
+				{
+					if (chunk->cells[x][y].collider == 0) {
+						continue;
+					}
+					const int2 cellMin = { chunk->x + x, chunk->y + y };
+					const int2 cellMax = cellMin + int2{1, 1};
+					min = empty ? cellMin : Min(min, cellMin);
+					max = empty ? cellMax : Max(max, cellMax);
+					empty = false;
+				}
+			}
+		}
+	}
+	layer.pos = min;
+	layer.size = { (u32)(max.x - min.x), (u32)(max.y - min.y) };
+
+	UpdateRoomBounds(GetLayerRoom(layer));
+}
+
+// Layers are stored inside their room, so the address alone says which one it is
+Room &GetLayerRoom(Layer &layer)
+{
+	Scene &scene = GetEngine().scene;
+	const u64 index = (u64)((byte*)&layer - (byte*)scene.rooms) / sizeof(Room);
+	ASSERT( index < scene.roomCount );
+	return scene.rooms[index];
+}
+
+CT_ASSERT((CELL_CHUNK_SIZE & (CELL_CHUNK_SIZE - 1)) == 0);
+
+// Masking instead of dividing rounds towards negative infinity, which is what keeps
+// the chunks left of and below the origin the same size as the rest.
+static int2 CellChunkOrigin(int2 coord)
+{
+	const int2 origin = { coord.x & ~(CELL_CHUNK_SIZE - 1), coord.y & ~(CELL_CHUNK_SIZE - 1) };
+	return origin;
+}
+
+static u32 CellChunkBucket(int2 origin)
+{
+	const u32 bucket = HashFNV(&origin, sizeof(origin)) % ARRAY_COUNT(CellGrid::chunks);
+	return bucket;
+}
+
+const CellChunk *FindCellChunk(const Layer &layer, int2 coord)
+{
+	const int2 origin = CellChunkOrigin(coord);
+	const CellChunk *chunk = layer.cells.chunks[CellChunkBucket(origin)];
+	while (chunk && (chunk->x != origin.x || chunk->y != origin.y)) {
+		chunk = chunk->next;
+	}
+	return chunk;
+}
+
+CellChunk &GetCellChunk(Engine &engine, Layer &layer, int2 coord)
+{
+	if ( const CellChunk *found = FindCellChunk(layer, coord) ) {
+		return *(CellChunk*)found;
+	}
+
+	CellChunkPool &pool = engine.cellChunks;
+	CellChunk *chunk = pool.firstFree;
+	if (chunk) {
+		pool.firstFree = chunk->next;
+	} else {
+		chunk = PushStruct(pool.arena, CellChunk);
+	}
+
+	const int2 origin = CellChunkOrigin(coord);
+	CellChunk *&bucket = layer.cells.chunks[CellChunkBucket(origin)];
+	*chunk = { .next = bucket, .x = origin.x, .y = origin.y };
+	bucket = chunk;
+
+	return *chunk;
+}
+
+static void FreeCellChunk(Engine &engine, CellChunk *chunk)
+{
+	chunk->next = engine.cellChunks.firstFree;
+	engine.cellChunks.firstFree = chunk;
+}
+
+static void FreeCellChunks(Engine &engine, Layer &layer)
+{
+	for (u32 i = 0; i < ARRAY_COUNT(layer.cells.chunks); ++i)
+	{
+		CellChunk *chunk = layer.cells.chunks[i];
+		while (chunk)
+		{
+			CellChunk *next = chunk->next;
+			FreeCellChunk(engine, chunk);
+			chunk = next;
+		}
+		layer.cells.chunks[i] = nullptr;
+	}
+	layer.pos = {};
+	layer.size = {};
+}
+
+static void RemoveCellChunk(Engine &engine, Layer &layer, CellChunk *chunk)
+{
+	CellChunk **link = &layer.cells.chunks[CellChunkBucket(int2{chunk->x, chunk->y})];
+	while (*link != chunk) {
+		link = &(*link)->next;
+	}
+	*link = chunk->next;
+	FreeCellChunk(engine, chunk);
+}
+
+// Both members of Cell are four bytes wide and zero when empty, so the collider view
+// is enough to set and test either kind.
+// Returns whether a cell was filled or emptied, which is when the layer bounds can
+// have changed. Replacing one tile with another leaves them as they were.
+static bool SetGridCell(Engine &engine, Layer &layer, int2 coord, u32 value)
+{
+	if (value != 0)
+	{
+		CellChunk &chunk = GetCellChunk(engine, layer, coord);
+		u32 &cell = chunk.cells[coord.x - chunk.x][coord.y - chunk.y].collider;
+		const bool wasEmpty = cell == 0;
+		cell = value;
+		return wasEmpty;
+	}
+	else if ( CellChunk *chunk = (CellChunk*)FindCellChunk(layer, coord) )
+	{
+		if (chunk->cells[coord.x - chunk->x][coord.y - chunk->y].collider == 0) {
+			return false;
+		}
+		chunk->cells[coord.x - chunk->x][coord.y - chunk->y].collider = 0;
+
+		bool empty = true;
+		for (u32 x = 0; x < CELL_CHUNK_SIZE && empty; ++x) {
+			for (u32 y = 0; y < CELL_CHUNK_SIZE && empty; ++y) {
+				empty = chunk->cells[x][y].collider == 0;
+			}
+		}
+		if (empty) {
+			RemoveCellChunk(engine, layer, chunk);
+		}
+		return true;
+	}
+	return false;
+}
+
 float2 GetWorld2DCoord(const Engine &engine, const Camera &camera, int2 pixelCoord)
 {
 	const Window &window = GetWindow();
@@ -1339,19 +1516,15 @@ int2 GetGridTileCoord(const Engine &engine, const Camera &camera, int2 pixelCoor
 
 void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord)
 {
-	const bool coordValid = coord.x >= 0 && coord.x < layer.size.x && coord.y >= 0 && coord.y < layer.size.y;
-	if (coordValid)
-	{
-		layer.cells[coord.x][coord.y].collider = collider;
+	if ( SetGridCell(engine, layer, coord, collider) ) {
+		UpdateLayerBounds(layer);
 	}
 }
 
 void SetGridTileAtCoord(Engine &engine, Layer &layer, ID spriteId, int2 coord)
 {
-	const bool coordValid = coord.x >= 0 && coord.x < layer.size.x && coord.y >= 0 && coord.y < layer.size.y;
-	if (coordValid)
-	{
-		layer.cells[coord.x][coord.y].spriteId = spriteId;
+	if ( SetGridCell(engine, layer, coord, spriteId.slot) ) {
+		UpdateLayerBounds(layer);
 	}
 }
 
@@ -1366,20 +1539,20 @@ static u32 GetColliderAtGridCoord(Scene &scene, int2 coord)
 	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
 		const Room &room = scene.rooms[roomIndex];
-		const int2 localCoord = coord - room.pos;
 
 		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 		{
 			const Layer &layer = room.layers[i];
 			if (!layer.initialized || !layer.isCollider) continue;
 
-			if ( localCoord.x >= 0 && localCoord.x < layer.size.x &&
-				localCoord.y >= 0 && localCoord.y < layer.size.y )
+			const CellChunk *chunk = FindCellChunk(layer, coord);
+			if (!chunk) continue;
+
+			u32 coord_x = coord.x - chunk->x;
+			u32 coord_y = coord.y - chunk->y;
+			if ( chunk->cells[coord_x][coord_y].collider != 0 )
 			{
-				if (layer.cells[localCoord.x][localCoord.y].collider != 0)
-				{
-					return layer.cells[localCoord.x][localCoord.y].collider;
-				}
+				return chunk->cells[coord_x][coord_y].collider;
 			}
 		}
 	}
@@ -1438,7 +1611,6 @@ u32 CreateLayer(Room &room, const LayerDesc &desc)
 				layer.isBase = desc.isBase;
 				layer.visible = desc.visible;
 				layer.isCollider = desc.isCollider;
-				layer.size = desc.size;
 				index = i;
 
 				BindID(&layer.id, &layer, ReflexID_Layer);
@@ -1459,8 +1631,10 @@ void RemoveLayer(Room &room, u32 index)
 		if (layer.initialized && !layer.isBase)
 		{
 			Invalidate(layer.id);
+			FreeCellChunks(GetEngine(), layer);
 			layer = {};
 			room.layerCount--;
+			UpdateRoomBounds(room);
 		}
 	}
 }
@@ -1514,8 +1688,7 @@ float2 LayerSize(const Layer &layer)
 
 float2 RoomSize(const Room &room)
 {
-	const Layer *baseLayer = GetBaseLayer(room);
-	const float2 res = baseLayer ? LayerSize(*baseLayer) : float2{0.0f, 0.0f};
+	const float2 res = Float2(room.size);
 	return res;
 }
 
@@ -1543,8 +1716,8 @@ ID CreateRoom(Engine &engine)
 	const RoomDesc desc = {
 		.name = "Room",
 		.layers = {
-			{ .name = "Layer", .isBase = true, .visible = true, .size = {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} },
-			{ .name = "Colliders", .visible = true, .isCollider = true, .size = {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y} },
+			{ .name = "Layer", .isBase = true, .visible = true },
+			{ .name = "Colliders", .visible = true, .isCollider = true },
 		},
 		.layerCount = 2,
 	};
@@ -1560,7 +1733,6 @@ ID CreateRoom(Engine &engine, const RoomDesc &desc)
 
 	Room &room = *roomPtr;
 	room.name = InternString(desc.name);
-	room.pos = desc.pos;
 
 	for (u32 l = 0; l < desc.layerCount; ++l)
 	{
@@ -1576,25 +1748,23 @@ ID CreateRoom(Engine &engine, const RoomDesc &desc)
 		if (layerDesc.isCollider) {
 			for (u32 t = 0; t < layerDesc.tileCount; ++t) {
 				const TileDesc &tile = layerDesc.tiles[t];
-				if (tile.x < layer.size.x && tile.y < layer.size.y) {
-					layer.cells[tile.x][tile.y].collider = tile.collider;
-				}
+				SetGridCell(engine, layer, {tile.x, tile.y}, tile.collider);
 			}
 		}
 		else
 		{
 			for (u32 t = 0; t < layerDesc.tileCount; ++t) {
 				const TileDesc &tile = layerDesc.tiles[t];
-				if (tile.x < layer.size.x && tile.y < layer.size.y) {
-					if ( tile.spriteId.slot != 0 && !Valid(tile.spriteId) ) {
-						LOG(Warning, "Layer <%s> has a tile at (%u, %u) referring to sprite ID %u, which does not exist.\n",
-								layerDesc.name, tile.x, tile.y, tile.spriteId.slot);
-						continue;
-					}
-					layer.cells[tile.x][tile.y].spriteId = tile.spriteId;
+				if ( tile.spriteId.slot != 0 && !Valid(tile.spriteId) ) {
+					LOG(Warning, "Layer <%s> has a tile at (%d, %d) referring to sprite ID %u, which does not exist.\n",
+							layerDesc.name, tile.x, tile.y, tile.spriteId.slot);
+					continue;
 				}
+				SetGridCell(engine, layer, {tile.x, tile.y}, tile.spriteId.slot);
 			}
 		}
+
+		UpdateLayerBounds(layer);
 	}
 
 	return room.id;
@@ -1607,7 +1777,6 @@ ID CreateRoom(Engine &engine, const BinRoom &binRoom)
 	RoomDesc desc = {};
 	desc.id = bin.id;
 	desc.name = bin.name;
-	desc.pos = bin.pos;
 
 	for (u32 l = 0; l < bin.layerCount && l < ARRAY_COUNT(desc.layers); ++l)
 	{
@@ -1618,7 +1787,6 @@ ID CreateRoom(Engine &engine, const BinRoom &binRoom)
 			.isBase = ld.isBase != 0,
 			.visible = ld.visible != 0,
 			.isCollider = ld.isCollider != 0,
-			.size = ld.size,
 			.tiles = binRoom.tiles[l],
 			.tileCount = ld.tiles.size / (u32)sizeof(TileDesc),
 		};
@@ -1638,6 +1806,7 @@ void RemoveRoom(Engine &engine, ID id)
 		{
 			if (room.layers[i].initialized) {
 				Invalidate(room.layers[i].id);
+				FreeCellChunks(engine, room.layers[i]);
 			}
 		}
 

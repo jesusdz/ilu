@@ -214,8 +214,8 @@ void Simulate(ScriptPlayerController &script)
 			}
 		}
 
-		if (pos.y < 0) {
-			pos.y = 0;
+		if (pos.y < screenBottom) {
+			pos.y = screenBottom;
 			speed.y = 0;
 			script.playerState = OnFloor;
 		}

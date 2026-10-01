@@ -380,6 +380,39 @@ static float2 GetParallaxOffset(const float2 &scrollRatio, const uint2 &baseLaye
 	return pixelSize * Floor(offset / pixelSize);
 }
 
+// What a sprite layer covers in world units. The layer's own bounds will not do for
+// fitting it to the view: they are rounded out to whole chunks, and a sprite can be
+// larger than the cell it sits in.
+static bool GetLayerSpriteBounds(const Layer &layer, float2 &min, float2 &size)
+{
+	bool any = false;
+	float2 max = {};
+	for (u32 i = 0; i < ARRAY_COUNT(layer.cells.chunks); ++i)
+	{
+		for (const CellChunk *chunk = layer.cells.chunks[i]; chunk; chunk = chunk->next)
+		{
+			for (i32 y = 0; y < CELL_CHUNK_SIZE; ++y)
+			{
+				for (i32 x = 0; x < CELL_CHUNK_SIZE; ++x)
+				{
+					const ID spriteId = chunk->cells[x][y].spriteId;
+					if (!spriteId) {
+						continue;
+					}
+					const SpriteDesc &sprite = GetSprite(spriteId).desc;
+					const float2 tileMin = Float2(int2{chunk->x + x, chunk->y + y});
+					const float2 tileMax = tileMin + float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
+					min = any ? Min(min, tileMin) : tileMin;
+					max = any ? Max(max, tileMax) : tileMax;
+					any = true;
+				}
+			}
+		}
+	}
+	size = max - min;
+	return any;
+}
+
 bool RenderGraphics(Engine &engine)
 {
 	PROFILE_BLOCK(RenderGraphics);
@@ -532,7 +565,6 @@ bool RenderGraphics(Engine &engine)
 	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
 		Room &room = scene.rooms[roomIndex];
-		const float2 roomMin = Float2(room.pos);
 
 		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 		{
@@ -541,7 +573,10 @@ bool RenderGraphics(Engine &engine)
 			layer.renderOffset = {0.0f, 0.0f};
 			layer.renderScale = 1.0f;
 
-			if (layer.initialized && StrEq(layer.name, "Background") && engine.game.state == GameStateRunning)
+			float2 contentMin = {};
+			float2 contentSize = {};
+			if (layer.initialized && StrEq(layer.name, "Background") && engine.game.state == GameStateRunning
+				&& GetLayerSpriteBounds(layer, contentMin, contentSize))
 			{
 				float2 viewMin;
 				float2 viewSize;
@@ -558,10 +593,10 @@ bool RenderGraphics(Engine &engine)
 					viewMin = cameraMinMaxRect.xy;
 					viewSize = cameraMinMaxRect.zw - cameraMinMaxRect.xy;
 				}
-				const float2 layerSize = Float2(layer.size);
+				const float2 layerSize = contentSize;
 				const f32 layerScale = Max(viewSize.x / layerSize.x, viewSize.y / layerSize.y);
 				const float2 layerOrigin = viewMin + 0.5f * (viewSize - layerScale * layerSize);
-				layer.renderOffset = layerOrigin - layerScale * roomMin;
+				layer.renderOffset = layerOrigin - layerScale * contentMin;
 				layer.renderScale = layerScale;
 			}
 		}
@@ -718,7 +753,7 @@ bool RenderGraphics(Engine &engine)
 		const Layer *baseLayer = GetBaseLayer(room);
 		if (!baseLayer) continue;
 
-		const uint2 roomSize = baseLayer->size;
+		const uint2 roomSize = room.size;
 		const float2 roomMin = Float2(room.pos);
 		const float2 roomMax = roomMin + Float2(roomSize);
 
@@ -743,13 +778,26 @@ bool RenderGraphics(Engine &engine)
 
 				const float2 parallax = parallaxEnabled && !isBackground ? GetParallaxOffset(scrollRatio, roomSize, layer.size, viewportSizeWorld) : float2{0.0f, 0.0f};
 				const f32 layerScale = layer.renderScale;
-				const float2 layerOrigin = layerScale * roomMin + layer.renderOffset + parallax;
+				const float2 layerOrigin = layer.renderOffset + parallax;
 
-				for (i32 y = 0; y < layer.size.y; ++y)
+				// Tiles are emitted row by row across the whole layer, not chunk by chunk:
+				// sprites larger than a cell overlap their neighbours, and which one ends
+				// up on top must not depend on where the chunk borders fall.
+				const i32 layerMaxX = layer.pos.x + (i32)layer.size.x;
+				const i32 layerMaxY = layer.pos.y + (i32)layer.size.y;
+				for (i32 y = layer.pos.y; y < layerMaxY; ++y)
 				{
-					for (i32 x = 0; x < layer.size.x; ++x)
+					const CellChunk *chunk = nullptr;
+					for (i32 x = layer.pos.x; x < layerMaxX; ++x)
 					{
-						const ID spriteId = layer.cells[x][y].spriteId;
+						if (x == layer.pos.x || (x & (CELL_CHUNK_SIZE - 1)) == 0) {
+							chunk = FindCellChunk(layer, int2{x, y});
+						}
+						if (!chunk) {
+							continue;
+						}
+
+						const ID spriteId = chunk->cells[x - chunk->x][y - chunk->y].spriteId;
 						if (!spriteId || tileCount >= MAX_TILES) {
 							continue;
 						}

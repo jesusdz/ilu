@@ -1116,15 +1116,13 @@ struct SpriteAnimState
 // Tile grid, rooms and layers
 
 #define ART_PIXELS_PER_METER 16
-#define TILE_GRID_SIZE_X 40
-#define TILE_GRID_SIZE_Y 30
 #define TILE_SIZE_PIXELS 16.0f // size of each grid cell, in pixels (at ART_PIXELS_PER_METER scale)
 #define MAX_LAYERS 4
 
 struct TileDesc
 {
-	u16 x;
-	u16 y;
+	i16 x;
+	i16 y;
 	// Which member applies is decided by the owning LayerDesc::isCollider. Both are
 	// four bytes wide, so the raw u32 doubles as the serialized view of either.
 	union
@@ -1141,7 +1139,6 @@ struct LayerDesc
 	bool isBase;
 	bool visible;
 	bool isCollider;
-	uint2 size;
 	TileDesc *tiles; // non-empty grid cells only
 	u32 tileCount;
 };
@@ -1150,7 +1147,6 @@ struct RoomDesc
 {
 	ID id;
 	const char *name;
-	int2 pos;
 	LayerDesc layers[MAX_LAYERS];
 	u32 layerCount;
 };
@@ -1159,6 +1155,30 @@ union Cell
 {
 	ID spriteId;
 	u32 collider;
+};
+
+#define CELL_CHUNK_SIZE 8 // cells per side, a power of two
+constexpr u32 CELL_CHUNK_MEMORY = MB(4);
+
+struct CellChunk
+{
+	CellChunk *next;
+	i32 x, y; // cell offset
+	Cell cells[CELL_CHUNK_SIZE][CELL_CHUNK_SIZE];
+};
+
+struct CellGrid
+{
+	// Hash table of linked list of cell chunks
+	CellChunk* chunks[1024];
+};
+
+// Chunks of every layer come from here. A chunk left with no cells goes back to the
+// free list, which links through the same next pointer the hash buckets use.
+struct CellChunkPool
+{
+	Arena arena;
+	CellChunk *firstFree;
 };
 
 REFLEX()
@@ -1170,8 +1190,9 @@ struct Layer
 	bool isBase; // Room's reference layer
 	bool visible;
 	bool isCollider;
-	uint2 size;
-	Cell cells[TILE_GRID_SIZE_X][TILE_GRID_SIZE_Y]; // sprite per cell, an invalid ID if empty
+	int2 pos;   // Bounds of the filled cells, see UpdateLayerBounds
+	uint2 size; // (both zero while the layer is empty)
+	CellGrid cells;
 	f32 depth; // depth in world units
 	float2 renderOffset; // rendered xy = renderScale * xy + renderOffset
 	f32 renderScale;
@@ -1182,7 +1203,8 @@ struct Room
 {
 	ID id;
 	const char *name;
-	int2 pos;
+	int2 pos;   // Bounds of the base and collider layers together, see UpdateRoomBounds
+	uint2 size;
 	Layer layers[MAX_LAYERS];
 	u32 layerCount;
 };
@@ -1313,7 +1335,6 @@ struct BinLayerDesc
 	u8 isBase;
 	u8 visible;
 	u8 isCollider;
-	uint2 size;
 	BinLocation tiles; // payload of TileDesc entries; count == tiles.size / sizeof(TileDesc)
 };
 
@@ -1321,7 +1342,6 @@ struct BinRoomDesc
 {
 	ID id;
 	const char *name;
-	int2 pos;
 	u32 layerCount;
 	BinLayerDesc layers[MAX_LAYERS];
 };
@@ -1439,7 +1459,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 21; // 21: collider component
+constexpr u32 BinAssetsVersion = 22; // 22: rooms without pos, layers without size
 
 #pragma pack(push, 1)
 
@@ -1512,6 +1532,7 @@ struct Engine
 	Scene scene;
 	Game game;
 	ScriptDataPool scriptData;
+	CellChunkPool cellChunks;
 	Arena propertyArena;
 	PropertyDescPool propertyPool;
 	Arena descArena;
@@ -1823,6 +1844,7 @@ float2 GetWorld2DCoord(const Engine &engine, const Camera &camera, int2 pixelCoo
 int2 GetGridTileCoord(const Engine &engine, const Camera &camera, int2 pixelCoord);
 void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord);
 void SetGridTileAtCoord(Engine &engine, Layer &layer, ID spriteId, int2 coord);
+const CellChunk *FindCellChunk(const Layer &layer, int2 coord); // Null where the layer has no chunk
 u32 GetColliderAtWorldPos(float2 worldPos);
 bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 
@@ -1840,6 +1862,9 @@ u32 MoveLayer(Room &room, u32 index, i32 delta); // delta -1 moves towards the f
 const Layer *GetBaseLayer(const Room &room);
 float2 LayerSize(const Layer &layer);
 float2 RoomSize(const Room &room);
+void UpdateRoomBounds(Room &room); // Call after anything other than a cell edit changes which layers count
+void UpdateLayerBounds(Layer &layer);
+Room &GetLayerRoom(Layer &layer);
 ID CreateRoom(Engine &engine);
 ID CreateRoom(Engine &engine, const RoomDesc &desc);
 ID CreateRoom(Engine &engine, const BinRoom &binRoom);

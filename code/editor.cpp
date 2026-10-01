@@ -855,7 +855,6 @@ static void EditorUpdateUI_Outliner()
 							.name = "Layer",
 							.visible = true,
 							.isCollider = false,
-							.size = {TILE_GRID_SIZE_X, TILE_GRID_SIZE_Y},
 						};
 						CreateLayer(room, desc);
 					}
@@ -1563,7 +1562,8 @@ static void EditorUpdateUI_InspectorRoom(Room &room)
 	UI_InputText(ui, "room#Name", name, ARRAY_COUNT(name));
 	room.name = InternString(name);
 
-	UI_InputInt2(ui, "Pos", &room.pos);
+	UI_Text(ui, "Pos", "%d, %d", room.pos.x, room.pos.y);
+	UI_Text(ui, "Size", "%u, %u", room.size.x, room.size.y);
 	UI_Text(ui, "Layers", "%u", room.layerCount);
 }
 
@@ -1583,10 +1583,13 @@ static void EditorUpdateUI_InspectorLayer(Layer &layer)
 
 	UI_Text(ui, "ID", "%u", layer.id.slot);
 
-	UI_InputUInt2(ui, "Size", &layer.size);
+	UI_Text(ui, "Pos", "%d, %d", layer.pos.x, layer.pos.y);
+	UI_Text(ui, "Size", "%u, %u", layer.size.x, layer.size.y);
 	UI_Text(ui, "Base", "%s", layer.isBase ? "yes" : "no"); // Set on creation, not editable here
 	UI_Checkbox(ui, "Visible", &layer.visible);
-	UI_Checkbox(ui, "Collider", &layer.isCollider);
+	if ( UI_Checkbox(ui, "Collider", &layer.isCollider) ) {
+		UpdateRoomBounds(GetLayerRoom(layer));
+	}
 }
 
 static void EditorUpdateUI_Inspector()
@@ -2985,7 +2988,7 @@ static void EditorBeginSceneEditing(bool handleInput)
 			Layer *contextLayer = EditorGetContextLayer();
 			if (contextLayer)
 			{
-				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos) - EditorGetContextRoom()->pos;
+				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos);
 
 				Layer &layer = *contextLayer;
 
@@ -3018,9 +3021,8 @@ void EditorDebugDraw()
 
 	if (contextLayer != nullptr)
 	{
-		Room &room = *contextRoom;
 		Layer &layer = *contextLayer;
-		const float2 pos = Float2(room.pos);
+		const float2 pos = Float2(layer.pos);
 		const float2 size = LayerSize(layer);
 		DrawBoxOutline(pos, size, ColorOrange);
 
@@ -3032,20 +3034,32 @@ void EditorDebugDraw()
 			if ( layer.isCollider )
 			{
 				const float4 color = {1.0, 0.0, 0.0, 0.3};
+				const float4 colliderColors[] = {
+					{0.0, 0.0, 0.0, 0.0},
+					{1.0, 0.0, 0.0, 0.3},
+					{1.0, 0.5, 0.0, 0.3},
+				};
 
 				if ( !UI_IsHovered(engine.ui) )
 				{
 					DrawBox(worldPos, float2{1, 1}, color);
 				}
 
-				for (u32 y = 0; y < layer.size.y; ++y)
+				for (u32 i = 0; i < ARRAY_COUNT(layer.cells.chunks); ++i)
 				{
-					for (u32 x = 0; x < layer.size.x; ++x)
+					for (const CellChunk *chunk = layer.cells.chunks[i]; chunk; chunk = chunk->next)
 					{
-						if ( layer.cells[x][y].collider != 0 )
+						for (i32 y = 0; y < CELL_CHUNK_SIZE; ++y)
 						{
-							const float2 cellWorldPos = {(f32)x, (f32)y};
-							DrawBox(cellWorldPos, float2{1, 1}, color);
+							for (i32 x = 0; x < CELL_CHUNK_SIZE; ++x)
+							{
+								u32 collider = chunk->cells[x][y].collider;
+								if ( collider != 0 )
+								{
+									const float2 cellWorldPos = {(f32)(chunk->x + x), (f32)(chunk->y + y)};
+									DrawBox(cellWorldPos, float2{1, 1}, colliderColors[collider]);
+								}
+							}
 						}
 					}
 				}

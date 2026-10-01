@@ -262,6 +262,7 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 		InitializeIDPool();
 
 		engine.scriptData.arena = PushSubArena(GlobalArena, SCRIPT_DATA_MEMORY, "Script component data");
+		engine.cellChunks.arena = PushSubArena(GlobalArena, CELL_CHUNK_MEMORY, "Cell chunks");
 		engine.propertyArena = PushSubArena(GlobalArena, PROPERTY_POOL_MEMORY, "Property pool");
 		engine.propertyPool.arena = &engine.propertyArena;
 		engine.descArena = PushSubArena(GlobalArena, DESC_POOL_MEMORY, "Descriptor pools");

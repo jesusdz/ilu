@@ -459,7 +459,6 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 		PushIndent(ctx);
 		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		WriteLine(ctx, ".pos = {%d, %d},", desc.pos.x, desc.pos.y);
 		WriteLine(ctx, ".layers = {");
 		PushIndent(ctx);
 
@@ -474,7 +473,6 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 			WriteLine(ctx, ".isBase = %d,", layer.isBase);
 			WriteLine(ctx, ".visible = %d,", layer.visible);
 			WriteLine(ctx, ".isCollider = %d,", layer.isCollider);
-			WriteLine(ctx, ".size = {%u, %u},", layer.size.x, layer.size.y);
 
 			if (layer.tileCount > 0)
 			{
@@ -488,7 +486,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 				{
 					const TileDesc &tile = layer.tiles[t];
 					// Both union members are u32, so one raw view serializes either
-					tileLineLen += SPrintf(tileLine + tileLineLen, "{%u, %u, %u}, ", tile.x, tile.y, tile.collider);
+					tileLineLen += SPrintf(tileLine + tileLineLen, "{%d, %d, %u}, ", tile.x, tile.y, tile.collider);
 					if (++tilesInLine == 8 || t + 1 == layer.tileCount)
 					{
 						WriteLine(ctx, "%s", tileLine);
@@ -1144,9 +1142,9 @@ static void DParser_ConsumeTiles( DParser &parser, LayerDesc &layer )
 	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
 	{
 		TileDesc &tile = *PushStruct(arena, TileDesc);
-		tile.x = I32ToU16(DParser_ConsumeI32(parser));
+		tile.x = I32ToI16(DParser_ConsumeI32(parser));
 		DParser_TryConsume(parser, TOKEN_COMMA);
-		tile.y = I32ToU16(DParser_ConsumeI32(parser));
+		tile.y = I32ToI16(DParser_ConsumeI32(parser));
 		DParser_TryConsume(parser, TOKEN_COMMA);
 		tile.collider = DParser_ConsumeU32(parser); // Raw view; a sprite layer reads it back as spriteId
 		DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
@@ -1361,7 +1359,6 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 			static const String sIsBase = MakeString("isBase");
 			static const String sVisible = MakeString("visible");
 			static const String sIsCollider = MakeString("isCollider");
-			static const String sSize = MakeString("size");
 			static const String sTiles = MakeString("tiles");
 
 			if ( StrEq( field, sId ) ) {
@@ -1374,8 +1371,6 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 				layerDesc.visible = DParser_ConsumeU8(parser) != 0;
 			} else if ( StrEq( field, sIsCollider ) ) {
 				layerDesc.isCollider = DParser_ConsumeU8(parser) != 0;
-			} else if ( StrEq( field, sSize ) ) {
-				layerDesc.size = DParser_ConsumeUint2(parser);
 			} else if ( StrEq( field, sTiles ) ) {
 				DParser_ConsumeTiles(parser, layerDesc);
 			} else {
@@ -1584,13 +1579,10 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				while ( DParser_NextField( parser, field ) )
 				{
 					static const String sId = MakeString("id");
-					static const String sPos = MakeString("pos");
 					static const String sLayers = MakeString("layers");
 
 					if ( StrEq( field, sId ) ) {
 						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sPos ) ) {
-						desc.pos = DParser_ConsumeInt2(parser);
 					} else if ( StrEq( field, sLayers ) ) {
 						DParser_ConsumeRoomLayers(parser, desc);
 					} else {
@@ -2120,7 +2112,6 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 			d = {};
 			d.id         = desc.id;
 			d.name       = DataInternString(stringPool, desc.name);
-			d.pos        = desc.pos;
 			d.layerCount = desc.layerCount;
 
 			for (u32 l = 0; l < desc.layerCount; ++l)
@@ -2134,7 +2125,6 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 				ld.isBase       = layer.isBase ? 1 : 0;
 				ld.visible      = layer.visible ? 1 : 0;
 				ld.isCollider   = layer.isCollider ? 1 : 0;
-				ld.size         = layer.size;
 				ld.tiles.offset = PostIncrement(&offset, payloadSize);
 				ld.tiles.size   = U64ToU32(payloadSize);
 
@@ -2479,7 +2469,6 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 		desc = {};
 		desc.id = room.id;
 		desc.name = room.name;
-		desc.pos = room.pos;
 		for (u32 l = 0; l < ARRAY_COUNT(room.layers); ++l) {
 			const Layer &layer = room.layers[l];
 			if (!layer.initialized) {
@@ -2491,36 +2480,27 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 			layerDesc.isBase = layer.isBase;
 			layerDesc.visible = layer.visible;
 			layerDesc.isCollider = layer.isCollider;
-			layerDesc.size = layer.size;
 			layerDesc.tiles = (TileDesc*)(arena.base + arena.used);
 			layerDesc.tileCount = 0;
-			if (layer.isCollider)
-			{
-				for (u32 x = 0; x < layer.size.x; ++x) {
-					for (u32 y = 0; y < layer.size.y; ++y) {
-						const u32 collider = layer.cells[x][y].collider;
-						if (collider == 0) continue;
-						TileDesc &tile = *PushStruct(arena, TileDesc);
-						tile.x = (u16)x;
-						tile.y = (u16)y;
-						tile.collider = collider;
-						layerDesc.tileCount++;
+			// Walking the layer bounds rather than the hash table keeps the tiles in the
+			// same column-by-column order from one save to the next.
+			const i32 maxX = layer.pos.x + (i32)layer.size.x;
+			const i32 maxY = layer.pos.y + (i32)layer.size.y;
+			for (i32 x = layer.pos.x; x < maxX; ++x) {
+				const CellChunk *chunk = nullptr;
+				for (i32 y = layer.pos.y; y < maxY; ++y) {
+					if (y == layer.pos.y || (y & (CELL_CHUNK_SIZE - 1)) == 0) {
+						chunk = FindCellChunk(layer, int2{x, y});
 					}
-				}
-			}
-			else
-			{
-				// Sprites
-				for (u32 x = 0; x < layer.size.x; ++x) {
-					for (u32 y = 0; y < layer.size.y; ++y) {
-						const ID spriteId = layer.cells[x][y].spriteId;
-						if (!spriteId) continue;
-						TileDesc &tile = *PushStruct(arena, TileDesc);
-						tile.x = (u16)x;
-						tile.y = (u16)y;
-						tile.spriteId = spriteId;
-						layerDesc.tileCount++;
-					}
+					if (!chunk) continue;
+					// Both union members are u32, so one raw view gathers either
+					const u32 collider = chunk->cells[x - chunk->x][y - chunk->y].collider;
+					if (collider == 0) continue;
+					TileDesc &tile = *PushStruct(arena, TileDesc);
+					tile.x = (i16)x;
+					tile.y = (i16)y;
+					tile.collider = collider;
+					layerDesc.tileCount++;
 				}
 			}
 		}
