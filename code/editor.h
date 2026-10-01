@@ -177,6 +177,7 @@ struct EditorContext
 
 struct Editor
 {
+	bool showUI;
 	bool showLoadScene;
 	bool showSaveScene;
 	bool showLoadSceneBin;

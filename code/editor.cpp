@@ -3179,6 +3179,7 @@ void EditorInitialize(Engine &engine)
 {
 	Editor &editor = GetEditor();
 
+	editor.showUI = true;
 	editor.showOutliner = true;
 	editor.showAssets = true;
 	editor.showInspector = true;
@@ -3318,6 +3319,7 @@ void EditorUpdate(Engine &engine)
 	{
 		if ( engine.game.state == GameStateStopped ) {
 			engine.game.state = GameStateStarting;
+			editor.showUI = false;
 		}
 	}
 	else if ( KeyPress(window.keyboard, K_ESCAPE) )
@@ -3325,7 +3327,12 @@ void EditorUpdate(Engine &engine)
 		if ( engine.game.state == GameStateRunning ) {
 			engine.game.state = GameStateStopping;
 			EditorSetCamera();
+			editor.showUI = true;
 		}
+	}
+	else if ( KeyPress(window.keyboard, K_TAB) )
+	{
+		editor.showUI = !editor.showUI;
 	}
 
 	if ( engine.game.state == GameStateStopped )
@@ -3337,7 +3344,10 @@ void EditorUpdate(Engine &engine)
 
 	EditorUpdateInspectedAsset();
 
-	EditorUpdateUI();
+	if ( editor.showUI )
+	{
+		EditorUpdateUI();
+	}
 
 	bool handleInput = !engine.ui.wantsInput && engine.game.state == GameStateStopped;
 
