@@ -588,6 +588,17 @@ static LRESULT CALLBACK Win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
 				break;
 			}
 
+		case WM_GETMINMAXINFO:
+			{
+				// ptMinTrackSize is the full window size, borders and caption included
+				RECT minRect = { 0, 0, (int)MIN_WINDOW_WIDTH, (int)MIN_WINDOW_HEIGHT };
+				AdjustWindowRect( &minRect, GetWindowLong(hWnd, GWL_STYLE), FALSE );
+				MINMAXINFO *info = (MINMAXINFO*)lParam;
+				info->ptMinTrackSize.x = minRect.right - minRect.left;
+				info->ptMinTrackSize.y = minRect.bottom - minRect.top;
+				return 0;
+			}
+
 		case WM_ENTERSIZEMOVE:
 			// While the modal size/move loop blocks this thread's message pump,
 			// the update thread pauses and rendering is driven from here instead:

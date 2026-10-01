@@ -561,6 +561,21 @@ static bool InitializeWindow(Window &window, u32 width, u32 height, const char *
 	free(protocolReply);
 	free(closeReply);
 
+	// ICCCM WM_SIZE_HINTS, written by hand to avoid depending on xcb-icccm: 18 32-bit
+	// fields, of which only flags [0] and min_width/min_height [5][6] are used here.
+	// It is a hint, a window manager may still give the window a smaller size.
+	constexpr u32 sizeHintPMinSize = 1 << 4;
+	u32 sizeHints[18] = {};
+	sizeHints[0] = sizeHintPMinSize;
+	sizeHints[5] = MIN_WINDOW_WIDTH;
+	sizeHints[6] = MIN_WINDOW_HEIGHT;
+	xcb_change_property(
+			xcbConnection,
+			XCB_PROP_MODE_REPLACE,
+			xcbWindow,
+			XCB_ATOM_WM_NORMAL_HINTS, XCB_ATOM_WM_SIZE_HINTS,
+			32, ARRAY_COUNT(sizeHints), sizeHints);
+
 	// Map the window to the screen
 	xcb_void_cookie_t mapWindowCookie = xcb_map_window_checked(xcbConnection, xcbWindow);
 	xcb_generic_error_t *mapWindowError = xcb_request_check(xcbConnection, mapWindowCookie);

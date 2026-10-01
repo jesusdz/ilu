@@ -183,6 +183,9 @@ enum ThreadID
 // - The engineLibFilename / engineLibTmpFilename constants
 // - The program entry point (main / android_main), which calls Main below
 
+constexpr u32 MIN_WINDOW_WIDTH = 320;
+constexpr u32 MIN_WINDOW_HEIGHT = 180;
+
 static bool IsAbsolutePath(const char *path);
 static void InitializeDirectories(Platform &platform);
 static bool InitializeWindow(Window &window, u32 width = 1280, u32 height = 720, const char *title = "ILU Engine");
