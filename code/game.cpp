@@ -117,8 +117,8 @@ void Simulate(ScriptPlayerController &script)
 
 		// Physics constants ///////////////////////////////////////////
 
-		constexpr f32 runSpeed = 9.0f;
-		constexpr f32 jumpSpeed = 14.0f;
+		constexpr f32 runSpeed = 7.0f;
+		constexpr f32 jumpSpeed = 12.0f;
 		constexpr f32 gravityRise = -30.0f; // Lighter gravity while ascending so holding the button controls jump height
 		constexpr f32 gravityFall = -50.0f; // ~1.8x rise: stronger gravity while falling for a snappier landing
 		constexpr f32 terminalSpeed = -25.0f; // Keeps a long fall under one tile per step so collision can't tunnel
@@ -141,7 +141,7 @@ void Simulate(ScriptPlayerController &script)
 
 		speed.x = speed.x + direction * accel * deltaSeconds;
 
-		speed.x = Clamp(speed.x, -9.0f, 9.0f);
+		speed.x = Clamp(speed.x, -runSpeed, runSpeed);
 
 		//// Only without input: the first accelerating step advances less than the epsilon,
 		//// so the player could never start moving.
