@@ -311,6 +311,13 @@ static void SpawnParticle(Scene &scene, ID entityId, const ParticleEffectDesc &e
 	};
 }
 
+static void StepParticle(Particle &p, const ParticleEffectDesc &effect, f32 deltaSeconds)
+{
+	p.vel += deltaSeconds * effect.gravity;
+	p.vel = Max(0.0f, 1.0f - effect.drag * deltaSeconds) * p.vel;
+	p.pos += deltaSeconds * p.vel;
+}
+
 void SimulateParticles(Scene &scene, f32 deltaSeconds)
 {
 	// Emission
@@ -358,9 +365,7 @@ void SimulateParticles(Scene &scene, f32 deltaSeconds)
 		}
 
 		const ParticleEffectDesc &effect = GetParticleEffect(p.effectId).desc;
-		p.vel += deltaSeconds * effect.gravity;
-		p.vel = Max(0.0f, 1.0f - effect.drag * deltaSeconds) * p.vel;
-		p.pos += deltaSeconds * p.vel;
+		StepParticle(p, effect, deltaSeconds);
 		++i;
 	}
 }
@@ -380,9 +385,39 @@ void PlayParticles(Scene &scene, ID entityId)
 				particles.emitAccum = 0.0f;
 
 				const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
-				for (u32 i = 0; i < effect.burstCount; ++i)
+
+				const bool continuous = ( effect.loop || effect.duration <= 0.0f );
+				if ( particles.prewarm && continuous && effect.rate > 0.0f )
 				{
-					SpawnParticle(scene, entityId, effect);
+					// Past the longest lifetime everything emitted earlier is dead, so this
+					// window is the whole steady state. The burst would be dead too.
+					const u32 count = (u32)(effect.rate * effect.lifetime.max);
+					for (u32 i = 1; i <= count && scene.particleCount < MAX_PARTICLES; ++i)
+					{
+						SpawnParticle(scene, entityId, effect);
+						Particle &p = scene.particles[scene.particleCount - 1];
+
+						const f32 age = (f32)i / effect.rate;
+						if ( age >= p.lifetime ) {
+							--scene.particleCount;
+							continue;
+						}
+
+						// Stepped rather than solved, because drag is integrated per step
+						// and a closed form would not land where the simulation does
+						while ( p.age < age )
+						{
+							StepParticle(p, effect, SIMULATE_SECONDS);
+							p.age += SIMULATE_SECONDS;
+						}
+					}
+				}
+				else
+				{
+					for (u32 i = 0; i < effect.burstCount; ++i)
+					{
+						SpawnParticle(scene, entityId, effect);
+					}
 				}
 			}
 		}
@@ -1066,7 +1101,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, ComponentDescPool
 	if ( desc.components & Component_Particles )
 	{
 		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Particles) ) {
-			const ParticlesComponent particles = { .effectId = desc.particlesEffectId, .playOnStart = desc.particlesPlayOnStart };
+			const ParticlesComponent particles = { .effectId = desc.particlesEffectId, .playOnStart = desc.particlesPlayOnStart, .prewarm = desc.particlesPrewarm };
 			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Particles), &particles, propertyPool);
 		}
 	}

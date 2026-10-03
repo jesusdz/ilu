@@ -935,6 +935,8 @@ struct ParticlesComponent
 	ID effectId;
 	REFLEX(Bool)
 	u8 playOnStart;
+	REFLEX(Bool)
+	u8 prewarm;
 
 	// Runtime
 	u8 playing;
@@ -1323,6 +1325,7 @@ struct BinEntityDesc
 	f32 lightRadius;
 	ID particlesEffectId;
 	u8 particlesPlayOnStart;
+	u8 particlesPrewarm;
 	float2 colliderSize;
 	float2 colliderOffset;
 	BinScriptDesc script;
@@ -1459,7 +1462,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 22; // 22: rooms without pos, layers without size
+constexpr u32 BinAssetsVersion = 23; // 23: particles prewarm
 
 #pragma pack(push, 1)
 

@@ -1828,6 +1828,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 				d.components |= Component_Particles;
 				d.particlesEffectId = particles.effectId;
 				d.particlesPlayOnStart = particles.playOnStart;
+				d.particlesPrewarm = particles.prewarm;
 				break;
 			}
 

@@ -331,6 +331,7 @@ Entity light = {
  .particles = {
   .effectId = 5,
   .playOnStart = 1,
+  .prewarm = 1,
  },
 };
 
@@ -347,6 +348,7 @@ Entity light = {
  .particles = {
   .effectId = 5,
   .playOnStart = 1,
+  .prewarm = 1,
  },
 };
 
@@ -363,6 +365,7 @@ Entity light = {
  .particles = {
   .effectId = 5,
   .playOnStart = 1,
+  .prewarm = 1,
  },
 };
 
@@ -373,6 +376,7 @@ Entity waterfall = {
  .particles = {
   .effectId = 1046,
   .playOnStart = 1,
+  .prewarm = 1,
  },
 };
 
@@ -383,6 +387,7 @@ Entity fireflies = {
  .particles = {
   .effectId = 1048,
   .playOnStart = 1,
+  .prewarm = 1,
  },
 };
 
