@@ -139,17 +139,6 @@ ID CreateSprite(Engine &engine, const SpriteDesc &desc)
 	return sprite->desc.id;
 }
 
-ID FindSprite(const Scene &scene, const char *name)
-{
-	if (!name) return {};
-	for (u32 i = 0; i < scene.spriteCount; ++i)
-	{
-		const SpriteDesc &desc = scene.sprites[i].desc;
-		if (StrEq(desc.name, name)) return desc.id;
-	}
-	return {};
-}
-
 ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size)
 {
 	for (u32 i = 0; i < scene.spriteCount; ++i)
@@ -245,17 +234,6 @@ ID CreateParticleEffect(Engine &engine, const ParticleEffectDesc &desc)
 	}
 
 	return effect->desc.id;
-}
-
-ID FindParticleEffect(const Scene &scene, const char *name)
-{
-	if (!name) return {};
-	for (u32 i = 0; i < scene.particleEffectCount; ++i)
-	{
-		const ParticleEffectDesc &desc = scene.particleEffects[i].desc;
-		if (StrEq(desc.name, name)) return desc.id;
-	}
-	return {};
 }
 
 void RemoveParticleEffect(Scene &scene, ID id)
@@ -469,7 +447,20 @@ void ClearParticles(Scene &scene)
 
 Room &GetRoom(ID id)
 {
-	ASSERT( Valid(id) );
+	if ( !Valid(id) )
+	{
+		static u32 warnedSlot = U32_MAX;
+		if ( warnedSlot != id.slot ) {
+			warnedSlot = id.slot;
+			LOG(Warning, "GetRoom: room ID %u does not exist, a stub room is returned instead.\n", id.slot);
+		}
+
+		// Handed out writable, so it is cleared of whatever the last caller left in it
+		static Room stub;
+		stub = {};
+		return stub;
+	}
+
 	Room &room = *((Room*)GetObject(id));
 	return room;
 }
@@ -504,10 +495,23 @@ void CompactRooms(Scene &scene)
 ////////////////////////////////////////////////////////////////////////
 // Entity management
 
-Entity &GetEntity(ID entityId)
+Entity &GetEntity(ID id)
 {
-	ASSERT( Valid(entityId) );
-	Entity &entity = *((Entity*)GetObject(entityId));
+	if ( !Valid(id) )
+	{
+		static u32 warnedSlot = U32_MAX;
+		if ( warnedSlot != id.slot ) {
+			warnedSlot = id.slot;
+			LOG(Warning, "GetEntity: entity ID %u does not exist, a stub entity is returned instead.\n", id.slot);
+		}
+
+		// Handed out writable, so it is cleared of whatever the last caller left in it
+		static Entity stub;
+		stub = {};
+		return stub;
+	}
+
+	Entity &entity = *((Entity*)GetObject(id));
 	return entity;
 }
 
@@ -1195,16 +1199,6 @@ u16 GetPrefabIndex(const Scene &scene, ID id)
 	const u16 index = (u16)(&prefab - scene.prefabs);
 	ASSERT( index < scene.prefabCount );
 	return index;
-}
-
-ID FindPrefab(const Scene &scene, const char *name)
-{
-	if (!name) return {};
-	for (u32 i = 0; i < scene.prefabCount; ++i)
-	{
-		if (StrEq(scene.prefabs[i].name, name)) return scene.prefabs[i].id;
-	}
-	return {};
 }
 
 // Appends a prefab and gives it its ID. Null when the array is full. Prefabs do not

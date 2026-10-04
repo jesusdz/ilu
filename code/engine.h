@@ -49,6 +49,8 @@ inline ReflexID PropertyIDType(const ReflexMember &member)
 	if ( flags & ReflexMetaFlag_Layer )          return ReflexID_Layer;
 	if ( flags & ReflexMetaFlag_ParticleEffect ) return ReflexID_ParticleEffect;
 	if ( flags & ReflexMetaFlag_AudioClip )      return ReflexID_AudioClip;
+	if ( flags & ReflexMetaFlag_Entity )         return ReflexID_Entity;
+	if ( flags & ReflexMetaFlag_Room )           return ReflexID_Room;
 	return ReflexID_Null;
 }
 
@@ -1749,7 +1751,6 @@ void InitializeScene(Engine &engine);
 
 ParticleEffect &GetParticleEffect(ID particleEffectId);
 ID CreateParticleEffect(Engine &engine, const ParticleEffectDesc &desc);
-ID FindParticleEffect(const Scene &scene, const char *name);
 void RemoveParticleEffect(Scene &scene, ID particleEffectId);
 void CompactParticleEffects(Scene &scene);
 
@@ -1766,7 +1767,6 @@ void ClearParticles(Scene &scene);
 Sprite &GetSprite(ID spriteId);
 u16 GetSpriteIndex(const Scene &scene, ID spriteId);
 ID CreateSprite(Engine &engine, const SpriteDesc &desc);
-ID FindSprite(const Scene &scene, const char *name);
 ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size);
 ID GetOrCreateSprite(Engine &engine, const SpriteDesc &desc);
 void RemoveSprite(Scene &scene, ID spriteId);
@@ -1832,7 +1832,6 @@ const ScriptComponent &GetScript(const Scene &scene, ID entityId);
 
 Prefab &GetPrefab(ID prefabId);
 u16 GetPrefabIndex(const Scene &scene, ID prefabId);
-ID FindPrefab(const Scene &scene, const char *name);
 ID CreatePrefab(Engine &engine, const PrefabDesc &desc);
 ID CreatePrefab(Engine &engine, const BinPrefabDesc &desc);
 void RemovePrefab(Scene &scene, ID prefabId);
@@ -1917,9 +1916,7 @@ bool RenderGraphics(Engine &engine);
 Entity &GetSelf();
 ID GetEntitySprite(ID entityId);
 void SetEntitySprite(ID entityId, ID spriteId);
-ID FindEntity(const char *name);
 Entity *TryGetEntity(ID entityId); // Null once the entity is gone
-ID FindRoom(const char *name);
 Room *TryGetRoom(ID roomId);       // Null once the room is gone
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

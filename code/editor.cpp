@@ -841,6 +841,7 @@ static void EditorUpdateUI_Outliner()
 				{
 					EditorSelectRoom(scene.rooms[roomIdx].id);
 				}
+				EditorIDDragSource(room.id, editor.iconAsset);
 				// An entity belongs to a layer and not to a room, so the drop lands on the
 				// one the room is measured by
 				if ( const Layer *baseLayer = GetBaseLayer(room) ) {
@@ -1023,13 +1024,8 @@ static void EditorUpdateUI_Outliner()
 
 		if ( UI_Button(ui, "Create particle effect") )
 		{
-			const char *name = MakeName("fx");
-			for (u32 attempt = 1; FindParticleEffect(scene, name); ++attempt) {
-				name = MakeName("fx_%u", attempt);
-			}
-
 			const ParticleEffectDesc desc = {
-				.name = name,
+				.name = "fx",
 				.color = { .min = { 1.0f, 1.0f, 1.0f, 1.0f }, .max = { 1.0f, 1.0f, 1.0f, 0.0f } },
 				.size = { .min = 1.0f, .max = 1.0f },
 				.rate = 20.0f,
@@ -1234,15 +1230,10 @@ static void EditorUpdateUI_Assets()
 	UI_EndWindow(ui);
 }
 
-static const char *EditorMakeSpriteName(const Scene &scene, const char *textureName)
+static const char *EditorMakeSpriteName(const char *textureName)
 {
 	const char *base = StrEqN(textureName, "tex_", 4) ? textureName + 4 : textureName;
-
-	const char *name = MakeName("spr_%s", base);
-	for (u32 attempt = 1; FindSprite(scene, name); ++attempt) {
-		name = MakeName("spr_%s_%u", base, attempt);
-	}
-	return name;
+	return MakeName("spr_%s", base);
 }
 
 static void EditorUpdateUI_SpriteSheet()
@@ -1379,7 +1370,7 @@ static void EditorUpdateUI_SpriteSheet()
 					else
 					{
 						const SpriteDesc desc = {
-							.name = EditorMakeSpriteName(scene, texture.desc.name),
+							.name = EditorMakeSpriteName(texture.desc.name),
 							.textureId = texture.desc.id,
 							.pos = spriteRelPos,
 							.size = spriteSize,
@@ -2245,7 +2236,7 @@ static void EditorUpdateUI_DragAndDropLost()
 		{
 			const Texture &texture = GetTexture(textureId);
 			const SpriteDesc spriteDesc = {
-				.name = EditorMakeSpriteName(engine.scene, texture.desc.name),
+				.name = EditorMakeSpriteName(texture.desc.name),
 				.textureId = textureId,
 				.pos = { 0, 0 },
 				.size = texture.size,

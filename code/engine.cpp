@@ -596,19 +596,6 @@ void SetCamera(const Camera &camera)
 	engine.gfx.camera = camera;
 }
 
-ID FindRoom(const char *name)
-{
-	Engine &engine = GetEngine();
-	for (u32 i = 0; i < engine.scene.roomCount; ++i)
-	{
-		const Room &room = engine.scene.rooms[i];
-		if ( room.id && StrEq(room.name, name) ) {
-			return room.id;
-		}
-	}
-	return {};
-}
-
 // Nullable counterpart to GetRoom, which asserts. Game code holds an ID across frames
 // and has to cope with the room going away.
 Room *TryGetRoom(ID roomId)
@@ -618,19 +605,6 @@ Room *TryGetRoom(ID roomId)
 		roomPtr = &GetRoom(roomId);
 	}
 	return roomPtr;
-}
-
-ID FindEntity(const char *name)
-{
-	Engine &engine = GetEngine();
-	for (u32 i = 0; i < engine.scene.entityCount; ++i)
-	{
-		const Entity &entity = engine.scene.entities[i];
-		if ( entity.id && StrEq(entity.name, name) ) {
-			return entity.id;
-		}
-	}
-	return {};
 }
 
 // See TryGetRoom
@@ -643,44 +617,11 @@ Entity *TryGetEntity(ID entityId)
 	return ent;
 }
 
-ID FindSprite(const char *name)
-{
-	Engine &engine = GetEngine();
-	ID id = FindSprite(engine.scene, name);
-	return id;
-}
-
-ID GetAudioClip(const char *name)
-{
-	Engine &engine = GetEngine();
-	for (u32 i = 0; i < engine.audio.clipCount; ++i)
-	{
-		const AudioClipDesc &desc = engine.audio.clips[i].desc;
-		if ( desc.id && StrEq(desc.name, name) ) {
-			return desc.id;
-		}
-	}
-	return {};
-}
-
 u32 PlayAudioClip(ID clipId)
 {
 	Engine &engine = GetEngine();
 	u32 ret = PlayAudioClip(engine.audio, clipId);
 	return ret;
-}
-
-ID GetMusic(const char *name)
-{
-	Engine &engine = GetEngine();
-	for (u32 i = 0; i < engine.audio.musicFileCount; ++i)
-	{
-		const MusicFileDesc &desc = engine.audio.musicFiles[i].desc;
-		if ( desc.id && StrEq(desc.name, name) ) {
-			return desc.id;
-		}
-	}
-	return {};
 }
 
 void PlayMusic(ID musicId)

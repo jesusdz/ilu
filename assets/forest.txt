@@ -302,7 +302,7 @@ Entity player = {
   .radius = 10.000000,
  },
  .script = {
-  .name = "ScriptPlayerController",
+  .name = "PlayerController",
   .properties = {
    .sprPlayerIdle = 1032,
    .sprPlayerRun = 1024,
@@ -310,6 +310,7 @@ Entity player = {
    .sprPlayerFall = 1036,
    .sndJump = 0,
    .randomProperty = 0,
+   .roomId = 1021,
   },
  },
  .sprite = {
@@ -404,6 +405,19 @@ Entity light = {
  .sprite = {
   .spriteId = 0,
   .layerId = 1035,
+ },
+};
+
+Entity script = {
+ .id = 1051,
+ .pos = {-2.007693, 5.146153, 0.000000},
+ .scale = 1.000000,
+ .script = {
+  .name = "CameraController",
+  .properties = {
+   .playerId = 1027,
+   .roomId = 1021,
+  },
  },
 };
 

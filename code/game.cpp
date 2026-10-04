@@ -10,7 +10,7 @@ enum PlayerState
 };
 
 REFLEX(Script)
-struct ScriptPlayerController
+struct PlayerController
 {
 	PlayerState playerState;
 
@@ -32,18 +32,29 @@ struct ScriptPlayerController
 	REFLEX()
 	u32 randomProperty;
 
-	Camera camera;
-	f32 cameraTargetX;
-	f32 cameraTargetY;
-
+	REFLEX(Room)
 	ID roomId;
 
 	float2 speed;
 	f32 accel;
 };
 
+REFLEX(Script)
+struct CameraController
+{
+	REFLEX(Entity)
+	ID playerId;
+
+	REFLEX(Room)
+	ID roomId;
+
+	Camera camera;
+	f32 cameraTargetX;
+	f32 cameraTargetY;
+};
+
 REFLEX()
-void Start(ScriptPlayerController &script)
+void Start(PlayerController &script)
 {
 	script.playerState = OnAir;
 
@@ -51,56 +62,20 @@ void Start(ScriptPlayerController &script)
 	player.position.xy = float2{1, 1};
 	script.speed = {};
 	script.accel = 50;
-
-	script.sndJump = GetAudioClip("snd_bell_wav");
-
-#if 0
-	script.camera = {
-		.projectionType = ProjectionOrthographic,
-		.position = {0, 0, -1},
-		.znear = -10.0f,
-		.zfar = 10.0f,
-		//.height = 180.0f / ART_PIXELS_PER_METER,
-		.height = 90.0f / ART_PIXELS_PER_METER,
-	};
-#else
-	// How far does the camera need to be so that the visible
-	// height at 0 is the scene resolution height in world pos?
-	const f32 fovyDeg = 60.0f;
-	const f32 fovyRad = fovyDeg * ToRadians;
-	const f32 halfHeightWorldUnits = 0.5f * LOW_SCENE_HEIGHT / ART_PIXELS_PER_METER;
-	const f32 zcam = halfHeightWorldUnits / Tan(0.5f * fovyRad);
-
-	script.camera = {
-		.projectionType = ProjectionPerspective,
-		.position = {0, 0, zcam},
-		.orientation = { 0, 0 },
-		.znear = 1.0f,
-		.zfar = 1000.0f,
-		.fovy = fovyDeg,
-	};
-#endif
-	SetCamera(script.camera);
-
-	script.roomId = FindRoom("Room");
 }
 
 REFLEX()
-void Simulate(ScriptPlayerController &script)
+void Simulate(PlayerController &script)
 {
 	const Game &game = GetGame();
 
 	const f32 deltaSeconds = SIMULATE_SECONDS;
 
-	const Room *roomPtr = TryGetRoom(script.roomId);
-	if ( !roomPtr ) {
-		return;
-	}
-	const Room &room = *roomPtr;
 	Entity &player = GetSelf();
 	SpriteComponent &sprite = GetSprite(GetEngine().scene, player.id);
 	const ColliderComponent &collider = GetCollider(GetEngine().scene, player.id);
 
+	const Room &room = GetRoom(script.roomId);
 	const f32 screenLeft = room.pos.x;
 	const f32 screenRight = room.pos.x + RoomSize(room).x;
 	const f32 screenBottom = room.pos.y;
@@ -251,62 +226,10 @@ void Simulate(ScriptPlayerController &script)
 		}
 	}
 
-	// Camera
-	{
-		const float2 playerPos = player.position.xy;
-
-		const float2 halfSceneSize = 0.5f * float2{LOW_SCENE_WIDTH, LOW_SCENE_HEIGHT} / ART_PIXELS_PER_METER;
-		const f32 cameraLeft = screenLeft + halfSceneSize.x;
-		const f32 cameraRight = screenRight - halfSceneSize.x;
-		const f32 cameraBottom = screenBottom + halfSceneSize.y;
-		const f32 cameraTop = screenTop - halfSceneSize.y;
-
-		constexpr f32 lookAheadSeconds = 0.0;
-		constexpr f32 verticalWindow = 1.5f;
-		constexpr f32 followAt60Hz = 0.1f;
-		constexpr f32 snapEpsilon = 1.0f / ART_PIXELS_PER_METER;
-
-		if (script.playerState == OnFloor || script.playerState == OnPlatform) {
-			script.cameraTargetY = playerPos.y;
-		}
-		script.cameraTargetX = playerPos.x + script.speed.x * lookAheadSeconds;
-		script.cameraTargetY = Clamp(script.cameraTargetY, playerPos.y - verticalWindow, playerPos.y + verticalWindow);
-
-		const float2 target = { script.cameraTargetX, script.cameraTargetY };
-		const f32 t = 1.0f - Pow(1.0f - followAt60Hz, deltaSeconds * 60.0f);
-		const float2 prevCameraPos = script.camera.position.xy;
-		float2 cameraPos = Lerp(prevCameraPos, target, t);
-		if (Length(target - cameraPos) < snapEpsilon) {
-			cameraPos = target;
-		}
-
-		script.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
-		script.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
-
-		// The renderer rounds the camera and the player to pixels independently, so a
-		// fractional distance between them shows as a 1px wobble of whichever is being
-		// watched. Per axis: while the camera travels with the player, the submitted camera
-		// sits a whole number of pixels from it, so the player holds its screen pixel;
-		// while the player moves across a slower camera it is left alone, or the whole
-		// scene would shake instead. script.camera stays unsnapped so the lerp never stalls.
-		Camera camera = script.camera;
-		const f32 pixelSize = 1.0f / GetEngine().gfx.renderTargets.scenePixelsPerMeter;
-		const float2 cameraStep = script.camera.position.xy - prevCameraPos;
-		const float2 offsetStep = cameraStep - (playerPos - player.prevPosition.xy);
-		const float2 offset = script.camera.position.xy - playerPos;
-		if (Abs(offsetStep.x) < Abs(cameraStep.x)) {
-			camera.position.x = playerPos.x + Round(offset.x / pixelSize) * pixelSize;
-		}
-		if (Abs(offsetStep.y) < Abs(cameraStep.y)) {
-			camera.position.y = playerPos.y + Round(offset.y / pixelSize) * pixelSize;
-		}
-
-		SetCamera(camera);
-	}
 }
 
 REFLEX()
-void Update(ScriptPlayerController &script)
+void Update(PlayerController &script)
 {
 	//const Room *roomPtr = TryGetRoom(script.roomId);
 	//DrawBoxOutline(Float2(roomPtr->pos), LayerSize(roomPtr->layers[0]), ColorOrange);
@@ -314,7 +237,113 @@ void Update(ScriptPlayerController &script)
 }
 
 REFLEX()
-void Stop(ScriptPlayerController &script)
+void Stop(PlayerController &script)
+{
+}
+
+
+REFLEX()
+void Start(CameraController &script)
+{
+#if 0
+	script.camera = {
+		.projectionType = ProjectionOrthographic,
+		.position = {0, 0, -1},
+		.znear = -10.0f,
+		.zfar = 10.0f,
+		//.height = 180.0f / ART_PIXELS_PER_METER,
+		.height = 90.0f / ART_PIXELS_PER_METER,
+	};
+#else
+	// How far does the camera need to be so that the visible
+	// height at 0 is the scene resolution height in world pos?
+	const f32 fovyDeg = 60.0f;
+	const f32 fovyRad = fovyDeg * ToRadians;
+	const f32 halfHeightWorldUnits = 0.5f * LOW_SCENE_HEIGHT / ART_PIXELS_PER_METER;
+	const f32 zcam = halfHeightWorldUnits / Tan(0.5f * fovyRad);
+
+	script.camera = {
+		.projectionType = ProjectionPerspective,
+		.position = {0, 0, zcam},
+		.orientation = { 0, 0 },
+		.znear = 1.0f,
+		.zfar = 1000.0f,
+		.fovy = fovyDeg,
+	};
+#endif
+	SetCamera(script.camera);
+
+}
+
+REFLEX()
+void Simulate(CameraController &script)
+{
+	Entity &player = GetEntity(script.playerId);
+	const Room &room = GetRoom(script.roomId);
+
+	const float2 playerPos = player.position.xy;
+
+	const f32 screenLeft = room.pos.x;
+	const f32 screenRight = room.pos.x + RoomSize(room).x;
+	const f32 screenBottom = room.pos.y;
+	const f32 screenTop = room.pos.y + RoomSize(room).y;
+
+	const float2 halfSceneSize = 0.5f * float2{LOW_SCENE_WIDTH, LOW_SCENE_HEIGHT} / ART_PIXELS_PER_METER;
+	const f32 cameraLeft = screenLeft + halfSceneSize.x;
+	const f32 cameraRight = screenRight - halfSceneSize.x;
+	const f32 cameraBottom = screenBottom + halfSceneSize.y;
+	const f32 cameraTop = screenTop - halfSceneSize.y;
+
+	constexpr f32 lookAheadSeconds = 0.0;
+	constexpr f32 verticalWindow = 1.5f;
+	constexpr f32 followAt60Hz = 0.1f;
+	constexpr f32 snapEpsilon = 1.0f / ART_PIXELS_PER_METER;
+
+	//if (script.playerState == OnFloor || script.playerState == OnPlatform) {
+	//	script.cameraTargetY = playerPos.y;
+	//}
+	script.cameraTargetX = playerPos.x;
+	script.cameraTargetY = Clamp(script.cameraTargetY, playerPos.y - verticalWindow, playerPos.y + verticalWindow);
+
+	const float2 target = { script.cameraTargetX, script.cameraTargetY };
+	const f32 t = 1.0f - Pow(1.0f - followAt60Hz, SIMULATE_SECONDS * 60.0f);
+	const float2 prevCameraPos = script.camera.position.xy;
+	float2 cameraPos = Lerp(prevCameraPos, target, t);
+	if (Length(target - cameraPos) < snapEpsilon) {
+		cameraPos = target;
+	}
+
+	script.camera.position.x = Clamp(cameraPos.x, cameraLeft, cameraRight);
+	script.camera.position.y = Clamp(cameraPos.y, cameraBottom, cameraTop);
+
+	// The renderer rounds the camera and the player to pixels independently, so a
+	// fractional distance between them shows as a 1px wobble of whichever is being
+	// watched. Per axis: while the camera travels with the player, the submitted camera
+	// sits a whole number of pixels from it, so the player holds its screen pixel;
+	// while the player moves across a slower camera it is left alone, or the whole
+	// scene would shake instead. script.camera stays unsnapped so the lerp never stalls.
+	Camera camera = script.camera;
+	const f32 pixelSize = 1.0f / GetEngine().gfx.renderTargets.scenePixelsPerMeter;
+	const float2 cameraStep = script.camera.position.xy - prevCameraPos;
+	const float2 offsetStep = cameraStep - (playerPos - player.prevPosition.xy);
+	const float2 offset = script.camera.position.xy - playerPos;
+	if (Abs(offsetStep.x) < Abs(cameraStep.x)) {
+		camera.position.x = playerPos.x + Round(offset.x / pixelSize) * pixelSize;
+	}
+	if (Abs(offsetStep.y) < Abs(cameraStep.y)) {
+		camera.position.y = playerPos.y + Round(offset.y / pixelSize) * pixelSize;
+	}
+
+	SetCamera(camera);
+}
+
+REFLEX()
+void Update(CameraController &script)
+{
+}
+
+REFLEX()
+void Stop(CameraController &script)
 {
 }
 
