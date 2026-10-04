@@ -112,6 +112,8 @@ static ShaderSourceDesc shaderSourceDescs[] = {
 	{ .type = ShaderTypeCompute,  .filename = "compute.hlsl",        .entryPoint = "main_update", .name = "compute_update" },
 	{ .type = ShaderTypeVertex,   .filename = "debug_draw.hlsl",     .entryPoint = "VSMain",      .name = "vs_debug_draw" },
 	{ .type = ShaderTypeFragment, .filename = "debug_draw.hlsl",     .entryPoint = "PSMain",      .name = "fs_debug_draw" },
+	{ .type = ShaderTypeVertex,   .filename = "particles.hlsl",      .entryPoint = "VSMain",      .name = "vs_particles" },
+	{ .type = ShaderTypeFragment, .filename = "particles.hlsl",      .entryPoint = "PSMain",      .name = "fs_particles" },
 	{ .type = ShaderTypeVertex,   .filename = "fog.hlsl",            .entryPoint = "VSMain",      .name = "vs_fog" },
 	{ .type = ShaderTypeFragment, .filename = "fog.hlsl",            .entryPoint = "PSMain",      .name = "fs_fog" },
 };
@@ -1274,14 +1276,37 @@ static const ShaderAndPipelineDesc pipelineDescs[] =
 			.vsFunction = "VSMain",
 			.fsFunction = "PSMain",
 			.vertexBufferCount = 1,
-			.vertexBuffers = { { .stride = 20 }, },
+			.vertexBuffers = { { .stride = 24 }, },
 			.vertexAttributeCount = 3,
 			.vertexAttributes = {
-				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat2, },
-				{ .bufferIndex = 0, .location = 1, .offset = 8,  .format = FormatFloat2, },
-				{ .bufferIndex = 0, .location = 2, .offset = 16, .format = FormatRGBA8, },
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat2, },
+				{ .bufferIndex = 0, .location = 2, .offset = 20, .format = FormatRGBA8, },
 			},
 			.depthTest = false,
+			.blending = true,
+		}
+	},
+	{
+		.vsName = "vs_particles",
+		.fsName = "fs_particles",
+		.renderPass = "scene_renderpass",
+		.index = Pipeline_Particles,
+		.desc = {
+			.name = "pipeline_particles",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 24 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat2, },
+				{ .bufferIndex = 0, .location = 2, .offset = 20, .format = FormatRGBA8, },
+			},
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpGreaterOrEqual,
 			.blending = true,
 		}
 	},
@@ -1529,7 +1554,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.globalVertexArena = MakeBufferArena( gfx, CreateVertexBuffer(gfx, MB(4)) );
 	gfx.globalIndexArena = MakeBufferArena( gfx, CreateIndexBuffer(gfx, MB(4)) );
 
-#define MAX_DEBUG_DRAW_VERTICES (4092 + MAX_PARTICLES * 6)
+#define MAX_DEBUG_DRAW_VERTICES 4092
 
 	// Create debug draw vertex buffers
 	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
@@ -1543,6 +1568,15 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		gfx.debugDrawVertices[i] = (DebugDrawVertex*)GetBufferPtr(gfx.device, gfx.debugDrawVertexBuffer[i]);
 	}
 	gfx.debugDrawVerticesCPU = PushArray(globalArena, DebugDrawVertex, MAX_DEBUG_DRAW_VERTICES);
+
+	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		gfx.particleVertexBuffer[i] = CreateBuffer(
+			gfx.device,
+			sizeof(ParticleVertex) * MAX_PARTICLES * 6,
+			BufferUsageVertexBuffer,
+			HeapType_Dynamic);
+	}
 
 	CommandList commandList = BeginUploadCommandList(gfx);
 

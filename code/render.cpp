@@ -42,12 +42,12 @@ static void DrawImage(ImageH imageH, float2 worldPos, float2 worldSize, float2 u
 
 	const rgba rgbaColor = Rgba(color);
 	DebugDrawVertex *v = gfx.debugDrawVerticesCPU + gfx.debugDrawVertexCount;
-	v[0] = DebugDrawVertex{ worldPos + float2{0, 0},                     uvPos + float2{0, uvSize.y}, rgbaColor };
-	v[1] = DebugDrawVertex{ worldPos + float2{worldSize.x, worldSize.y}, uvPos + float2{uvSize.x, 0}, rgbaColor };
-	v[2] = DebugDrawVertex{ worldPos + float2{0, worldSize.y},           uvPos,                       rgbaColor };
-	v[3] = DebugDrawVertex{ worldPos + float2{0, 0},                     uvPos + float2{0, uvSize.y}, rgbaColor };
-	v[4] = DebugDrawVertex{ worldPos + float2{worldSize.x, 0},           uvPos + uvSize,              rgbaColor };
-	v[5] = DebugDrawVertex{ worldPos + float2{worldSize.x, worldSize.y}, uvPos + float2{uvSize.x, 0}, rgbaColor };
+	v[0] = DebugDrawVertex{ Float3(worldPos + float2{0, 0}, 0.0f),                     uvPos + float2{0, uvSize.y}, rgbaColor };
+	v[1] = DebugDrawVertex{ Float3(worldPos + float2{worldSize.x, worldSize.y}, 0.0f), uvPos + float2{uvSize.x, 0}, rgbaColor };
+	v[2] = DebugDrawVertex{ Float3(worldPos + float2{0, worldSize.y}, 0.0f),           uvPos,                       rgbaColor };
+	v[3] = DebugDrawVertex{ Float3(worldPos + float2{0, 0}, 0.0f),                     uvPos + float2{0, uvSize.y}, rgbaColor };
+	v[4] = DebugDrawVertex{ Float3(worldPos + float2{worldSize.x, 0}, 0.0f),           uvPos + uvSize,              rgbaColor };
+	v[5] = DebugDrawVertex{ Float3(worldPos + float2{worldSize.x, worldSize.y}, 0.0f), uvPos + float2{uvSize.x, 0}, rgbaColor };
 	gfx.debugDrawVertexCount += 6;
 
 	DebugDrawAppendBatch(gfx, imageH, 6);
@@ -81,7 +81,7 @@ void DrawSprite(ID spriteId, float2 worldPos, float4 color)
 ////////////////////////////////////////////////////////////////////////
 // Debug draw
 
-void DrawBox(float2 pos, float2 size, float4 color)
+void DrawBox(float3 pos, float2 size, float4 color)
 {
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
@@ -90,15 +90,20 @@ void DrawBox(float2 pos, float2 size, float4 color)
 	const rgba c = Rgba(color);
 	const float2 uv = {}; // Any UV works here, gfx.whiteImageH is a single white pixel.
 	DebugDrawVertex *v = gfx.debugDrawVerticesCPU + gfx.debugDrawVertexCount;
-	v[0] = DebugDrawVertex{ pos + float2{0, 0}, uv, c };
-	v[1] = DebugDrawVertex{ pos + float2{size.x, size.y}, uv, c };
-	v[2] = DebugDrawVertex{ pos + float2{0, size.y}, uv, c };
-	v[3] = DebugDrawVertex{ pos + float2{0, 0}, uv, c };
-	v[4] = DebugDrawVertex{ pos + float2{size.x, 0}, uv, c };
-	v[5] = DebugDrawVertex{ pos + float2{size.x, size.y}, uv, c };
+	v[0] = DebugDrawVertex{ pos + float3{0, 0, 0}, uv, c };
+	v[1] = DebugDrawVertex{ pos + float3{size.x, size.y, 0}, uv, c };
+	v[2] = DebugDrawVertex{ pos + float3{0, size.y, 0}, uv, c };
+	v[3] = DebugDrawVertex{ pos + float3{0, 0, 0}, uv, c };
+	v[4] = DebugDrawVertex{ pos + float3{size.x, 0, 0}, uv, c };
+	v[5] = DebugDrawVertex{ pos + float3{size.x, size.y, 0}, uv, c };
 	gfx.debugDrawVertexCount += 6;
 
 	DebugDrawAppendBatch(gfx, gfx.whiteImageH, 6);
+}
+
+void DrawBox(float2 pos, float2 size, float4 color)
+{
+	DrawBox(Float3(pos, 0.0f), size, color);
 }
 
 void DrawBoxOutline(float2 pos, float2 size, float4 color)
@@ -117,13 +122,20 @@ static void DrawSpriteCentered(ID spriteID, float2 pos, float2 size, float4 pcol
 
 void DrawParticles(const Scene &scene)
 {
-	// Effects outer, particles inner: consecutive quads then share a texture and
-	// DebugDrawAppendBatch merges them, one batch per effect instead of one per particle
-	// (MAX_DEBUG_DRAW_BATCHES is 64)
+	Graphics &gfx = GetEngine().gfx;
+
+	ParticleVertex *vertices = (ParticleVertex*)GetBufferPtr(gfx.device, gfx.particleVertexBuffer[gfx.device.frameIndex]);
+	gfx.particleVertexCount = 0;
+	gfx.particleBatchCount = 0;
+
+	// Effects outer, particles inner: the quads of an effect are then consecutive and
+	// share a texture, one batch per effect instead of one per particle
 	for (u32 e = 0; e < scene.particleEffectCount; ++e)
 	{
 		const ParticleEffectDesc &effect = scene.particleEffects[e].desc;
 		if ( !effect.id ) { continue; } // Removed, still waiting for CompactParticleEffects
+
+		const u32 firstVertex = gfx.particleVertexCount;
 
 		for (u32 i = 0; i < scene.particleCount; ++i)
 		{
@@ -135,15 +147,35 @@ void DrawParticles(const Scene &scene)
 			const f32 size = Lerp(effect.size.min, effect.size.max, t);
 
 			// Local-space particles ride along with their emitter
-			const float2 pos = p.entityId ? p.pos + GetEntity(p.entityId).position.xy : p.pos;
+			const float3 pos = p.entityId ? p.pos + GetEntity(p.entityId).position : p.pos;
 
 			//if ( effect.spriteID ) {
 			//	DrawSpriteCentered(effect.spriteID, pos, color, size);
 			//} else {
 				// No sprite assigned: a plain quad, so a new effect still shows something
 				const float2 boxSize = (size * 2.0f / ART_PIXELS_PER_METER) * float2{1, 1};
-				DrawBox(pos - 0.5f * boxSize, boxSize, color);
+				const float3 boxPos = pos + Float3(-0.5f * boxSize, 0.0f);
+				const rgba c = Rgba(color);
+				const float2 uv = {};
+				ParticleVertex *v = vertices + gfx.particleVertexCount;
+				v[0] = ParticleVertex{ boxPos + float3{0, 0, 0}, uv, c };
+				v[1] = ParticleVertex{ boxPos + float3{boxSize.x, boxSize.y, 0}, uv, c };
+				v[2] = ParticleVertex{ boxPos + float3{0, boxSize.y, 0}, uv, c };
+				v[3] = ParticleVertex{ boxPos + float3{0, 0, 0}, uv, c };
+				v[4] = ParticleVertex{ boxPos + float3{boxSize.x, 0, 0}, uv, c };
+				v[5] = ParticleVertex{ boxPos + float3{boxSize.x, boxSize.y, 0}, uv, c };
+				gfx.particleVertexCount += 6;
 			//}
+		}
+
+		if ( gfx.particleVertexCount > firstVertex )
+		{
+			ASSERT( gfx.particleBatchCount < MAX_PARTICLE_BATCHES );
+			gfx.particleBatches[gfx.particleBatchCount++] = {
+				.imageH = gfx.whiteImageH,
+				.vertexIndex = firstVertex,
+				.vertexCount = gfx.particleVertexCount - firstVertex,
+			};
 		}
 	}
 }
@@ -1257,6 +1289,38 @@ bool RenderGraphics(Engine &engine)
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
 			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+
+			EndDebugGroup(commandList);
+		}
+
+		{ // Particles
+			PROFILE_GFX_BLOCK(commandList, Particles);
+
+			BeginDebugGroup(commandList, "Particles", ColorBlack);
+
+			const Pipeline &particlesPipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Particles]);
+			const BindGroupLayout &bindGroupLayout = particlesPipeline.layout.bindGroupLayouts[3];
+
+			SetPipeline(commandList, gfx.pipelines[Pipeline_Particles]);
+			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+			SetVertexBuffer(commandList, gfx.particleVertexBuffer[frameIndex]);
+
+			for (u32 i = 0; i < gfx.particleBatchCount; ++i)
+			{
+				const ParticleBatch &batch = gfx.particleBatches[i];
+
+				const BindGroupDesc bindGroupDesc = {
+					.layout = bindGroupLayout,
+					.bindings = {
+						{ .index = 0, .sampler = gfx.pointSamplerH },
+						{ .index = 1, .image = batch.imageH },
+					},
+				};
+				const BindGroup bindGroup = GetOrCreateDynamicBindGroup(gfx, bindGroupDesc);
+				SetBindGroup(commandList, 3, bindGroup);
+
+				Draw(commandList, batch.vertexCount, batch.vertexIndex);
+			}
 
 			EndDebugGroup(commandList);
 		}

@@ -2384,6 +2384,24 @@ static void EditorUpdateUI_ContextMenu()
 				LOG(Debug, "Add script not implemented in 3D mode.\n");
 			}
 		}
+		if ( UI_MenuItem(ui, "Add camera region") )
+		{
+			if ( EditorMode2D() )
+			{
+				const EntityDesc entityDesc = {
+					.name = InternString("camera_region"),
+					.pos = Float3(editor.contextMenuWorldPos, 0.0),
+					.scale = 1.0f,
+				};
+				const ID entityId = CreateEntity(engine, entityDesc);
+				AddComponent(engine, entityId, ComponentType_CameraRegion);
+				EditorSelectEntity(entityId);
+			}
+			else
+			{
+				LOG(Debug, "Add camera region not implemented in 3D mode.\n");
+			}
+		}
 		UI_EndMenu(ui);
 	}
 }
@@ -3068,6 +3086,19 @@ void EditorDebugDraw()
 	}
 	else if (contextRoom != nullptr)
 	{
+	}
+
+	if (EditorMode2D())
+	{
+		const Scene &scene = engine.scene;
+		const ID selected = EditorGetSelectedEntity(editor);
+		const u32 regionCount = scene.componentPools[ComponentType_CameraRegion].count;
+		for (u32 i = 0; i < regionCount; ++i)
+		{
+			const CameraRegionComponent &region = scene.cameraRegionComponents[i];
+			const float2 pos = GetEntity(region.entityId).position.xy + region.offset;
+			DrawBoxOutline(pos, region.size, region.entityId == selected ? ColorOrange : ColorGreen);
+		}
 	}
 
 	if (editor.showIcons && EditorMode2D())

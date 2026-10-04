@@ -51,6 +51,10 @@ struct CameraController
 	Camera camera;
 	f32 cameraTargetX;
 	f32 cameraTargetY;
+
+	bool boundsValid;
+	float2 boundsMin;
+	float2 boundsMax;
 };
 
 REFLEX()
@@ -59,7 +63,7 @@ void Start(PlayerController &script)
 	script.playerState = OnAir;
 
 	Entity &player = GetSelf();
-	player.position.xy = float2{1, 1};
+	//player.position.xy = float2{1, 1};
 	script.speed = {};
 	script.accel = 50;
 }
@@ -273,6 +277,7 @@ void Start(CameraController &script)
 #endif
 	SetCamera(script.camera);
 
+	script.boundsValid = false;
 }
 
 REFLEX()
@@ -282,22 +287,92 @@ void Simulate(CameraController &script)
 	const Room &room = GetRoom(script.roomId);
 
 	const float2 playerPos = player.position.xy;
-
-	const f32 screenLeft = room.pos.x;
-	const f32 screenRight = room.pos.x + RoomSize(room).x;
-	const f32 screenBottom = room.pos.y;
-	const f32 screenTop = room.pos.y + RoomSize(room).y;
-
-	const float2 halfSceneSize = 0.5f * float2{LOW_SCENE_WIDTH, LOW_SCENE_HEIGHT} / ART_PIXELS_PER_METER;
-	const f32 cameraLeft = screenLeft + halfSceneSize.x;
-	const f32 cameraRight = screenRight - halfSceneSize.x;
-	const f32 cameraBottom = screenBottom + halfSceneSize.y;
-	const f32 cameraTop = screenTop - halfSceneSize.y;
+	const f32 visHalfWidth = 0.5f * LOW_SCENE_WIDTH / ART_PIXELS_PER_METER;
+	const f32 visHalfHeight = 0.5f * LOW_SCENE_HEIGHT / ART_PIXELS_PER_METER;
+	const float2 visCenter = script.boundsValid ? script.camera.position.xy : playerPos;
+	const float2 visRegionMin = float2{visCenter.x - visHalfWidth, visCenter.y - visHalfHeight};
+	const float2 visRegionMax = float2{visCenter.x + visHalfWidth, visCenter.y + visHalfHeight};
 
 	constexpr f32 lookAheadSeconds = 0.0;
 	constexpr f32 verticalWindow = 1.5f;
 	constexpr f32 followAt60Hz = 0.1f;
+	constexpr f32 boundsAt60Hz = 0.05f;
 	constexpr f32 snapEpsilon = 1.0f / ART_PIXELS_PER_METER;
+
+	const float2 roomMin = float2{(f32)room.pos.x, (f32)room.pos.y};
+	const float2 roomMax = roomMin + RoomSize(room);
+
+	float2 targetMin = roomMin;
+	float2 targetMax = roomMax;
+
+	Scene &scene = GetEngine().scene;
+	const u32 regionCount = scene.componentPools[ComponentType_CameraRegion].count;
+	for (u32 i = 0; i < regionCount; ++i)
+	{
+		CameraRegionComponent &region = scene.cameraRegionComponents[i];
+		const float2 regionMin = GetEntity(region.entityId).position.xy + region.offset;
+		const float2 regionMax = regionMin + region.size;
+
+		if (playerPos.x >= regionMin.x && playerPos.x < regionMax.x &&
+			playerPos.y >= regionMin.y && playerPos.y < regionMax.y) {
+		}
+
+		const bool outsideX = playerPos.x < regionMin.x || playerPos.x >= regionMax.x;
+		const bool outsideY = playerPos.y < regionMin.y || playerPos.y >= regionMax.y;
+		const bool rowsVisible = visRegionMax.y > regionMin.y && visRegionMin.y < regionMax.y;
+		const bool columnsVisible = visRegionMax.x > regionMin.x && visRegionMin.x < regionMax.x;
+
+		if (outsideX && (!outsideY || rowsVisible))
+		{
+			if (playerPos.x < regionMin.x) {
+				targetMax.x = Min(targetMax.x, regionMin.x);
+			}
+			if (playerPos.x >= regionMax.x) {
+				targetMin.x = Max(targetMin.x, regionMax.x);
+			}
+		}
+		else if (!outsideX || columnsVisible)
+		{
+			if (playerPos.y < regionMin.y) {
+				targetMax.y = Min(targetMax.y, regionMin.y);
+			}
+			if (playerPos.y >= regionMax.y) {
+				targetMin.y = Max(targetMin.y, regionMax.y);
+			}
+		}
+	}
+
+	targetMin = Max(targetMin, roomMin);
+	targetMax = Min(targetMax, roomMax);
+
+	if (!script.boundsValid) {
+		script.boundsMin = targetMin;
+		script.boundsMax = targetMax;
+		script.boundsValid = true;
+	} else {
+		const f32 boundsT = 1.0f - Pow(1.0f - boundsAt60Hz, SIMULATE_SECONDS * 60.0f);
+		script.boundsMin = Lerp(script.boundsMin, targetMin, boundsT);
+		script.boundsMax = Lerp(script.boundsMax, targetMax, boundsT);
+		if (Length(targetMin - script.boundsMin) < snapEpsilon) {
+			script.boundsMin = targetMin;
+		}
+		if (Length(targetMax - script.boundsMax) < snapEpsilon) {
+			script.boundsMax = targetMax;
+		}
+	}
+
+	const float2 halfSceneSize = 0.5f * float2{LOW_SCENE_WIDTH, LOW_SCENE_HEIGHT} / ART_PIXELS_PER_METER;
+	f32 cameraLeft = script.boundsMin.x + halfSceneSize.x;
+	f32 cameraRight = script.boundsMax.x - halfSceneSize.x;
+	f32 cameraBottom = script.boundsMin.y + halfSceneSize.y;
+	f32 cameraTop = script.boundsMax.y - halfSceneSize.y;
+
+	if (cameraLeft > cameraRight) {
+		cameraLeft = cameraRight = 0.5f * (script.boundsMin.x + script.boundsMax.x);
+	}
+	if (cameraBottom > cameraTop) {
+		cameraBottom = cameraTop = 0.5f * (script.boundsMin.y + script.boundsMax.y);
+	}
 
 	//if (script.playerState == OnFloor || script.playerState == OnPlatform) {
 	//	script.cameraTargetY = playerPos.y;

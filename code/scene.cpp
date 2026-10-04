@@ -18,6 +18,7 @@ void InitializeScene(Engine &engine)
 	BIND_COMPONENT_POOL(Particles, particles);
 	BIND_COMPONENT_POOL(Collider, collider);
 	BIND_COMPONENT_POOL(Script, script);
+	BIND_COMPONENT_POOL(CameraRegion, cameraRegion);
 
 #undef BIND_COMPONENT_POOL
 
@@ -269,13 +270,14 @@ static void SpawnParticle(Scene &scene, ID entityId, const ParticleEffectDesc &e
 
 	const Entity &entity = GetEntity(entityId);
 
-	const float2 jitter = {
+	const float3 jitter = {
 		effect.spawnExtent.x * RandomBipolar(scene.particleRandom),
 		effect.spawnExtent.y * RandomBipolar(scene.particleRandom),
+		effect.spawnExtent.z * RandomBipolar(scene.particleRandom),
 	};
 	const f32 angle = RandomRange(scene.particleRandom, effect.angle) * ToRadians;
 	const f32 speed = RandomRange(scene.particleRandom, effect.speed);
-	const float2 origin = effect.worldSpace ? entity.position.xy : float2{};
+	const float3 origin = effect.worldSpace ? entity.position : float3{};
 
 	Particle &p = scene.particles[scene.particleCount++];
 	p = {
@@ -765,6 +767,16 @@ const ColliderComponent &GetCollider(const Scene &scene, ID entityId)
 	return collider;
 }
 
+static CameraRegionComponent *AddCameraRegion(Scene &scene, ID entityId)
+{
+	CameraRegionComponent *region = (CameraRegionComponent*)AddComponentSlot(scene, entityId, ComponentType_CameraRegion);
+	if ( region )
+	{
+		region->size = float2{20.0f, 12.0f};
+	}
+	return region;
+}
+
 ScriptComponent &GetScript(Scene &scene, ID entityId)
 {
 	ScriptComponent &script = *(ScriptComponent*)GetComponentSlot(scene, entityId, ComponentType_Script);
@@ -885,6 +897,10 @@ void AddComponent(Engine &engine, ID entityId, ComponentType type)
 
 	switch ( type )
 	{
+		case ComponentType_CameraRegion:
+			AddCameraRegion(engine.scene, entityId);
+			break;
+
 		case ComponentType_Collider:
 			AddCollider(engine.scene, entityId);
 			break;
@@ -1115,6 +1131,14 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, ComponentDescPool
 		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Collider) ) {
 			const ColliderComponent collider = { .size = desc.colliderSize, .offset = desc.colliderOffset };
 			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Collider), &collider, propertyPool);
+		}
+	}
+
+	if ( desc.components & Component_CameraRegion )
+	{
+		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_CameraRegion) ) {
+			const CameraRegionComponent region = { .size = desc.cameraRegionSize, .offset = desc.cameraRegionOffset };
+			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_CameraRegion), &region, propertyPool);
 		}
 	}
 

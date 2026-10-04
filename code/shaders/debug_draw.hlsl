@@ -2,7 +2,7 @@
 
 struct VertexInput
 {
-	float2 position : POSITION;
+	float3 position : POSITION;
 	float2 texCoord : TEXCOORD0;
 	float4 color : COLOR0;
 };
@@ -17,7 +17,7 @@ struct VertexOutput
 VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 {
 	VertexOutput OUT;
-	OUT.position = mul(globals.cameraProj, mul(globals.cameraView, float4(IN.position, 0.0, 1.0)));
+	OUT.position = mul(globals.cameraProj, mul(globals.cameraView, float4(IN.position, 1.0)));
 	OUT.texCoord = IN.texCoord;
 	OUT.color = IN.color;
 	return OUT;

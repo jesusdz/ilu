@@ -1088,9 +1088,12 @@ static float3 DParser_ConsumeFloat3( DParser &parser )
 	res.y = DParser_ConsumeF32(parser);
 	res.y = sy ? -res.y : res.y;
 	DParser_TryConsume(parser, TOKEN_COMMA);
-	const bool sz = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.z = DParser_ConsumeF32(parser);
-	res.z = sz ? -res.z : res.z;
+	// Fields widened from float2 are still saved with two components
+	if ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) ) {
+		const bool sz = DParser_TryConsume(parser, TOKEN_MINUS);
+		res.z = DParser_ConsumeF32(parser);
+		res.z = sz ? -res.z : res.z;
+	}
 	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
 	return res;
 }
@@ -1839,6 +1842,16 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 				d.components |= Component_Collider;
 				d.colliderSize = collider.size;
 				d.colliderOffset = collider.offset;
+				break;
+			}
+
+			case ComponentType_CameraRegion:
+			{
+				CameraRegionComponent region = {};
+				ApplyPropertyDescArray(*ComponentReflexStruct(ComponentType_CameraRegion), &region, component.properties);
+				d.components |= Component_CameraRegion;
+				d.cameraRegionSize = region.size;
+				d.cameraRegionOffset = region.offset;
 				break;
 			}
 

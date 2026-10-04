@@ -2047,6 +2047,12 @@ float2 operator+=(float2& a, float2 b)
 	return a;
 }
 
+float3 operator+=(float3& a, float3 b)
+{
+	a = { .x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z };
+	return a;
+}
+
 float2 operator-(float2 a, float2 b)
 {
 	const float2 res = { .x = a.x - b.x, .y = a.y - b.y };

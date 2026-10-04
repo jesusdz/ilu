@@ -196,12 +196,26 @@ struct Vertex
 
 struct DebugDrawVertex
 {
-	float2 pos;
+	float3 pos;
 	float2 texCoord;
 	rgba color;
 };
 
 struct DebugDrawBatch
+{
+	ImageH imageH;
+	u32 vertexIndex;
+	u32 vertexCount;
+};
+
+struct ParticleVertex
+{
+	float3 pos;
+	float2 texCoord;
+	rgba color;
+};
+
+struct ParticleBatch
 {
 	ImageH imageH;
 	u32 vertexIndex;
@@ -620,6 +634,7 @@ enum PipelineIndex
 	Pipeline_ModelId,
 	Pipeline_SpriteId,
 	Pipeline_DebugDraw,
+	Pipeline_Particles,
 	Pipeline_Fog,
 	Pipeline_ComputeSelect,
 	Pipeline_LightBinning,
@@ -658,6 +673,7 @@ struct ShaderSourceDesc
 #define MAX_MATERIALS 4092
 #define MAX_DYNAMIC_BIND_GROUPS 4092
 #define MAX_DEBUG_DRAW_BATCHES 64
+#define MAX_PARTICLE_BATCHES 64
 
 struct Graphics
 {
@@ -699,6 +715,11 @@ struct Graphics
 	u32 debugDrawVertexCount;
 	DebugDrawBatch debugDrawBatches[MAX_DEBUG_DRAW_BATCHES];
 	u32 debugDrawBatchCount;
+
+	BufferH particleVertexBuffer[MAX_FRAMES_IN_FLIGHT];
+	u32 particleVertexCount;
+	ParticleBatch particleBatches[MAX_PARTICLE_BATCHES];
+	u32 particleBatchCount;
 
 	BufferH spriteDataBuffer[MAX_FRAMES_IN_FLIGHT];
 	BufferH tileDataBuffer[MAX_FRAMES_IN_FLIGHT];
@@ -802,6 +823,7 @@ struct SceneDesc
 
 enum ComponentType
 {
+	ComponentType_CameraRegion,
 	ComponentType_Collider,
 	ComponentType_Light,
 	ComponentType_Model,
@@ -813,6 +835,7 @@ enum ComponentType
 
 enum ComponentBits
 {
+	Component_CameraRegion = (1<<ComponentType_CameraRegion),
 	Component_Collider = (1<<ComponentType_Collider),
 	Component_Light = (1<<ComponentType_Light),
 	Component_Model = (1<<ComponentType_Model),
@@ -825,6 +848,7 @@ typedef u32 ComponentFlags;
 
 const char *ComponentNames[] =
 {
+	"CameraRegion",
 	"Collider",
 	"Light",
 	"Model",
@@ -835,6 +859,7 @@ const char *ComponentNames[] =
 
 const char *ComponentFieldNames[] =
 {
+	"cameraRegion",
 	"collider",
 	"light",
 	"model",
@@ -922,6 +947,24 @@ struct ColliderComponent
 	float2 size;
 	REFLEX()
 	float2 offset;
+};
+
+////////////////////////////////////////////////////////////////////////
+// Camera region component
+
+REFLEX(Component)
+struct CameraRegionComponent
+{
+	ID entityId;
+
+	// Descriptor
+	REFLEX()
+	float2 size;
+	REFLEX()
+	float2 offset;
+
+	// Runtime
+	bool revealed;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -1049,13 +1092,13 @@ struct ParticleEffectDesc
 
 	// Shape
 	REFLEX()
-	float2 spawnOffset;
+	float3 spawnOffset;
 	REFLEX()
-	float2 spawnExtent;
+	float3 spawnExtent;
 
 	// Simulation
 	REFLEX()
-	float2 gravity;
+	float3 gravity;
 	REFLEX()
 	f32 drag;
 	REFLEX(Bool)
@@ -1070,8 +1113,8 @@ struct ParticleEffect
 
 struct Particle
 {
-	float2 pos;
-	float2 vel;
+	float3 pos;
+	float3 vel;
 	f32 age;
 	f32 lifetime;
 	ID effectId;
@@ -1245,6 +1288,7 @@ constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 #define MAX_PARTICLES_COMPONENTS 1024
 #define MAX_COLLIDER_COMPONENTS 1024
 #define MAX_SCRIPT_COMPONENTS 1024
+#define MAX_CAMERA_REGION_COMPONENTS 256
 
 constexpr u16 NO_COMPONENT = U16_MAX;
 
@@ -1282,6 +1326,7 @@ struct Scene
 	ParticlesComponent particlesComponents[MAX_PARTICLES_COMPONENTS];
 	ColliderComponent colliderComponents[MAX_COLLIDER_COMPONENTS];
 	ScriptComponent scriptComponents[MAX_SCRIPT_COMPONENTS];
+	CameraRegionComponent cameraRegionComponents[MAX_CAMERA_REGION_COMPONENTS];
 
 	u32 particleEffectCount;
 	ParticleEffect particleEffects[MAX_PARTICLE_EFFECTS];
@@ -1330,6 +1375,8 @@ struct BinEntityDesc
 	u8 particlesPrewarm;
 	float2 colliderSize;
 	float2 colliderOffset;
+	float2 cameraRegionSize;
+	float2 cameraRegionOffset;
 	BinScriptDesc script;
 };
 
@@ -1464,7 +1511,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 23; // 23: particles prewarm
+constexpr u32 BinAssetsVersion = 25; // 25: particles in 3D
 
 #pragma pack(push, 1)
 
@@ -1888,6 +1935,7 @@ void CleanScene(Engine &engine);
 
 void DrawSprite(ID spriteId, float2 worldPos, float4 pcolor);
 void DrawBox(float2 pos, float2 size, float4 color);
+void DrawBox(float3 pos, float2 size, float4 color);
 void DrawBoxOutline(float2 pos, float2 size, float4 color);
 void DrawParticles(const Scene &scene);
 
