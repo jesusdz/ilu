@@ -71,13 +71,13 @@ void Start(PlayerController &script)
 REFLEX()
 void Simulate(PlayerController &script)
 {
-	const Game &game = GetGame();
+	const GameInput &input = GetInput();
 
 	const f32 deltaSeconds = SIMULATE_SECONDS;
 
 	Entity &player = GetSelf();
-	SpriteComponent &sprite = GetSprite(GetEngine().scene, player.id);
-	const ColliderComponent &collider = GetCollider(GetEngine().scene, player.id);
+	SpriteComponent &sprite = GetSpriteComponent(player.id);
+	const ColliderComponent &collider = GetColliderComponent(player.id);
 
 	const Room &room = GetRoom(script.roomId);
 	const f32 screenLeft = room.pos.x;
@@ -92,7 +92,7 @@ void Simulate(PlayerController &script)
 		float2 pos = player.position.xy + collider.offset;
 		float2 &speed = script.speed;
 
-		f32 direction = game.input.move.x;
+		f32 direction = input.move.x;
 
 		// Physics constants ///////////////////////////////////////////
 
@@ -138,7 +138,7 @@ void Simulate(PlayerController &script)
 		// Y ///////////////////////////////////////////////////////////
 
 		static f32 secondsSinceJumpPress = 99.9f;
-		if (game.input.jump.press) {
+		if (input.jump.press) {
 			secondsSinceJumpPress = 0.0f;
 		} else {
 			secondsSinceJumpPress += deltaSeconds;
@@ -147,7 +147,7 @@ void Simulate(PlayerController &script)
 		// Grounded state comes from last frame's collision resolution, before this frame moves the player
 		if (script.playerState == OnFloor || script.playerState == OnPlatform) {
 			if (secondsSinceJumpPress < 0.2f) {
-				if (game.input.move.y < 0.0 && Abs(game.input.move.y) > Abs(2 * game.input.move.x) && script.playerState == OnPlatform) {
+				if (input.move.y < 0.0 && Abs(input.move.y) > Abs(2 * input.move.x) && script.playerState == OnPlatform) {
 					pos.y -= 0.1;
 				} else {
 					speed.y = jumpSpeed;
@@ -157,7 +157,7 @@ void Simulate(PlayerController &script)
 			}
 		}
 
-		if (speed.y > 0 && !game.input.jump.pressed) {
+		if (speed.y > 0 && !input.jump.pressed) {
 			speed.y *= jumpCutMultiplier;
 		}
 
@@ -305,11 +305,10 @@ void Simulate(CameraController &script)
 	float2 targetMin = roomMin;
 	float2 targetMax = roomMax;
 
-	Scene &scene = GetEngine().scene;
-	const u32 regionCount = scene.componentPools[ComponentType_CameraRegion].count;
+	const u32 regionCount = GetCameraRegionCount();
 	for (u32 i = 0; i < regionCount; ++i)
 	{
-		CameraRegionComponent &region = scene.cameraRegionComponents[i];
+		const CameraRegionComponent &region = GetCameraRegion(i);
 		const float2 regionMin = GetEntity(region.entityId).position.xy + region.offset;
 		const float2 regionMax = regionMin + region.size;
 
@@ -398,7 +397,7 @@ void Simulate(CameraController &script)
 	// while the player moves across a slower camera it is left alone, or the whole
 	// scene would shake instead. script.camera stays unsnapped so the lerp never stalls.
 	Camera camera = script.camera;
-	const f32 pixelSize = 1.0f / GetEngine().gfx.renderTargets.scenePixelsPerMeter;
+	const f32 pixelSize = 1.0f / GetScenePixelsPerMeter();
 	const float2 cameraStep = script.camera.position.xy - prevCameraPos;
 	const float2 offsetStep = cameraStep - (playerPos - player.prevPosition.xy);
 	const float2 offset = script.camera.position.xy - playerPos;

@@ -132,8 +132,9 @@ static void SnapshotPositions(Engine &engine)
 	engine.game.prevCameraPosition = engine.gfx.camera.position;
 }
 
-void GameUpdate(Engine &engine, const Host &host)
+static void GameUpdate(Engine &engine, const Host &host)
 {
+	PROFILE_BLOCK(GameUpdate);
 	Game &game = engine.game;
 
 	if (game.state == GameStateStarting)
@@ -179,33 +180,6 @@ void GameUpdate(Engine &engine, const Host &host)
 		GameStop(engine);
 	}
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// UI
-
-#if USE_UI
-
-static void UIBeginFrameRecording(Engine &engine)
-{
-	UI &ui = engine.ui;
-	const Window &window = GetWindow();
-	Graphics &gfx = engine.gfx;
-
-	UI_SetInputState(ui, window.keyboard, window.mouse, window.chars);
-	UI_SetViewportSize(ui, uint2{window.width, window.height});
-
-	UI_BeginFrame(ui);
-}
-
-static void UIEndFrameRecording(Engine &engine)
-{
-	UI &ui = engine.ui;
-	UI_EndFrame(ui);
-}
-
-#endif
 
 
 
@@ -432,7 +406,12 @@ ENGINE_API void OnPlatformUpdate(Host &host)
 #endif
 
 #if USE_UI
-	UIBeginFrameRecording(engine);
+	UI &ui = engine.ui;
+	const Window &window = GetWindow();
+
+	UI_SetInputState(ui, window.keyboard, window.mouse, window.chars);
+	UI_SetViewportSize(ui, uint2{window.width, window.height});
+	UI_BeginFrame(ui);
 #endif
 
 #if USE_EDITOR
@@ -452,13 +431,10 @@ ENGINE_API void OnPlatformUpdate(Host &host)
 	EditorUpdate(engine);
 #endif
 
-	{
-		PROFILE_BLOCK(GameUpdate);
-		GameUpdate(engine, host);
-	}
+	GameUpdate(engine, host);
 
 #if USE_UI
-	UIEndFrameRecording(engine);
+	UI_EndFrame(ui);
 #endif
 
 	// The audio pools are missing on purpose, CompactAudio runs on the mixing thread.
@@ -566,70 +542,6 @@ ENGINE_API void OnPlatformCleanup(Host &host)
 }
 
 
-////////////////////////////////////////////////////////////////////////
-// Game API
-
-Entity &GetSelf()
-{
-	Game &game = GetGame();
-	Entity &entity = GetEntity(game.currentEntity);
-	return entity;
-}
-
-ID GetEntitySprite(ID entityId)
-{
-	return EntitySpriteId(GetEngine().scene, entityId);
-}
-
-void SetEntitySprite(ID entityId, ID spriteId)
-{
-	Engine &engine = GetEngine();
-	if ( !HasComponents(engine.scene, entityId, Component_Sprite) ) {
-		AddComponent(engine, entityId, ComponentType_Sprite);
-	}
-	GetSprite(engine.scene, entityId).spriteId = spriteId;
-}
-
-void SetCamera(const Camera &camera)
-{
-	Engine &engine = GetEngine();
-	engine.gfx.camera = camera;
-}
-
-// Nullable counterpart to GetRoom, which asserts. Game code holds an ID across frames
-// and has to cope with the room going away.
-Room *TryGetRoom(ID roomId)
-{
-	Room *roomPtr = nullptr;
-	if ( roomId ) {
-		roomPtr = &GetRoom(roomId);
-	}
-	return roomPtr;
-}
-
-// See TryGetRoom
-Entity *TryGetEntity(ID entityId)
-{
-	Entity *ent = nullptr;
-	if ( entityId ) {
-		ent = &GetEntity(entityId);
-	}
-	return ent;
-}
-
-u32 PlayAudioClip(ID clipId)
-{
-	Engine &engine = GetEngine();
-	u32 ret = PlayAudioClip(engine.audio, clipId);
-	return ret;
-}
-
-void PlayMusic(ID musicId)
-{
-	Engine &engine = GetEngine();
-	MusicPlay(engine, musicId);
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Implementations
 
@@ -649,6 +561,7 @@ void PlayMusic(ID musicId)
 
 #include "libs/ibxm/ibxm.c"
 
+#include "game_api.cpp"
 #include "game.cpp"
 
 #define ILU_ID_POOL GetEngine().idPool

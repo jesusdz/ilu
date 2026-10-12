@@ -120,8 +120,10 @@ static void DrawSpriteCentered(ID spriteID, float2 pos, float2 size, float4 pcol
 	// TODO
 }
 
-void DrawParticles(const Scene &scene)
+static void GenerateParticles(const Scene &scene)
 {
+	PROFILE_BLOCK(GenerateParticles);
+
 	Graphics &gfx = GetEngine().gfx;
 
 	ParticleVertex *vertices = (ParticleVertex*)GetBufferPtr(gfx.device, gfx.particleVertexBuffer[gfx.device.frameIndex]);
@@ -471,7 +473,10 @@ bool RenderGraphics(Engine &engine)
 	PROFILE_GPU_RESOLVE(gfx.device);
 
 #if USE_UI
-	UI_FinalizeDrawData(engine.ui);
+	{
+		PROFILE_BLOCK(UI_FinalizeDrawData);
+		UI_FinalizeDrawData(engine.ui);
+	}
 #endif
 
 	// Display size
@@ -713,6 +718,8 @@ bool RenderGraphics(Engine &engine)
 	Globals *globalsBufferPtr = (Globals*)GetBufferPtr(gfx.device, gfx.globalsBuffer[frameIndex]);
 	*globalsBufferPtr = globals;
 
+	{
+	PROFILE_BLOCK(AnimateSprites);
 	// Advance animation states for animated sprites (frameCount > 1)
 	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
@@ -727,7 +734,10 @@ bool RenderGraphics(Engine &engine)
 		if (state.currentFrame >= sprite.frameCount)
 			state.currentFrame = sprite.frameCount - 1;
 	}
+	}
 
+	{
+	PROFILE_BLOCK(GenerateSprites);
 	// Update sprite data buffer (UV per sprite)
 	SSpriteData *spriteDataPtr = (SSpriteData*)GetBufferPtr(gfx.device, gfx.spriteDataBuffer[frameIndex]);
 	for (u32 i = 0; i < scene.spriteCount; ++i)
@@ -746,8 +756,9 @@ bool RenderGraphics(Engine &engine)
 			spriteDataPtr[i].worldSize = worldSize;
 		}
 	}
+	}
 
-	DrawParticles(scene);
+	GenerateParticles(scene);
 
 	struct InstanceTileData
 	{
@@ -765,7 +776,8 @@ bool RenderGraphics(Engine &engine)
 	InstanceTileData *currInstanceTileData = nullptr;
 	u32 instanceTileDataCount = 0;
 
-
+	{
+	PROFILE_BLOCK(GenerateTiles);
 	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / gfx.renderTargets.scenePixelsPerMeter;
 
 	const bool parallaxEnabled = is2D && engine.game.state == GameStateRunning; // The editor shows all layers unshifted
@@ -872,6 +884,7 @@ bool RenderGraphics(Engine &engine)
 
 	STileData *gpuTileData = (STileData*)GetBufferPtr(gfx.device, gfx.tileDataBuffer[frameIndex]);
 	MemCopy(gpuTileData, tileData, tileCount * sizeof(STileData));
+	}
 
 	// Update entity data
 	// TODO: This should bappen before culling (or culling should happen after this)
