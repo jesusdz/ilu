@@ -138,7 +138,12 @@ static SnapshotNode *EditorGetOrCreateSnapshotNode(const char *filepath)
 	return snapshot;
 }
 
-static constexpr ComponentType kIconOrder[] = { ComponentType_Light, ComponentType_Particles, ComponentType_Script };
+static constexpr ComponentType kIconOrder[] = {
+	ComponentType_Light,
+	ComponentType_Particles,
+	ComponentType_Script,
+	ComponentType_CameraRegion,
+};
 
 struct EditorEntityIcon
 {
@@ -174,8 +179,10 @@ static u32 EditorGatherEntityIcons(Arena &arena, EditorEntityIcon *&outIcons)
 
 	EditorEntityIcon *icons = PushArray(arena, EditorEntityIcon, scene.entityCount);
 	u32 iconCount = 0;
-	for (u32 slot = 0; slot < ARRAY_COUNT(kIconOrder); ++slot)
+	for (u32 pass = 0; pass <= ARRAY_COUNT(kIconOrder); ++pass)
 	{
+		const u32 slot = pass == 0 ? ARRAY_COUNT(kIconOrder) : pass - 1;
+		const ComponentType iconType = pass == 0 ? ComponentType_Count : kIconOrder[slot];
 		for (u32 i = 0; i < scene.entityCount; ++i)
 		{
 			const Entity &entity = scene.entities[i];
@@ -183,7 +190,7 @@ static u32 EditorGatherEntityIcons(Arena &arena, EditorEntityIcon *&outIcons)
 			{
 				icons[iconCount++] = {
 					.entityId = entity.id,
-					.image = editor.gizmoIcons[kIconOrder[slot]],
+					.image = editor.gizmoIcons[iconType],
 					.pos = entity.position.xy - 0.5f * size,
 					.size = size,
 				};
@@ -3265,6 +3272,8 @@ void EditorInitialize(Engine &engine)
 	editor.gizmoIcons[ComponentType_Light] = EditorLoadIcon("editor/light_32.png", "icon_light");
 	editor.gizmoIcons[ComponentType_Particles] = EditorLoadIcon("editor/fx_32.png", "icon_fx");
 	editor.gizmoIcons[ComponentType_Script] = EditorLoadIcon("editor/script_32.png", "icon_script");
+	editor.gizmoIcons[ComponentType_CameraRegion] = EditorLoadIcon("editor/camera_region_32.png", "icon_camera_region");
+	editor.gizmoIcons[ComponentType_Count] = EditorLoadIcon("editor/entity_32.png", "icon_entity");
 
 	EditorUnselectAll();
 

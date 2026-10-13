@@ -1853,6 +1853,14 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	UI_Initialize(engine.ui, gfx, gfx.device, globalArena, icons, iconCount);
 #endif
 
+	gfx.camera = {
+		.projectionType = ProjectionOrthographic,
+		.znear = -10.0f,
+		.zfar = 10.0f,
+		.height = 8.0f,
+	};
+
+
 	gfx.deviceInitialized = true;
 
 	return true;

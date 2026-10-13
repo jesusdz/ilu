@@ -357,14 +357,6 @@ ENGINE_API bool OnPlatformWindowInit(Host &host)
 			return false;
 		}
 
-		gfx.camera = {
-			.projectionType = ProjectionOrthographic,
-			.znear = -10.0f,
-			.zfar = 10.0f,
-			.height = 8.0f,
-		};
-
-
 		InitializeScene(engine);
 
 #if USE_EDITOR
@@ -577,18 +569,3 @@ ENGINE_API void OnPlatformCleanup(Host &host)
 #include "editor.cpp"
 #endif
 
-// TODO:
-// - [ ] Instead of binding descriptors per entity, group entities by material and perform a multi draw call for each material group.
-// - [ ] GPU culling: Modify the compute to perform frustum culling and save the result in the buffer.
-// - [ ] Text rendering
-// - [ ] Include directive in the C AST parsing code.
-//
-// DONE:
-// - [X] Avoid using push constants and put transformation matrices in buffers instead.
-// - [X] Investigate how to write descriptors in a more elegant manner (avoid hardcoding).
-// - [X] Put all the geometry in the same buffer.
-// - [X] GPU culling: Add a "hello world" compute shader that writes some numbers into a buffer.
-// - [X] GPU time queries
-// - [X] GPU culling: As a first step, perform frustum culling in the CPU.
-// - [X] Avoid duplicated global descriptor sets.
-// - [X] Have a single descripor set for global info that only changes once per frame
