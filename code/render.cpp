@@ -1262,26 +1262,15 @@ bool RenderGraphics(Engine &engine)
 		{
 			PROFILE_GFX_BLOCK(commandList, EditorGrid);
 
-			if (camera.projectionType == ProjectionPerspective)
-			{
-				BeginDebugGroup(commandList, "grid_3d", ColorBlack);
+			const bool grid3D = camera.projectionType == ProjectionPerspective;
 
-				SetPipeline(commandList, gfx.pipelines[Pipeline_Grid3D]);
-				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-				DrawScreenQuad(gfx, commandList);
+			BeginDebugGroup(commandList, grid3D ? "grid_3d" : "grid_2d", ColorBlack);
 
-				EndDebugGroup(commandList);
-			}
-			else // if ( camera.projectionType == ProjectionOrthographic )
-			{
-				BeginDebugGroup(commandList, "grid_2d", ColorBlack);
+			SetPipeline(commandList, gfx.pipelines[grid3D ? Pipeline_Grid3D : Pipeline_Grid2D]);
+			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+			DrawScreenQuad(gfx, commandList);
 
-				SetPipeline(commandList, gfx.pipelines[Pipeline_Grid2D]);
-				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-				DrawScreenQuad(gfx, commandList);
-
-				EndDebugGroup(commandList);
-			}
+			EndDebugGroup(commandList);
 		}
 #endif
 
