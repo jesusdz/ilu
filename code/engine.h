@@ -1921,6 +1921,7 @@ void UpdateRoomBounds(Room &room); // Call after anything other than a cell edit
 void UpdateLayerBounds(Layer &layer);
 void UpdateLayerTransforms(Room &room);
 f32 GameCameraDistance();
+f32 DepthScale(f32 depth, f32 referenceDepth = 0.0f); // Sizes things at depth to look as they would at referenceDepth
 Room &GetLayerRoom(Layer &layer);
 ID CreateRoom(Engine &engine);
 ID CreateRoom(Engine &engine, const RoomDesc &desc);

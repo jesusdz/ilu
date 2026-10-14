@@ -1376,11 +1376,15 @@ f32 GameCameraDistance()
 	return halfHeightWorldUnits / Tan(0.5f * GAME_CAMERA_FOVY * ToRadians);
 }
 
+f32 DepthScale(f32 depth, f32 referenceDepth)
+{
+	return (GameCameraDistance() - depth) / (GameCameraDistance() - referenceDepth);
+}
+
 void UpdateLayerTransforms(Room &room)
 {
 	const Layer *baseLayer = GetBaseLayer(room);
 	const f32 baseDepth = baseLayer ? -(f32)(baseLayer - room.layers) : 0.0f;
-	const f32 baseDistance = GameCameraDistance() - baseDepth;
 	const float2 roomCenter = Float2(room.pos) + 0.5f * Float2(room.size);
 
 	for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
@@ -1394,8 +1398,7 @@ void UpdateLayerTransforms(Room &room)
 		{
 			// Scaling about the room center keeps the layer's parallax as it was:
 			// on screen it lands at (center - eye)/distance + (xy - center)/baseDistance.
-			const f32 distance = GameCameraDistance() - layer.depth;
-			const f32 layerScale = distance / baseDistance;
+			const f32 layerScale = DepthScale(layer.depth, baseDepth);
 			layer.depthScale = layerScale;
 			layer.depthOffset = (1.0f - layerScale) * roomCenter;
 		}

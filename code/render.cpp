@@ -120,7 +120,7 @@ static void DrawSpriteCentered(ID spriteID, float2 pos, float2 size, float4 pcol
 	// TODO
 }
 
-static void GenerateParticles(const Scene &scene)
+static void GenerateParticles(const Scene &scene, bool is2D)
 {
 	PROFILE_BLOCK(GenerateParticles);
 
@@ -155,7 +155,8 @@ static void GenerateParticles(const Scene &scene)
 			//	DrawSpriteCentered(effect.spriteID, pos, color, size);
 			//} else {
 				// No sprite assigned: a plain quad, so a new effect still shows something
-				const float2 boxSize = (size * 2.0f / ART_PIXELS_PER_METER) * float2{1, 1};
+				const f32 depthScale = is2D ? 1.0f : DepthScale(pos.z);
+				const float2 boxSize = (depthScale * size * 2.0f / ART_PIXELS_PER_METER) * float2{1, 1};
 				const float3 boxPos = pos + Float3(-0.5f * boxSize, 0.0f);
 				const rgba c = Rgba(color);
 				const float2 uv = {};
@@ -767,7 +768,7 @@ bool RenderGraphics(Engine &engine)
 	}
 	}
 
-	GenerateParticles(scene);
+	GenerateParticles(scene, is2D);
 
 	struct InstanceTileData
 	{
@@ -905,6 +906,11 @@ bool RenderGraphics(Engine &engine)
 			entityPosition.xy = layer.renderScale * entityPosition.xy + layer.renderOffset;
 			entityScale.x *= layer.renderScale;
 			entityScale.y *= layer.renderScale;
+		}
+		else if (!is2D && HasComponents(scene, entity.id, Component_Sprite)) {
+			const f32 depthScale = DepthScale(entityPosition.z);
+			entityScale.x *= depthScale;
+			entityScale.y *= depthScale;
 		}
 		if (snapToPixelGrid)
 		{
