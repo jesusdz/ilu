@@ -989,6 +989,17 @@ inline bool IsValid(const BindGroup &bindGroup)
 	return res;
 }
 
+static constexpr float4 DebugGfxBlockDefaultColor = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+struct DebugGfxBlock
+{
+	const CommandList &cmd;
+	DebugGfxBlock(const CommandList &commandList, const char *name) : cmd(commandList) { BeginDebugGroup(commandList, name, DebugGfxBlockDefaultColor); }
+	~DebugGfxBlock() { EndDebugGroup(cmd); }
+};
+
+#define DEBUG_GFX_BLOCK(cmd, name) DebugGfxBlock debugGfxBlock_##name(cmd, #name)
+
 #endif // ILU_GFX_H
 
 

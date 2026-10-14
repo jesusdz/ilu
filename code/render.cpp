@@ -6,9 +6,13 @@ static constexpr float4 ColorBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
 static constexpr float4 ColorOrange = { 1.0f, 0.5f, 0.0f, 1.0f };
 
 
-#define PROFILE_GFX_BLOCK(commandList, Name) \
+#define PROFILE_GFX_BLOCK(Name) \
 	PROFILE_BLOCK(Name); \
-	PROFILE_GPU_BLOCK(commandList, Name);
+	PROFILE_GPU_BLOCK(commandList, Name); \
+
+#define RENDER_BLOCK(Name) \
+	PROFILE_GFX_BLOCK(Name); \
+	DEBUG_GFX_BLOCK(commandList, Name);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -1000,9 +1004,7 @@ bool RenderGraphics(Engine &engine)
 	// Shadow map
 	if (camera.projectionType == ProjectionPerspective)
 	{
-		PROFILE_GFX_BLOCK(commandList, ShadowMap);
-
-		BeginDebugGroup(commandList, "Shadow map", ColorBlack);
+		RENDER_BLOCK(ShadowMap);
 
 		SetClearDepth(commandList, 0, 0.0f);
 
@@ -1039,8 +1041,6 @@ bool RenderGraphics(Engine &engine)
 		}
 
 		EndRenderPass(commandList);
-
-		EndDebugGroup(commandList);
 	}
 
 	const Format depthFormat = gfx.device.defaultDepthFormat;
@@ -1049,9 +1049,7 @@ bool RenderGraphics(Engine &engine)
 
 	// Light binning
 	{
-		PROFILE_GFX_BLOCK(commandList, LightBinning);
-
-		BeginDebugGroup(commandList, "Light binning", ColorBlack);
+		RENDER_BLOCK(LightBinning);
 
 		const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_LightBinning]);
 
@@ -1071,15 +1069,11 @@ bool RenderGraphics(Engine &engine)
 		Dispatch(commandList, (lightGridSize.x + 7) / 8, (lightGridSize.y + 7) / 8, 1);
 
 		TransitionBufferState(commandList, gfx.lightGridBuffer[frameIndex], BufferStateComputeWrite, BufferStateFragmentRead);
-
-		EndDebugGroup(commandList);
 	}
 
 	// Scene
 	{
-		PROFILE_GFX_BLOCK(commandList, Scene);
-
-		BeginDebugGroup(commandList, "Scene", ColorBlack);
+		RENDER_BLOCK(Scene);
 
 		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 0.0f } );
 		SetClearDepth(commandList, 1, 0.0f);
@@ -1092,7 +1086,7 @@ bool RenderGraphics(Engine &engine)
 
 		// Entities
 		{
-			PROFILE_GFX_BLOCK(commandList, Entities);
+			RENDER_BLOCK(Entities);
 
 			for (u32 i = 0; i < scene.entityCount; ++i)
 			{
@@ -1135,9 +1129,7 @@ bool RenderGraphics(Engine &engine)
 
 		// Layer tiles
 		{
-			PROFILE_GFX_BLOCK(commandList, LayerTiles);
-
-			BeginDebugGroup(commandList, "Tiles", ColorBlack);
+			RENDER_BLOCK(LayerTiles);
 
 			const Pipeline &tilePipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Shading2DTile]);
 			const uint32_t tileIndexCount = gfx.spriteIndices.size / sizeof(Index);
@@ -1182,12 +1174,10 @@ bool RenderGraphics(Engine &engine)
 				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, data.firstTile, data.tileCount);
 			}
 #endif
-
-			EndDebugGroup(commandList);
 		}
 
 		{
-			PROFILE_GFX_BLOCK(commandList, Sprites);
+			RENDER_BLOCK(Sprites);
 
 			// Sprite entities
 			const Pipeline &spritePipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Shading2D]);
@@ -1232,7 +1222,7 @@ bool RenderGraphics(Engine &engine)
 		// Sky
 		if (camera.projectionType == ProjectionPerspective && engine.game.state == GameStateStopped)
 		{
-			PROFILE_GFX_BLOCK(commandList, Sky);
+			RENDER_BLOCK(Sky);
 
 			const ImageH &skyImage = GetTextureImage(gfx, gfx.skyTexture, gfx.grayImageH);
 			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Sky]);
@@ -1246,53 +1236,39 @@ bool RenderGraphics(Engine &engine)
 			};
 			const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);
 
-			BeginDebugGroup(commandList, "sky", ColorBlack);
-
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Sky]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 			SetBindGroup(commandList, 3, bindGroup);
 			DrawScreenQuad(gfx, commandList);
-
-			EndDebugGroup(commandList);
 		}
 
 #if USE_EDITOR
 		// Editor grid
 		if (editor.showGrid && engine.game.state == GameStateStopped)
 		{
-			PROFILE_GFX_BLOCK(commandList, EditorGrid);
+			RENDER_BLOCK(EditorGrid);
 
 			const bool grid3D = camera.projectionType == ProjectionPerspective;
-
-			BeginDebugGroup(commandList, grid3D ? "grid_3d" : "grid_2d", ColorBlack);
 
 			SetPipeline(commandList, gfx.pipelines[grid3D ? Pipeline_Grid3D : Pipeline_Grid2D]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 			DrawScreenQuad(gfx, commandList);
-
-			EndDebugGroup(commandList);
 		}
 #endif
 
 		if ( engine.game.state == GameStateRunning )
 		{
-			PROFILE_GFX_BLOCK(commandList, Fog);
-
-			BeginDebugGroup(commandList, "Fog", ColorBlack);
+			RENDER_BLOCK(Fog);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Fog]);
 
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
 			DrawScreenQuad(gfx, commandList);
-
-			EndDebugGroup(commandList);
 		}
 
 		{ // Particles
-			PROFILE_GFX_BLOCK(commandList, Particles);
-
-			BeginDebugGroup(commandList, "Particles", ColorBlack);
+			RENDER_BLOCK(Particles);
 
 			const Pipeline &particlesPipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Particles]);
 			const BindGroupLayout &bindGroupLayout = particlesPipeline.layout.bindGroupLayouts[3];
@@ -1317,16 +1293,12 @@ bool RenderGraphics(Engine &engine)
 
 				Draw(commandList, batch.vertexCount, batch.vertexIndex);
 			}
-
-			EndDebugGroup(commandList);
 		}
 
 		{ // Debug draw
-			PROFILE_GFX_BLOCK(commandList, DebugDraw);
+			RENDER_BLOCK(DebugDraw);
 
 			MemCopy(gfx.debugDrawVertices[frameIndex], gfx.debugDrawVerticesCPU, gfx.debugDrawVertexCount * sizeof(DebugDrawVertex));
-
-			BeginDebugGroup(commandList, "DebugDraw", ColorBlack);
 
 			const Pipeline &debugDrawPipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_DebugDraw]);
 			const BindGroupLayout &bindGroupLayout = debugDrawPipeline.layout.bindGroupLayouts[3];
@@ -1354,26 +1326,20 @@ bool RenderGraphics(Engine &engine)
 
 			gfx.debugDrawVertexCount = 0;
 			gfx.debugDrawBatchCount = 0;
-
-			EndDebugGroup(commandList);
 		}
 
 		EndRenderPass(commandList);
-
-		EndDebugGroup(commandList);
 	}
 
 	// Display
 	{
-		PROFILE_GFX_BLOCK(commandList, Display);
-
-		BeginDebugGroup(commandList, "Display", ColorBlack);
+		RENDER_BLOCK(Display);
 
 		TransitionImageLayout(commandList, gfx.renderTargets.sceneImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
 		const Framebuffer displayFramebuffer = GetDisplayFramebuffer(gfx);
 		{
-		PROFILE_GFX_BLOCK(commandList, BeginRenderPass);
+		PROFILE_GFX_BLOCK(BeginRenderPass);
 		BeginRenderPass(commandList, displayFramebuffer);
 		}
 
@@ -1381,9 +1347,7 @@ bool RenderGraphics(Engine &engine)
 		SetViewportAndScissor(commandList, displaySize);
 
 		{ // Scene blit
-			PROFILE_GFX_BLOCK(commandList, Blit);
-
-			BeginDebugGroup(commandList, "Blit", ColorBlack);
+			RENDER_BLOCK(Blit);
 
 			const uint2 sceneSize = gfx.renderTargets.sceneSize;
 			const u32 multiplier = Max(1u, Min(displaySize.x / sceneSize.x, displaySize.y / sceneSize.y));
@@ -1418,15 +1382,11 @@ bool RenderGraphics(Engine &engine)
 			DrawScreenQuad(gfx, commandList);
 
 			SetViewportAndScissor(commandList, displaySize);
-
-			EndDebugGroup(commandList);
 		}
 
 #if USE_UI
 		{ // GUI
-			PROFILE_GFX_BLOCK(commandList, GUI);
-
-			BeginDebugGroup(commandList, "GUI", ColorBlack);
+			RENDER_BLOCK(GUI);
 
 			const UI &ui = engine.ui;
 
@@ -1458,14 +1418,10 @@ bool RenderGraphics(Engine &engine)
 					Draw(commandList, range.count, range.index);
 				}
 			}
-
-			EndDebugGroup(commandList);
 		}
 #endif
 
 		EndRenderPass(commandList);
-
-		EndDebugGroup(commandList);
 	}
 
 #if USE_EDITOR
