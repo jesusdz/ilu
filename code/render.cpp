@@ -448,6 +448,18 @@ static bool GetLayerSpriteBounds(const Layer &layer, float2 &min, float2 &size)
 	return any;
 }
 
+static void DrawScreenQuad(Graphics &gfx, CommandList &commandList)
+{
+	const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
+	const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
+	const uint32_t indexCount = indices.size/sizeof(Index);
+	const uint32_t firstIndex = indices.offset/sizeof(Index);
+	const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
+	SetVertexBuffer(commandList, gfx.globalVertexArena.buffer);
+	SetIndexBuffer(commandList, gfx.globalIndexArena.buffer);
+	DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+}
+
 bool RenderGraphics(Engine &engine)
 {
 	PROFILE_BLOCK(RenderGraphics);
@@ -596,9 +608,11 @@ bool RenderGraphics(Engine &engine)
 	const f32 f = 1.0f;
 	const float4x4 camera2dProjection = Orthogonal(l, r, b, t, n, f);
 
+#if USE_EDITOR
 	const ID selectedEntity = EditorGetSelectedEntity(editor);
 	const u32 selectedEntityDrawId = selectedEntity
 		? EntityDrawId(scene, selectedEntity) : 0xFFFFFFFF;
+#endif
 
 	// Layer offset/scale
 	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
@@ -1222,11 +1236,6 @@ bool RenderGraphics(Engine &engine)
 
 			const ImageH &skyImage = GetTextureImage(gfx, gfx.skyTexture, gfx.grayImageH);
 			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Sky]);
-			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
-			const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
-			const uint32_t indexCount = indices.size/sizeof(Index);
-			const uint32_t firstIndex = indices.offset/sizeof(Index);
-			const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
 
 			const BindGroupDesc bindGroupDesc = {
 				.layout = pipeline.layout.bindGroupLayouts[3],
@@ -1242,9 +1251,7 @@ bool RenderGraphics(Engine &engine)
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Sky]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 			SetBindGroup(commandList, 3, bindGroup);
-			SetVertexBuffer(commandList, vertexBuffer);
-			SetIndexBuffer(commandList, indexBuffer);
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+			DrawScreenQuad(gfx, commandList);
 
 			EndDebugGroup(commandList);
 		}
@@ -1257,37 +1264,21 @@ bool RenderGraphics(Engine &engine)
 
 			if (camera.projectionType == ProjectionPerspective)
 			{
-				const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
-				const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
-				const uint32_t indexCount = indices.size/sizeof(Index);
-				const uint32_t firstIndex = indices.offset/sizeof(Index);
-				const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-
 				BeginDebugGroup(commandList, "grid_3d", ColorBlack);
 
 				SetPipeline(commandList, gfx.pipelines[Pipeline_Grid3D]);
 				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-				SetVertexBuffer(commandList, vertexBuffer);
-				SetIndexBuffer(commandList, indexBuffer);
-				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+				DrawScreenQuad(gfx, commandList);
 
 				EndDebugGroup(commandList);
 			}
 			else // if ( camera.projectionType == ProjectionOrthographic )
 			{
-				const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
-				const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
-				const uint32_t indexCount = indices.size/sizeof(Index);
-				const uint32_t firstIndex = indices.offset/sizeof(Index);
-				const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-
 				BeginDebugGroup(commandList, "grid_2d", ColorBlack);
 
 				SetPipeline(commandList, gfx.pipelines[Pipeline_Grid2D]);
 				SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
-				SetVertexBuffer(commandList, vertexBuffer);
-				SetIndexBuffer(commandList, indexBuffer);
-				DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+				DrawScreenQuad(gfx, commandList);
 
 				EndDebugGroup(commandList);
 			}
@@ -1304,14 +1295,7 @@ bool RenderGraphics(Engine &engine)
 
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
-			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
-			const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
-			const uint32_t indexCount = indices.size/sizeof(Index);
-			const uint32_t firstIndex = indices.offset/sizeof(Index);
-			const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-			SetVertexBuffer(commandList, vertexBuffer);
-			SetIndexBuffer(commandList, indexBuffer);
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+			DrawScreenQuad(gfx, commandList);
 
 			EndDebugGroup(commandList);
 		}
@@ -1428,12 +1412,6 @@ bool RenderGraphics(Engine &engine)
 			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Blit]);
 			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];
 
-			const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
-			const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
-			const uint32_t indexCount = indices.size/sizeof(Index);
-			const uint32_t firstIndex = indices.offset/sizeof(Index);
-			const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
-
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Blit]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
@@ -1448,9 +1426,7 @@ bool RenderGraphics(Engine &engine)
 			const BindGroup textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);
 			SetBindGroup(commandList, 3, textureBindGroup);
 
-			SetVertexBuffer(commandList, vertexBuffer);
-			SetIndexBuffer(commandList, indexBuffer);
-			DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+			DrawScreenQuad(gfx, commandList);
 
 			SetViewportAndScissor(commandList, displaySize);
 
