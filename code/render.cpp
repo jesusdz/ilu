@@ -22,7 +22,7 @@ static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 {
 	if ( gfx.debugDrawBatchCount > 0 )
 	{
-		DebugDrawBatch &lastBatch = gfx.debugDrawBatches[gfx.debugDrawBatchCount - 1];
+		DrawBatch &lastBatch = gfx.debugDrawBatches[gfx.debugDrawBatchCount - 1];
 		if ( lastBatch.imageH.index == imageH.index )
 		{
 			lastBatch.vertexCount += vertexCount;
@@ -31,7 +31,7 @@ static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 	}
 
 	ASSERT( gfx.debugDrawBatchCount < MAX_DEBUG_DRAW_BATCHES );
-	DebugDrawBatch &batch = gfx.debugDrawBatches[gfx.debugDrawBatchCount++];
+	DrawBatch &batch = gfx.debugDrawBatches[gfx.debugDrawBatchCount++];
 	batch.imageH = imageH;
 	batch.vertexIndex = gfx.debugDrawVertexCount - vertexCount;
 	batch.vertexCount = vertexCount;
@@ -419,6 +419,11 @@ static float2 GetParallaxOffset(const float2 &scrollRatio, const uint2 &baseLaye
 	return pixelSize * Floor(offset / pixelSize);
 }
 
+static float2 SnapToPixel(float2 pos, f32 pixelSize)
+{
+	return { Round(pos.x / pixelSize) * pixelSize, Round(pos.y / pixelSize) * pixelSize };
+}
+
 // What a sprite layer covers in world units. The layer's own bounds will not do for
 // fitting it to the view: they are rounded out to whole chunks, and a sprite can be
 // larger than the cell it sits in.
@@ -462,6 +467,21 @@ static void DrawScreenQuad(Graphics &gfx, CommandList &commandList)
 	SetVertexBuffer(commandList, gfx.globalVertexArena.buffer);
 	SetIndexBuffer(commandList, gfx.globalIndexArena.buffer);
 	DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
+}
+
+static void DrawTexturedBatch(Graphics &gfx, CommandList &commandList, const BindGroupLayout &bindGroupLayout, const DrawBatch &batch)
+{
+	const BindGroupDesc bindGroupDesc = {
+		.layout = bindGroupLayout,
+		.bindings = {
+			{ .index = 0, .sampler = gfx.pointSamplerH },
+			{ .index = 1, .image = batch.imageH },
+		},
+	};
+	const BindGroup bindGroup = GetOrCreateDynamicBindGroup(gfx, bindGroupDesc);
+	SetBindGroup(commandList, 3, bindGroup);
+
+	Draw(commandList, batch.vertexCount, batch.vertexIndex);
 }
 
 bool RenderGraphics(Engine &engine)
@@ -525,8 +545,7 @@ bool RenderGraphics(Engine &engine)
 
 	if (snapToPixelGrid)
 	{
-		camera.position.x = Round(camera.position.x / pixelSize) * pixelSize;
-		camera.position.y = Round(camera.position.y / pixelSize) * pixelSize;
+		camera.position.xy = SnapToPixel(camera.position.xy, pixelSize);
 	}
 
 	const f32 preRotationDegrees = gfx.device.swapchain.preRotationDegrees;
@@ -792,10 +811,9 @@ bool RenderGraphics(Engine &engine)
 	};
 
 	// Layer: Update tile data buffer
-	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(ID) + sizeof(InstanceTileData));
+	const u32 tileScratchSize = MAX_TILES * (sizeof(STileData) + sizeof(InstanceTileData));
 	Scratch tileScratch(tileScratchSize);
 	STileData *tileData = PushArray(tileScratch.arena, STileData, MAX_TILES);
-	ID *tileSpriteIds = PushArray(tileScratch.arena, ID, MAX_TILES);
 	InstanceTileData *instanceTileData = PushArray(tileScratch.arena, InstanceTileData, MAX_TILES);
 	InstanceTileData *currInstanceTileData = nullptr;
 	u32 instanceTileDataCount = 0;
@@ -880,7 +898,6 @@ bool RenderGraphics(Engine &engine)
 						tileData[tileCount].pos.z = -(float)i;
 						tileData[tileCount].spriteIndex = GetSpriteIndex(scene, spriteId);
 						tileData[tileCount].scale = layerScale;
-						tileSpriteIds[tileCount] = spriteId;
 						tileCount++;
 
 						const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
@@ -928,8 +945,7 @@ bool RenderGraphics(Engine &engine)
 		}
 		if (snapToPixelGrid)
 		{
-			entityPosition.x = Round(entityPosition.x / pixelSize) * pixelSize;
-			entityPosition.y = Round(entityPosition.y / pixelSize) * pixelSize;
+			entityPosition.xy = SnapToPixel(entityPosition.xy, pixelSize);
 		}
 		const float4x4 worldMatrix = Mul(Translate(entityPosition), Scale(entityScale)); // TODO: Apply also rotation
 		entities[i].world = worldMatrix;
@@ -1137,24 +1153,6 @@ bool RenderGraphics(Engine &engine)
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
 
-#if 0 // non-instanced version
-			for (u32 i = 0; i < tileCount; ++i)
-			{
-				const ID spriteId = tileSpriteIds[i];
-				const SpriteDesc &sprite = GetSprite(spriteId).desc;
-				const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
-				const BindGroupDesc textureBindGroupDesc = {
-					.layout = tilePipeline.layout.bindGroupLayouts[2],
-					.bindings = {
-						{ .index = 0, .image = imageH },
-					},
-				};
-				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
-
-				SetBindGroup(commandList, 2, textureBindGroup);
-				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, i, 1);
-			}
-#else
 			for (u32 i = 0; i < instanceTileDataCount; ++i)
 			{
 				const InstanceTileData &data = instanceTileData[i];
@@ -1169,7 +1167,6 @@ bool RenderGraphics(Engine &engine)
 				SetBindGroup(commandList, 2, textureBindGroup);
 				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, data.firstTile, data.tileCount);
 			}
-#endif
 		}
 
 		{
@@ -1275,19 +1272,7 @@ bool RenderGraphics(Engine &engine)
 
 			for (u32 i = 0; i < gfx.particleBatchCount; ++i)
 			{
-				const ParticleBatch &batch = gfx.particleBatches[i];
-
-				const BindGroupDesc bindGroupDesc = {
-					.layout = bindGroupLayout,
-					.bindings = {
-						{ .index = 0, .sampler = gfx.pointSamplerH },
-						{ .index = 1, .image = batch.imageH },
-					},
-				};
-				const BindGroup bindGroup = GetOrCreateDynamicBindGroup(gfx, bindGroupDesc);
-				SetBindGroup(commandList, 3, bindGroup);
-
-				Draw(commandList, batch.vertexCount, batch.vertexIndex);
+				DrawTexturedBatch(gfx, commandList, bindGroupLayout, gfx.particleBatches[i]);
 			}
 		}
 
@@ -1305,19 +1290,7 @@ bool RenderGraphics(Engine &engine)
 
 			for (u32 i = 0; i < gfx.debugDrawBatchCount; ++i)
 			{
-				const DebugDrawBatch &batch = gfx.debugDrawBatches[i];
-
-				const BindGroupDesc bindGroupDesc = {
-					.layout = bindGroupLayout,
-					.bindings = {
-						{ .index = 0, .sampler = gfx.pointSamplerH },
-						{ .index = 1, .image = batch.imageH },
-					},
-				};
-				const BindGroup bindGroup = GetOrCreateDynamicBindGroup(gfx, bindGroupDesc);
-				SetBindGroup(commandList, 3, bindGroup);
-
-				Draw(commandList, batch.vertexCount, batch.vertexIndex);
+				DrawTexturedBatch(gfx, commandList, bindGroupLayout, gfx.debugDrawBatches[i]);
 			}
 
 			gfx.debugDrawVertexCount = 0;

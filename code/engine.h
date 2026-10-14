@@ -201,13 +201,6 @@ struct DebugDrawVertex
 	rgba color;
 };
 
-struct DebugDrawBatch
-{
-	ImageH imageH;
-	u32 vertexIndex;
-	u32 vertexCount;
-};
-
 struct ParticleVertex
 {
 	float3 pos;
@@ -215,7 +208,7 @@ struct ParticleVertex
 	rgba color;
 };
 
-struct ParticleBatch
+struct DrawBatch
 {
 	ImageH imageH;
 	u32 vertexIndex;
@@ -713,12 +706,12 @@ struct Graphics
 	DebugDrawVertex *debugDrawVertices[MAX_FRAMES_IN_FLIGHT];
 	DebugDrawVertex *debugDrawVerticesCPU;
 	u32 debugDrawVertexCount;
-	DebugDrawBatch debugDrawBatches[MAX_DEBUG_DRAW_BATCHES];
+	DrawBatch debugDrawBatches[MAX_DEBUG_DRAW_BATCHES];
 	u32 debugDrawBatchCount;
 
 	BufferH particleVertexBuffer[MAX_FRAMES_IN_FLIGHT];
 	u32 particleVertexCount;
-	ParticleBatch particleBatches[MAX_PARTICLE_BATCHES];
+	DrawBatch particleBatches[MAX_PARTICLE_BATCHES];
 	u32 particleBatchCount;
 
 	BufferH spriteDataBuffer[MAX_FRAMES_IN_FLIGHT];
