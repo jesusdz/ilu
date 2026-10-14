@@ -623,6 +623,7 @@ Room Room = {
    .isBase = 0,
    .visible = 1,
    .isCollider = 0,
+   .isBackground = 1,
    .tiles = {
     {0, 0, 1017}, 
    },

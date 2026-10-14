@@ -259,12 +259,8 @@ void Start(CameraController &script)
 		.height = 90.0f / ART_PIXELS_PER_METER,
 	};
 #else
-	// How far does the camera need to be so that the visible
-	// height at 0 is the scene resolution height in world pos?
-	const f32 fovyDeg = 60.0f;
-	const f32 fovyRad = fovyDeg * ToRadians;
-	const f32 halfHeightWorldUnits = 0.5f * LOW_SCENE_HEIGHT / ART_PIXELS_PER_METER;
-	const f32 zcam = halfHeightWorldUnits / Tan(0.5f * fovyRad);
+	const f32 fovyDeg = GAME_CAMERA_FOVY;
+	const f32 zcam = GameCameraDistance();
 
 	script.camera = {
 		.projectionType = ProjectionPerspective,

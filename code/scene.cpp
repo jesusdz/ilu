@@ -1368,6 +1368,40 @@ ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition)
 ////////////////////////////////////////////////////////////////////////
 // Tile grid management
 
+// How far does the camera need to be so that the visible
+// height at 0 is the scene resolution height in world pos?
+f32 GameCameraDistance()
+{
+	const f32 halfHeightWorldUnits = 0.5f * ART_HEIGHT / ART_PIXELS_PER_METER;
+	return halfHeightWorldUnits / Tan(0.5f * GAME_CAMERA_FOVY * ToRadians);
+}
+
+void UpdateLayerTransforms(Room &room)
+{
+	const Layer *baseLayer = GetBaseLayer(room);
+	const f32 baseDepth = baseLayer ? -(f32)(baseLayer - room.layers) : 0.0f;
+	const f32 baseDistance = GameCameraDistance() - baseDepth;
+	const float2 roomCenter = Float2(room.pos) + 0.5f * Float2(room.size);
+
+	for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+	{
+		Layer &layer = room.layers[i];
+		layer.depth = -(f32)i;
+		layer.depthOffset = {0.0f, 0.0f};
+		layer.depthScale = 1.0f;
+
+		if (baseLayer)
+		{
+			// Scaling about the room center keeps the layer's parallax as it was:
+			// on screen it lands at (center - eye)/distance + (xy - center)/baseDistance.
+			const f32 distance = GameCameraDistance() - layer.depth;
+			const f32 layerScale = distance / baseDistance;
+			layer.depthScale = layerScale;
+			layer.depthOffset = (1.0f - layerScale) * roomCenter;
+		}
+	}
+}
+
 // A room spans its base layer and its collider layers together
 void UpdateRoomBounds(Room &room)
 {
@@ -1387,6 +1421,8 @@ void UpdateRoomBounds(Room &room)
 	}
 	room.pos = min;
 	room.size = { (u32)(max.x - min.x), (u32)(max.y - min.y) };
+
+	UpdateLayerTransforms(room);
 }
 
 void UpdateLayerBounds(Layer &layer)
@@ -1664,9 +1700,11 @@ u32 CreateLayer(Room &room, const LayerDesc &desc)
 				layer.isBase = desc.isBase;
 				layer.visible = desc.visible;
 				layer.isCollider = desc.isCollider;
+				layer.isBackground = desc.isBackground;
 				index = i;
 
 				BindID(&layer.id, &layer, ReflexID_Layer);
+				UpdateLayerTransforms(room);
 				break;
 			}
 		}
@@ -1719,6 +1757,8 @@ u32 MoveLayer(Room &room, u32 index, i32 delta)
 			SetObject(layer.id, &layer);
 		}
 	}
+
+	UpdateLayerTransforms(room);
 
 	return index; // Already at the end it was asked to move towards
 }
@@ -1840,6 +1880,7 @@ ID CreateRoom(Engine &engine, const BinRoom &binRoom)
 			.isBase = ld.isBase != 0,
 			.visible = ld.visible != 0,
 			.isCollider = ld.isCollider != 0,
+			.isBackground = ld.isBackground != 0,
 			.tiles = binRoom.tiles[l],
 			.tileCount = ld.tiles.size / (u32)sizeof(TileDesc),
 		};

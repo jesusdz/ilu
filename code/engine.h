@@ -1163,6 +1163,7 @@ struct SpriteAnimState
 // Tile grid, rooms and layers
 
 #define ART_PIXELS_PER_METER 16
+#define GAME_CAMERA_FOVY 60.0f
 #define TILE_SIZE_PIXELS 16.0f // size of each grid cell, in pixels (at ART_PIXELS_PER_METER scale)
 #define MAX_LAYERS 4
 
@@ -1186,6 +1187,7 @@ struct LayerDesc
 	bool isBase;
 	bool visible;
 	bool isCollider;
+	bool isBackground;
 	TileDesc *tiles; // non-empty grid cells only
 	u32 tileCount;
 };
@@ -1237,12 +1239,15 @@ struct Layer
 	bool isBase; // Room's reference layer
 	bool visible;
 	bool isCollider;
+	bool isBackground;
 	int2 pos;   // Bounds of the filled cells, see UpdateLayerBounds
 	uint2 size; // (both zero while the layer is empty)
 	CellGrid cells;
 	f32 depth; // depth in world units
+	float2 depthOffset; // Set when the room changes (UpdateLayerTransforms): keeps sprite pixels the
+	f32 depthScale;     // same size on screen at any depth under the game's perspective camera
 	float2 renderOffset; // rendered xy = renderScale * xy + renderOffset
-	f32 renderScale;
+	f32 renderScale;     // Picked each frame in RenderGraphics: depth pair, identity in 2D, or a Background fit
 };
 
 REFLEX()
@@ -1387,6 +1392,7 @@ struct BinLayerDesc
 	u8 isBase;
 	u8 visible;
 	u8 isCollider;
+	u8 isBackground;
 	BinLocation tiles; // payload of TileDesc entries; count == tiles.size / sizeof(TileDesc)
 };
 
@@ -1511,7 +1517,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 25; // 25: particles in 3D
+constexpr u32 BinAssetsVersion = 26; // 26: background layers
 
 #pragma pack(push, 1)
 
@@ -1913,6 +1919,8 @@ float2 LayerSize(const Layer &layer);
 float2 RoomSize(const Room &room);
 void UpdateRoomBounds(Room &room); // Call after anything other than a cell edit changes which layers count
 void UpdateLayerBounds(Layer &layer);
+void UpdateLayerTransforms(Room &room);
+f32 GameCameraDistance();
 Room &GetLayerRoom(Layer &layer);
 ID CreateRoom(Engine &engine);
 ID CreateRoom(Engine &engine, const RoomDesc &desc);

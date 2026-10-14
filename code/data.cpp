@@ -473,6 +473,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 			WriteLine(ctx, ".isBase = %d,", layer.isBase);
 			WriteLine(ctx, ".visible = %d,", layer.visible);
 			WriteLine(ctx, ".isCollider = %d,", layer.isCollider);
+			WriteLine(ctx, ".isBackground = %d,", layer.isBackground);
 
 			if (layer.tileCount > 0)
 			{
@@ -1362,6 +1363,7 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 			static const String sIsBase = MakeString("isBase");
 			static const String sVisible = MakeString("visible");
 			static const String sIsCollider = MakeString("isCollider");
+			static const String sIsBackground = MakeString("isBackground");
 			static const String sTiles = MakeString("tiles");
 
 			if ( StrEq( field, sId ) ) {
@@ -1374,6 +1376,8 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 				layerDesc.visible = DParser_ConsumeU8(parser) != 0;
 			} else if ( StrEq( field, sIsCollider ) ) {
 				layerDesc.isCollider = DParser_ConsumeU8(parser) != 0;
+			} else if ( StrEq( field, sIsBackground ) ) {
+				layerDesc.isBackground = DParser_ConsumeU8(parser) != 0;
 			} else if ( StrEq( field, sTiles ) ) {
 				DParser_ConsumeTiles(parser, layerDesc);
 			} else {
@@ -2139,6 +2143,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 				ld.isBase       = layer.isBase ? 1 : 0;
 				ld.visible      = layer.visible ? 1 : 0;
 				ld.isCollider   = layer.isCollider ? 1 : 0;
+				ld.isBackground = layer.isBackground ? 1 : 0;
 				ld.tiles.offset = PostIncrement(&offset, payloadSize);
 				ld.tiles.size   = U64ToU32(payloadSize);
 
@@ -2494,7 +2499,8 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 			layerDesc.isBase = layer.isBase;
 			layerDesc.visible = layer.visible;
 			layerDesc.isCollider = layer.isCollider;
-			layerDesc.tiles = (TileDesc*)(arena.base + arena.used);
+			layerDesc.isBackground = layer.isBackground;
+			layerDesc.tiles =(TileDesc*)(arena.base + arena.used);
 			layerDesc.tileCount = 0;
 			// Walking the layer bounds rather than the hash table keeps the tiles in the
 			// same column-by-column order from one save to the next.

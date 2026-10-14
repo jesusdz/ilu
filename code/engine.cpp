@@ -52,8 +52,8 @@ static constexpr bool sLoadShadersFromText = false;
 
 constexpr u32 ART_WIDTH = 320;
 constexpr u32 ART_HEIGHT = 180;
-constexpr u32 SCENE_WIDTH = 1920;
-constexpr u32 SCENE_HEIGHT = 1080;
+constexpr u32 SCENE_WIDTH = 320; //1920;
+constexpr u32 SCENE_HEIGHT = 180; //1080;
 
 
 // Access to singletons

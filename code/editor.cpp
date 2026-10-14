@@ -1588,6 +1588,7 @@ static void EditorUpdateUI_InspectorLayer(Layer &layer)
 	if ( UI_Checkbox(ui, "Collider", &layer.isCollider) ) {
 		UpdateRoomBounds(GetLayerRoom(layer));
 	}
+	UI_Checkbox(ui, "Background", &layer.isBackground);
 }
 
 static void EditorUpdateUI_Inspector()

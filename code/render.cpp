@@ -599,6 +599,7 @@ bool RenderGraphics(Engine &engine)
 	const u32 selectedEntityDrawId = selectedEntity
 		? EntityDrawId(scene, selectedEntity) : 0xFFFFFFFF;
 
+	// Layer offset/scale
 	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
 		Room &room = scene.rooms[roomIndex];
@@ -606,35 +607,43 @@ bool RenderGraphics(Engine &engine)
 		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 		{
 			Layer &layer = room.layers[i];
-			layer.depth = -(f32)i;
-			layer.renderOffset = {0.0f, 0.0f};
-			layer.renderScale = 1.0f;
+			layer.renderOffset = is2D ? float2{0.0f, 0.0f} : layer.depthOffset;
+			layer.renderScale = is2D ? 1.0f : layer.depthScale;
 
-			float2 contentMin = {};
-			float2 contentSize = {};
-			if (layer.initialized && StrEq(layer.name, "Background") && engine.game.state == GameStateRunning
-				&& GetLayerSpriteBounds(layer, contentMin, contentSize))
+			if (layer.initialized)
 			{
-				float2 viewMin;
-				float2 viewSize;
-				if (camera.projectionType == ProjectionPerspective)
+				if ( layer.isBackground )
 				{
-					// Assumes the camera looks down -z, as the game camera does.
-					const f32 distance = camera.position.z - layer.depth;
-					const f32 halfHeight = distance * Tan(0.5f * camera.fovy * ToRadians);
-					viewSize = float2{2.0f * halfHeight * ar, 2.0f * halfHeight};
-					viewMin = camera.position.xy - 0.5f * viewSize;
+					if ( engine.game.state == GameStateRunning)
+					{
+						float2 contentMin = {};
+						float2 contentSize = {};
+
+						if ( GetLayerSpriteBounds(layer, contentMin, contentSize) )
+						{
+							float2 viewMin;
+							float2 viewSize;
+							if (camera.projectionType == ProjectionPerspective)
+							{
+								// Assumes the camera looks down -z, as the game camera does.
+								const f32 distance = camera.position.z - layer.depth;
+								const f32 halfHeight = distance * Tan(0.5f * camera.fovy * ToRadians);
+								viewSize = float2{2.0f * halfHeight * ar, 2.0f * halfHeight};
+								viewMin = camera.position.xy - 0.5f * viewSize;
+							}
+							else
+							{
+								viewMin = cameraMinMaxRect.xy;
+								viewSize = cameraMinMaxRect.zw - cameraMinMaxRect.xy;
+							}
+							const float2 layerSize = contentSize;
+							const f32 layerScale = Max(viewSize.x / layerSize.x, viewSize.y / layerSize.y);
+							const float2 layerOrigin = viewMin + 0.5f * (viewSize - layerScale * layerSize);
+							layer.renderOffset = layerOrigin - layerScale * contentMin;
+							layer.renderScale = layerScale;
+						}
+					}
 				}
-				else
-				{
-					viewMin = cameraMinMaxRect.xy;
-					viewSize = cameraMinMaxRect.zw - cameraMinMaxRect.xy;
-				}
-				const float2 layerSize = contentSize;
-				const f32 layerScale = Max(viewSize.x / layerSize.x, viewSize.y / layerSize.y);
-				const float2 layerOrigin = viewMin + 0.5f * (viewSize - layerScale * layerSize);
-				layer.renderOffset = layerOrigin - layerScale * contentMin;
-				layer.renderScale = layerScale;
 			}
 		}
 	}
@@ -813,14 +822,9 @@ bool RenderGraphics(Engine &engine)
 
 			if (layer.initialized && layer.visible && !layer.isCollider)
 			{
-				bool isBackground = false;
-				if ( StrEq(layer.name, "Background") ) {
-					isBackground = true;
-				}
-
 				currInstanceTileData = nullptr;
 
-				const float2 parallax = parallaxEnabled && !isBackground ? GetParallaxOffset(scrollRatio, roomSize, layer.size, viewportSizeWorld) : float2{0.0f, 0.0f};
+				const float2 parallax = parallaxEnabled && !layer.isBackground ? GetParallaxOffset(scrollRatio, roomSize, layer.size, viewportSizeWorld) : float2{0.0f, 0.0f};
 				const f32 layerScale = layer.renderScale;
 				const float2 layerOrigin = layer.renderOffset + parallax;
 
