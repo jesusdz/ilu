@@ -8,7 +8,7 @@ static constexpr float4 ColorOrange = { 1.0f, 0.5f, 0.0f, 1.0f };
 
 #define PROFILE_GFX_BLOCK(Name) \
 	PROFILE_BLOCK(Name); \
-	PROFILE_GPU_BLOCK(commandList, Name); \
+	PROFILE_GPU_BLOCK(commandList, Name);
 
 #define RENDER_BLOCK(Name) \
 	PROFILE_GFX_BLOCK(Name); \
@@ -501,9 +501,7 @@ bool RenderGraphics(Engine &engine)
 	const i32 displayHeight = gfx.device.swapchain.extent.height;
 
 	// Camera setup
-	float4x4 viewMatrix = Eye();
 	float4x4 inverseViewMatrix = Eye();
-	float4x4 viewportRotationMatrix = Eye();
 	float4x4 projectionMatrix = Eye();
 	float4 frustumTopLeft = {};
 	float4 frustumBottomRight = {};
@@ -535,16 +533,17 @@ bool RenderGraphics(Engine &engine)
 	const f32 ar = GetSceneAspectRatio(gfx);
 	const float4 cameraMinMaxRect = GetOrthographicCameraMinMaxRect(camera, ar);
 
+	const float4x4 viewMatrix = ViewMatrixFromCamera(camera);
+	const float4x4 viewportRotationMatrix = Rotate(float3{0.0, 0.0, 1.0}, preRotationDegrees);
+	//const float4x4 preTransformMatrixInv = Float4x4(Transpose(Float3x3(viewportRotationMatrix)));
+
 	if (camera.projectionType == ProjectionPerspective)
 	{
 		// Calculate camera matrices
-		viewMatrix = ViewMatrixFromCamera(camera);
 		inverseViewMatrix = Float4x4(Transpose(Float3x3(viewMatrix)));
 		const float fovy = camera.fovy;
 		const float znear = camera.znear;
 		const float zfar = camera.zfar;
-		viewportRotationMatrix = Rotate(float3{0.0, 0.0, 1.0}, preRotationDegrees);
-		//const float4x4 preTransformMatrixInv = Float4x4(Transpose(Float3x3(viewportRotationMatrix)));
 		const float4x4 perspectiveMatrix = Perspective(fovy, ar, znear, zfar);
 		projectionMatrix = Mul(viewportRotationMatrix, perspectiveMatrix);
 
@@ -571,10 +570,7 @@ bool RenderGraphics(Engine &engine)
 	{
 		const f32 height = camera.height;
 		// Calculate camera matrices
-		viewMatrix = ViewMatrixFromCamera(camera);
 		//inverseViewMatrix = Inverse2D(viewMatrix);
-		viewportRotationMatrix = Rotate(float3{0.0, 0.0, 1.0}, preRotationDegrees);
-		//const float4x4 preTransformMatrixInv = Float4x4(Transpose(Float3x3(viewportRotationMatrix)));
 		const float4x4 orthographicMatrix = Orthogonal(-height*ar, height*ar, -height, height, camera.znear, camera.zfar);
 		projectionMatrix = Mul(viewportRotationMatrix, orthographicMatrix);
 
