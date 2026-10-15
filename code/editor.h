@@ -201,7 +201,7 @@ struct Editor
 
 	bool selectEntity;
 
-	bool isTranslating;
+	Gizmo gizmo;
 
 	Camera camera[ProjectionTypeCount];
 	ProjectionType cameraType;

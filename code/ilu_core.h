@@ -1931,8 +1931,8 @@ struct rect
 
 struct float2
 {
-	union { float x, r; };
-	union { float y, g; };
+	union { f32 x, r; };
+	union { f32 y, g; };
 };
 
 struct float3
@@ -1942,9 +1942,9 @@ struct float3
 		f32 vec[3];
 		struct
 		{
-			union { float x, r; };
-			union { float y, g; };
-			union { float z, b; };
+			union { f32 x, r; };
+			union { f32 y, g; };
+			union { f32 z, b; };
 		};
 		float2 xy;
 	};
@@ -1957,10 +1957,10 @@ struct float4
 		f32 vec[4];
 		struct
 		{
-			union { float x, r; };
-			union { float y, g; };
-			union { float z, b; };
-			union { float w, a; };
+			union { f32 x, r; };
+			union { f32 y, g; };
+			union { f32 z, b; };
+			union { f32 w, a; };
 		};
 		struct
 		{
@@ -2059,15 +2059,21 @@ float2 operator-(float2 a, float2 b)
 	return res;
 }
 
-float2 operator*(float a, float2 b)
+float2 operator*(f32 a, float2 b)
 {
 	const float2 res = { .x = a * b.x, .y = a * b.y };
 	return res;
 }
 
-float3 operator*(float a, float3 b)
+float3 operator*(f32 a, float3 b)
 {
 	const float3 res = { .x = a * b.x, .y = a * b.y, .z = a * b.z };
+	return res;
+}
+
+float3 operator*(float3 a, f32 b)
+{
+	const float3 res = { .x = b * a.x, .y = b * a.y, .z = b * a.z };
 	return res;
 }
 
@@ -2083,9 +2089,15 @@ uint2 operator*(u32 a, uint2 b)
 	return res;
 }
 
-float2 operator/(float2 a, float b)
+float2 operator/(float2 a, f32 b)
 {
 	const float2 res = { .x = a.x / b, .y = a.y / b };
+	return res;
+}
+
+float3 operator/(float3 a, f32 b)
+{
+	const float3 res = { .x = a.x / b, .y = a.y / b, .z = a.z / b };
 	return res;
 }
 
@@ -2163,13 +2175,13 @@ float2 Float2(uint2 value)
 	return res;
 }
 
-float3 Float3(float value)
+float3 Float3(f32 value)
 {
 	const float3 res = {value, value, value};
 	return res;
 }
 
-float3 Float3(float x, float y, float z)
+float3 Float3(f32 x, f32 y, f32 z)
 {
 	const float3 res = {x, y, z};
 	return res;
@@ -2247,6 +2259,24 @@ f32 Pow(f32 base, f32 exponent)
 f32 Round(f32 value)
 {
 	const f32 res = static_cast<f32>(static_cast<i32>((value + 0.5f - ( value < 0.0f ))));
+	return res;
+}
+
+float2 Round(float2 value)
+{
+	const float2 res = float2{ Round(value.x), Round(value.y) };
+	return res;
+}
+
+float3 Round(float3 value)
+{
+	const float3 res = float3{ Round(value.x), Round(value.y), Round(value.z) };
+	return res;
+}
+
+float4 Round(float4 value)
+{
+	const float4 res = float4{ Round(value.x), Round(value.y), Round(value.z), Round(value.w) };
 	return res;
 }
 
@@ -2524,11 +2554,11 @@ float4x4 LookAt(const float3 &vrp, const float3 &obs, const float3 &up)
 //#define USE_REVERSE_Z 0
 #define USE_REVERSE_Z 1
 
-float4x4 Perspective(float fov, float aspect, float Near, float Far)
+float4x4 Perspective(f32 fov, f32 aspect, f32 Near, f32 Far)
 {
 #if USE_REVERSE_Z
 #if USE_DEPTH_ZERO_TO_ONE
-	float tmp = Near;
+	f32 tmp = Near;
 	Near = Far;
 	Far = tmp;
 #else
@@ -2559,7 +2589,7 @@ float4x4 Orthogonal(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f)
 {
 #if USE_REVERSE_Z
 #if USE_DEPTH_ZERO_TO_ONE
-	float tmp = n;
+	f32 tmp = n;
 	n = f;
 	f = tmp;
 #else
@@ -2818,7 +2848,7 @@ struct Clock
 	u64 ticks;
 };
 
-#define SECONDS_FROM_NANOSECONDS( ns ) ((float)(ns) / 1000000000.0f)
+#define SECONDS_FROM_NANOSECONDS( ns ) ((f32)(ns) / 1000000000.0f)
 
 Clock GetClock()
 {
@@ -2826,10 +2856,10 @@ Clock GetClock()
 	return clock;
 }
 
-float GetSecondsElapsed(Clock start, Clock end)
+f32 GetSecondsElapsed(Clock start, Clock end)
 {
 	ASSERT(start.ticks <= end.ticks);
-	return (float)SecondsFromTicks(end.ticks - start.ticks);
+	return (f32)SecondsFromTicks(end.ticks - start.ticks);
 }
 
 

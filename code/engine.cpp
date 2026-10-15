@@ -40,6 +40,7 @@
 #include "engine.h"
 
 #if USE_EDITOR
+#include "ilu_gizmo.h"
 #include "editor.h"
 #endif
 

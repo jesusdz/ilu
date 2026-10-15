@@ -659,7 +659,6 @@ static void EditorRemoveSelection()
 	switch ( selection.type )
 	{
 		case EditorSelectedType_Entity:
-			editor.isTranslating = false;
 			RemoveEntity(engine, assetId);
 			break;
 
@@ -2822,59 +2821,25 @@ static void EditorUpdateInteraction2D(const Window &window, const Gamepad &gamep
 
 	const ID selectedEntity = EditorGetSelectedEntity(editor);
 
-	// Object transformations
-	if ( handleInput && selectedEntity )
+	Gizmo &gizmo = editor.gizmo;
+	Gizmo_SetViewportSize(gizmo, uint2{window.width, window.height});
+	Gizmo_SetCamera(gizmo, camera.position.xy, 2.0f * camera.height / window.height);
+	Gizmo_BeginFrame(gizmo);
+	if ( selectedEntity )
 	{
+		if ( handleInput && KeyPress(window.keyboard, K_T) ) {
+			Gizmo_StartModalDrag(gizmo, GizmoHandle_MoveXY);
+		} else if ( handleInput && KeyPress(window.keyboard, K_E) ) {
+			Gizmo_StartModalDrag(gizmo, GizmoHandle_Scale);
+		}
+
 		Entity &entity = GetEntity(selectedEntity);
-
-		const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
-
-		static float2 initialWorldOffset = {};
-		static float2 initialWorldPos = {};
-
-		static bool wasTranslating = false;
-
-		if ( !editor.isTranslating && KeyPress(window.keyboard, K_T) )
-		{
-			editor.isTranslating = true;
-		}
-
-		if ( editor.isTranslating )
-		{
-			if (!wasTranslating) {
-				initialWorldPos = float2{entity.position.x, entity.position.y};
-				initialWorldOffset = Floor(initialWorldPos) - Floor(mouseWorldPos);
-			} else if (MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT) || KeyPress(window.keyboard, K_ESCAPE)) {
-				EntitySetPosition(entity, Float3(initialWorldPos, entity.position.z));
-				editor.isTranslating = false;
-			} else if (MouseButtonRelease(mouse, MOUSE_BUTTON_LEFT) || MouseButtonPress(mouse, MOUSE_BUTTON_LEFT)) {
-				editor.isTranslating = false;
-			} else {
-				const float2 finalPos = Floor(mouseWorldPos) + initialWorldOffset;
-				EntitySetPosition(entity, Float3(finalPos, entity.position.z));
-			}
-		}
-
-		wasTranslating = editor.isTranslating;
-
-		static bool isScaling = false;
-		static f32 initialScale = 0.0;
-		if (KeyPress(window.keyboard, K_E)) {
-			isScaling = true;
-			initialWorldOffset = float2{entity.position.x, entity.position.y} - mouseWorldPos;
-			initialScale = entity.scale;
-		} else if (isScaling && MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT)) {
-			entity.scale = initialScale;
-			isScaling = false;
-		} else if (isScaling && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT)) {
-			isScaling = false;
-		} else if (isScaling) {
-			const float2 worldOffset = float2{entity.position.x, entity.position.y} - mouseWorldPos;
-			const f32 initialOffsetLen = Length(initialWorldOffset);
-			const f32 offsetLen = Length(worldOffset);
-			entity.scale = initialScale * offsetLen / initialOffsetLen;
-		}
+		const bool ctrl = KeyPressed(window.keyboard, K_CONTROL);
+		const f32 snap = ctrl ? 1.0f : 1.0f / ART_PIXELS_PER_METER;
+		const f32 scaleSnap = ctrl ? 0.5f : 0.0f;
+		Gizmo_Transform(gizmo, entity.position, entity.scale, snap, scaleSnap);
 	}
+	Gizmo_EndFrame(gizmo);
 
 	// Camera navigation
 	if ( handleInput )
@@ -2970,7 +2935,7 @@ static void EditorBeginSceneEditing(bool handleInput)
 		// While the Tilesets panel is open, left click paints/erases tiles instead of selecting entities
 		const bool tileEditMode = EditorMode2D() && EditorGetContextLayer() != nullptr;
 
-		if (!tileEditMode && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) && !editor.isTranslating)
+		if (!tileEditMode && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) && !Gizmo_WantsMouse(editor.gizmo))
 		{
 			const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
 			const ID iconHit = editor.showIcons && EditorMode2D() ? EditorPickEntityIcon(mouseWorldPos) : ID{};
@@ -3223,6 +3188,8 @@ void EditorInitialize(Engine &engine)
 {
 	Editor &editor = GetEditor();
 
+	Gizmo_Initialize(editor.gizmo, engine.ui);
+
 	editor.showUI = true;
 	editor.showOutliner = true;
 	editor.showAssets = true;
@@ -3232,6 +3199,7 @@ void EditorInitialize(Engine &engine)
 	editor.showDebugUI = false;
 	editor.showGrid = true;
 	editor.showIcons = true;
+
 	editor.showAbout = false;
 	editor.showSettings = false;
 	editor.showQuit = false;
@@ -3346,7 +3314,7 @@ static bool EditorHandleKeyboardShortcuts()
 		{
 			const ID newEntity = DuplicateEntity(engine, selectedEntity);
 			EditorSelectEntity(newEntity);
-			editor.isTranslating = true;
+			Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_MoveXY);
 		}
 	}
 
@@ -3407,7 +3375,7 @@ void EditorUpdate(Engine &engine)
 
 	if ( handleInput )
 	{
-		if ( UI_IsMousePress(engine.ui, MOUSE_BUTTON_RIGHT) )
+		if ( UI_IsMousePress(engine.ui, MOUSE_BUTTON_RIGHT) && !Gizmo_IsActive(editor.gizmo) )
 		{
 			const Mouse &mouse = GetWindow().mouse;
 			const Camera &camera = editor.camera[ProjectionOrthographic];
