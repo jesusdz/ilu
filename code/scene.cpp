@@ -114,27 +114,30 @@ static Sprite *PushSprite(Scene &scene, const Sprite &desc)
 	return &sprite;
 }
 
+void ResolveSprite(const Graphics &gfx, Sprite &sprite)
+{
+	sprite.frameCount = sprite.frameCount > 0 ? sprite.frameCount : 1;
+
+	if ( !Valid(sprite.textureId) )
+	{
+		LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n", sprite.name, sprite.textureId.slot);
+		sprite.textureId = gfx.defaultTexture;
+	}
+
+	const Texture &tex = GetTexture(sprite.textureId);
+	if ( sprite.size.x == 0 && sprite.size.y == 0 ) {
+		sprite.size = tex.size;
+	}
+}
+
 ID CreateSprite(Engine &engine, const Sprite &desc)
 {
-	Graphics &gfx = engine.gfx;
-
 	Sprite *sprite = PushSprite(engine.scene, desc);
 	if ( !sprite ) {
 		return {};
 	}
 
-	sprite->frameCount = desc.frameCount > 0 ? desc.frameCount : 1;
-
-	if ( !Valid(sprite->textureId) )
-	{
-		LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n", desc.name, desc.textureId.slot);
-		sprite->textureId = gfx.defaultTexture;
-	}
-
-	const Texture &tex = GetTexture(sprite->textureId);
-	if ( desc.size.x == 0 && desc.size.y == 0 ) {
-		sprite->size = tex.size;
-	}
+	ResolveSprite(engine.gfx, *sprite);
 
 	return sprite->id;
 }
@@ -215,6 +218,19 @@ static ParticleEffect *PushParticleEffect(Scene &scene, const ParticleEffect &de
 	return &effect;
 }
 
+void ResolveParticleEffect(ParticleEffect &effect)
+{
+	effect.name = InternString(effect.name);
+
+	// An effect with no sprite is a valid work in progress, but one naming a sprite that
+	// is not there would silently draw nothing, so it is worth a word.
+	if ( effect.spriteID.slot != 0 && !Valid(effect.spriteID) )
+	{
+		LOG(Warning, "Particle effect <%s> refers to sprite ID %u, which does not exist.\n", effect.name, effect.spriteID.slot);
+		effect.spriteID = {};
+	}
+}
+
 ID CreateParticleEffect(Engine &engine, const ParticleEffect &desc)
 {
 	ParticleEffect *effect = PushParticleEffect(engine.scene, desc);
@@ -222,15 +238,7 @@ ID CreateParticleEffect(Engine &engine, const ParticleEffect &desc)
 		return {};
 	}
 
-	effect->name = InternString(desc.name);
-
-	// An effect with no sprite is a valid work in progress, but one naming a sprite that
-	// is not there would silently draw nothing, so it is worth a word.
-	if ( desc.spriteID.slot != 0 && !Valid(desc.spriteID) )
-	{
-		LOG(Warning, "Particle effect <%s> refers to sprite ID %u, which does not exist.\n", desc.name, desc.spriteID.slot);
-		effect->spriteID = {};
-	}
+	ResolveParticleEffect(*effect);
 
 	return effect->id;
 }

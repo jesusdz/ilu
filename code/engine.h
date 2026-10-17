@@ -1680,6 +1680,7 @@ void RecreateModifiedTextures(Engine &engine);
 
 Material &GetMaterial(ID id);
 u16 GetMaterialIndex(const Graphics &gfx, ID materialId);
+void ResolveMaterial(Graphics &gfx, Material &material);
 ID CreateMaterial(Graphics &gfx, const Material &desc);
 ID GetOrCreateMaterial(Graphics &gfx, const Material &desc);
 void RemoveMaterial(Graphics &gfx, ID materialId);
@@ -1753,6 +1754,7 @@ void InitializeScene(Engine &engine);
 // Particle effect management
 
 ParticleEffect &GetParticleEffect(ID particleEffectId);
+void ResolveParticleEffect(ParticleEffect &effect);
 ID CreateParticleEffect(Engine &engine, const ParticleEffect &desc);
 void RemoveParticleEffect(Scene &scene, ID particleEffectId);
 void CompactParticleEffects(Scene &scene);
@@ -1769,6 +1771,7 @@ void ClearParticles(Scene &scene);
 
 Sprite &GetSprite(ID spriteId);
 u16 GetSpriteIndex(const Scene &scene, ID spriteId);
+void ResolveSprite(const Graphics &gfx, Sprite &sprite);
 ID CreateSprite(Engine &engine, const Sprite &desc);
 ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size);
 ID GetOrCreateSprite(Engine &engine, const Sprite &desc);

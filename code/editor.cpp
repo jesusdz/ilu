@@ -1786,7 +1786,7 @@ static void EditorUpdateUI_Inspector()
 				UI_Text(ui, "Pipeline", "%s", desc.pipelineName ? desc.pipelineName : "");
 
 				if (UI_InputFloat(ui, "UV scale", &desc.uvScale)) {
-					engine.gfx.shouldUpdateMaterials = true; // uvScale is what the buffer holds
+					ResolveMaterial(engine.gfx, desc);
 				}
 
 				UI_SeparatorLabel(ui, "Texture");
@@ -1926,6 +1926,8 @@ static void EditorUpdateUI_Inspector()
 				sprite.frameCount     = (u32)Max(0, frameCount);
 				sprite.fps            = (u32)Max(0, fps);
 				sprite.loop           = loop ? 1 : 0;
+
+				ResolveSprite(engine.gfx, sprite);
 			}
 		}
 		else if (inspector.selected.type == EditorSelectedType_ParticleEffect)
@@ -1946,6 +1948,8 @@ static void EditorUpdateUI_Inspector()
 					if ( StrEq(member.name, "id") || StrEq(member.name, "name") ) { continue; }
 					EditorUpdateUI_Property(member, &effect);
 				}
+
+				ResolveParticleEffect(effect);
 			}
 		}
 	}

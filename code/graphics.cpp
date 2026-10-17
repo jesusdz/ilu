@@ -690,6 +690,26 @@ static Material *PushMaterial(Graphics &gfx, const Material &desc)
 	return &material;
 }
 
+void ResolveMaterial(Graphics &gfx, Material &material)
+{
+	const PipelineIndex pipelineIndex = FindPipelineIndex(material.pipelineName);
+	if ( pipelineIndex == Pipeline_Count )
+	{
+		LOG(Warning, "Material <%s> refers to pipeline <%s>, which does not exist.\n",
+				material.name, material.pipelineName ? material.pipelineName : "");
+		material.pipelineIndex = (u16)Pipeline_Shading;
+		// The name is what gets saved, so put the fallback there too rather than write
+		// the broken one back out
+		material.pipelineName = GetPipelineName(material.pipelineIndex);
+	}
+	else
+	{
+		material.pipelineIndex = (u16)pipelineIndex;
+	}
+
+	gfx.shouldUpdateMaterials = true;
+}
+
 ID CreateMaterial(Graphics &gfx, const Material &desc)
 {
 	Material *material = PushMaterial(gfx, desc);
@@ -697,22 +717,7 @@ ID CreateMaterial(Graphics &gfx, const Material &desc)
 		return {};
 	}
 
-	const PipelineIndex pipelineIndex = FindPipelineIndex(desc.pipelineName);
-	if ( pipelineIndex == Pipeline_Count )
-	{
-		LOG(Warning, "Material <%s> refers to pipeline <%s>, which does not exist.\n",
-				desc.name, desc.pipelineName ? desc.pipelineName : "");
-		material->pipelineIndex = (u16)Pipeline_Shading;
-		// The name is what gets saved, so put the fallback there too rather than write
-		// the broken one back out
-		material->pipelineName = GetPipelineName(material->pipelineIndex);
-	}
-	else
-	{
-		material->pipelineIndex = (u16)pipelineIndex;
-	}
-
-	gfx.shouldUpdateMaterials = true;
+	ResolveMaterial(gfx, *material);
 
 	CreateMaterialBindGroup(gfx, material->id);
 
