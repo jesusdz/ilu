@@ -1879,7 +1879,7 @@ static void EditorUpdateUI_Inspector()
 					if ( sprite.frameCount > 0  && sprite.fps > 0 )
 					{
 						static f32 accumSeconds = 0.0f;
-						accumSeconds += 1.0f / 60.0f;
+						accumSeconds += engine.gfx.deltaSeconds;
 						const f32 frameSeconds = 1.0f / sprite.fps;
 						u32 frameIndex = (u32)( accumSeconds / frameSeconds );
 						if ( frameIndex >= sprite.frameCount ) {
