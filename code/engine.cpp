@@ -156,11 +156,10 @@ static void GameUpdate(Engine &engine, const Host &host)
 	if (game.state == GameStateRunning)
 	{
 		constexpr f32 fixedStepSeconds = SIMULATE_SECONDS;
-		constexpr f32 maxFrameSeconds = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 
 		InputAccumulate(game.accumulatedInput, *host.gamepad, host.window->keyboard);
 
-		game.accumulatedSeconds += Min(engine.gfx.deltaSeconds, maxFrameSeconds);
+		game.accumulatedSeconds += Min(engine.gfx.deltaSeconds, MAX_FRAME_SECONDS);
 
 		while (game.accumulatedSeconds >= fixedStepSeconds)
 		{
@@ -172,7 +171,7 @@ static void GameUpdate(Engine &engine, const Host &host)
 			game.accumulatedSeconds -= fixedStepSeconds;
 		}
 
-		UpdateParticles(engine.scene, Min(engine.gfx.deltaSeconds, maxFrameSeconds));
+		UpdateParticles(engine.scene, Min(engine.gfx.deltaSeconds, MAX_FRAME_SECONDS));
 		RunScriptHooks(engine, ScriptHook_Update);
 	}
 

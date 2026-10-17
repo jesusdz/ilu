@@ -3356,7 +3356,7 @@ void EditorUpdate(Engine &engine)
 	if ( engine.game.state == GameStateStopped )
 	{
 		// Particles keep moving while editing, so an effect can be tuned in place.
-		UpdateParticles(engine.scene, gfx.deltaSeconds);
+		UpdateParticles(engine.scene, Min(gfx.deltaSeconds, MAX_FRAME_SECONDS));
 	}
 
 	EditorUpdateInspectedAsset();

@@ -1407,6 +1407,7 @@ struct GameInput
 };
 
 constexpr f32 SIMULATE_SECONDS = (1.0f / 60.0f);
+constexpr f32 MAX_FRAME_SECONDS = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 
 struct Game
 {
