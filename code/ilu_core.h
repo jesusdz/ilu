@@ -252,6 +252,7 @@ extern "C"
 	size_t fwrite(const void *buffer, size_t size, size_t count, FILE *stream);
 	int fseek(FILE *stream, long offset, int origin);
 	int feof(FILE *stream);
+	void *memcpy(void *dst, const void *src, size_t size);
 }
 
 static char *Win32PrintCallback(const char *buffer, void *user, int len)
@@ -938,10 +939,21 @@ void MemSet(void *ptr, u32 size, byte value)
 
 void MemCopy(void *dst, const void *src, u32 size)
 {
-	const byte *pSrc = (byte*) src;
-	const byte *pEnd = pSrc + size;
-	byte *pDst = (byte*) dst;
-	while (pSrc != pEnd) *pDst++ = *pSrc++;
+	memcpy(dst, src, size);
+}
+
+// Avoid using operator= to read potentially unaligned pointers from memory
+const void *ReadPtr(const void *address)
+{
+	const void *res;
+	MemCopy(&res, address, sizeof(res));
+	return res;
+}
+
+// Avoid using operator= to write potentially unaligned pointers to memory
+void WritePtr(void *address, const void *pointer)
+{
+	MemCopy(address, &pointer, sizeof(pointer));
 }
 
 i32 MemCompare(const void *a, const void *b, u32 size)

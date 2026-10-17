@@ -1509,7 +1509,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 27; // 27: particle effect runtime fields
+constexpr u32 BinAssetsVersion = 28; // 28: assets packed member by member
 
 #pragma pack(push, 1)
 
