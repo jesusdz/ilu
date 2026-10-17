@@ -132,8 +132,6 @@ struct Platform
 	Window window;
 	Gamepad gamepad;
 	AudioDevice audio;
-	f32 deltaSeconds;
-	f32 totalSeconds;
 
 	volatile_i64 eventTail;
 	volatile_i64 eventHead;
@@ -1236,17 +1234,10 @@ static bool Run(Platform &platform)
 	}
 #endif // USE_UPDATE_THREAD
 
-	Clock lastFrameClock = GetClock();
-
 	const Clock firstFrameClock = GetClock();
 
 	while ( platform.keepRunning )
 	{
-		const Clock currentFrameBeginClock = GetClock();
-		platform.deltaSeconds = GetSecondsElapsed(lastFrameClock, currentFrameBeginClock);
-		platform.totalSeconds = GetSecondsElapsed(firstFrameClock, currentFrameBeginClock);
-		lastFrameClock = currentFrameBeginClock;
-
 		PlatformUpdateEventLoop(platform);
 
 #if !USE_UPDATE_THREAD

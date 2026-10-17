@@ -379,7 +379,10 @@ ENGINE_API void OnPlatformUpdate(Host &host)
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
-	const Clock begin = GetClock();
+	static Clock lastClock = GetClock();
+	const Clock currentClock = GetClock();
+	gfx.deltaSeconds = GetSecondsElapsed(lastClock, currentClock);
+	lastClock = currentClock;
 
 #if PLATFORM_ANDROID
 	// TODO(jesus): This is test code
@@ -445,11 +448,6 @@ ENGINE_API void OnPlatformRenderGraphics(Host &host)
 
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
-
-	static Clock lastClock = GetClock();
-	Clock currentClock = GetClock();
-	gfx.deltaSeconds = GetSecondsElapsed(lastClock, currentClock);
-	lastClock = currentClock;
 
 	if ( !gfx.deviceInitialized )
 	{
