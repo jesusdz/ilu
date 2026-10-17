@@ -370,6 +370,45 @@ ENGINE_API bool OnPlatformWindowInit(Host &host)
 	return true;
 }
 
+// Frame durations, not clock readings, are kept: an outlier is handed out as is and left out
+// of the history, and with clock readings its time would be counted again in the average
+static void SmoothDeltaSeconds(f32 &deltaSeconds)
+{
+	constexpr u32 FRAME_TIME_HISTORY_COUNT = 32;
+	constexpr u32 FRAME_TIME_MAX_OUTLIERS = 8;
+	static f32 history[FRAME_TIME_HISTORY_COUNT] = {};
+	static f32 sum = 0.0f;
+	static u32 next = 0;
+	static u32 outlierCount = 0;
+
+	const f32 average = sum / FRAME_TIME_HISTORY_COUNT;
+	const bool outlier = Abs(deltaSeconds - average) > Max(0.25f * average, 0.0005f);
+
+	// Missed vblanks, stalls and the catch-up frames after them keep their own duration
+	if ( sum > 0.0f && outlier && ++outlierCount <= FRAME_TIME_MAX_OUTLIERS ) {
+		return;
+	}
+
+	if ( outlier )
+	{
+		// So many in a row is a new frame rate, not an outlier
+		outlierCount = 0;
+
+		for (u32 i = 0; i < FRAME_TIME_HISTORY_COUNT; ++i) {
+			history[i] = deltaSeconds;
+		}
+		sum = FRAME_TIME_HISTORY_COUNT * deltaSeconds;
+	}
+	else
+	{
+		sum += deltaSeconds - history[next]; // new - oldest
+		history[next] = deltaSeconds;
+		next = (next + 1) % FRAME_TIME_HISTORY_COUNT;
+	}
+
+	deltaSeconds = sum / FRAME_TIME_HISTORY_COUNT;
+}
+
 ENGINE_API void OnPlatformUpdate(Host &host)
 {
 	PROFILE_THREAD("UpdateAndRender");
@@ -383,6 +422,8 @@ ENGINE_API void OnPlatformUpdate(Host &host)
 	const Clock currentClock = GetClock();
 	gfx.deltaSeconds = GetSecondsElapsed(lastClock, currentClock);
 	lastClock = currentClock;
+
+	SmoothDeltaSeconds(gfx.deltaSeconds);
 
 #if PLATFORM_ANDROID
 	// TODO(jesus): This is test code
