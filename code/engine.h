@@ -1049,7 +1049,7 @@ struct Entity
 // Effects
 
 REFLEX()
-struct ParticleEffectDesc
+struct ParticleEffect
 {
 	REFLEX()
 	ID id;
@@ -1096,13 +1096,12 @@ struct ParticleEffectDesc
 	f32 drag;
 	REFLEX(Bool)
 	u8 worldSpace;
+
+	// Runtime fields ///////////
+	f32 dragFactor;
 };
 
-REFLEX()
-struct ParticleEffect
-{
-	ParticleEffectDesc desc;
-};
+typedef ParticleEffect ParticleEffectDesc;
 
 struct Particle
 {
@@ -1510,7 +1509,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 26; // 26: background layers
+constexpr u32 BinAssetsVersion = 27; // 27: particle effect runtime fields
 
 #pragma pack(push, 1)
 
@@ -1800,7 +1799,7 @@ ID CreateParticleEffect(Engine &engine, const ParticleEffectDesc &desc);
 void RemoveParticleEffect(Scene &scene, ID particleEffectId);
 void CompactParticleEffects(Scene &scene);
 
-void SimulateParticles(Scene &scene, f32 deltaSeconds);
+void UpdateParticles(Scene &scene, f32 deltaSeconds);
 void PlayParticles(Scene &scene, ID entityId);
 void StopParticles(Scene &scene, ID entityId);
 void StartParticles(Scene &scene);

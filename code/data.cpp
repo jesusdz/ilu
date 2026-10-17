@@ -392,7 +392,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "ParticleEffect %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteStruct(ctx, *ReflexGetStruct(ReflexID_ParticleEffectDesc), &desc);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_ParticleEffect), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -1521,7 +1521,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_ParticleEffectDesc), &desc );
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_ParticleEffect), &desc );
 
 			// Entity
 			} else if ( StrEq(type, sEntityStr) ) {
@@ -2095,7 +2095,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		// ParticleEffects
 		for (u32 i = 0; i < particleEffectCount; ++i)
 		{
-			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_ParticleEffectDesc), &binParticleEffectDescs[i], &descriptors.particleEffectDescs[i]);
+			DataPackStruct(stringPool, *ReflexGetStruct(ReflexID_ParticleEffect), &binParticleEffectDescs[i], &descriptors.particleEffectDescs[i]);
 		}
 
 		// Entities
@@ -2346,7 +2346,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 			dataArena, file, assets.header.particleEffectsOffset, assets.header.particleEffectCount * sizeof(ParticleEffectDesc));
 		for (u32 i = 0; i < assets.header.particleEffectCount; ++i)
 		{
-			DataResolveStrings(stringPool, *ReflexGetStruct(ReflexID_ParticleEffectDesc), &assets.particleEffects[i]);
+			DataResolveStrings(stringPool, *ReflexGetStruct(ReflexID_ParticleEffect), &assets.particleEffects[i]);
 		}
 	}
 
@@ -2453,7 +2453,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	static ParticleEffectDesc particleEffectDescs[MAX_PARTICLE_EFFECTS];
 	u32 particleEffectCount = 0;
 	for (u32 i = 0; i < engine.scene.particleEffectCount; ++i) {
-		const ParticleEffectDesc &desc = engine.scene.particleEffects[i].desc;
+		const ParticleEffectDesc &desc = engine.scene.particleEffects[i];
 		if ( !desc.id || IsBuiltin(desc.id) ) { continue; }
 		particleEffectDescs[particleEffectCount++] = desc;
 	}

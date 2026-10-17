@@ -1017,7 +1017,7 @@ static void EditorUpdateUI_Outliner()
 	{
 		for (u32 i = 0; i < scene.particleEffectCount; ++i)
 		{
-			const ParticleEffectDesc &desc = scene.particleEffects[i].desc;
+			const ParticleEffectDesc &desc = scene.particleEffects[i];
 
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectParticleEffect(desc.id);
@@ -1932,14 +1932,14 @@ static void EditorUpdateUI_Inspector()
 		{
 			if (inspector.selected.id)
 			{
-				ParticleEffectDesc &effect = GetParticleEffect(inspector.selected.id).desc;
+				ParticleEffectDesc &effect = GetParticleEffect(inspector.selected.id);
 
 				static char name[64];
 				StrCopy(name, effect.name);
 				UI_InputText(ui, "Name", name, ARRAY_COUNT(name));
 				effect.name = InternString(name);
 
-				const ReflexStruct &type = *ReflexGetStruct(ReflexID_ParticleEffectDesc);
+				const ReflexStruct &type = *ReflexGetStruct(ReflexID_ParticleEffect);
 				for (u32 i = 0; i < type.memberCount; ++i)
 				{
 					const ReflexMember &member = type.members[i];
@@ -3351,9 +3351,8 @@ void EditorUpdate(Engine &engine)
 
 	if ( engine.game.state == GameStateStopped )
 	{
-		// Particles keep moving while editing, so an effect can be tuned in place. Variable
-		// delta rather than the fixed step: this is a preview, not the simulation.
-		SimulateParticles(engine.scene, gfx.deltaSeconds);
+		// Particles keep moving while editing, so an effect can be tuned in place.
+		UpdateParticles(engine.scene, gfx.deltaSeconds);
 	}
 
 	EditorUpdateInspectedAsset();

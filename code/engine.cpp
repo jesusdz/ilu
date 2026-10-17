@@ -168,11 +168,11 @@ static void GameUpdate(Engine &engine, const Host &host)
 			GameSetInput(game, game.accumulatedInput);
 			SnapshotPositions(engine);
 			RunScriptHooks(engine, ScriptHook_Simulate);
-			SimulateParticles(engine.scene, fixedStepSeconds);
 			InputConsume(game.accumulatedInput);
 			game.accumulatedSeconds -= fixedStepSeconds;
 		}
 
+		UpdateParticles(engine.scene, Min(engine.gfx.deltaSeconds, maxFrameSeconds));
 		RunScriptHooks(engine, ScriptHook_Update);
 	}
 

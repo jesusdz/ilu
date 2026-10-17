@@ -92,7 +92,7 @@ static const char *EditorObjectName(ID id)
 		case ReflexID_Texture:        return GetTexture(id).desc.name;
 		case ReflexID_Material:       return GetMaterial(id).desc.name;
 		case ReflexID_Sprite:         return GetSprite(id).desc.name;
-		case ReflexID_ParticleEffect: return GetParticleEffect(id).desc.name;
+		case ReflexID_ParticleEffect: return GetParticleEffect(id).name;
 		case ReflexID_Layer:          return GetLayer(id).name;
 		case ReflexID_Room:           return GetRoom(id).name;
 		case ReflexID_Prefab:         return GetPrefab(id).name;

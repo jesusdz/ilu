@@ -124,7 +124,7 @@ static void DrawSpriteCentered(ID spriteID, float2 pos, float2 size, float4 pcol
 	// TODO
 }
 
-static void GenerateParticles(const Scene &scene, bool is2D)
+static void GenerateParticles(const Scene &scene, bool is2D, bool interpolate, f32 interpolationAlpha)
 {
 	PROFILE_BLOCK(GenerateParticles);
 
@@ -138,7 +138,7 @@ static void GenerateParticles(const Scene &scene, bool is2D)
 	// share a texture, one batch per effect instead of one per particle
 	for (u32 e = 0; e < scene.particleEffectCount; ++e)
 	{
-		const ParticleEffectDesc &effect = scene.particleEffects[e].desc;
+		const ParticleEffectDesc &effect = scene.particleEffects[e];
 		if ( !effect.id ) { continue; } // Removed, still waiting for CompactParticleEffects
 
 		const u32 firstVertex = gfx.particleVertexCount;
@@ -153,7 +153,11 @@ static void GenerateParticles(const Scene &scene, bool is2D)
 			const f32 size = Lerp(effect.size.min, effect.size.max, t);
 
 			// Local-space particles ride along with their emitter
-			const float3 pos = p.entityId ? p.pos + GetEntity(p.entityId).position : p.pos;
+			float3 pos = p.pos;
+			if ( p.entityId ) {
+				const Entity &emitter = GetEntity(p.entityId);
+				pos += interpolate ? Lerp(emitter.prevPosition, emitter.position, interpolationAlpha) : emitter.position;
+			}
 
 			//if ( effect.spriteID ) {
 			//	DrawSpriteCentered(effect.spriteID, pos, color, size);
@@ -175,13 +179,15 @@ static void GenerateParticles(const Scene &scene, bool is2D)
 			//}
 		}
 
-		if ( gfx.particleVertexCount > firstVertex )
+		const u32 vertexCount = gfx.particleVertexCount - firstVertex;
+
+		if ( vertexCount > 0 )
 		{
 			ASSERT( gfx.particleBatchCount < MAX_PARTICLE_BATCHES );
 			gfx.particleBatches[gfx.particleBatchCount++] = {
 				.imageH = gfx.whiteImageH,
 				.vertexIndex = firstVertex,
-				.vertexCount = gfx.particleVertexCount - firstVertex,
+				.vertexCount = vertexCount,
 			};
 		}
 	}
@@ -801,7 +807,7 @@ bool RenderGraphics(Engine &engine)
 	}
 	}
 
-	GenerateParticles(scene, is2D);
+	GenerateParticles(scene, is2D, interpolate, interpolationAlpha);
 
 	struct InstanceTileData
 	{

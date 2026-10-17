@@ -209,10 +209,9 @@ static ParticleEffect *PushParticleEffect(Scene &scene, const ParticleEffectDesc
 	}
 
 	ParticleEffect &effect = scene.particleEffects[scene.particleEffectCount++];
-	effect = {};
-	effect.desc = desc;
+	effect = desc;
 
-	BindID(&effect.desc.id, &effect, ReflexID_ParticleEffect);
+	BindID(&effect.id, &effect, ReflexID_ParticleEffect);
 
 	return &effect;
 }
@@ -224,37 +223,37 @@ ID CreateParticleEffect(Engine &engine, const ParticleEffectDesc &desc)
 		return {};
 	}
 
-	effect->desc.name = InternString(desc.name);
+	effect->name = InternString(desc.name);
 
 	// An effect with no sprite is a valid work in progress, but one naming a sprite that
 	// is not there would silently draw nothing, so it is worth a word.
 	if ( desc.spriteID.slot != 0 && !Valid(desc.spriteID) )
 	{
 		LOG(Warning, "Particle effect <%s> refers to sprite ID %u, which does not exist.\n", desc.name, desc.spriteID.slot);
-		effect->desc.spriteID = {};
+		effect->spriteID = {};
 	}
 
-	return effect->desc.id;
+	return effect->id;
 }
 
 void RemoveParticleEffect(Scene &scene, ID id)
 {
 	if ( IsBuiltin(id) )
 	{
-		LOG(Warning, "Ignoring an attempt to remove builtin particle effect <%s>.\n", GetParticleEffect(id).desc.name);
+		LOG(Warning, "Ignoring an attempt to remove builtin particle effect <%s>.\n", GetParticleEffect(id).name);
 		return;
 	}
 
 	if (id)
 	{
-		GetParticleEffect(id).desc.id = {};
+		GetParticleEffect(id).id = {};
 		Invalidate(id);
 	}
 }
 
 void CompactParticleEffects(Scene &scene)
 {
-	COMPACT_ARRAY_BY_ID(ParticleEffect, scene.particleEffects, scene.particleEffectCount, desc.id, nullptr, nullptr, nullptr);
+	COMPACT_ARRAY_BY_ID(ParticleEffect, scene.particleEffects, scene.particleEffectCount, id, nullptr, nullptr, nullptr);
 }
 
 
@@ -291,14 +290,14 @@ static void SpawnParticle(Scene &scene, ID entityId, const ParticleEffectDesc &e
 	};
 }
 
-static void StepParticle(Particle &p, const ParticleEffectDesc &effect, f32 deltaSeconds)
+static void StepParticle(Particle &p, const ParticleEffect &effect, f32 deltaSeconds)
 {
 	p.vel += deltaSeconds * effect.gravity;
-	p.vel = Max(0.0f, 1.0f - effect.drag * deltaSeconds) * p.vel;
+	p.vel = effect.dragFactor * p.vel;
 	p.pos += deltaSeconds * p.vel;
 }
 
-void SimulateParticles(Scene &scene, f32 deltaSeconds)
+void UpdateParticles(Scene &scene, f32 deltaSeconds)
 {
 	// Emission
 	const u32 particleComponentCount = scene.componentPools[ComponentType_Particles].count;
@@ -307,7 +306,7 @@ void SimulateParticles(Scene &scene, f32 deltaSeconds)
 		ParticlesComponent &particles = scene.particlesComponents[i];
 		if ( !particles.playing || !particles.effectId ) { continue; }
 
-		const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
+		const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId);
 
 		particles.elapsedTime += deltaSeconds;
 		if ( effect.duration > 0.0f && particles.elapsedTime >= effect.duration )
@@ -329,6 +328,12 @@ void SimulateParticles(Scene &scene, f32 deltaSeconds)
 		}
 	}
 
+	for (u32 e = 0; e < scene.particleEffectCount; ++e)
+	{
+		ParticleEffect &effect = scene.particleEffects[e];
+		effect.dragFactor = Exp(-effect.drag * deltaSeconds);
+	}
+
 	// Integration. Swap-remove keeps the array packed, so the draw pass is a flat walk.
 	for (u32 i = 0; i < scene.particleCount; )
 	{
@@ -344,7 +349,7 @@ void SimulateParticles(Scene &scene, f32 deltaSeconds)
 			continue;
 		}
 
-		const ParticleEffectDesc &effect = GetParticleEffect(p.effectId).desc;
+		const ParticleEffect &effect = GetParticleEffect(p.effectId);
 		StepParticle(p, effect, deltaSeconds);
 		++i;
 	}
@@ -364,7 +369,7 @@ void PlayParticles(Scene &scene, ID entityId)
 				particles.elapsedTime = 0.0f;
 				particles.emitAccum = 0.0f;
 
-				const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId).desc;
+				ParticleEffect &effect = GetParticleEffect(particles.effectId);
 
 				const bool continuous = ( effect.loop || effect.duration <= 0.0f );
 				if ( particles.prewarm && continuous && effect.rate > 0.0f )
@@ -372,6 +377,7 @@ void PlayParticles(Scene &scene, ID entityId)
 					// Past the longest lifetime everything emitted earlier is dead, so this
 					// window is the whole steady state. The burst would be dead too.
 					const u32 count = (u32)(effect.rate * effect.lifetime.max);
+					effect.dragFactor = Exp(-effect.drag * SIMULATE_SECONDS);
 					for (u32 i = 1; i <= count && scene.particleCount < MAX_PARTICLES; ++i)
 					{
 						SpawnParticle(scene, entityId, effect);
@@ -1956,8 +1962,8 @@ void CleanScene(Engine &engine)
 		RemoveSprite(scene, scene.sprites[i].desc.id);
 	}
 	for (u16 i = 0; i < scene.particleEffectCount; ++i) {
-		if ( !IsBuiltin(scene.particleEffects[i].desc.id) ) {
-			RemoveParticleEffect(scene, scene.particleEffects[i].desc.id);
+		if ( !IsBuiltin(scene.particleEffects[i].id) ) {
+			RemoveParticleEffect(scene, scene.particleEffects[i].id);
 		}
 	}
 	for (u16 i = 0; i < scene.prefabCount; ++i) {

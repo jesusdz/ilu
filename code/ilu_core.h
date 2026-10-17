@@ -218,6 +218,7 @@ extern "C"
 	float floorf(float value);
 	float log2f(float value);
 	float powf(float base, float exponent);
+	float expf(float value);
 }
 #else
 #include <math.h>
@@ -2253,6 +2254,12 @@ f32 Sqrt(f32 value)
 f32 Pow(f32 base, f32 exponent)
 {
 	const f32 res = ::powf(base, exponent);
+	return res;
+}
+
+f32 Exp(f32 value)
+{
+	const f32 res = ::expf(value);
 	return res;
 }
 
