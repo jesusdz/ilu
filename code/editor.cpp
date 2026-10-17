@@ -2055,14 +2055,36 @@ static void EditorUpdateUI_Profiler()
 	const ProfileFrame frame = ProfileGetFrame(0);
 	const f32 frameMillis = 1000.0f*SecondsFromTicks(frame.end - frame.begin);
 
-	const f32 xcenter = (f32)(frame.index % MAX_PROFILE_FRAMES) / MAX_PROFILE_FRAMES;
-	const f32 xleft = Max(0.0f, xcenter - 0.05f);
-	const f32 xright = Min(1.0f, xcenter + 0.05f);
-	const float2 a = { xleft, 0.0f };
-	const float2 b = { xright, 1.0f };
-	UI_BeginCanvas(ui);
-	UI_DrawBox(ui, a, b);
-	UI_EndCanvas(ui);
+	if ( UI_Section(ui, "Frame time") )
+	{
+		f32 samples[MAX_PROFILE_FRAMES];
+		f32 sum = 0.0f;
+		f32 minMillis = F32_MAX;
+		f32 maxMillis = F32_MIN;
+		for (u32 i = 0; i < MAX_PROFILE_FRAMES; ++i)
+		{
+			samples[i] = editor.frameMillis[(editor.frameMillisIndex + i) % MAX_PROFILE_FRAMES];
+			sum += samples[i];
+			minMillis = Min(minMillis, samples[i]);
+			maxMillis = Max(maxMillis, samples[i]);
+		}
+		const f32 average = sum / MAX_PROFILE_FRAMES;
+
+		f32 variance = 0.0f;
+		u32 hitchCount = 0;
+		for (u32 i = 0; i < MAX_PROFILE_FRAMES; ++i)
+		{
+			variance += (samples[i] - average) * (samples[i] - average);
+			hitchCount += samples[i] > 1.5f * average ? 1 : 0;
+		}
+		const f32 deviation = Sqrt(variance / MAX_PROFILE_FRAMES);
+
+		UI_Histogram(ui, samples, MAX_PROFILE_FRAMES, 2.0f * average);
+		UI_Text(ui, "Average", "%.3f ms (%.1f fps)", average, 1000.0f / average);
+		UI_Text(ui, "Min / max", "%.3f / %.3f ms", minMillis, maxMillis);
+		UI_Text(ui, "Deviation", "%.3f ms", deviation);
+		UI_Text(ui, "Hitches", "%u over 1.5x average", hitchCount);
+	}
 
 	const char *threadNames[MAX_PROFILE_THREADS] = {};
 	u32 threadNameCount = 0;
@@ -3332,6 +3354,11 @@ void EditorUpdate(Engine &engine)
 	const Gamepad &gamepad = *host.gamepad;
 	const Window &window = GetWindow();
 	Graphics &gfx = engine.gfx;
+
+#if USE_PROFILE
+	editor.frameMillis[editor.frameMillisIndex] = 1000.0f * gfx.deltaSeconds;
+	editor.frameMillisIndex = (editor.frameMillisIndex + 1) % MAX_PROFILE_FRAMES;
+#endif // USE_PROFILE
 
 	if ( KeyPress(window.keyboard, K_F5) )
 	{

@@ -223,6 +223,11 @@ struct Editor
 	EditorInspector inspector;
 	EditorSpriteSheet spriteSheet;
 
+#if USE_PROFILE
+	f32 frameMillis[MAX_PROFILE_FRAMES];
+	u32 frameMillisIndex;
+#endif // USE_PROFILE
+
 	FileNode *root;
 	FileNode *freeNodes;
 };

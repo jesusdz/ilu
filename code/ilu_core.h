@@ -190,6 +190,8 @@ CT_ASSERT(sizeof(byte) == 1);
 #define I32_MAX 2147483647
 #define U32_MIN 0
 #define U32_MAX 4294967295
+#define F32_MIN -3.402823466e+38f
+#define F32_MAX 3.402823466e+38f
 
 #if PLATFORM_WINDOWS
 CT_ASSERT(sizeof(long) == sizeof(i32));
