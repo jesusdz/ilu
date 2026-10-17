@@ -68,7 +68,7 @@ void DrawSprite(ID spriteId, float2 worldPos, float4 color)
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
-	const SpriteDesc &sprite = GetSprite(spriteId).desc;
+	const SpriteDesc &sprite = GetSprite(spriteId);
 	const Texture &texture = GetTexture(sprite.textureId);
 
 	const float2 uvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
@@ -333,7 +333,7 @@ static bool EntityIsInFrustum3D(const Entity &entity, ID spriteId, const Frustum
 
 	if (spriteId)
 	{
-		const SpriteDesc &sprite = GetSprite(spriteId).desc;
+		const SpriteDesc &sprite = GetSprite(spriteId);
 		float2 sbounds[4] = {};
 		GetSpriteBounds(sprite, sbounds);
 
@@ -385,7 +385,7 @@ static bool EntityIsInFrustum2D(const Entity &entity, ID spriteId, float2 rectMi
 
 	if (spriteId)
 	{
-		const SpriteDesc &sprite = GetSprite(spriteId).desc;
+		const SpriteDesc &sprite = GetSprite(spriteId);
 		halfSize = 0.5f * float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
 	}
 
@@ -449,7 +449,7 @@ static bool GetLayerSpriteBounds(const Layer &layer, float2 &min, float2 &size)
 					if (!spriteId) {
 						continue;
 					}
-					const SpriteDesc &sprite = GetSprite(spriteId).desc;
+					const SpriteDesc &sprite = GetSprite(spriteId);
 					const float2 tileMin = Float2(int2{chunk->x + x, chunk->y + y});
 					const float2 tileMax = tileMin + float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
 					min = any ? Min(min, tileMin) : tileMin;
@@ -772,7 +772,7 @@ bool RenderGraphics(Engine &engine)
 	// Advance animation states for animated sprites (frameCount > 1)
 	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		const SpriteDesc &sprite = scene.sprites[i].desc;
+		const SpriteDesc &sprite = scene.sprites[i];
 		if (sprite.frameCount <= 1) continue;
 		SpriteAnimState &state = scene.spriteAnimStates[i];
 		state.elapsedTime += gfx.deltaSeconds;
@@ -791,7 +791,7 @@ bool RenderGraphics(Engine &engine)
 	SSpriteData *spriteDataPtr = (SSpriteData*)GetBufferPtr(gfx.device, gfx.spriteDataBuffer[frameIndex]);
 	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		const SpriteDesc &sprite = scene.sprites[i].desc;
+		const SpriteDesc &sprite = scene.sprites[i];
 		const Texture &texture = GetTexture(sprite.textureId);
 		{
 			const float2 frameUvPos  = { (f32)sprite.pos.x / texture.size.x, (f32)sprite.pos.y / texture.size.y };
@@ -889,7 +889,7 @@ bool RenderGraphics(Engine &engine)
 							continue;
 						}
 
-						const SpriteDesc &sprite = GetSprite(spriteId).desc;
+						const SpriteDesc &sprite = GetSprite(spriteId);
 						const float2 tileSize = layerScale * float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
 						const float2 tileMin = layerOrigin + layerScale * Float2(int2{x, y});
 						const float2 tileMax = tileMin + tileSize;
@@ -1121,7 +1121,7 @@ bool RenderGraphics(Engine &engine)
 
 					const Material &material = GetMaterial(materialId);
 
-					BeginDebugGroup(commandList, material.desc.name, ColorBlack);
+					BeginDebugGroup(commandList, material.name, ColorBlack);
 
 					// Pipeline
 					SetPipeline(commandList, gfx.pipelines[material.pipelineIndex]);
@@ -1198,7 +1198,7 @@ bool RenderGraphics(Engine &engine)
 				const ID spriteId = EntitySpriteId(scene, entity.id);
 				ID textureId = {};
 				if (spriteId)
-					textureId = GetSprite(spriteId).desc.textureId;
+					textureId = GetSprite(spriteId).textureId;
 				else
 					continue;
 

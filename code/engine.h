@@ -337,7 +337,7 @@ enum AudioClipLoadSource
 };
 
 REFLEX()
-struct AudioClipDesc
+struct AudioClip
 {
 	REFLEX()
 	ID id;
@@ -356,23 +356,11 @@ struct AudioClipDesc
 	REFLEX(Bin)
 	BinLocation location;
 	AssetFlags flags;
+
+	AudioClipLoadSource loadSource;
 };
 
-REFLEX()
-struct AudioClip
-{
-	AudioClipDesc desc;
-	u32 sampleCount;
-	u32 samplingRate;
-	u16 sampleSize;
-	u16 channelCount;
-	AudioClipLoadSource loadSource;
-	union
-	{
-		BinLocation location;
-		const char *filename;
-	};
-};
+typedef AudioClip AudioClipDesc;
 
 enum AudioState
 {
@@ -404,7 +392,7 @@ enum LoadSource
 };
 
 REFLEX()
-struct MusicFileDesc
+struct MusicFile
 {
 	REFLEX()
 	ID id;
@@ -415,19 +403,11 @@ struct MusicFileDesc
 	REFLEX(Bin)
 	BinLocation location;
 	AssetFlags flags;
+
+	LoadSource loadSource;
 };
 
-REFLEX()
-struct MusicFile
-{
-	MusicFileDesc desc;
-	LoadSource loadSource;
-	union
-	{
-		BinLocation location;
-		const char *filename;
-	};
-};
+typedef MusicFile MusicFileDesc;
 
 struct Audio
 {
@@ -474,7 +454,7 @@ struct Audio
 // Textures
 
 REFLEX()
-struct TextureDesc
+struct Texture
 {
 	REFLEX()
 	ID id;
@@ -493,23 +473,20 @@ struct TextureDesc
 	REFLEX(Bin)
 	BinLocation location;
 	AssetFlags flags;
-};
 
-REFLEX()
-struct Texture
-{
-	TextureDesc desc;
 	ImageH image;
 	bool ownsImage;
 	uint2 size;
 	u64 ts;
 };
 
+typedef Texture TextureDesc;
+
 ////////////////////////////////////////////////////////////////////////
 // Materials
 
 REFLEX()
-struct MaterialDesc
+struct Material
 {
 	REFLEX()
 	ID id;
@@ -522,15 +499,12 @@ struct MaterialDesc
 	REFLEX()
 	f32 uvScale;
 	AssetFlags flags;
-};
 
-REFLEX()
-struct Material
-{
-	MaterialDesc desc;
-	u16 pipelineIndex;   // Resolved from desc.pipelineName
+	u16 pipelineIndex;   // Resolved from pipelineName
 	u32 bufferOffset;    // Derived from the element index, so it moves with compaction
 };
+
+typedef Material MaterialDesc;
 
 ////////////////////////////////////////////////////////////////////////
 // Render targets
@@ -1116,8 +1090,10 @@ struct Particle
 ////////////////////////////////////////////////////////////////////////
 // Sprites
 
+// Resolved form of the descriptor: size filled in from the texture when the desc left
+// it at zero, frameCount forced to at least one, textureId guaranteed to resolve.
 REFLEX()
-struct SpriteDesc
+struct Sprite
 {
 	REFLEX()
 	ID id;
@@ -1137,13 +1113,7 @@ struct SpriteDesc
 	u8 loop;
 };
 
-// Resolved form of the descriptor: size filled in from the texture when the desc left
-// it at zero, frameCount forced to at least one, textureId guaranteed to resolve.
-REFLEX()
-struct Sprite
-{
-	SpriteDesc desc;
-};
+typedef Sprite SpriteDesc;
 
 struct SpriteAnimState
 {

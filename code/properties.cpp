@@ -89,15 +89,15 @@ static const char *EditorObjectName(ID id)
 	switch ( GetIDType(id) )
 	{
 		case ReflexID_Entity:         return GetEntity(id).name;
-		case ReflexID_Texture:        return GetTexture(id).desc.name;
-		case ReflexID_Material:       return GetMaterial(id).desc.name;
-		case ReflexID_Sprite:         return GetSprite(id).desc.name;
+		case ReflexID_Texture:        return GetTexture(id).name;
+		case ReflexID_Material:       return GetMaterial(id).name;
+		case ReflexID_Sprite:         return GetSprite(id).name;
 		case ReflexID_ParticleEffect: return GetParticleEffect(id).name;
 		case ReflexID_Layer:          return GetLayer(id).name;
 		case ReflexID_Room:           return GetRoom(id).name;
 		case ReflexID_Prefab:         return GetPrefab(id).name;
-		case ReflexID_AudioClip:      return GetAudioClip(id).desc.name;
-		case ReflexID_MusicFile:      return GetMusicFile(id).desc.name;
+		case ReflexID_AudioClip:      return GetAudioClip(id).name;
+		case ReflexID_MusicFile:      return GetMusicFile(id).name;
 		default:;
 	}
 

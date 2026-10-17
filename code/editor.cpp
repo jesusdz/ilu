@@ -631,7 +631,7 @@ static void EditorRepointSpritesToDefaultTexture(Engine &engine, ID textureId)
 	Scene &scene = engine.scene;
 	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		SpriteDesc &sprite = scene.sprites[i].desc;
+		SpriteDesc &sprite = scene.sprites[i];
 		if ( !Valid(sprite.textureId) )// == textureId )
 		{
 			LOG(Warning, "Sprite <%s> lost the texture it refers to, falling back to the default one.\n", sprite.name);
@@ -975,7 +975,7 @@ static void EditorUpdateUI_Outliner()
 
 		for (u32 i = 0; i < scene.spriteCount; ++i)
 		{
-			const SpriteDesc &sprite = scene.sprites[i].desc;
+			const SpriteDesc &sprite = scene.sprites[i];
 			const ID spriteId = sprite.id;
 			const Texture &texture = GetTexture(sprite.textureId);
 			const UIWidgetFlags flags = selectedSprite == spriteId ? UIWidgetFlag_Outline : UIWidgetFlag_None;
@@ -1052,7 +1052,7 @@ static void EditorUpdateUI_Outliner()
 	{
 		for (u32 i = 0; i < gfx.materialCount; ++i)
 		{
-			const MaterialDesc &desc = gfx.materials[i].desc;
+			const MaterialDesc &desc = gfx.materials[i];
 
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectMaterial(desc.id);
@@ -1071,7 +1071,7 @@ static void EditorUpdateUI_Outliner()
 		for (u16 i = 0; i < gfx.textureCount; ++i)
 		{
 			const Texture &texture = gfx.textures[i];
-			const TextureDesc &desc = texture.desc;
+			const TextureDesc &desc = texture;
 
 			if ( (desc.flags & AssetFlag_Ghost) && !(desc.flags & AssetFlag_Builtin) ) { continue; }
 
@@ -1095,7 +1095,7 @@ static void EditorUpdateUI_Outliner()
 	{
 		for (u32 i = 0; i < audio.clipCount; ++i)
 		{
-			const AudioClipDesc &desc = audio.clips[i].desc;
+			const AudioClipDesc &desc = audio.clips[i];
 
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectAudioClip(desc.id);
@@ -1109,7 +1109,7 @@ static void EditorUpdateUI_Outliner()
 	{
 		for (u32 i = 0; i < audio.musicFileCount; ++i)
 		{
-			const MusicFileDesc &desc = audio.musicFiles[i].desc;
+			const MusicFileDesc &desc = audio.musicFiles[i];
 
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectMusic(desc.id);
@@ -1264,7 +1264,7 @@ static void EditorUpdateUI_SpriteSheet()
 		for (u16 i = 0; i < gfx.textureCount; ++i)
 		{
 			const Texture &texture = gfx.textures[i];
-			const TextureDesc &desc = texture.desc;
+			const TextureDesc &desc = texture;
 			const ID textureId = desc.id;
 			if ( desc.flags & AssetFlag_Ghost ) {
 				continue;
@@ -1286,14 +1286,14 @@ static void EditorUpdateUI_SpriteSheet()
 
 		UI_SeparatorLabel(ui, "Texture");
 
-		UI_Text(ui, "Name", "%s", texture.desc.name);
+		UI_Text(ui, "Name", "%s", texture.name);
 		UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
 
 		UI_SeparatorLabel(ui, "Sprite sheet");
 		{
 			u32 sheetSpriteCount = 0;
 			for (u32 i = 0; i < scene.spriteCount; ++i) {
-				if ( scene.sprites[i].desc.textureId == sheet.textureId ) {
+				if ( scene.sprites[i].textureId == sheet.textureId ) {
 					sheetSpriteCount++;
 				}
 			}
@@ -1367,7 +1367,7 @@ static void EditorUpdateUI_SpriteSheet()
 				{
 					if ( FindSprite(scene, sheet.textureId, spriteRelPos, spriteSize) )
 					{
-						LOG(Warning, "A sprite already covers that region of %s.\n", texture.desc.name);
+						LOG(Warning, "A sprite already covers that region of %s.\n", texture.name);
 					}
 					else if ( scene.spriteCount >= MAX_SPRITES )
 					{
@@ -1376,8 +1376,8 @@ static void EditorUpdateUI_SpriteSheet()
 					else
 					{
 						const SpriteDesc desc = {
-							.name = EditorMakeSpriteName(texture.desc.name),
-							.textureId = texture.desc.id,
+							.name = EditorMakeSpriteName(texture.name),
+							.textureId = texture.id,
 							.pos = spriteRelPos,
 							.size = spriteSize,
 						};
@@ -1775,7 +1775,7 @@ static void EditorUpdateUI_Inspector()
 		{
 			if (inspector.selected.id)
 			{
-				MaterialDesc &desc = GetMaterial(inspector.selected.id).desc;
+				MaterialDesc &desc = GetMaterial(inspector.selected.id);
 
 				static char name[64];
 				StrCopy(name, desc.name);
@@ -1794,7 +1794,7 @@ static void EditorUpdateUI_Inspector()
 				// A material outlives the texture it names, and drawing it pink is the point,
 				// so the row reads as empty rather than resolving one
 				const Texture *texture = desc.textureId ? &GetTexture(desc.textureId) : nullptr;
-				UI_Text(ui, "Name", "%s", texture ? texture->desc.name : "<none>");
+				UI_Text(ui, "Name", "%s", texture ? texture->name : "<none>");
 				if ( UI_DragAndDropTarget(ui, ReflexGetTypeName(ReflexID_Texture)) )
 				{
 					const ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
@@ -1818,7 +1818,7 @@ static void EditorUpdateUI_Inspector()
 			if (inspector.selected.id)
 			{
 				const Texture &texture = GetTexture(inspector.selected.id);
-				UI_Text(ui, "Name", "%s", texture.desc.name);
+				UI_Text(ui, "Name", "%s", texture.name);
 				UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
 
 				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.id, engine.gfx.grayImageH);
@@ -1863,7 +1863,7 @@ static void EditorUpdateUI_Inspector()
 		{
 			if (inspector.selected.id)
 			{
-				SpriteDesc &sprite = GetSprite(inspector.selected.id).desc;
+				SpriteDesc &sprite = GetSprite(inspector.selected.id);
 
 				static char name[64];
 				StrCopy(name, sprite.name);
@@ -1893,7 +1893,7 @@ static void EditorUpdateUI_Inspector()
 						.xy = Float2(sprite.pos)/Float2(texture.size) + float2{xoff, 0.0f},
 						.zw = Float2(sprite.size)/Float2(texture.size),
 					};
-					UI_Text(ui, "Texture", texture.desc.name);
+					UI_Text(ui, "Texture", texture.name);
 					if ( UI_DragAndDropTarget(ui, ReflexGetTypeName(ReflexID_Texture)) )
 					{
 						ID droppedId = { UI_DragAndDropPayload(ui).uvalue };
@@ -2243,7 +2243,7 @@ static void EditorUpdateUI_DragAndDropLost()
 		{
 			const Texture &texture = GetTexture(textureId);
 			const SpriteDesc spriteDesc = {
-				.name = EditorMakeSpriteName(texture.desc.name),
+				.name = EditorMakeSpriteName(texture.name),
 				.textureId = textureId,
 				.pos = { 0, 0 },
 				.size = texture.size,

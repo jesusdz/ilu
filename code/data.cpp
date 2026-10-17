@@ -344,7 +344,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Texture %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteStruct(ctx, *ReflexGetStruct(ReflexID_TextureDesc), &desc);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_Texture), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -360,7 +360,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Sprite %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteStruct(ctx, *ReflexGetStruct(ReflexID_SpriteDesc), &desc);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_Sprite), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -376,7 +376,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Material %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteStruct(ctx, *ReflexGetStruct(ReflexID_MaterialDesc), &desc);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_Material), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -521,7 +521,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "AudioClip %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteStruct(ctx, *ReflexGetStruct(ReflexID_AudioClipDesc), &desc);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_AudioClip), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -537,7 +537,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "MusicFile %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteStruct(ctx, *ReflexGetStruct(ReflexID_MusicFileDesc), &desc);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_MusicFile), &desc);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -1485,7 +1485,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_TextureDesc), &desc );
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_Texture), &desc );
 
 			// Material
 			} else if ( StrEq(type, sMaterialStr) ) {
@@ -1497,7 +1497,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_MaterialDesc), &desc );
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_Material), &desc );
 
 			// Sprite
 			} else if ( StrEq(type, sSpriteStr) ) {
@@ -1509,7 +1509,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_SpriteDesc), &desc );
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_Sprite), &desc );
 
 			// ParticleEffect
 			} else if ( StrEq(type, sParticleEffectStr) ) {
@@ -1608,7 +1608,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_AudioClipDesc), &desc );
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_AudioClip), &desc );
 
 			// MusicFile
 			} else if ( StrEq(type, sMusicFileStr) ) {
@@ -1620,7 +1620,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				const String name = DParser_ConsumeLexeme( parser );
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_MusicFileDesc), &desc );
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_MusicFile), &desc );
 
 			// Unknown
 			} else {
@@ -1939,31 +1939,31 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		const u32 shadersOffset = PostIncrement(&offset, shadersSize);
 
 		const u32 imageCount = descriptors.textureDescCount;
-		const ReflexStruct &textureType = *ReflexGetStruct(ReflexID_TextureDesc);
+		const ReflexStruct &textureType = *ReflexGetStruct(ReflexID_Texture);
 		const u32 imageStride = DataPackedSize(textureType);
 		const u32 imagesSize = imageCount * imageStride;
 		const u32 imagesOffset = PostIncrement(&offset, imagesSize);
 
 		const u32 audioClipCount = descriptors.audioClipDescCount;
-		const ReflexStruct &audioClipType = *ReflexGetStruct(ReflexID_AudioClipDesc);
+		const ReflexStruct &audioClipType = *ReflexGetStruct(ReflexID_AudioClip);
 		const u32 audioClipStride = DataPackedSize(audioClipType);
 		const u32 audioClipsSize = audioClipCount * audioClipStride;
 		const u32 audioClipsOffset = PostIncrement(&offset, audioClipsSize);
 
 		const u32 musicFileCount = descriptors.musicFileDescCount;
-		const ReflexStruct &musicFileType = *ReflexGetStruct(ReflexID_MusicFileDesc);
+		const ReflexStruct &musicFileType = *ReflexGetStruct(ReflexID_MusicFile);
 		const u32 musicFileStride = DataPackedSize(musicFileType);
 		const u32 musicFilesSize = musicFileCount * musicFileStride;
 		const u32 musicFilesOffset = PostIncrement(&offset, musicFilesSize);
 
 		const u32 materialCount = descriptors.materialDescCount;
-		const ReflexStruct &materialType = *ReflexGetStruct(ReflexID_MaterialDesc);
+		const ReflexStruct &materialType = *ReflexGetStruct(ReflexID_Material);
 		const u32 materialStride = DataPackedSize(materialType);
 		const u32 materialsSize = materialCount * materialStride;
 		const u32 materialsOffset = PostIncrement(&offset, materialsSize);
 
 		const u32 spriteCount = descriptors.spriteDescCount;
-		const ReflexStruct &spriteType = *ReflexGetStruct(ReflexID_SpriteDesc);
+		const ReflexStruct &spriteType = *ReflexGetStruct(ReflexID_Sprite);
 		const u32 spriteStride = DataPackedSize(spriteType);
 		const u32 spritesSize = spriteCount * spriteStride;
 		const u32 spritesOffset = PostIncrement(&offset, spritesSize);
@@ -2342,7 +2342,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 
 	// Images
 	assets.images = (TextureDesc*)DataReadPackedArray(
-		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_TextureDesc), assets.header.imagesOffset, assets.header.imageCount);
+		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_Texture), assets.header.imagesOffset, assets.header.imageCount);
 	for (u32 i = 0; i < assets.header.imageCount; ++i)
 	{
 		assets.images[i].flags = AssetFlag_Bin;
@@ -2350,7 +2350,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 
 	// AudioClips
 	assets.audioClips = (AudioClipDesc*)DataReadPackedArray(
-		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_AudioClipDesc), assets.header.audioClipsOffset, assets.header.audioClipCount);
+		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_AudioClip), assets.header.audioClipsOffset, assets.header.audioClipCount);
 	for (u32 i = 0; i < assets.header.audioClipCount; ++i)
 	{
 		assets.audioClips[i].flags = AssetFlag_Bin;
@@ -2358,7 +2358,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 
 	// MusicFiles
 	assets.musicFiles = (MusicFileDesc*)DataReadPackedArray(
-		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_MusicFileDesc), assets.header.musicFilesOffset, assets.header.musicFileCount);
+		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_MusicFile), assets.header.musicFilesOffset, assets.header.musicFileCount);
 	for (u32 i = 0; i < assets.header.musicFileCount; ++i)
 	{
 		assets.musicFiles[i].flags = AssetFlag_Bin;
@@ -2366,13 +2366,13 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 
 	// Materials
 	assets.materials = (MaterialDesc*)DataReadPackedArray(
-		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_MaterialDesc), assets.header.materialsOffset, assets.header.materialCount);
+		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_Material), assets.header.materialsOffset, assets.header.materialCount);
 
 	// Sprites
 	if (assets.header.spriteCount > 0)
 	{
 		assets.sprites = (SpriteDesc*)DataReadPackedArray(
-			dataArena, file, stringPool, *ReflexGetStruct(ReflexID_SpriteDesc), assets.header.spritesOffset, assets.header.spriteCount);
+			dataArena, file, stringPool, *ReflexGetStruct(ReflexID_Sprite), assets.header.spritesOffset, assets.header.spriteCount);
 	}
 
 	// ParticleEffects
@@ -2456,8 +2456,8 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	u32 textureCount = 0;
 	for (u16 i = 0; i < engine.gfx.textureCount; ++i) {
 		const Texture &texture = engine.gfx.textures[i];
-		if ( !texture.desc.id ) { continue; }
-		textureDescs[textureCount] = texture.desc;
+		if ( !texture.id ) { continue; }
+		textureDescs[textureCount] = texture;
 		if ( !( textureDescs[textureCount].flags & AssetFlag_Ghost ) ) {
 			textureCount++;
 		}
@@ -2467,16 +2467,16 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	u32 spriteCount = 0;
 	for (u16 i = 0; i < engine.scene.spriteCount; ++i) {
 		const Sprite &sprite = engine.scene.sprites[i];
-		if ( !sprite.desc.id ) { continue; }
-		spriteDescs[spriteCount++] = sprite.desc;
+		if ( !sprite.id ) { continue; }
+		spriteDescs[spriteCount++] = sprite;
 	}
 
 	static MaterialDesc materialDescs[MAX_MATERIALS];
 	u32 materialCount = 0;
 	for (u16 i = 0; i < engine.gfx.materialCount; ++i) {
 		const Material &material = engine.gfx.materials[i];
-		if ( !material.desc.id ) { continue; }
-		materialDescs[materialCount] = material.desc;
+		if ( !material.id ) { continue; }
+		materialDescs[materialCount] = material;
 		if ( !( materialDescs[materialCount].flags & AssetFlag_Ghost ) ) {
 			materialCount++;
 		}
@@ -2561,7 +2561,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	static AudioClipDesc audioClipDescs[MAX_AUDIO_CLIPS];
 	u32 audioClipCount = 0;
 	for (u16 i = 0; i < engine.audio.clipCount; ++i) {
-		const AudioClipDesc &desc = engine.audio.clips[i].desc;
+		const AudioClipDesc &desc = engine.audio.clips[i];
 		if ( !desc.id ) { continue; }
 		audioClipDescs[audioClipCount] = desc;
 		if ( !( desc.flags & AssetFlag_Ghost ) ) {
@@ -2572,7 +2572,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	static MusicFileDesc musicFileDescs[MAX_MUSIC_FILES];
 	u32 musicFileCount = 0;
 	for (u16 i = 0; i < engine.audio.musicFileCount; ++i) {
-		const MusicFileDesc &desc = engine.audio.musicFiles[i].desc;
+		const MusicFileDesc &desc = engine.audio.musicFiles[i];
 		if ( !desc.id ) { continue; }
 		musicFileDescs[musicFileCount] = desc;
 		if ( !( desc.flags & AssetFlag_Ghost ) ) {

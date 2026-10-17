@@ -106,11 +106,10 @@ static Sprite *PushSprite(Scene &scene, const SpriteDesc &desc)
 
 	const u16 index = (u16)scene.spriteCount++;
 	Sprite &sprite = scene.sprites[index];
-	sprite = {};
-	sprite.desc = desc;
+	sprite = desc;
 	scene.spriteAnimStates[index] = {}; // The element held another sprite's animation before
 
-	BindID(&sprite.desc.id, &sprite, ReflexID_Sprite);
+	BindID(&sprite.id, &sprite, ReflexID_Sprite);
 
 	return &sprite;
 }
@@ -124,27 +123,27 @@ ID CreateSprite(Engine &engine, const SpriteDesc &desc)
 		return {};
 	}
 
-	sprite->desc.frameCount = desc.frameCount > 0 ? desc.frameCount : 1;
+	sprite->frameCount = desc.frameCount > 0 ? desc.frameCount : 1;
 
-	if ( !Valid(sprite->desc.textureId) )
+	if ( !Valid(sprite->textureId) )
 	{
 		LOG(Warning, "Sprite <%s> refers to texture ID %u, which does not exist.\n", desc.name, desc.textureId.slot);
-		sprite->desc.textureId = gfx.defaultTexture;
+		sprite->textureId = gfx.defaultTexture;
 	}
 
-	const Texture &tex = GetTexture(sprite->desc.textureId);
+	const Texture &tex = GetTexture(sprite->textureId);
 	if ( desc.size.x == 0 && desc.size.y == 0 ) {
-		sprite->desc.size = tex.size;
+		sprite->size = tex.size;
 	}
 
-	return sprite->desc.id;
+	return sprite->id;
 }
 
 ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size)
 {
 	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		const SpriteDesc &desc = scene.sprites[i].desc;
+		const SpriteDesc &desc = scene.sprites[i];
 		if (desc.textureId == textureId &&
 			desc.pos.x == pos.x && desc.pos.y == pos.y &&
 			desc.size.x == size.x && desc.size.y == size.y) return desc.id;
@@ -164,7 +163,7 @@ void RemoveSprite(Scene &scene, ID id)
 {
 	if ( IsBuiltin(id) )
 	{
-		LOG(Warning, "Ignoring an attempt to remove builtin sprite <%s>.\n", GetSprite(id).desc.name);
+		LOG(Warning, "Ignoring an attempt to remove builtin sprite <%s>.\n", GetSprite(id).name);
 		return;
 	}
 
@@ -172,7 +171,7 @@ void RemoveSprite(Scene &scene, ID id)
 	{
 		// Marks only. The sprite keeps its element until CompactSprites, so the tiles
 		// and entities still drawing it this frame have something valid to read.
-		GetSprite(id).desc.id = {};
+		GetSprite(id).id = {};
 		Invalidate(id);
 	}
 }
@@ -185,7 +184,7 @@ static COMPACT_MOVE(MoveSprite)
 
 void CompactSprites(Scene &scene)
 {
-	COMPACT_ARRAY_BY_ID(Sprite, scene.sprites, scene.spriteCount, desc.id,
+	COMPACT_ARRAY_BY_ID(Sprite, scene.sprites, scene.spriteCount, id,
 			MoveSprite, nullptr, &scene);
 }
 
@@ -1943,13 +1942,13 @@ void CleanScene(Engine &engine)
 
 	// Mark everything the scene owns
 	for (u16 i = 0; i < gfx.textureCount; ++i) {
-		if ( !(gfx.textures[i].desc.flags & AssetFlag_Builtin) ) {
-			RemoveTexture(gfx, gfx.textures[i].desc.id);
+		if ( !(gfx.textures[i].flags & AssetFlag_Builtin) ) {
+			RemoveTexture(gfx, gfx.textures[i].id);
 		}
 	}
 	for (u16 i = 0; i < gfx.materialCount; ++i) {
-		if ( !(gfx.materials[i].desc.flags & AssetFlag_Builtin) ) {
-			RemoveMaterial(gfx, gfx.materials[i].desc.id);
+		if ( !(gfx.materials[i].flags & AssetFlag_Builtin) ) {
+			RemoveMaterial(gfx, gfx.materials[i].id);
 		}
 	}
 	for (u16 i = 0; i < scene.roomCount; ++i) {
@@ -1959,7 +1958,7 @@ void CleanScene(Engine &engine)
 		RemoveEntity(engine, scene.entities[i].id);
 	}
 	for (u16 i = 0; i < scene.spriteCount; ++i) {
-		RemoveSprite(scene, scene.sprites[i].desc.id);
+		RemoveSprite(scene, scene.sprites[i].id);
 	}
 	for (u16 i = 0; i < scene.particleEffectCount; ++i) {
 		if ( !IsBuiltin(scene.particleEffects[i].id) ) {
@@ -1970,10 +1969,10 @@ void CleanScene(Engine &engine)
 		RemovePrefab(scene, scene.prefabs[i].id);
 	}
 	for (u16 i = 0; i < audio.clipCount; ++i) {
-		RemoveAudioClip(audio.clips[i].desc.id);
+		RemoveAudioClip(audio.clips[i].id);
 	}
 	for (u32 i = 0; i < audio.musicFileCount; ++i) {
-		DestroyMusicFile(audio.musicFiles[i].desc.id);
+		DestroyMusicFile(audio.musicFiles[i].id);
 	}
 
 	// Compaction after removal

@@ -415,10 +415,9 @@ static AudioClip *PushAudioClip(Audio &audio, const AudioClipDesc &desc)
 	}
 
 	AudioClip &audioClip = audio.clips[audio.clipCount++];
-	audioClip = {};
-	audioClip.desc = desc;
+	audioClip = desc;
 
-	BindID(&audioClip.desc.id, &audioClip, ReflexID_AudioClip);
+	BindID(&audioClip.id, &audioClip, ReflexID_AudioClip);
 
 	return &audioClip;
 }
@@ -433,26 +432,21 @@ ID CreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc)
 
 	if ( audioClipDesc.flags & AssetFlag_Bin )
 	{
-		audioClip->sampleSize = audioClipDesc.sampleSize;
-		audioClip->samplingRate = audioClipDesc.samplingRate;
-		audioClip->channelCount = audioClipDesc.channelCount;
-		audioClip->sampleCount = audioClipDesc.sampleCount;
 		audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_ASSETS;
-		audioClip->location = audioClipDesc.location;
 	}
 	else
 	{
 		if ( !LoadAudioClipFromWAVFile(audioClipDesc.filename, *audioClip) )
 		{
 			LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
-			RemoveAudioClip(audioClip->desc.id);
+			RemoveAudioClip(audioClip->id);
 			return {};
 		}
 
 		audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_WAV;
 	}
 
-	return audioClip->desc.id;
+	return audioClip->id;
 }
 
 ID GetOrCreateAudioClip(Audio &audio, const AudioClipDesc &desc)
@@ -460,7 +454,7 @@ ID GetOrCreateAudioClip(Audio &audio, const AudioClipDesc &desc)
 	ID id = {};
 	for (u32 i = 0; i < audio.clipCount; ++i)
 	{
-		const AudioClipDesc &clipDesc = audio.clips[i].desc;
+		const AudioClipDesc &clipDesc = audio.clips[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, clipDesc.name)) {
 			id = clipDesc.id;
 			break;
@@ -480,7 +474,7 @@ void RemoveAudioClip(ID id)
 	{
 		// Marks only. The clip keeps its samples until CompactAudio, which runs on the
 		// mixing thread, so anything mid-playback still has something valid to read.
-		GetAudioClip(id).desc.id = {};
+		GetAudioClip(id).id = {};
 		Invalidate(id);
 	}
 }
@@ -495,9 +489,9 @@ void RemoveAudioClip(ID id)
 // PreRenderAudio runs on the main one, so the two can overlap there.
 void CompactAudio(Audio &audio)
 {
-	COMPACT_ARRAY_BY_ID(AudioClip, audio.clips, audio.clipCount, desc.id, nullptr, nullptr, nullptr);
+	COMPACT_ARRAY_BY_ID(AudioClip, audio.clips, audio.clipCount, id, nullptr, nullptr, nullptr);
 
-	COMPACT_ARRAY_BY_ID(MusicFile, audio.musicFiles, audio.musicFileCount, desc.id, nullptr, nullptr, nullptr);
+	COMPACT_ARRAY_BY_ID(MusicFile, audio.musicFiles, audio.musicFileCount, id, nullptr, nullptr, nullptr);
 }
 
 #define INVALID_AUDIO_CLIP U32_MAX
@@ -863,10 +857,9 @@ static MusicFile *PushMusicFile(Audio &audio, const MusicFileDesc &desc)
 	}
 
 	MusicFile &musicFile = audio.musicFiles[audio.musicFileCount++];
-	musicFile = {};
-	musicFile.desc = desc;
+	musicFile = desc;
 
-	BindID(&musicFile.desc.id, &musicFile, ReflexID_MusicFile);
+	BindID(&musicFile.id, &musicFile, ReflexID_MusicFile);
 
 	return &musicFile;
 }
@@ -882,15 +875,13 @@ ID CreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc)
 	if ( musicFileDesc.flags & AssetFlag_Bin )
 	{
 		musicFile->loadSource = LOAD_SOURCE_ASSET_FILE;
-		musicFile->location = musicFileDesc.location;
 	}
 	else
 	{
 		musicFile->loadSource = LOAD_SOURCE_MOD_FILE;
-		musicFile->filename = musicFileDesc.filename;
 	}
 
-	return musicFile->desc.id;
+	return musicFile->id;
 }
 
 ID GetOrCreateMusicFile(Audio &audio, const MusicFileDesc &desc)
@@ -898,7 +889,7 @@ ID GetOrCreateMusicFile(Audio &audio, const MusicFileDesc &desc)
 	ID id = {};
 	for (u32 i = 0; i < audio.musicFileCount; ++i)
 	{
-		const MusicFileDesc &musicDesc = audio.musicFiles[i].desc;
+		const MusicFileDesc &musicDesc = audio.musicFiles[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, musicDesc.name)) {
 			id = musicDesc.id;
 			break;
@@ -917,7 +908,7 @@ void DestroyMusicFile(ID id)
 	if ( id )
 	{
 		// Marks only, see RemoveAudioClip
-		GetMusicFile(id).desc.id = {};
+		GetMusicFile(id).id = {};
 		Invalidate(id);
 	}
 }

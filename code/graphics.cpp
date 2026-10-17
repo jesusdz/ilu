@@ -440,11 +440,16 @@ static Texture *PushTexture(Graphics &gfx, const TextureDesc &desc)
 		return nullptr;
 	}
 
-	Texture &texture = gfx.textures[gfx.textureCount++];
-	texture = {};
-	texture.desc = desc;
+	if ( IsValid(desc.image) )
+	{
+		LOG(Warning, "Could not create texture <%s>, duplicating an existing texture is not supported.\n", desc.name);
+		return nullptr;
+	}
 
-	BindID(&texture.desc.id, &texture, ReflexID_Texture);
+	Texture &texture = gfx.textures[gfx.textureCount++];
+	texture = desc;
+
+	BindID(&texture.id, &texture, ReflexID_Texture);
 
 	return &texture;
 }
@@ -458,11 +463,12 @@ ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH)
 
 	texture->image = imageH;
 	texture->ownsImage = false;
+	texture->ts = 0;
 
 	const Image &image = GetImageConst(gfx.device, imageH);
 	texture->size = { image.width, image.height };
 
-	return texture->desc.id;
+	return texture->id;
 }
 
 ID CreateTexture(Graphics &gfx, const TextureDesc &desc)
@@ -522,7 +528,7 @@ ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 	for (u16 i = 0; i < gfx.textureCount; ++i)
 	{
 		const Texture &texture = gfx.textures[i];
-		const TextureDesc &desc = texture.desc;
+		const TextureDesc &desc = texture;
 		if ( desc.flags & AssetFlag_Bin ) { continue; }
 		const FilePath imagePath2 = MakePath(AssetDir, desc.filename);
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(imagePath.str, imagePath2.str)) {
@@ -554,7 +560,7 @@ void RemoveTexture(Graphics &gfx, ID id)
 {
 	if ( IsBuiltin(id) )
 	{
-		LOG(Warning, "Ignoring an attempt to remove builtin texture <%s>.\n", GetTexture(id).desc.name);
+		LOG(Warning, "Ignoring an attempt to remove builtin texture <%s>.\n", GetTexture(id).name);
 		return;
 	}
 
@@ -562,7 +568,7 @@ void RemoveTexture(Graphics &gfx, ID id)
 	{
 		// Marks only. The texture keeps its image until CompactTextures, so anything
 		// still drawing with it this frame has something valid to sample.
-		GetTexture(id).desc.id = {};
+		GetTexture(id).id = {};
 		Invalidate(id);
 	}
 }
@@ -581,7 +587,7 @@ static COMPACT_REMOVE(RemoveTextureImage)
 
 void CompactTextures(Graphics &gfx)
 {
-	if ( COMPACT_ARRAY_BY_ID(Texture, gfx.textures, gfx.textureCount, desc.id, nullptr, RemoveTextureImage, &gfx) )
+	if ( COMPACT_ARRAY_BY_ID(Texture, gfx.textures, gfx.textureCount, id, nullptr, RemoveTextureImage, &gfx) )
 	{
 		gfx.shouldUpdateMaterialBindGroups = true;
 	}
@@ -589,7 +595,7 @@ void CompactTextures(Graphics &gfx)
 
 static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
 {
-	const TextureDesc &desc = texture.desc;
+	const TextureDesc &desc = texture;
 
 	if ( !desc.id ) { return; }
 
@@ -676,11 +682,10 @@ static Material *PushMaterial(Graphics &gfx, const MaterialDesc &desc)
 
 	const u16 index = (u16)gfx.materialCount++;
 	Material &material = gfx.materials[index];
-	material = {};
-	material.desc = desc;
+	material = desc;
 	material.bufferOffset = MaterialBufferOffset(gfx, index);
 
-	BindID(&material.desc.id, &material, ReflexID_Material);
+	BindID(&material.id, &material, ReflexID_Material);
 
 	return &material;
 }
@@ -700,7 +705,7 @@ ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 		material->pipelineIndex = (u16)Pipeline_Shading;
 		// The name is what gets saved, so put the fallback there too rather than write
 		// the broken one back out
-		material->desc.pipelineName = GetPipelineName(material->pipelineIndex);
+		material->pipelineName = GetPipelineName(material->pipelineIndex);
 	}
 	else
 	{
@@ -709,9 +714,9 @@ ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 
 	gfx.shouldUpdateMaterials = true;
 
-	CreateMaterialBindGroup(gfx, material->desc.id);
+	CreateMaterialBindGroup(gfx, material->id);
 
-	return material->desc.id;
+	return material->id;
 }
 
 ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc)
@@ -719,7 +724,7 @@ ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 	ID id = {};
 	for (u32 i = 0; i < gfx.materialCount; ++i)
 	{
-		const MaterialDesc &materialDesc = gfx.materials[i].desc;
+		const MaterialDesc &materialDesc = gfx.materials[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, materialDesc.name)) {
 			id = materialDesc.id;
 			break;
@@ -737,7 +742,7 @@ void RemoveMaterial(Graphics &gfx, ID id)
 {
 	if ( IsBuiltin(id) )
 	{
-		LOG(Warning, "Ignoring an attempt to remove builtin material <%s>.\n", GetMaterial(id).desc.name);
+		LOG(Warning, "Ignoring an attempt to remove builtin material <%s>.\n", GetMaterial(id).name);
 		return;
 	}
 
@@ -746,7 +751,7 @@ void RemoveMaterial(Graphics &gfx, ID id)
 		// Marks only. The material keeps its slot in the uniform buffer and its bind
 		// group until CompactMaterials, so anything still drawing with it this frame
 		// has something valid to bind.
-		GetMaterial(id).desc.id = {};
+		GetMaterial(id).id = {};
 		Invalidate(id);
 	}
 }
@@ -769,7 +774,7 @@ static COMPACT_MOVE(MoveMaterial)
 
 void CompactMaterials(Graphics &gfx)
 {
-	if ( COMPACT_ARRAY_BY_ID(Material, gfx.materials, gfx.materialCount, desc.id, MoveMaterial, nullptr, &gfx) )
+	if ( COMPACT_ARRAY_BY_ID(Material, gfx.materials, gfx.materialCount, id, MoveMaterial, nullptr, &gfx) )
 	{
 		gfx.shouldUpdateMaterials = true;          // re-upload at the new offsets
 		gfx.shouldUpdateMaterialBindGroups = true; // re-point the bind groups at them
@@ -1900,7 +1905,7 @@ BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)
 {
 	const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[material.pipelineIndex]);
 	const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[BIND_GROUP_MATERIAL];
-	const ImageH &albedoImage = GetTextureImage(gfx, material.desc.textureId, gfx.pinkImageH );
+	const ImageH &albedoImage = GetTextureImage(gfx, material.textureId, gfx.pinkImageH );
 
 	const BindGroupDesc bindGroupDesc = {
 		.layout = bindGroupLayout,
@@ -1930,7 +1935,7 @@ void UploadMaterialData(Graphics &gfx)
 	for (u32 i = 0; i < gfx.materialCount; ++i)
 	{
 		const Material &material = gfx.materials[i];
-		SMaterial shaderMaterial = { material.desc.uvScale };
+		SMaterial shaderMaterial = { material.uvScale };
 		StagedData staged = StageData(gfx, &shaderMaterial, sizeof(shaderMaterial));
 
 		CopyBufferToBuffer(commandList, staged.buffer, staged.offset, gfx.materialBuffer, material.bufferOffset, sizeof(shaderMaterial));
@@ -1952,7 +1957,7 @@ void CreateMaterialBindGroups(Graphics &gfx)
 	// BindGroups for materials
 	for (u32 i = 0; i < gfx.materialCount; ++i)
 	{
-		CreateMaterialBindGroup(gfx, gfx.materials[i].desc.id);
+		CreateMaterialBindGroup(gfx, gfx.materials[i].id);
 	}
 }
 
