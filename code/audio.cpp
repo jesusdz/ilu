@@ -406,7 +406,7 @@ AudioClip &GetAudioClip(ID id)
 }
 
 // Appends an audio clip and gives it its ID. Null when the array is full.
-static AudioClip *PushAudioClip(Audio &audio, const AudioClipDesc &desc)
+static AudioClip *PushAudioClip(Audio &audio, const AudioClip &desc)
 {
 	if ( audio.clipCount == MAX_AUDIO_CLIPS )
 	{
@@ -422,7 +422,7 @@ static AudioClip *PushAudioClip(Audio &audio, const AudioClipDesc &desc)
 	return &audioClip;
 }
 
-ID CreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc)
+ID CreateAudioClip(Audio &audio, const AudioClip &audioClipDesc)
 {
 	AudioClip *audioClip = PushAudioClip(audio, audioClipDesc);
 	if ( !audioClip ) {
@@ -449,12 +449,12 @@ ID CreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc)
 	return audioClip->id;
 }
 
-ID GetOrCreateAudioClip(Audio &audio, const AudioClipDesc &desc)
+ID GetOrCreateAudioClip(Audio &audio, const AudioClip &desc)
 {
 	ID id = {};
 	for (u32 i = 0; i < audio.clipCount; ++i)
 	{
-		const AudioClipDesc &clipDesc = audio.clips[i];
+		const AudioClip &clipDesc = audio.clips[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, clipDesc.name)) {
 			id = clipDesc.id;
 			break;
@@ -848,7 +848,7 @@ MusicFile &GetMusicFile(ID id)
 }
 
 // Appends a music file and gives it its ID. Null when the array is full.
-static MusicFile *PushMusicFile(Audio &audio, const MusicFileDesc &desc)
+static MusicFile *PushMusicFile(Audio &audio, const MusicFile &desc)
 {
 	if ( audio.musicFileCount == MAX_MUSIC_FILES )
 	{
@@ -864,7 +864,7 @@ static MusicFile *PushMusicFile(Audio &audio, const MusicFileDesc &desc)
 	return &musicFile;
 }
 
-ID CreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc)
+ID CreateMusicFile(Audio &audio, const MusicFile &musicFileDesc)
 {
 	MusicFile *musicFile = PushMusicFile(audio, musicFileDesc);
 	if ( !musicFile ) {
@@ -884,12 +884,12 @@ ID CreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc)
 	return musicFile->id;
 }
 
-ID GetOrCreateMusicFile(Audio &audio, const MusicFileDesc &desc)
+ID GetOrCreateMusicFile(Audio &audio, const MusicFile &desc)
 {
 	ID id = {};
 	for (u32 i = 0; i < audio.musicFileCount; ++i)
 	{
-		const MusicFileDesc &musicDesc = audio.musicFiles[i];
+		const MusicFile &musicDesc = audio.musicFiles[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, musicDesc.name)) {
 			id = musicDesc.id;
 			break;

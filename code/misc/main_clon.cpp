@@ -49,7 +49,7 @@ int main(int argc, char **argv)
 	LOG(Info, "- materialsCount: %u\n", assets->materialsCount);
 	LOG(Info, "- entitiesCount: %u\n", assets->entitiesCount);
 
-	const TextureDesc *textures = assets->textures;
+	const Texture *textures = assets->textures;
 	for (u32 i = 0; i < assets->texturesCount; ++i)
 	{
 		LOG(Info, "texture[%u]\n", i);
@@ -66,7 +66,7 @@ int main(int argc, char **argv)
 		LOG(Info, "- fsFilename: %s\n", pipelines[i].fsFilename);
 	}
 
-	const MaterialDesc *materials = assets->materials;
+	const Material *materials = assets->materials;
 	for (u32 i = 0; i < assets->materialsCount; ++i)
 	{
 		LOG(Info, "material[%u]\n", i);

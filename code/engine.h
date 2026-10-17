@@ -360,8 +360,6 @@ struct AudioClip
 	AudioClipLoadSource loadSource;
 };
 
-typedef AudioClip AudioClipDesc;
-
 enum AudioState
 {
 	AUDIO_STATE_IDLE,
@@ -406,8 +404,6 @@ struct MusicFile
 
 	LoadSource loadSource;
 };
-
-typedef MusicFile MusicFileDesc;
 
 struct Audio
 {
@@ -480,8 +476,6 @@ struct Texture
 	u64 ts;
 };
 
-typedef Texture TextureDesc;
-
 ////////////////////////////////////////////////////////////////////////
 // Materials
 
@@ -503,8 +497,6 @@ struct Material
 	u16 pipelineIndex;   // Resolved from pipelineName
 	u32 bufferOffset;    // Derived from the element index, so it moves with compaction
 };
-
-typedef Material MaterialDesc;
 
 ////////////////////////////////////////////////////////////////////////
 // Render targets
@@ -1075,8 +1067,6 @@ struct ParticleEffect
 	f32 dragFactor;
 };
 
-typedef ParticleEffect ParticleEffectDesc;
-
 struct Particle
 {
 	float3 pos;
@@ -1112,8 +1102,6 @@ struct Sprite
 	REFLEX()
 	u8 loop;
 };
-
-typedef Sprite SpriteDesc;
 
 struct SpriteAnimState
 {
@@ -1448,16 +1436,16 @@ struct AssetDescriptors
 	ShaderSourceDesc *shaderDescs;
 	u32 shaderDescCount;
 
-	TextureDesc *textureDescs;
+	Texture *textureDescs;
 	u32 textureDescCount;
 
-	SpriteDesc *spriteDescs;
+	Sprite *spriteDescs;
 	u32 spriteDescCount;
 
-	MaterialDesc *materialDescs;
+	Material *materialDescs;
 	u32 materialDescCount;
 
-	ParticleEffectDesc *particleEffectDescs;
+	ParticleEffect *particleEffectDescs;
 	u32 particleEffectDescCount;
 
 	EntityDesc *entityDescs;
@@ -1469,10 +1457,10 @@ struct AssetDescriptors
 	RoomDesc *roomDescs;
 	u32 roomDescCount;
 
-	AudioClipDesc *audioClipDescs;
+	AudioClip *audioClipDescs;
 	u32 audioClipDescCount;
 
-	MusicFileDesc *musicFileDescs;
+	MusicFile *musicFileDescs;
 	u32 musicFileDescCount;
 };
 
@@ -1523,12 +1511,12 @@ struct BinAssets
 
 	BinSceneDesc scene;
 	BinShader *shaders;
-	TextureDesc *images;
-	AudioClipDesc *audioClips;
-	MusicFileDesc *musicFiles;
-	MaterialDesc *materials;
-	SpriteDesc *sprites;
-	ParticleEffectDesc *particleEffects;
+	Texture *images;
+	AudioClip *audioClips;
+	MusicFile *musicFiles;
+	Material *materials;
+	Sprite *sprites;
+	ParticleEffect *particleEffects;
 	BinEntity *entities;
 	BinPrefab *prefabs;
 	BinRoom *rooms;
@@ -1602,8 +1590,8 @@ bool LoadAudioClipFromWAVFile(const char *filename, Arena &arena, AudioClip &aud
 bool LoadSamplesFromWAVFile(const char *filename, void *samples, u32 firstSampleIndex, u32 sampleCount);
 
 AudioClip &GetAudioClip(ID clipId);
-ID CreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc);
-ID GetOrCreateAudioClip(Audio &audio, const AudioClipDesc &audioClipDesc);
+ID CreateAudioClip(Audio &audio, const AudioClip &audioClipDesc);
+ID GetOrCreateAudioClip(Audio &audio, const AudioClip &audioClipDesc);
 void RemoveAudioClip(ID clipId); // Deferred, takes effect on the next CompactAudio
 void CompactAudio(Audio &audio);
 u32 PlayAudioClip(Audio &audio, ID clipId);
@@ -1617,8 +1605,8 @@ void PreRenderAudio(Audio &audio);
 void RenderAudio(Engine &engine, SoundBuffer &soundBuffer); // Streams clips from engine.assets
 
 MusicFile &GetMusicFile(ID musicId);
-ID CreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc);
-ID GetOrCreateMusicFile(Audio &audio, const MusicFileDesc &musicFileDesc);
+ID CreateMusicFile(Audio &audio, const MusicFile &musicFileDesc);
+ID GetOrCreateMusicFile(Audio &audio, const MusicFile &musicFileDesc);
 void DestroyMusicFile(ID musicId);
 void MusicPlay(Engine &engine, ID musicId); // Streams the module from engine.assets
 void MusicPause();
@@ -1678,9 +1666,9 @@ ImageH GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, b
 
 Texture &GetTexture(ID id);
 Texture &GetTextureAt(Graphics &gfx, u32 index);
-ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH);
-ID CreateTexture(Graphics &gfx, const TextureDesc &desc);
-ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc);
+ID CreateTexture(Graphics &gfx, const Texture &desc, ImageH imageH);
+ID CreateTexture(Graphics &gfx, const Texture &desc);
+ID GetOrCreateTexture(Graphics &gfx, const Texture &desc);
 ImageH GetTextureImage(Graphics &gfx, ID textureId, ImageH imageH);
 void RemoveTexture(Graphics &gfx, ID textureId);
 void CompactTextures(Graphics &gfx);
@@ -1692,8 +1680,8 @@ void RecreateModifiedTextures(Engine &engine);
 
 Material &GetMaterial(ID id);
 u16 GetMaterialIndex(const Graphics &gfx, ID materialId);
-ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc);
-ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc);
+ID CreateMaterial(Graphics &gfx, const Material &desc);
+ID GetOrCreateMaterial(Graphics &gfx, const Material &desc);
 void RemoveMaterial(Graphics &gfx, ID materialId);
 void CompactMaterials(Graphics &gfx);
 
@@ -1765,7 +1753,7 @@ void InitializeScene(Engine &engine);
 // Particle effect management
 
 ParticleEffect &GetParticleEffect(ID particleEffectId);
-ID CreateParticleEffect(Engine &engine, const ParticleEffectDesc &desc);
+ID CreateParticleEffect(Engine &engine, const ParticleEffect &desc);
 void RemoveParticleEffect(Scene &scene, ID particleEffectId);
 void CompactParticleEffects(Scene &scene);
 
@@ -1781,9 +1769,9 @@ void ClearParticles(Scene &scene);
 
 Sprite &GetSprite(ID spriteId);
 u16 GetSpriteIndex(const Scene &scene, ID spriteId);
-ID CreateSprite(Engine &engine, const SpriteDesc &desc);
+ID CreateSprite(Engine &engine, const Sprite &desc);
 ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size);
-ID GetOrCreateSprite(Engine &engine, const SpriteDesc &desc);
+ID GetOrCreateSprite(Engine &engine, const Sprite &desc);
 void RemoveSprite(Scene &scene, ID spriteId);
 void CompactSprites(Scene &scene);
 

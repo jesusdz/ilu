@@ -432,7 +432,7 @@ Texture &GetTexture(ID id)
 }
 
 // Appends a texture and gives it its ID. Null when the array is full.
-static Texture *PushTexture(Graphics &gfx, const TextureDesc &desc)
+static Texture *PushTexture(Graphics &gfx, const Texture &desc)
 {
 	if ( gfx.textureCount == MAX_TEXTURES )
 	{
@@ -454,7 +454,7 @@ static Texture *PushTexture(Graphics &gfx, const TextureDesc &desc)
 	return &texture;
 }
 
-ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH)
+ID CreateTexture(Graphics &gfx, const Texture &desc, ImageH imageH)
 {
 	Texture *texture = PushTexture(gfx, desc);
 	if ( !texture ) {
@@ -471,7 +471,7 @@ ID CreateTexture(Graphics &gfx, const TextureDesc &desc, ImageH imageH)
 	return texture->id;
 }
 
-ID CreateTexture(Graphics &gfx, const TextureDesc &desc)
+ID CreateTexture(Graphics &gfx, const Texture &desc)
 {
 	ID id = {};
 
@@ -520,7 +520,7 @@ ID CreateTexture(Graphics &gfx, const TextureDesc &desc)
 	return id;
 }
 
-ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
+ID GetOrCreateTexture(Graphics &gfx, const Texture &desc)
 {
 	const FilePath imagePath = MakePath(AssetDir, desc.filename);
 
@@ -528,7 +528,7 @@ ID GetOrCreateTexture(Graphics &gfx, const TextureDesc &desc)
 	for (u16 i = 0; i < gfx.textureCount; ++i)
 	{
 		const Texture &texture = gfx.textures[i];
-		const TextureDesc &desc = texture;
+		const Texture &desc = texture;
 		if ( desc.flags & AssetFlag_Bin ) { continue; }
 		const FilePath imagePath2 = MakePath(AssetDir, desc.filename);
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(imagePath.str, imagePath2.str)) {
@@ -595,7 +595,7 @@ void CompactTextures(Graphics &gfx)
 
 static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
 {
-	const TextureDesc &desc = texture;
+	const Texture &desc = texture;
 
 	if ( !desc.id ) { return; }
 
@@ -672,7 +672,7 @@ static u32 MaterialBufferOffset(const Graphics &gfx, u16 index)
 }
 
 // Appends a material and gives it its ID. Null when the array is full.
-static Material *PushMaterial(Graphics &gfx, const MaterialDesc &desc)
+static Material *PushMaterial(Graphics &gfx, const Material &desc)
 {
 	if ( gfx.materialCount == MAX_MATERIALS )
 	{
@@ -690,7 +690,7 @@ static Material *PushMaterial(Graphics &gfx, const MaterialDesc &desc)
 	return &material;
 }
 
-ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
+ID CreateMaterial(Graphics &gfx, const Material &desc)
 {
 	Material *material = PushMaterial(gfx, desc);
 	if ( !material ) {
@@ -719,12 +719,12 @@ ID CreateMaterial(Graphics &gfx, const MaterialDesc &desc)
 	return material->id;
 }
 
-ID GetOrCreateMaterial(Graphics &gfx, const MaterialDesc &desc)
+ID GetOrCreateMaterial(Graphics &gfx, const Material &desc)
 {
 	ID id = {};
 	for (u32 i = 0; i < gfx.materialCount; ++i)
 	{
-		const MaterialDesc &materialDesc = gfx.materials[i];
+		const Material &materialDesc = gfx.materials[i];
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(desc.name, materialDesc.name)) {
 			id = materialDesc.id;
 			break;
@@ -1773,7 +1773,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.noiseImageH = GfxCreateImage(gfx, "noiseImage", noiseWidth, noiseHeight, 4, false, (byte*)noiseImagePixels);
 
 	// Builtin texture
-	const TextureDesc defaultTextureDesc = {
+	const Texture defaultTextureDesc = {
 		.id = { BuiltinID_DefaultTexture },
 		.name = InternString("tex_default"),
 		.filename = InternString(""),
@@ -1783,7 +1783,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.defaultTexture = CreateTexture(gfx, defaultTextureDesc, gfx.pinkImageH);
 
 	// Builtin noise texture
-	const TextureDesc noiseTextureDesc = {
+	const Texture noiseTextureDesc = {
 		.id = { BuiltinID_NoiseTexture },
 		.name = InternString("tex_noise"),
 		.filename = InternString(""),
@@ -1793,7 +1793,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.noiseTexture = CreateTexture(gfx, noiseTextureDesc, gfx.noiseImageH);
 
 	// Builtin material
-	const MaterialDesc materialDesc = {
+	const Material materialDesc = {
 		.id = { BuiltinID_DefaultMaterial },
 		.name = InternString("mat_default"),
 		.textureId = gfx.defaultTexture,

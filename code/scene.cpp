@@ -34,7 +34,7 @@ void InitializeScene(Engine &engine)
 	// A builtin so it survives CleanScene and keeps the same slot every run, which is
 	// what lets a saved ParticlesComponent still refer to it.
 	{
-		const ParticleEffectDesc desc = {
+		const ParticleEffect desc = {
 			.id = { BuiltinID_FountainParticleEffect },
 			.name = InternString("fountain_fx"),
 			// color and size read begin -> end over the particle's life, so this fades out
@@ -55,7 +55,7 @@ void InitializeScene(Engine &engine)
 	}
 
 	{
-		const ParticleEffectDesc desc = {
+		const ParticleEffect desc = {
 			.id = { BuiltinID_FireParticleEffect },
 			.name = InternString("fire_fx"),
 			// color and size read begin -> end over the particle's life, so this fades out
@@ -96,7 +96,7 @@ u16 GetSpriteIndex(const Scene &scene, ID id)
 }
 
 // Appends a sprite and gives it its ID. Null when the array is full.
-static Sprite *PushSprite(Scene &scene, const SpriteDesc &desc)
+static Sprite *PushSprite(Scene &scene, const Sprite &desc)
 {
 	if ( scene.spriteCount == MAX_SPRITES )
 	{
@@ -114,7 +114,7 @@ static Sprite *PushSprite(Scene &scene, const SpriteDesc &desc)
 	return &sprite;
 }
 
-ID CreateSprite(Engine &engine, const SpriteDesc &desc)
+ID CreateSprite(Engine &engine, const Sprite &desc)
 {
 	Graphics &gfx = engine.gfx;
 
@@ -143,7 +143,7 @@ ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size)
 {
 	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		const SpriteDesc &desc = scene.sprites[i];
+		const Sprite &desc = scene.sprites[i];
 		if (desc.textureId == textureId &&
 			desc.pos.x == pos.x && desc.pos.y == pos.y &&
 			desc.size.x == size.x && desc.size.y == size.y) return desc.id;
@@ -151,7 +151,7 @@ ID FindSprite(const Scene &scene, ID textureId, uint2 pos, uint2 size)
 	return {};
 }
 
-ID GetOrCreateSprite(Engine &engine, const SpriteDesc &desc)
+ID GetOrCreateSprite(Engine &engine, const Sprite &desc)
 {
 	ID id = FindSprite(engine.scene, desc.textureId, desc.pos, desc.size);
 	if (!id)
@@ -199,7 +199,7 @@ ParticleEffect &GetParticleEffect(ID id)
 	return effect;
 }
 
-static ParticleEffect *PushParticleEffect(Scene &scene, const ParticleEffectDesc &desc)
+static ParticleEffect *PushParticleEffect(Scene &scene, const ParticleEffect &desc)
 {
 	if ( scene.particleEffectCount == MAX_PARTICLE_EFFECTS )
 	{
@@ -215,7 +215,7 @@ static ParticleEffect *PushParticleEffect(Scene &scene, const ParticleEffectDesc
 	return &effect;
 }
 
-ID CreateParticleEffect(Engine &engine, const ParticleEffectDesc &desc)
+ID CreateParticleEffect(Engine &engine, const ParticleEffect &desc)
 {
 	ParticleEffect *effect = PushParticleEffect(engine.scene, desc);
 	if ( !effect ) {
@@ -260,7 +260,7 @@ void CompactParticleEffects(Scene &scene)
 ////////////////////////////////////////////////////////////////////////
 // Particle simulation
 
-static void SpawnParticle(Scene &scene, ID entityId, const ParticleEffectDesc &effect)
+static void SpawnParticle(Scene &scene, ID entityId, const ParticleEffect &effect)
 {
 	// Dropping the newest is cheaper than hunting for the oldest, and at the cap
 	// nobody can tell the difference
@@ -305,7 +305,7 @@ void UpdateParticles(Scene &scene, f32 deltaSeconds)
 		ParticlesComponent &particles = scene.particlesComponents[i];
 		if ( !particles.playing || !particles.effectId ) { continue; }
 
-		const ParticleEffectDesc &effect = GetParticleEffect(particles.effectId);
+		const ParticleEffect &effect = GetParticleEffect(particles.effectId);
 
 		particles.elapsedTime += deltaSeconds;
 		if ( effect.duration > 0.0f && particles.elapsedTime >= effect.duration )

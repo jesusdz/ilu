@@ -586,7 +586,7 @@ static void EditorUpdateInspectedAsset()
 	const char *filename = inspector.selected.file->filename;
 
 	if (inspector.selected.type == EditorSelectedType_FileImage) {
-		const TextureDesc desc = {
+		const Texture desc = {
 			.name = InternString("inspected_image"),
 			.filename = filename,
 			.mipmap = true,
@@ -595,7 +595,7 @@ static void EditorUpdateInspectedAsset()
 		inspector.tmpTextureId = CreateTexture(engine.gfx, desc);
 	}
 	else if (inspector.selected.type == EditorSelectedType_FileAudio) {
-		const AudioClipDesc desc = {
+		const AudioClip desc = {
 			.name = InternString("inspected_audio_clip"),
 			.filename = filename,
 			.flags = AssetFlag_Ghost,
@@ -603,7 +603,7 @@ static void EditorUpdateInspectedAsset()
 		inspector.tmpAudioClipId = CreateAudioClip(engine.audio, desc);
 	}
 	else if (inspector.selected.type == EditorSelectedType_FileMusic) {
-		const MusicFileDesc desc = {
+		const MusicFile desc = {
 			.name = InternString("inspected_music_file"),
 			.filename = filename,
 			//.flags = AssetFlag_Ghost,
@@ -631,7 +631,7 @@ static void EditorRepointSpritesToDefaultTexture(Engine &engine, ID textureId)
 	Scene &scene = engine.scene;
 	for (u32 i = 0; i < scene.spriteCount; ++i)
 	{
-		SpriteDesc &sprite = scene.sprites[i];
+		Sprite &sprite = scene.sprites[i];
 		if ( !Valid(sprite.textureId) )// == textureId )
 		{
 			LOG(Warning, "Sprite <%s> lost the texture it refers to, falling back to the default one.\n", sprite.name);
@@ -975,7 +975,7 @@ static void EditorUpdateUI_Outliner()
 
 		for (u32 i = 0; i < scene.spriteCount; ++i)
 		{
-			const SpriteDesc &sprite = scene.sprites[i];
+			const Sprite &sprite = scene.sprites[i];
 			const ID spriteId = sprite.id;
 			const Texture &texture = GetTexture(sprite.textureId);
 			const UIWidgetFlags flags = selectedSprite == spriteId ? UIWidgetFlag_Outline : UIWidgetFlag_None;
@@ -1017,7 +1017,7 @@ static void EditorUpdateUI_Outliner()
 	{
 		for (u32 i = 0; i < scene.particleEffectCount; ++i)
 		{
-			const ParticleEffectDesc &desc = scene.particleEffects[i];
+			const ParticleEffect &desc = scene.particleEffects[i];
 
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectParticleEffect(desc.id);
@@ -1030,7 +1030,7 @@ static void EditorUpdateUI_Outliner()
 
 		if ( UI_Button(ui, "Create particle effect") )
 		{
-			const ParticleEffectDesc desc = {
+			const ParticleEffect desc = {
 				.name = "fx",
 				.color = { .min = { 1.0f, 1.0f, 1.0f, 1.0f }, .max = { 1.0f, 1.0f, 1.0f, 0.0f } },
 				.size = { .min = 1.0f, .max = 1.0f },
@@ -1052,7 +1052,7 @@ static void EditorUpdateUI_Outliner()
 	{
 		for (u32 i = 0; i < gfx.materialCount; ++i)
 		{
-			const MaterialDesc &desc = gfx.materials[i];
+			const Material &desc = gfx.materials[i];
 
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectMaterial(desc.id);
@@ -1071,7 +1071,7 @@ static void EditorUpdateUI_Outliner()
 		for (u16 i = 0; i < gfx.textureCount; ++i)
 		{
 			const Texture &texture = gfx.textures[i];
-			const TextureDesc &desc = texture;
+			const Texture &desc = texture;
 
 			if ( (desc.flags & AssetFlag_Ghost) && !(desc.flags & AssetFlag_Builtin) ) { continue; }
 
@@ -1095,7 +1095,7 @@ static void EditorUpdateUI_Outliner()
 	{
 		for (u32 i = 0; i < audio.clipCount; ++i)
 		{
-			const AudioClipDesc &desc = audio.clips[i];
+			const AudioClip &desc = audio.clips[i];
 
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectAudioClip(desc.id);
@@ -1109,7 +1109,7 @@ static void EditorUpdateUI_Outliner()
 	{
 		for (u32 i = 0; i < audio.musicFileCount; ++i)
 		{
-			const MusicFileDesc &desc = audio.musicFiles[i];
+			const MusicFile &desc = audio.musicFiles[i];
 
 			if ( UI_Button(ui, desc.name) ) {
 				EditorSelectMusic(desc.id);
@@ -1264,7 +1264,7 @@ static void EditorUpdateUI_SpriteSheet()
 		for (u16 i = 0; i < gfx.textureCount; ++i)
 		{
 			const Texture &texture = gfx.textures[i];
-			const TextureDesc &desc = texture;
+			const Texture &desc = texture;
 			const ID textureId = desc.id;
 			if ( desc.flags & AssetFlag_Ghost ) {
 				continue;
@@ -1375,7 +1375,7 @@ static void EditorUpdateUI_SpriteSheet()
 					}
 					else
 					{
-						const SpriteDesc desc = {
+						const Sprite desc = {
 							.name = EditorMakeSpriteName(texture.name),
 							.textureId = texture.id,
 							.pos = spriteRelPos,
@@ -1634,7 +1634,7 @@ static void EditorUpdateUI_Inspector()
 				const char *basename = NameFromFilename(filename);
 				const char *texname = MakeName("tex_%s", basename);
 
-				const TextureDesc textureDesc = {
+				const Texture textureDesc = {
 					.name = texname,
 					.filename = filename,
 					.mipmap = true,
@@ -1775,7 +1775,7 @@ static void EditorUpdateUI_Inspector()
 		{
 			if (inspector.selected.id)
 			{
-				MaterialDesc &desc = GetMaterial(inspector.selected.id);
+				Material &desc = GetMaterial(inspector.selected.id);
 
 				static char name[64];
 				StrCopy(name, desc.name);
@@ -1863,7 +1863,7 @@ static void EditorUpdateUI_Inspector()
 		{
 			if (inspector.selected.id)
 			{
-				SpriteDesc &sprite = GetSprite(inspector.selected.id);
+				Sprite &sprite = GetSprite(inspector.selected.id);
 
 				static char name[64];
 				StrCopy(name, sprite.name);
@@ -1932,7 +1932,7 @@ static void EditorUpdateUI_Inspector()
 		{
 			if (inspector.selected.id)
 			{
-				ParticleEffectDesc &effect = GetParticleEffect(inspector.selected.id);
+				ParticleEffect &effect = GetParticleEffect(inspector.selected.id);
 
 				static char name[64];
 				StrCopy(name, effect.name);
@@ -2242,7 +2242,7 @@ static void EditorUpdateUI_DragAndDropLost()
 		if ( textureId )
 		{
 			const Texture &texture = GetTexture(textureId);
-			const SpriteDesc spriteDesc = {
+			const Sprite spriteDesc = {
 				.name = EditorMakeSpriteName(texture.name),
 				.textureId = textureId,
 				.pos = { 0, 0 },
@@ -2264,14 +2264,14 @@ static void EditorUpdateUI_DragAndDropLost()
 
 			const char *basename = NameFromFilename(node->filename);
 
-			const TextureDesc textureDesc = {
+			const Texture textureDesc = {
 				.name = MakeName("tex_%s", basename),
 				.filename = node->filename,
 				.mipmap = true,
 			};
 			const ID textureId = GetOrCreateTexture(engine.gfx, textureDesc);
 
-			const SpriteDesc spriteDesc = {
+			const Sprite spriteDesc = {
 				.name = MakeName("spr_%s", basename),
 				.textureId = textureId,
 			};
@@ -2286,7 +2286,7 @@ static void EditorUpdateUI_DragAndDropLost()
 			const char *basename = NameFromFilename(node->filename);
 			const char *clipname = MakeName("snd_%s", basename);
 
-			const AudioClipDesc desc = {
+			const AudioClip desc = {
 				.name = clipname,
 				.filename = node->filename,
 				//.flags = AssetFlag_Ghost,
@@ -2300,7 +2300,7 @@ static void EditorUpdateUI_DragAndDropLost()
 			const char *basename = NameFromFilename(node->filename);
 			const char *modname = MakeName("mod_%s", basename);
 
-			const MusicFileDesc desc = {
+			const MusicFile desc = {
 				.name = modname,
 				.filename = node->filename,
 				//.flags = AssetFlag_Ghost,
