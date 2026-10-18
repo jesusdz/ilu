@@ -2962,13 +2962,11 @@ static bool Win32BeginTimerPeriod(UINT millis)
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
 #endif
 
-// Sleep() rounds to the scheduler tick, which can be 15 ms, far coarser than a frame
-static void SleepSeconds(f32 seconds)
+static void SleepSeconds(f32 seconds, f32 spinSeconds = 0.0f)
 {
 	if ( seconds <= 0.0f ) { return; }
 
 	const u64 endTicks = GetTicks() + (u64)(seconds * GetTicksPerSecond());
-	const f32 spinSeconds = 0.00025f;
 
 	if ( seconds > spinSeconds )
 	{
@@ -2983,11 +2981,14 @@ static void SleepSeconds(f32 seconds)
 		}
 		else
 		{
+			// Sleep() rounds to the scheduler tick, which can be 15 ms, far coarser than a frame
+			// With beginTimerPeriod this precision can be reduced to about 1 ms
 			static bool timerPeriodSet = Win32BeginTimerPeriod(1);
 			Sleep((DWORD)(waitSeconds * 1000.0f));
 		}
 	}
 
+	// Spin wait
 	while ( GetTicks() < endTicks )
 	{
 		_mm_pause();
@@ -3072,12 +3073,12 @@ static bool CreateDetachedThread( THREAD_FUNCTION(threadFunc), const ThreadInfo 
 	return success;
 }
 
-static void SleepSeconds(f32 seconds)
+static void SleepSeconds(f32 seconds, f32 spinSeconds = 0.0f)
 {
 	if ( seconds <= 0.0f ) { return; }
 
 	const u64 endNanos = GetTicks() + (u64)(seconds * 1e9f);
-	const u64 spinNanos = 250000;
+	const u64 spinNanos = (u64)(spinSeconds * 1e9f);
 
 	if ( endNanos - GetTicks() > spinNanos )
 	{
@@ -3086,6 +3087,7 @@ static void SleepSeconds(f32 seconds)
 		while ( clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &wakeTime, NULL) == EINTR ) {}
 	}
 
+	// Spin wait
 	while ( GetTicks() < endNanos )
 	{
 #if defined(__aarch64__) || defined(__arm__)
@@ -3132,7 +3134,7 @@ static void SleepMillis(u32 millis)
 	SleepSeconds(millis / 1000.0f);
 }
 
-static void Yield()
+static void Nap()
 {
 	SleepSeconds(0.001f);
 }
