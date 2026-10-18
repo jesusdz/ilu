@@ -2950,14 +2950,48 @@ static bool CreateDetachedThread( THREAD_FUNCTION(threadFunc), const ThreadInfo 
 	return success;
 }
 
-static void SleepMillis(u32 millis)
+static bool Win32BeginTimerPeriod(UINT millis)
 {
-	Sleep(millis);
+	typedef UINT (WINAPI *TimeBeginPeriodFunc)(UINT);
+	DynamicLibrary winmm = OpenLibrary("winmm.dll");
+	TimeBeginPeriodFunc timeBeginPeriod = winmm ? (TimeBeginPeriodFunc)LoadSymbol(winmm, "timeBeginPeriod") : NULL;
+	return timeBeginPeriod && timeBeginPeriod(millis) == 0;
 }
 
-static void Yield()
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+
+// Sleep() rounds to the scheduler tick, which can be 15 ms, far coarser than a frame
+static void SleepSeconds(f32 seconds)
 {
-	SwitchToThread();
+	if ( seconds <= 0.0f ) { return; }
+
+	const u64 endTicks = GetTicks() + (u64)(seconds * GetTicksPerSecond());
+	const f32 spinSeconds = 0.00025f;
+
+	if ( seconds > spinSeconds )
+	{
+		const f32 waitSeconds = seconds - spinSeconds;
+		static thread_local HANDLE timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+		if ( timer )
+		{
+			LARGE_INTEGER dueTime;
+			dueTime.QuadPart = -(LONGLONG)(waitSeconds * 1e7f); // Negative is relative, in 100 ns units
+			SetWaitableTimer(timer, &dueTime, 0, NULL, NULL, FALSE);
+			WaitForSingleObject(timer, INFINITE);
+		}
+		else
+		{
+			static bool timerPeriodSet = Win32BeginTimerPeriod(1);
+			Sleep((DWORD)(waitSeconds * 1000.0f));
+		}
+	}
+
+	while ( GetTicks() < endTicks )
+	{
+		_mm_pause();
+	}
 }
 
 typedef SRWLOCK Mutex;
@@ -3038,19 +3072,28 @@ static bool CreateDetachedThread( THREAD_FUNCTION(threadFunc), const ThreadInfo 
 	return success;
 }
 
-static void SleepMillis(u32 millis)
+static void SleepSeconds(f32 seconds)
 {
-	const useconds_t micros = millis * 1000;
-	const int res = usleep(micros);
-	if ( res == -1 )
-	{
-		LinuxReportError("usleep");
-	}
-}
+	if ( seconds <= 0.0f ) { return; }
 
-static void Yield()
-{
-	SleepMillis(1);
+	const u64 endNanos = GetTicks() + (u64)(seconds * 1e9f);
+	const u64 spinNanos = 250000;
+
+	if ( endNanos - GetTicks() > spinNanos )
+	{
+		const u64 wakeNanos = endNanos - spinNanos;
+		const struct timespec wakeTime = { (time_t)(wakeNanos / 1000000000ull), (long)(wakeNanos % 1000000000ull) };
+		while ( clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &wakeTime, NULL) == EINTR ) {}
+	}
+
+	while ( GetTicks() < endNanos )
+	{
+#if defined(__aarch64__) || defined(__arm__)
+		asm volatile("yield" ::: "memory");
+#elif defined(__x86_64__) || defined(__i386__)
+		__builtin_ia32_pause();
+#endif
+	}
 }
 
 typedef pthread_mutex_t Mutex;
@@ -3083,6 +3126,16 @@ static void UnlockMutex( Mutex &mutex )
 #else
 #error "Missing implementation"
 #endif
+
+static void SleepMillis(u32 millis)
+{
+	SleepSeconds(millis / 1000.0f);
+}
+
+static void Yield()
+{
+	SleepSeconds(0.001f);
+}
 
 struct MutexScope
 {
