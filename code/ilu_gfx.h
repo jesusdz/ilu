@@ -4897,7 +4897,15 @@ bool AcquireSwapchainImage(GraphicsDevice &device)
 	// call return before the image is actually free. Force the CPU to pace
 	// itself to the display here too, via the fence, so this wait lands before
 	// the next frame's input is sampled rather than bleeding into Present.
-	VK_CALL( vkWaitForFences( device.handle, 1, &fence, VK_TRUE, UINT64_MAX ) );
+	const u64 fenceTimeoutNs = 1000000000ull; // 1s cap: never hang forever on a stalled presentation engine
+	const VkResult fenceWaitResult = vkWaitForFences( device.handle, 1, &fence, VK_TRUE, fenceTimeoutNs );
+	if ( fenceWaitResult == VK_TIMEOUT )
+	{
+		LOG(Warning, "AcquireSwapchainImage - fence wait timed out\n");
+		device.swapchain.valid = false;
+		return false;
+	}
+	CheckVulkanResult(fenceWaitResult, "vkWaitForFences");
 	VK_CALL( vkResetFences( device.handle, 1, &fence ) );
 
 	device.swapchain.currentImageIndex = imageIndex;
