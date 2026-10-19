@@ -869,7 +869,7 @@ static THREAD_FUNCTION(UpdateThread) // void *WorkQueueThread(void* arguments)
 		if ( platform.inSizeMove )
 		{
 			// The main thread drives update and render during modal size/move loops
-			Yield();
+			Nap();
 		}
 		else
 		{
@@ -1095,7 +1095,7 @@ static void PauseThreads(Platform &platform)
 #if USE_AUDIO_THREAD
 	while ( !platform.audioPaused && platform.keepRunning )
 	{
-		Yield();
+		Nap();
 	}
 #endif
 
@@ -1110,7 +1110,7 @@ static void PauseThreads(Platform &platform)
 	{
 		while ( !workQueue.workerPaused[i] && platform.keepRunning )
 		{
-			Yield();
+			Nap();
 		}
 	}
 }
