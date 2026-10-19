@@ -636,7 +636,8 @@ struct GraphicsDevice
 	SwapchainInfo swapchainInfo;
 	Swapchain swapchain;
 
-	VkSemaphore imageAvailableSemaphores[MAX_SWAPCHAIN_IMAGE_COUNT];
+	VkFence imageAcquiredFences[MAX_SWAPCHAIN_IMAGE_COUNT];
+	VkSemaphore imageAcquiredSemaphores[MAX_SWAPCHAIN_IMAGE_COUNT];
 	VkSemaphore renderFinishedSemaphores[MAX_SWAPCHAIN_IMAGE_COUNT];
 	u32 presentationIndex;
 
@@ -2171,13 +2172,15 @@ static bool sExternalSwapchainValid = false;
 void RecreateSwapchain(GraphicsDevice &device, Window &window)
 {
 	// An image acquired at EndFrame that will never be presented leaves its
-	// imageAvailable semaphore with a signal no submit will consume, and
+	// imageAcquired semaphore with a signal no submit will consume, and
 	// vkAcquireNextImageKHR requires an unsignaled semaphore. Replace it
-	// (callers wait for device idle before recreating the swapchain).
+	// (callers wait for device idle before recreating the swapchain). The
+	// paired fence needs no such handling: AcquireSwapchainImage already
+	// waits on it and resets it synchronously before returning.
 	if ( device.swapchain.imageAcquired )
 	{
 		device.swapchain.imageAcquired = false;
-		VkSemaphore &semaphore = device.imageAvailableSemaphores[device.presentationIndex];
+		VkSemaphore &semaphore = device.imageAcquiredSemaphores[device.presentationIndex];
 		vkDestroySemaphore( device.handle, semaphore, VULKAN_ALLOCATORS );
 		const VkSemaphoreCreateInfo semaphoreCreateInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
 		VK_CALL( vkCreateSemaphore( device.handle, &semaphoreCreateInfo, VULKAN_ALLOCATORS, &semaphore ) );
@@ -2991,16 +2994,17 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 	// Synchronization objects
 	const VkSemaphoreCreateInfo semaphoreCreateInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
 
-	for ( u32 i = 0; i < MAX_SWAPCHAIN_IMAGE_COUNT; ++i )
-	{
-		VK_CALL( vkCreateSemaphore( device.handle, &semaphoreCreateInfo, VULKAN_ALLOCATORS, &device.imageAvailableSemaphores[i] ) );
-		VK_CALL( vkCreateSemaphore( device.handle, &semaphoreCreateInfo, VULKAN_ALLOCATORS, &device.renderFinishedSemaphores[i] ) );
-	}
-
 	const VkFenceCreateInfo fenceCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 		//.flags = VK_FENCE_CREATE_SIGNALED_BIT, // Start signaled
 	};
+	for ( u32 i = 0; i < MAX_SWAPCHAIN_IMAGE_COUNT; ++i )
+	{
+		VK_CALL( vkCreateSemaphore( device.handle, &semaphoreCreateInfo, VULKAN_ALLOCATORS, &device.imageAcquiredSemaphores[i] ) );
+		VK_CALL( vkCreateFence( device.handle, &fenceCreateInfo, VULKAN_ALLOCATORS, &device.imageAcquiredFences[i] ) );
+		VK_CALL( vkCreateSemaphore( device.handle, &semaphoreCreateInfo, VULKAN_ALLOCATORS, &device.renderFinishedSemaphores[i] ) );
+	}
+
 	for ( u32 i = 0; i < MAX_FENCES; ++i )
 	{
 		VK_CALL( vkCreateFence( device.handle, &fenceCreateInfo, VULKAN_ALLOCATORS, &device.fences[i] ) );
@@ -4772,7 +4776,7 @@ bool ReadTimestamps(const TimestampPool &pool, u32 firstQuery, u32 queryCount, T
 
 SubmitResult Submit(GraphicsDevice &device, const CommandList &commandList)
 {
-	VkSemaphore waitSemaphores[] = { device.imageAvailableSemaphores[device.presentationIndex] };
+	VkSemaphore waitSemaphores[] = { device.imageAcquiredSemaphores[device.presentationIndex] };
 	VkSemaphore signalSemaphores[] = { device.renderFinishedSemaphores[device.presentationIndex] };
 	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 
@@ -4872,8 +4876,10 @@ void WaitFrameFences(GraphicsDevice &device)
 
 bool AcquireSwapchainImage(GraphicsDevice &device)
 {
+	const VkFence fence = device.imageAcquiredFences[device.presentationIndex];
+
 	u32 imageIndex;
-	VkResult acquireResult = vkAcquireNextImageKHR( device.handle, device.swapchain.handle, UINT64_MAX, device.imageAvailableSemaphores[device.presentationIndex], VK_NULL_HANDLE, &imageIndex );
+	VkResult acquireResult = vkAcquireNextImageKHR( device.handle, device.swapchain.handle, UINT64_MAX, device.imageAcquiredSemaphores[device.presentationIndex], fence, &imageIndex );
 
 	if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR)
 	{
@@ -4886,6 +4892,13 @@ bool AcquireSwapchainImage(GraphicsDevice &device)
 		LOG(Error, "vkAcquireNextImageKHR failed.\n");
 		return false;
 	}
+
+	// The semaphore above only unblocks the GPU; some drivers let the CPU-side
+	// call return before the image is actually free. Force the CPU to pace
+	// itself to the display here too, via the fence, so this wait lands before
+	// the next frame's input is sampled rather than bleeding into Present.
+	VK_CALL( vkWaitForFences( device.handle, 1, &fence, VK_TRUE, UINT64_MAX ) );
+	VK_CALL( vkResetFences( device.handle, 1, &fence ) );
 
 	device.swapchain.currentImageIndex = imageIndex;
 	device.swapchain.imageAcquired = true;
@@ -4989,7 +5002,8 @@ void CleanupGraphicsDevice(const GraphicsDevice &device, Arena scratch)
 
 	for ( u32 i = 0; i < MAX_SWAPCHAIN_IMAGE_COUNT; ++i )
 	{
-		vkDestroySemaphore( device.handle, device.imageAvailableSemaphores[i], VULKAN_ALLOCATORS );
+		vkDestroySemaphore( device.handle, device.imageAcquiredSemaphores[i], VULKAN_ALLOCATORS );
+		vkDestroyFence( device.handle, device.imageAcquiredFences[i], VULKAN_ALLOCATORS );
 		vkDestroySemaphore( device.handle, device.renderFinishedSemaphores[i], VULKAN_ALLOCATORS );
 	}
 
