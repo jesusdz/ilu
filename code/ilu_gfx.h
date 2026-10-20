@@ -262,6 +262,7 @@ enum Format
 	FormatD32,
 	FormatD32S1,
 	FormatD24S1,
+	FormatRG16F,
 	FormatCount,
 	FormatInvalid = FormatCount,
 };
@@ -562,6 +563,7 @@ struct PipelineDesc
 	bool depthWrite;
 	CompareOp depthCompareOp;
 	bool blending;
+	bool additiveBlending;
 	RenderPass renderPass;
 };
 
@@ -1376,6 +1378,7 @@ static VkFormat FormatToVulkan(Format format)
 		VK_FORMAT_D32_SFLOAT,
 		VK_FORMAT_D32_SFLOAT_S8_UINT,
 		VK_FORMAT_D24_UNORM_S8_UINT,
+		VK_FORMAT_R16G16_SFLOAT,
 	};
 	CT_ASSERT(ARRAY_COUNT(vkFormats) == FormatCount);
 	const VkFormat vkFormat = format < FormatCount ? vkFormats[format] : VK_FORMAT_MAX_ENUM;
@@ -1402,6 +1405,7 @@ static Format FormatFromVulkan(VkFormat format)
 		case VK_FORMAT_D32_SFLOAT: return FormatD32;
 		case VK_FORMAT_D32_SFLOAT_S8_UINT: return FormatD32S1;
 		case VK_FORMAT_D24_UNORM_S8_UINT: return FormatD24S1;
+		case VK_FORMAT_R16G16_SFLOAT: return FormatRG16F;
 		default:;
 	};
 	return FormatInvalid;
@@ -1427,6 +1431,7 @@ const char *FormatName(Format format)
 		"VK_FORMAT_D32_SFLOAT",
 		"VK_FORMAT_D32_SFLOAT_S8_UINT",
 		"VK_FORMAT_D24_UNORM_S8_UINT",
+		"VK_FORMAT_R16G16_SFLOAT",
 	};
 	CT_ASSERT(ARRAY_COUNT(names) == FormatCount);
 	const char *name = format < FormatCount ? names[format] : "VK_FORMAT_INVALID";
@@ -3702,9 +3707,9 @@ Pipeline CreateGraphicsPipelineInternal(GraphicsDevice &device, Arena scratch, c
 	};
 
 	const VkPipelineColorBlendAttachmentState colorBlendAttachmentState = {
-		.blendEnable         = desc.blending ? VK_TRUE : VK_FALSE,
-		.srcColorBlendFactor = desc.blending ? VK_BLEND_FACTOR_SRC_ALPHA : VK_BLEND_FACTOR_ONE, // Optional
-		.dstColorBlendFactor = desc.blending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ZERO, // Optional
+		.blendEnable         = desc.blending || desc.additiveBlending ? VK_TRUE : VK_FALSE,
+		.srcColorBlendFactor = desc.additiveBlending ? VK_BLEND_FACTOR_ONE : desc.blending ? VK_BLEND_FACTOR_SRC_ALPHA : VK_BLEND_FACTOR_ONE, // Optional
+		.dstColorBlendFactor = desc.additiveBlending ? VK_BLEND_FACTOR_ONE : desc.blending ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ZERO, // Optional
 		.colorBlendOp        = VK_BLEND_OP_ADD, // Optional
 		.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE, // Optional
 		.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO, // Optional

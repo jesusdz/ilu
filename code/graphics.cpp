@@ -116,6 +116,9 @@ static ShaderSourceDesc shaderSourceDescs[] = {
 	{ .type = ShaderTypeFragment, .filename = "particles.hlsl",      .entryPoint = "PSMain",      .name = "fs_particles" },
 	{ .type = ShaderTypeVertex,   .filename = "fog.hlsl",            .entryPoint = "VSMain",      .name = "vs_fog" },
 	{ .type = ShaderTypeFragment, .filename = "fog.hlsl",            .entryPoint = "PSMain",      .name = "fs_fog" },
+	{ .type = ShaderTypeVertex,   .filename = "distortion_map.hlsl", .entryPoint = "VSMain",      .name = "vs_distortion_map" },
+	{ .type = ShaderTypeFragment, .filename = "distortion_map.hlsl", .entryPoint = "PSMain",      .name = "fs_distortion_map" },
+	{ .type = ShaderTypeFragment, .filename = "distortion.hlsl",     .entryPoint = "PSMain",      .name = "fs_distortion" },
 };
 
 ShaderSourceDesc *GetShaderSourceDescs()
@@ -897,6 +900,29 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 		renderTargets.sceneFramebuffer = CreateFramebuffer(gfx.device, desc);
 	}
 
+	// Distortion map
+	renderTargets.distortionImage = CreateImage(gfx.device,
+		sceneWidth, sceneHeight, 1,
+		FormatRG16F,
+		ImageUsageColorAttachment | ImageUsageSampled,
+		HeapType_RTs);
+	TransitionImageLayout(commandList, renderTargets.distortionImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
+	SetObjectNameImage(gfx.device, renderTargets.distortionImage, "distortion_image");
+
+	// Distortion framebuffer
+	{
+		const FramebufferDesc desc = {
+			.renderPass = gfx.distortionRenderPassH,
+			.attachments = {
+				renderTargets.distortionImage,
+				renderTargets.depthImage,
+			},
+			.attachmentCount = 2,
+		};
+
+		renderTargets.distortionFramebuffer = CreateFramebuffer(gfx.device, desc);
+	}
+
 	// Effects color buffer
 	renderTargets.effectsImage = CreateImage(gfx.device,
 		sceneWidth, sceneHeight, 1,
@@ -991,6 +1017,7 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 
 	DestroyImageH(gfx.device, renderTargets.depthImage);
 	DestroyImageH(gfx.device, renderTargets.sceneImage);
+	DestroyImageH(gfx.device, renderTargets.distortionImage);
 	DestroyImageH(gfx.device, renderTargets.effectsImage);
 
 	// Reset the heap used for render targets
@@ -998,6 +1025,7 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 	rtHeap.used = 0;
 
 	DestroyFramebuffer( gfx.device, renderTargets.sceneFramebuffer );
+	DestroyFramebuffer( gfx.device, renderTargets.distortionFramebuffer );
 	DestroyFramebuffer( gfx.device, renderTargets.effectsFramebuffer );
 
 	for ( u32 i = 0; i < gfx.device.swapchain.imageCount; ++i )
@@ -1236,11 +1264,11 @@ static const ShaderAndPipelineDesc pipelineDescs[] =
 	},
 	{
 		.vsName = "vs_blit",
-		.fsName = "fs_blit",
+		.fsName = "fs_distortion",
 		.renderPass = "effects_renderpass",
-		.index = Pipeline_SceneCopy,
+		.index = Pipeline_Distortion,
 		.desc = {
-			.name = "pipeline_scene_copy",
+			.name = "pipeline_distortion",
 			.vsFunction = "VSMain",
 			.fsFunction = "PSMain",
 			.vertexBufferCount = 1,
@@ -1363,6 +1391,29 @@ static const ShaderAndPipelineDesc pipelineDescs[] =
 			.depthWrite = false,
 			.depthCompareOp = CompareOpGreaterOrEqual,
 			.blending = true,
+		}
+	},
+	{
+		.vsName = "vs_distortion_map",
+		.fsName = "fs_distortion_map",
+		.renderPass = "distortion_renderpass",
+		.index = Pipeline_DistortionMap,
+		.desc = {
+			.name = "pipeline_distortion_map",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 24 }, },
+			.vertexAttributeCount = 3,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat2, },
+				{ .bufferIndex = 0, .location = 2, .offset = 20, .format = FormatFloat, },
+			},
+			.depthTest = true,
+			.depthWrite = false,
+			.depthCompareOp = CompareOpGreaterOrEqual,
+			.additiveBlending = true,
 		}
 	},
 	{
@@ -1558,6 +1609,23 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		gfx.litRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
 	}
 
+	// Distortion render pass
+	// Additive offsets on a cleared map, depth tested against the scene
+	{
+		const RenderpassDesc renderpassDesc = {
+			.name = "distortion_renderpass",
+			.colorAttachmentCount = 1,
+			.colorAttachments = {
+				{ .format = FormatRG16F, .loadOp = LoadOpClear, .storeOp = StoreOpStore, .isSwapchain = false },
+			},
+			.hasDepthAttachment = true,
+			.depthAttachment = {
+				.loadOp = LoadOpLoad, .storeOp = StoreOpStore,
+			}
+		};
+		gfx.distortionRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+	}
+
 	// Effects render pass (continue after scene render pass)
 	// Color is overwritten by the scene copy, depth is kept from the scene
 	{
@@ -1648,6 +1716,12 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		gfx.particleVertexBuffer[i] = CreateBuffer(
 			gfx.device,
 			sizeof(ParticleVertex) * MAX_PARTICLES * 6,
+			BufferUsageVertexBuffer,
+			HeapType_Dynamic);
+
+		gfx.distortionVertexBuffer[i] = CreateBuffer(
+			gfx.device,
+			sizeof(DistortionVertex) * MAX_PARTICLES * 6,
 			BufferUsageVertexBuffer,
 			HeapType_Dynamic);
 	}

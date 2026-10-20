@@ -131,8 +131,12 @@ static void GenerateParticles(const Scene &scene, bool is2D, bool interpolate, f
 	Graphics &gfx = GetEngine().gfx;
 
 	ParticleVertex *vertices = (ParticleVertex*)GetBufferPtr(gfx.device, gfx.particleVertexBuffer[gfx.device.frameIndex]);
+	DistortionVertex *distortionVertices = (DistortionVertex*)GetBufferPtr(gfx.device, gfx.distortionVertexBuffer[gfx.device.frameIndex]);
 	gfx.particleVertexCount = 0;
 	gfx.particleBatchCount = 0;
+	gfx.distortionVertexCount = 0;
+
+	static constexpr float2 quadCorners[6] = { {0, 0}, {1, 1}, {0, 1}, {0, 0}, {1, 0}, {1, 1} };
 
 	// Effects outer, particles inner: the quads of an effect are then consecutive and
 	// share a texture, one batch per effect instead of one per particle
@@ -142,6 +146,7 @@ static void GenerateParticles(const Scene &scene, bool is2D, bool interpolate, f
 		if ( !effect.id ) { continue; } // Removed, still waiting for CompactParticleEffects
 
 		const u32 firstVertex = gfx.particleVertexCount;
+		const bool distorts = effect.distortion.min != 0.0f || effect.distortion.max != 0.0f;
 
 		for (u32 i = 0; i < scene.particleCount; ++i)
 		{
@@ -167,16 +172,22 @@ static void GenerateParticles(const Scene &scene, bool is2D, bool interpolate, f
 				const float2 boxSize = (depthScale * size * 2.0f / ART_PIXELS_PER_METER) * float2{1, 1};
 				const float3 boxPos = pos + Float3(-0.5f * boxSize, 0.0f);
 				const rgba c = Rgba(color);
-				const float2 uv = {};
 				ParticleVertex *v = vertices + gfx.particleVertexCount;
-				v[0] = ParticleVertex{ boxPos + float3{0, 0, 0}, uv, c };
-				v[1] = ParticleVertex{ boxPos + float3{boxSize.x, boxSize.y, 0}, uv, c };
-				v[2] = ParticleVertex{ boxPos + float3{0, boxSize.y, 0}, uv, c };
-				v[3] = ParticleVertex{ boxPos + float3{0, 0, 0}, uv, c };
-				v[4] = ParticleVertex{ boxPos + float3{boxSize.x, 0, 0}, uv, c };
-				v[5] = ParticleVertex{ boxPos + float3{boxSize.x, boxSize.y, 0}, uv, c };
+				for (u32 k = 0; k < 6; ++k) {
+					v[k] = ParticleVertex{ boxPos + Float3(quadCorners[k] * boxSize, 0.0f), quadCorners[k], c };
+				}
 				gfx.particleVertexCount += 6;
 			//}
+
+			if ( distorts )
+			{
+				const f32 strength = Lerp(effect.distortion.min, effect.distortion.max, t);
+				DistortionVertex *v = distortionVertices + gfx.distortionVertexCount;
+				for (u32 k = 0; k < 6; ++k) {
+					v[k] = DistortionVertex{ boxPos + Float3(quadCorners[k] * boxSize, 0.0f), quadCorners[k], strength };
+				}
+				gfx.distortionVertexCount += 6;
+			}
 		}
 
 		const u32 vertexCount = gfx.particleVertexCount - firstVertex;
@@ -1270,11 +1281,35 @@ bool RenderGraphics(Engine &engine)
 		EndRenderPass(commandList);
 	}
 
+	// Distortion map
+	{
+		RENDER_BLOCK(DistortionMap);
+
+		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 0.0f } );
+
+		const Framebuffer &distortionFramebuffer = gfx.renderTargets.distortionFramebuffer;
+		BeginRenderPass(commandList, distortionFramebuffer);
+
+		const uint2 distortionSize = GetFramebufferSize(distortionFramebuffer);
+		SetViewportAndScissor(commandList, distortionSize);
+
+		if ( gfx.distortionVertexCount > 0 )
+		{
+			SetPipeline(commandList, gfx.pipelines[Pipeline_DistortionMap]);
+			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+			SetVertexBuffer(commandList, gfx.distortionVertexBuffer[frameIndex]);
+			Draw(commandList, gfx.distortionVertexCount, 0);
+		}
+
+		EndRenderPass(commandList);
+	}
+
 	// Effects
 	{
 		RENDER_BLOCK(Effects);
 
 		TransitionImageLayout(commandList, gfx.renderTargets.sceneImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
+		TransitionImageLayout(commandList, gfx.renderTargets.distortionImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
 		const Framebuffer &effectsFramebuffer = gfx.renderTargets.effectsFramebuffer;
 		BeginRenderPass(commandList, effectsFramebuffer);
@@ -1282,20 +1317,21 @@ bool RenderGraphics(Engine &engine)
 		const uint2 displaySize = GetFramebufferSize(effectsFramebuffer);
 		SetViewportAndScissor(commandList, displaySize);
 
-		{ // Scene copy
-			RENDER_BLOCK(SceneCopy);
+		{ // Distortion
+			RENDER_BLOCK(Distortion);
 
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_SceneCopy]);
+			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Distortion]);
 			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];
 
-			SetPipeline(commandList, gfx.pipelines[Pipeline_SceneCopy]);
+			SetPipeline(commandList, gfx.pipelines[Pipeline_Distortion]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
 			const BindGroupDesc bindGroupDesc = {
 				.layout = bindGroupLayout,
 				.bindings = {
-					{ .index = 0, .sampler = gfx.pointSamplerH },
+					{ .index = 0, .sampler = gfx.screenSamplerH },
 					{ .index = 1, .image = gfx.renderTargets.sceneImage },
+					{ .index = 2, .image = gfx.renderTargets.distortionImage },
 				},
 			};
 			const BindGroup textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);

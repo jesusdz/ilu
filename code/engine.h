@@ -208,6 +208,13 @@ struct ParticleVertex
 	rgba color;
 };
 
+struct DistortionVertex
+{
+	float3 pos;
+	float2 texCoord;
+	f32 strength;
+};
+
 struct DrawBatch
 {
 	ImageH imageH;
@@ -508,6 +515,8 @@ struct RenderTargets
 	ImageH depthImage;
 	ImageH sceneImage;
 	Framebuffer sceneFramebuffer;
+	ImageH distortionImage;
+	Framebuffer distortionFramebuffer;
 	ImageH effectsImage;
 	Framebuffer effectsFramebuffer;
 
@@ -591,12 +600,13 @@ enum PipelineIndex
 	Pipeline_Grid2D,
 	Pipeline_Grid3D,
 	Pipeline_Blit,
-	Pipeline_SceneCopy,
+	Pipeline_Distortion,
 	Pipeline_UI,
 	Pipeline_ModelId,
 	Pipeline_SpriteId,
 	Pipeline_DebugDraw,
 	Pipeline_Particles,
+	Pipeline_DistortionMap,
 	Pipeline_Fog,
 	Pipeline_ComputeSelect,
 	Pipeline_LightBinning,
@@ -683,6 +693,9 @@ struct Graphics
 	DrawBatch particleBatches[MAX_PARTICLE_BATCHES];
 	u32 particleBatchCount;
 
+	BufferH distortionVertexBuffer[MAX_FRAMES_IN_FLIGHT];
+	u32 distortionVertexCount;
+
 	BufferH spriteDataBuffer[MAX_FRAMES_IN_FLIGHT];
 	BufferH tileDataBuffer[MAX_FRAMES_IN_FLIGHT];
 	BufferH lightBuffer[MAX_FRAMES_IN_FLIGHT];
@@ -695,6 +708,7 @@ struct Graphics
 	SamplerH screenSamplerH;
 
 	RenderPassH litRenderPassH;
+	RenderPassH distortionRenderPassH;
 	RenderPassH effectsRenderPassH;
 	RenderPassH shadowmapRenderPassH;
 	RenderPassH idRenderPassH;
@@ -1029,11 +1043,14 @@ struct ParticleEffect
 	// Look
 	REFLEX(Sprite)
 	ID spriteID;
-	// color and size read begin -> end over the particle's life
+	// color, size and distortion read begin -> end over the particle's life
 	REFLEX(Color)
 	float4_range color;
 	REFLEX()
 	f32_range size;
+	// Positive bulges, negative pinches; 1 moves the scene up to the particle radius
+	REFLEX()
+	f32_range distortion;
 
 	// Emission
 	REFLEX()
@@ -1472,7 +1489,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 28; // 28: assets packed member by member
+constexpr u32 BinAssetsVersion = 29; // 29: particle effect distortion
 
 #pragma pack(push, 1)
 
