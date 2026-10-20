@@ -897,6 +897,29 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 		renderTargets.sceneFramebuffer = CreateFramebuffer(gfx.device, desc);
 	}
 
+	// Effects color buffer
+	renderTargets.effectsImage = CreateImage(gfx.device,
+		sceneWidth, sceneHeight, 1,
+		gfx.device.swapchainInfo.format,
+		ImageUsageColorAttachment | ImageUsageSampled,
+		HeapType_RTs);
+	TransitionImageLayout(commandList, renderTargets.effectsImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
+	SetObjectNameImage(gfx.device, renderTargets.effectsImage, "effects_image");
+
+	// Effects framebuffer
+	{
+		const FramebufferDesc desc = {
+			.renderPass = gfx.effectsRenderPassH,
+			.attachments = {
+				renderTargets.effectsImage,
+				renderTargets.depthImage,
+			},
+			.attachmentCount = 2,
+		};
+
+		renderTargets.effectsFramebuffer = CreateFramebuffer(gfx.device, desc);
+	}
+
 	// Display framebuffer
 	for ( u32 i = 0; i < gfx.device.swapchain.imageCount; ++i )
 	{
@@ -968,12 +991,14 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 
 	DestroyImageH(gfx.device, renderTargets.depthImage);
 	DestroyImageH(gfx.device, renderTargets.sceneImage);
+	DestroyImageH(gfx.device, renderTargets.effectsImage);
 
 	// Reset the heap used for render targets
 	Heap &rtHeap = gfx.device.heaps[HeapType_RTs];
 	rtHeap.used = 0;
 
 	DestroyFramebuffer( gfx.device, renderTargets.sceneFramebuffer );
+	DestroyFramebuffer( gfx.device, renderTargets.effectsFramebuffer );
 
 	for ( u32 i = 0; i < gfx.device.swapchain.imageCount; ++i )
 	{
@@ -1196,6 +1221,26 @@ static const ShaderAndPipelineDesc pipelineDescs[] =
 		.index = Pipeline_Blit,
 		.desc = {
 			.name = "pipeline_blit",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSMain",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = false,
+			.blending = false,
+		}
+	},
+	{
+		.vsName = "vs_blit",
+		.fsName = "fs_blit",
+		.renderPass = "effects_renderpass",
+		.index = Pipeline_SceneCopy,
+		.desc = {
+			.name = "pipeline_scene_copy",
 			.vsFunction = "VSMain",
 			.fsFunction = "PSMain",
 			.vertexBufferCount = 1,
@@ -1511,6 +1556,25 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			}
 		};
 		gfx.litRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+	}
+
+	// Effects render pass (continue after scene render pass)
+	// Color is overwritten by the scene copy, depth is kept from the scene
+	{
+		const Format format = gfx.device.swapchainInfo.format;
+
+		const RenderpassDesc renderpassDesc = {
+			.name = "effects_renderpass",
+			.colorAttachmentCount = 1,
+			.colorAttachments = {
+				{ .format = format, .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
+			},
+			.hasDepthAttachment = true,
+			.depthAttachment = {
+				.loadOp = LoadOpLoad, .storeOp = StoreOpStore,
+			}
+		};
+		gfx.effectsRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
 	}
 
 	// Display render pass

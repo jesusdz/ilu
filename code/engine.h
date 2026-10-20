@@ -508,6 +508,8 @@ struct RenderTargets
 	ImageH depthImage;
 	ImageH sceneImage;
 	Framebuffer sceneFramebuffer;
+	ImageH effectsImage;
+	Framebuffer effectsFramebuffer;
 
 	Framebuffer displayFramebuffers[MAX_SWAPCHAIN_IMAGE_COUNT];
 
@@ -589,6 +591,7 @@ enum PipelineIndex
 	Pipeline_Grid2D,
 	Pipeline_Grid3D,
 	Pipeline_Blit,
+	Pipeline_SceneCopy,
 	Pipeline_UI,
 	Pipeline_ModelId,
 	Pipeline_SpriteId,
@@ -692,6 +695,7 @@ struct Graphics
 	SamplerH screenSamplerH;
 
 	RenderPassH litRenderPassH;
+	RenderPassH effectsRenderPassH;
 	RenderPassH shadowmapRenderPassH;
 	RenderPassH idRenderPassH;
 	RenderPassH displayRenderPassH;

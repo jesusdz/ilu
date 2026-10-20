@@ -1255,6 +1255,7 @@ bool RenderGraphics(Engine &engine)
 		}
 #endif
 
+		// Fog
 		if ( engine.game.state == GameStateRunning )
 		{
 			RENDER_BLOCK(Fog);
@@ -1262,6 +1263,43 @@ bool RenderGraphics(Engine &engine)
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Fog]);
 
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+
+			DrawScreenQuad(gfx, commandList);
+		}
+
+		EndRenderPass(commandList);
+	}
+
+	// Effects
+	{
+		RENDER_BLOCK(Effects);
+
+		TransitionImageLayout(commandList, gfx.renderTargets.sceneImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
+
+		const Framebuffer &effectsFramebuffer = gfx.renderTargets.effectsFramebuffer;
+		BeginRenderPass(commandList, effectsFramebuffer);
+
+		const uint2 displaySize = GetFramebufferSize(effectsFramebuffer);
+		SetViewportAndScissor(commandList, displaySize);
+
+		{ // Scene copy
+			RENDER_BLOCK(SceneCopy);
+
+			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_SceneCopy]);
+			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];
+
+			SetPipeline(commandList, gfx.pipelines[Pipeline_SceneCopy]);
+			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+
+			const BindGroupDesc bindGroupDesc = {
+				.layout = bindGroupLayout,
+				.bindings = {
+					{ .index = 0, .sampler = gfx.pointSamplerH },
+					{ .index = 1, .image = gfx.renderTargets.sceneImage },
+				},
+			};
+			const BindGroup textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);
+			SetBindGroup(commandList, 3, textureBindGroup);
 
 			DrawScreenQuad(gfx, commandList);
 		}
@@ -1310,7 +1348,7 @@ bool RenderGraphics(Engine &engine)
 	{
 		RENDER_BLOCK(Display);
 
-		TransitionImageLayout(commandList, gfx.renderTargets.sceneImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
+		TransitionImageLayout(commandList, gfx.renderTargets.effectsImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
 		const Framebuffer displayFramebuffer = GetDisplayFramebuffer(gfx);
 		{
@@ -1343,12 +1381,11 @@ bool RenderGraphics(Engine &engine)
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Blit]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
 
-			ImageH sceneImage = gfx.renderTargets.sceneImage;
 			const BindGroupDesc bindGroupDesc = {
 				.layout = bindGroupLayout,
 				.bindings = {
 					{ .index = 0, .sampler = gfx.screenSamplerH },
-					{ .index = 1, .image = sceneImage },
+					{ .index = 1, .image = gfx.renderTargets.effectsImage },
 				},
 			};
 			const BindGroup textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);
