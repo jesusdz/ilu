@@ -2945,7 +2945,7 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 
 	// Create heaps
 	device.heaps[HeapType_General] = CreateHeap(device, HeapType_General, HeapSize_General, false);
-	device.heaps[HeapType_RTs] = CreateHeap(device, HeapType_RTs, MB(128), false);
+	device.heaps[HeapType_RTs] = CreateHeap(device, HeapType_RTs, MB(256), false);
 	device.heaps[HeapType_Staging] = CreateHeap(device, HeapType_Staging, MB(16), true);
 	device.heaps[HeapType_Dynamic] = CreateHeap(device, HeapType_Dynamic, MB(32), true);
 	device.heaps[HeapType_Readback] = CreateHeap(device, HeapType_Readback, MB(1), true);
@@ -3266,7 +3266,7 @@ Alloc Allocate(Heap &heap, u32 size, u32 alignment)
 		const u32 totalSize = size + alignment;
 		const OffsetAllocator::Allocation allocation = generalAllocator.allocate(totalSize);
 		if (allocation.offset == OffsetAllocator::Allocation::NO_SPACE) {
-			LOG(Error, "Allocate - Could not allocate size(%uB) with alignment (%uB)\n", size, alignment);
+			LOG(Error, "Allocate - Heap: %s (%uMB) - Could not allocate size(%uB) with alignment (%uB)\n", HeapTypeToString(heap.type), heap.size / MB(1), size, alignment);
 		}
 
 		const VkDeviceSize offset = AlignUp( allocation.offset, alignment );
@@ -3284,7 +3284,7 @@ Alloc Allocate(Heap &heap, u32 size, u32 alignment)
 	{
 		const VkDeviceSize offset = AlignUp( heap.used, alignment );
 
-		ASSERT( offset + size <= heap.size );
+		ASSERTMSG( offset + size <= heap.size, "Allocate - Heap: %s (%uMB) - Could not allocate size (%uB) with alignment (%uB)\n", HeapTypeToString(heap.type), heap.size / MB(1), size, alignment);
 		heap.used = offset + size;
 
 		const Alloc alloc = {

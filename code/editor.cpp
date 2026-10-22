@@ -3085,6 +3085,11 @@ void EditorDebugDraw()
 	}
 	else if (contextRoom != nullptr)
 	{
+		const Room &room = *contextRoom;
+		const float4 outerBounds = RoomOuterBounds(room);
+		const float4 innerBounds = RoomInnerBounds(room);
+		DrawBoxOutline(outerBounds.xy, outerBounds.zw - outerBounds.xy, ColorRed);
+		DrawBoxOutline(innerBounds.xy, innerBounds.zw - innerBounds.xy, ColorOrange);
 	}
 
 	if (EditorMode2D())

@@ -1891,7 +1891,8 @@ void RemoveLayer(Room &room, u32 index);
 u32 MoveLayer(Room &room, u32 index, i32 delta); // delta -1 moves towards the front, +1 towards the back
 const Layer *GetBaseLayer(const Room &room);
 float2 LayerSize(const Layer &layer);
-float2 RoomSize(const Room &room);
+float4 RoomOuterBounds(const Room &room);
+float4 RoomInnerBounds(const Room &room);
 void UpdateRoomBounds(Room &room); // Call after anything other than a cell edit changes which layers count
 void UpdateLayerBounds(Layer &layer);
 void UpdateLayerTransforms(Room &room);

@@ -1795,9 +1795,15 @@ float2 LayerSize(const Layer &layer)
 	return res;
 }
 
-float2 RoomSize(const Room &room)
+float4 RoomOuterBounds(const Room &room)
 {
-	const float2 res = Float2(room.size);
+	const float4 res = Float4(Float2(room.pos), Float2(room.pos + room.size));
+	return res;
+}
+
+float4 RoomInnerBounds(const Room &room)
+{
+	const float4 res = Float4(Float2(room.pos + int2{2,2}), Float2(room.pos + room.size) - float2{2, 2});
 	return res;
 }
 

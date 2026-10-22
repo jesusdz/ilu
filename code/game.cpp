@@ -80,10 +80,11 @@ void Simulate(PlayerController &script)
 	const ColliderComponent &collider = GetColliderComponent(player.id);
 
 	const Room &room = GetRoom(script.roomId);
-	const f32 screenLeft = room.pos.x;
-	const f32 screenRight = room.pos.x + RoomSize(room).x;
-	const f32 screenBottom = room.pos.y;
-	const f32 screenTop = room.pos.y + RoomSize(room).y;
+	const float4 roomBounds = RoomOuterBounds(room);
+	const f32 screenLeft = roomBounds.x;
+	const f32 screenRight = roomBounds.z;
+	const f32 screenBottom = roomBounds.y;
+	const f32 screenTop = roomBounds.w;
 
 	// Player entity
 	{
@@ -295,8 +296,9 @@ void Simulate(CameraController &script)
 	constexpr f32 boundsAt60Hz = 0.05f;
 	constexpr f32 snapEpsilon = 1.0f / ART_PIXELS_PER_METER;
 
-	const float2 roomMin = float2{(f32)room.pos.x, (f32)room.pos.y};
-	const float2 roomMax = roomMin + RoomSize(room);
+	const float4 roomBounds = RoomInnerBounds(room);
+	const float2 roomMin = roomBounds.xy;
+	const float2 roomMax = roomBounds.zw;
 
 	float2 targetMin = roomMin;
 	float2 targetMax = roomMax;
