@@ -144,7 +144,7 @@ inline bool ButtonPress(ButtonState state)
 
 inline bool ButtonPressed(ButtonState state)
 {
-	return state == BUTTON_STATE_PRESSED;
+	return ButtonPress(state) || state == BUTTON_STATE_PRESSED;
 }
 
 inline bool ButtonRelease(ButtonState state)
