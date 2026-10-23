@@ -2793,21 +2793,80 @@ static bool GetMovementTouchId(const Window &window, u32 *touchId)
 }
 #endif
 
+enum EditorAction
+{
+	EditorAction_Play,
+	EditorAction_Stop,
+	EditorAction_ToggleUI,
+	EditorAction_ToggleIcons,
+	EditorAction_RemoveSelection,
+	EditorAction_DuplicateSelection,
+	EditorAction_StartMoveDrag,
+	EditorAction_StartScaleDrag,
+	EditorAction_OpenContextMenu,
+	EditorAction_MoveForward,
+	EditorAction_MoveBack,
+	EditorAction_MoveLeft,
+	EditorAction_MoveRight,
+	EditorAction_Count,
+};
+
+enum EditorModifier
+{
+	EditorModifier_None  = 0,
+	EditorModifier_Shift = 1 << 0,
+	EditorModifier_Ctrl  = 1 << 1,
+	EditorModifier_Alt   = 1 << 2,
+};
+
+#define EDITOR_STATE_BIT(state) (1u << (state))
+
+constexpr u32 EditorStates_Playing = EDITOR_STATE_BIT(EditorState_Playing);
+constexpr u32 EditorStates_Edit2D = EDITOR_STATE_BIT(EditorState_EditEntities) | EDITOR_STATE_BIT(EditorState_EditTiles);
+constexpr u32 EditorStates_Edit = EditorStates_Edit2D | EDITOR_STATE_BIT(EditorState_Edit3D);
+constexpr u32 EditorStates_Any = EditorStates_Playing | EditorStates_Edit;
+
+struct EditorBinding
+{
+	Key key;
+	u32 modifiers;
+	u32 states;
+	EditorAction action;
+};
+
+static const EditorBinding kEditorBindings[] = {
+	{ K_F5,     EditorModifier_None,  EditorStates_Edit,    EditorAction_Play },
+	{ K_ESCAPE, EditorModifier_None,  EditorStates_Playing, EditorAction_Stop },
+	{ K_TAB,    EditorModifier_None,  EditorStates_Any,     EditorAction_ToggleUI },
+	{ K_I,      EditorModifier_None,  EditorStates_Edit,    EditorAction_ToggleIcons },
+	{ K_DELETE, EditorModifier_None,  EditorStates_Edit,    EditorAction_RemoveSelection },
+	{ K_D,      EditorModifier_Shift, EditorStates_Edit,    EditorAction_DuplicateSelection },
+	{ K_T,      EditorModifier_None,  EditorStates_Edit2D,  EditorAction_StartMoveDrag },
+	{ K_E,      EditorModifier_None,  EditorStates_Edit2D,  EditorAction_StartScaleDrag },
+	{ K_W,      EditorModifier_None,  EditorStates_Edit,    EditorAction_MoveForward },
+	{ K_S,      EditorModifier_None,  EditorStates_Edit,    EditorAction_MoveBack },
+	{ K_A,      EditorModifier_None,  EditorStates_Edit,    EditorAction_MoveLeft },
+	{ K_D,      EditorModifier_None,  EditorStates_Edit,    EditorAction_MoveRight },
+};
+
+static void EditorCheckBindings()
+{
+	for (u32 i = 0; i < ARRAY_COUNT(kEditorBindings); ++i)
+	{
+		for (u32 j = i + 1; j < ARRAY_COUNT(kEditorBindings); ++j)
+		{
+			const EditorBinding &a = kEditorBindings[i];
+			const EditorBinding &b = kEditorBindings[j];
+			ASSERT( a.key != b.key || a.modifiers != b.modifiers || ( a.states & b.states ) == 0 );
+		}
+	}
+}
+
 struct EditorActions
 {
-	bool startGame;
-	bool stopGame;
-	bool toggleUI;
-
-	bool toggleIcons;
-	bool removeSelection;
-	bool duplicateSelection;
-
-	bool startMoveDrag;
-	bool startScaleDrag;
+	bool triggered[EditorAction_Count];
+	bool active[EditorAction_Count];
 	bool snap;
-
-	bool openContextMenu;
 	bool select;
 	f32 zoom;
 	float2 move;
@@ -2842,43 +2901,48 @@ static EditorActions EditorProcessInput()
 		const MouseButton button = editor.interaction == EditorInteraction_Panning ? MOUSE_BUTTON_MIDDLE : MOUSE_BUTTON_LEFT;
 		if ( !MouseButtonPressed(mouse, button) || state != editor.interactionState )
 		{
+			// Rotating starts on any left press in 3D: it was a click to select if the mouse barely moved
+			if ( editor.interaction == EditorInteraction_Rotating && state == editor.interactionState )
+			{
+				const float2 drag = Float2(mouse.pos - editor.interactionStartMouse);
+				actions.select = Length(drag) < engine.ui.style.dragClickThreshold;
+			}
 			editor.interaction = EditorInteraction_None;
 		}
 	}
 
 	const bool idle = editor.interaction == EditorInteraction_None;
 
+	if ( keyboardFree )
+	{
+		const u32 modifiers =
+			( KeyPressed(keyboard, K_SHIFT) ? EditorModifier_Shift : 0 ) |
+			( KeyPressed(keyboard, K_CONTROL) ? EditorModifier_Ctrl : 0 ) |
+			( KeyPressed(keyboard, K_ALT) ? EditorModifier_Alt : 0 );
+
+		for (u32 i = 0; i < ARRAY_COUNT(kEditorBindings); ++i)
+		{
+			const EditorBinding &binding = kEditorBindings[i];
+			if ( binding.modifiers == modifiers && ( binding.states & EDITOR_STATE_BIT(state) ) )
+			{
+				actions.triggered[binding.action] |= KeyPress(keyboard, binding.key);
+				actions.active[binding.action] |= KeyPressed(keyboard, binding.key);
+			}
+		}
+	}
+
 	if ( state == EditorState_Playing )
 	{
-		if ( keyboardFree )
-		{
-			actions.stopGame = KeyPress(keyboard, K_ESCAPE);
-			actions.toggleUI = KeyPress(keyboard, K_TAB);
-		}
 		return actions;
 	}
 
 	actions.snap = KeyPressed(keyboard, K_CONTROL);
 
-	if ( keyboardFree )
-	{
-		const bool shift = KeyPressed(keyboard, K_SHIFT);
-
-		actions.startGame = KeyPress(keyboard, K_F5);
-		actions.toggleUI = KeyPress(keyboard, K_TAB);
-		actions.toggleIcons = KeyPress(keyboard, K_I);
-		actions.removeSelection = KeyPress(keyboard, K_DELETE);
-		actions.duplicateSelection = shift && KeyPress(keyboard, K_D);
-
-		if ( !shift )
-		{
-			// Keyboard
-			actions.move.y += KeyPressed(keyboard, K_W) ? 1.0f : 0.0f;
-			actions.move.x += KeyPressed(keyboard, K_A) ? -1.0f : 0.0f;
-			actions.move.y += KeyPressed(keyboard, K_S) ? -1.0f : 0.0f;
-			actions.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
-		}
-	}
+	// Keyboard
+	actions.move.y += actions.active[EditorAction_MoveForward] ? 1.0f : 0.0f;
+	actions.move.y -= actions.active[EditorAction_MoveBack] ? 1.0f : 0.0f;
+	actions.move.x -= actions.active[EditorAction_MoveLeft] ? 1.0f : 0.0f;
+	actions.move.x += actions.active[EditorAction_MoveRight] ? 1.0f : 0.0f;
 
 	// Gamepad
 	actions.move += gamepad.leftAxis;
@@ -2888,16 +2952,10 @@ static EditorActions EditorProcessInput()
 		case EditorState_EditEntities:
 		case EditorState_EditTiles:
 		{
-			if ( keyboardFree )
-			{
-				actions.startMoveDrag = KeyPress(keyboard, K_T);
-				actions.startScaleDrag = KeyPress(keyboard, K_E);
-			}
-
 			if ( idle && mouseFree && !editor.gizmo.wantsMouse )
 			{
 				actions.zoom = mouse.wheel.y;
-				actions.openContextMenu = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
+				actions.triggered[EditorAction_OpenContextMenu] = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
 
 				if ( MouseButtonPress(mouse, MOUSE_BUTTON_MIDDLE) )
 				{
@@ -2919,11 +2977,10 @@ static EditorActions EditorProcessInput()
 		{
 			if ( idle && mouseFree )
 			{
-				actions.openContextMenu = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
+				actions.triggered[EditorAction_OpenContextMenu] = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
 
 				if ( MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) )
 				{
-					actions.select = true;
 					EditorBeginInteraction(EditorInteraction_Rotating, state);
 				}
 			}
@@ -2955,44 +3012,42 @@ static void EditorUpdateCamera3D(const EditorActions &actions, const Window &win
 
 	float3 dir = { 0, 0, 0 };
 
+	// Camera rotation
+	f32 deltaYaw = 0.0f;
+	f32 deltaPitch = 0.0f;
+#if PLATFORM_ANDROID
+	u32 touchId;
+	if ( GetOrientationTouchId(window, &touchId) )
 	{
-		// Camera rotation
-		f32 deltaYaw = 0.0f;
-		f32 deltaPitch = 0.0f;
-#if PLATFORM_ANDROID
-		u32 touchId;
-		if ( GetOrientationTouchId(window, &touchId) )
-		{
-			deltaYaw = - window.touches[touchId].dx * ToRadians * 0.2f;
-			deltaPitch = - window.touches[touchId].dy * ToRadians * 0.2f;
-		}
-#else
-		if (GetEditor().interaction == EditorInteraction_Rotating) {
-			deltaYaw = - mouse.delta.x * ToRadians * 0.2f;
-			deltaPitch = - mouse.delta.y * ToRadians * 0.2f;
-		}
-#endif
-		float2 angles = camera.orientation;
-		angles.x = angles.x + deltaYaw;
-		angles.y = Clamp(angles.y + deltaPitch, -Pi * 0.49, Pi * 0.49);
-
-		camera.orientation = angles;
-
-		// Movement direction
-#if PLATFORM_ANDROID
-		if ( GetMovementTouchId(window, &touchId) )
-		{
-			const float3 forward = ForwardDirectionFromAngles(angles);
-			const float3 right = RightDirectionFromAngles(angles);
-			const f32 scaleForward = -window.touches[touchId].dy;
-			const f32 scaleRight = window.touches[touchId].dx;
-			dir = Add(Mul(forward, scaleForward), Mul(right, scaleRight));
-		}
-#else
-		dir = Add(Mul(ForwardDirectionFromAngles(angles), actions.move.y), Mul(RightDirectionFromAngles(angles), actions.move.x));
-#endif
-		dir = NormalizeIfNotZero(dir);
+		deltaYaw = - window.touches[touchId].dx * ToRadians * 0.2f;
+		deltaPitch = - window.touches[touchId].dy * ToRadians * 0.2f;
 	}
+#else
+	if (GetEditor().interaction == EditorInteraction_Rotating) {
+		deltaYaw = - mouse.delta.x * ToRadians * 0.2f;
+		deltaPitch = - mouse.delta.y * ToRadians * 0.2f;
+	}
+#endif
+	float2 angles = camera.orientation;
+	angles.x = angles.x + deltaYaw;
+	angles.y = Clamp(angles.y + deltaPitch, -Pi * 0.49, Pi * 0.49);
+
+	camera.orientation = angles;
+
+	// Movement direction
+#if PLATFORM_ANDROID
+	if ( GetMovementTouchId(window, &touchId) )
+	{
+		const float3 forward = ForwardDirectionFromAngles(angles);
+		const float3 right = RightDirectionFromAngles(angles);
+		const f32 scaleForward = -window.touches[touchId].dy;
+		const f32 scaleRight = window.touches[touchId].dx;
+		dir = Add(Mul(forward, scaleForward), Mul(right, scaleRight));
+	}
+#else
+	dir = Add(Mul(ForwardDirectionFromAngles(angles), actions.move.y), Mul(RightDirectionFromAngles(angles), actions.move.x));
+#endif
+	dir = NormalizeIfNotZero(dir);
 
 	// Accelerated translation
 	static constexpr f32 MAX_SPEED = 100.0f;
@@ -3090,60 +3145,58 @@ static void EditorBeginSceneEditing(const EditorActions &actions)
 	Scene &scene = engine.scene;
 	const Camera &camera = editor.camera[ProjectionOrthographic];
 
+	if (actions.select)
 	{
-		if (actions.select)
-		{
-			const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
-			const ID iconHit = editor.showIcons && EditorMode2D() ? EditorPickEntityIcon(mouseWorldPos) : ID{};
-			if ( iconHit ) {
-				EditorSelectEntity(iconHit);
-			} else {
-				editor.selectEntity = true;
-			}
+		const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
+		const ID iconHit = editor.showIcons && EditorMode2D() ? EditorPickEntityIcon(mouseWorldPos) : ID{};
+		if ( iconHit ) {
+			EditorSelectEntity(iconHit);
+		} else {
+			editor.selectEntity = true;
 		}
-		else if ( editor.selectEntity )
+	}
+	else if ( editor.selectEntity )
+	{
+		editor.selectEntity = false;
+
+		WaitDeviceIdle(engine.gfx.device);
+		// What the id pass wrote is a draw id, not an ID: its low half is the entity's
+		// ID slot, the high half its position in the array at the time it was drawn
+		const u32 drawId = *(u32*)GetBufferPtr(engine.gfx.device, engine.gfx.selectionBufferH);
+		const ID entityId = EntityFromDrawId(drawId);
+
+		if (entityId)
 		{
-			editor.selectEntity = false;
+			EditorSelectEntity(entityId);
+		}
+		else
+		{
+			EditorUnselectAll();
+		}
+	}
 
-			WaitDeviceIdle(engine.gfx.device);
-			// What the id pass wrote is a draw id, not an ID: its low half is the entity's
-			// ID slot, the high half its position in the array at the time it was drawn
-			const u32 drawId = *(u32*)GetBufferPtr(engine.gfx.device, engine.gfx.selectionBufferH);
-			const ID entityId = EntityFromDrawId(drawId);
+	if (editor.interaction == EditorInteraction_Painting)
+	{
+		Layer *contextLayer = EditorGetContextLayer();
+		if (contextLayer)
+		{
+			const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos);
 
-			if (entityId)
+			Layer &layer = *contextLayer;
+
+			if ( layer.isCollider )
 			{
-				EditorSelectEntity(entityId);
+				const u32 collider =
+					editor.context.tool == EditorTool_ColliderSolid ? 1
+					: editor.context.tool == EditorTool_ColliderPlatform ? 2
+					: 0;
+				SetGridTileAtCoord(engine, layer, collider, gridCoord);
 			}
 			else
 			{
-				EditorUnselectAll();
-			}
-		}
-
-		if (editor.interaction == EditorInteraction_Painting)
-		{
-			Layer *contextLayer = EditorGetContextLayer();
-			if (contextLayer)
-			{
-				const int2 gridCoord = GetGridTileCoord(engine, camera, mouse.pos);
-
-				Layer &layer = *contextLayer;
-
-				if ( layer.isCollider )
-				{
-					const u32 collider =
-						editor.context.tool == EditorTool_ColliderSolid ? 1
-						: editor.context.tool == EditorTool_ColliderPlatform ? 2
-						: 0;
-					SetGridTileAtCoord(engine, layer, collider, gridCoord);
-				}
-				else
-				{
-					const ID spriteId = editor.context.tool == EditorTool_Draw
-						? editor.context.spriteId : ID{};
-					SetGridTileAtCoord(engine, layer, spriteId, gridCoord);
-				}
+				const ID spriteId = editor.context.tool == EditorTool_Draw
+					? editor.context.spriteId : ID{};
+				SetGridTileAtCoord(engine, layer, spriteId, gridCoord);
 			}
 		}
 	}
@@ -3350,6 +3403,7 @@ void EditorInitialize(Engine &engine)
 	Editor &editor = GetEditor();
 
 	Gizmo_Initialize(editor.gizmo, engine.ui);
+	EditorCheckBindings();
 
 	editor.showUI = true;
 	editor.showOutliner = true;
@@ -3446,34 +3500,35 @@ static void EditorApplyActions(const EditorActions &actions)
 {
 	Engine &engine = GetEngine();
 	Editor &editor = GetEditor();
+	const bool *triggered = actions.triggered;
 
-	if ( actions.startGame )
+	if ( triggered[EditorAction_Play] )
 	{
 		EditorPlay();
 	}
-	else if ( actions.stopGame )
+	else if ( triggered[EditorAction_Stop] )
 	{
 		EditorStop();
 	}
-	else if ( actions.toggleUI )
+	else if ( triggered[EditorAction_ToggleUI] )
 	{
 		editor.showUI = !editor.showUI;
 	}
 
-	if ( actions.openContextMenu )
+	if ( triggered[EditorAction_OpenContextMenu] )
 	{
 		const Camera &camera = editor.camera[ProjectionOrthographic];
 		editor.contextMenuWorldPos = GetWorld2DCoord(engine, camera, GetWindow().mouse.pos);
 		editor.showContextMenu = true;
 	}
 
-	if (actions.toggleIcons)
+	if (triggered[EditorAction_ToggleIcons])
 	{
 		editor.showIcons = !editor.showIcons;
 	}
 
 	// Delete takes any selection, the rest of the shortcuts only act on an entity
-	if (actions.removeSelection)
+	if (triggered[EditorAction_RemoveSelection])
 	{
 		EditorRemoveSelection();
 	}
@@ -3484,17 +3539,17 @@ static void EditorApplyActions(const EditorActions &actions)
 		return;
 	}
 
-	if (actions.duplicateSelection)
+	if (triggered[EditorAction_DuplicateSelection])
 	{
 		const ID newEntity = DuplicateEntity(engine, selectedEntity);
 		EditorSelectEntity(newEntity);
 		Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_MoveXY);
 	}
-	else if (actions.startMoveDrag)
+	else if (triggered[EditorAction_StartMoveDrag])
 	{
 		Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_MoveXY);
 	}
-	else if (actions.startScaleDrag)
+	else if (triggered[EditorAction_StartScaleDrag])
 	{
 		Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_Scale);
 	}
