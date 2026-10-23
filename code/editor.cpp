@@ -60,6 +60,21 @@ static bool EditorMode2D()
 	return !EditorMode3D();
 }
 
+static EditorState EditorGetState()
+{
+	const Engine &engine = GetEngine();
+	if ( engine.game.state != GameStateStopped ) {
+		return EditorState_Playing;
+	}
+	if ( EditorMode3D() ) {
+		return EditorState_Edit3D;
+	}
+	if ( EditorGetContextLayer() != nullptr ) {
+		return EditorState_EditTiles;
+	}
+	return EditorState_EditEntities;
+}
+
 static void EditorSetCamera()
 {
 	Editor &editor = GetEditor();
@@ -78,6 +93,27 @@ static void EditorSetMode2D()
 	Editor &editor = GetEditor();
 	editor.cameraType = ProjectionOrthographic;
 	EditorSetCamera();
+}
+
+static void EditorPlay()
+{
+	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
+	if ( engine.game.state == GameStateStopped ) {
+		engine.game.state = GameStateStarting;
+		editor.showUI = false;
+	}
+}
+
+static void EditorStop()
+{
+	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
+	if ( engine.game.state == GameStateRunning ) {
+		engine.game.state = GameStateStopping;
+		EditorSetCamera();
+		editor.showUI = true;
+	}
 }
 
 static void AddEditorCommand(const EditorCommand &command)
@@ -343,7 +379,7 @@ static void EditorUpdateUI_ToolBar()
 	{
 		if ( UI_ButtonIcon(ui, 0) )
 		{
-			engine.game.state = GameStateStarting;
+			EditorPlay();
 		}
 
 		UI_Separator(ui);
@@ -2757,7 +2793,7 @@ static bool GetMovementTouchId(const Window &window, u32 *touchId)
 }
 #endif
 
-struct EditorInput
+struct EditorActions
 {
 	bool startGame;
 	bool stopGame;
@@ -2773,82 +2809,130 @@ struct EditorInput
 
 	bool openContextMenu;
 	bool select;
-	bool paint;
-	bool rotate;
-	bool startPan;
-	bool pan;
 	f32 zoom;
 	float2 move;
 };
 
-static EditorInput EditorReadInput()
+static void EditorBeginInteraction(EditorInteraction interaction, EditorState state)
+{
+	Editor &editor = GetEditor();
+	editor.interaction = interaction;
+	editor.interactionState = state;
+	editor.interactionStartMouse = GetWindow().mouse.pos;
+	editor.interactionStartCamera = editor.camera[editor.cameraType].position;
+}
+
+static EditorActions EditorProcessInput()
 {
 	const Engine &engine = GetEngine();
-	const Editor &editor = GetEditor();
+	Editor &editor = GetEditor();
 	const Window &window = GetWindow();
 	const Keyboard &keyboard = window.keyboard;
 	const Mouse &mouse = window.mouse;
 	const Gamepad &gamepad = *GetHost().gamepad;
 
-	EditorInput input = {};
+	EditorActions actions = {};
 
+	const EditorState state = EditorGetState();
 	const bool keyboardFree = !engine.ui.wantsKeyboard;
-	// The gizmo only runs in 2D, so in 3D its flag is whatever it was left at
-	const bool mouseFree = !engine.ui.wantsMouse && !( EditorMode2D() && editor.gizmo.wantsMouse );
+	const bool mouseFree = !engine.ui.wantsMouse;
 
-	if ( keyboardFree )
+	if ( editor.interaction != EditorInteraction_None )
 	{
-		input.startGame = KeyPress(keyboard, K_F5) && engine.game.state == GameStateStopped;
-		input.stopGame = KeyPress(keyboard, K_ESCAPE) && engine.game.state == GameStateRunning;
-		input.toggleUI = KeyPress(keyboard, K_TAB);
+		const MouseButton button = editor.interaction == EditorInteraction_Panning ? MOUSE_BUTTON_MIDDLE : MOUSE_BUTTON_LEFT;
+		if ( !MouseButtonPressed(mouse, button) || state != editor.interactionState )
+		{
+			editor.interaction = EditorInteraction_None;
+		}
 	}
 
-	if ( engine.game.state != GameStateStopped )
+	const bool idle = editor.interaction == EditorInteraction_None;
+
+	if ( state == EditorState_Playing )
 	{
-		return input;
+		if ( keyboardFree )
+		{
+			actions.stopGame = KeyPress(keyboard, K_ESCAPE);
+			actions.toggleUI = KeyPress(keyboard, K_TAB);
+		}
+		return actions;
 	}
 
-	input.snap = KeyPressed(keyboard, K_CONTROL);
+	actions.snap = KeyPressed(keyboard, K_CONTROL);
 
 	if ( keyboardFree )
 	{
 		const bool shift = KeyPressed(keyboard, K_SHIFT);
 
-		input.toggleIcons = KeyPress(keyboard, K_I);
-		input.removeSelection = KeyPress(keyboard, K_DELETE);
-		input.duplicateSelection = shift && KeyPress(keyboard, K_D);
-		input.startMoveDrag = KeyPress(keyboard, K_T);
-		input.startScaleDrag = KeyPress(keyboard, K_E);
+		actions.startGame = KeyPress(keyboard, K_F5);
+		actions.toggleUI = KeyPress(keyboard, K_TAB);
+		actions.toggleIcons = KeyPress(keyboard, K_I);
+		actions.removeSelection = KeyPress(keyboard, K_DELETE);
+		actions.duplicateSelection = shift && KeyPress(keyboard, K_D);
 
 		if ( !shift )
 		{
 			// Keyboard
-			input.move.y += KeyPressed(keyboard, K_W) ? 1.0f : 0.0f;
-			input.move.x += KeyPressed(keyboard, K_A) ? -1.0f : 0.0f;
-			input.move.y += KeyPressed(keyboard, K_S) ? -1.0f : 0.0f;
-			input.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
+			actions.move.y += KeyPressed(keyboard, K_W) ? 1.0f : 0.0f;
+			actions.move.x += KeyPressed(keyboard, K_A) ? -1.0f : 0.0f;
+			actions.move.y += KeyPressed(keyboard, K_S) ? -1.0f : 0.0f;
+			actions.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
 		}
 	}
 
 	// Gamepad
-	input.move += gamepad.leftAxis;
+	actions.move += gamepad.leftAxis;
 
-	if ( mouseFree )
+	switch ( state )
 	{
-		input.zoom = mouse.wheel.y;
-		input.openContextMenu = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
+		case EditorState_EditEntities:
+		case EditorState_EditTiles:
+		{
+			if ( keyboardFree )
+			{
+				actions.startMoveDrag = KeyPress(keyboard, K_T);
+				actions.startScaleDrag = KeyPress(keyboard, K_E);
+			}
 
-		// While the Tilesets panel is open, left click paints/erases tiles instead of selecting entities
-		const bool tileEditMode = EditorMode2D() && EditorGetContextLayer() != nullptr;
-		input.select = !tileEditMode && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT);
-		input.paint = tileEditMode && MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT);
-		input.rotate = EditorMode3D() && MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT);
+			if ( idle && mouseFree && !editor.gizmo.wantsMouse )
+			{
+				actions.zoom = mouse.wheel.y;
+				actions.openContextMenu = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
 
-		input.startPan = MouseButtonPress(mouse, MOUSE_BUTTON_MIDDLE);
-		input.pan = MouseButtonPressed(mouse, MOUSE_BUTTON_MIDDLE);
+				if ( MouseButtonPress(mouse, MOUSE_BUTTON_MIDDLE) )
+				{
+					EditorBeginInteraction(EditorInteraction_Panning, state);
+				}
+				else if ( MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) )
+				{
+					// While the Tilesets panel is open, left click paints/erases tiles instead of selecting entities
+					if ( state == EditorState_EditTiles ) {
+						EditorBeginInteraction(EditorInteraction_Painting, state);
+					} else {
+						actions.select = true;
+					}
+				}
+			}
+			break;
+		}
+		case EditorState_Edit3D:
+		{
+			if ( idle && mouseFree )
+			{
+				actions.openContextMenu = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
+
+				if ( MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) )
+				{
+					actions.select = true;
+					EditorBeginInteraction(EditorInteraction_Rotating, state);
+				}
+			}
+			break;
+		}
+		default: INVALID_CODE_PATH();
 	}
 
-	return input;
+	return actions;
 }
 
 static void EditorUpdateCamera3DOrbit(Camera &camera, f32 deltaSeconds)
@@ -2865,7 +2949,7 @@ static void EditorUpdateCamera3DOrbit(Camera &camera, f32 deltaSeconds)
 	camera.orientation = angles;
 }
 
-static void EditorUpdateCamera3D(const EditorInput &input, const Window &window, Camera &camera, f32 deltaSeconds)
+static void EditorUpdateCamera3D(const EditorActions &actions, const Window &window, Camera &camera, f32 deltaSeconds)
 {
 	const Mouse &mouse = window.mouse;
 
@@ -2883,7 +2967,7 @@ static void EditorUpdateCamera3D(const EditorInput &input, const Window &window,
 			deltaPitch = - window.touches[touchId].dy * ToRadians * 0.2f;
 		}
 #else
-		if (input.rotate) {
+		if (GetEditor().interaction == EditorInteraction_Rotating) {
 			deltaYaw = - mouse.delta.x * ToRadians * 0.2f;
 			deltaPitch = - mouse.delta.y * ToRadians * 0.2f;
 		}
@@ -2905,7 +2989,7 @@ static void EditorUpdateCamera3D(const EditorInput &input, const Window &window,
 			dir = Add(Mul(forward, scaleForward), Mul(right, scaleRight));
 		}
 #else
-		dir = Add(Mul(ForwardDirectionFromAngles(angles), input.move.y), Mul(RightDirectionFromAngles(angles), input.move.x));
+		dir = Add(Mul(ForwardDirectionFromAngles(angles), actions.move.y), Mul(RightDirectionFromAngles(angles), actions.move.x));
 #endif
 		dir = NormalizeIfNotZero(dir);
 	}
@@ -2928,7 +3012,7 @@ static void EditorUpdateCamera3D(const EditorInput &input, const Window &window,
 	speed = Mul(speed, 0.9);
 }
 
-static void EditorUpdateInteraction2D(const EditorInput &input, const Window &window, Camera &camera, f32 deltaSeconds)
+static void EditorUpdateInteraction2D(const EditorActions &actions, const Window &window, Camera &camera, f32 deltaSeconds)
 {
 	Editor &editor = GetEditor();
 	const Mouse &mouse = window.mouse;
@@ -2941,44 +3025,29 @@ static void EditorUpdateInteraction2D(const EditorInput &input, const Window &wi
 	Gizmo_BeginFrame(gizmo);
 	if ( selectedEntity )
 	{
-		if ( input.startMoveDrag ) {
-			Gizmo_StartModalDrag(gizmo, GizmoHandle_MoveXY);
-		} else if ( input.startScaleDrag ) {
-			Gizmo_StartModalDrag(gizmo, GizmoHandle_Scale);
-		}
-
 		Entity &entity = GetEntity(selectedEntity);
-		const f32 snap = input.snap ? 1.0f : 1.0f / ART_PIXELS_PER_METER;
-		const f32 scaleSnap = input.snap ? 0.5f : 0.0f;
+		const f32 snap = actions.snap ? 1.0f : 1.0f / ART_PIXELS_PER_METER;
+		const f32 scaleSnap = actions.snap ? 0.5f : 0.0f;
 		Gizmo_Transform(gizmo, entity.position, entity.scale, snap, scaleSnap);
 	}
 	Gizmo_EndFrame(gizmo);
 
 	// Camera navigation
+	if (editor.interaction == EditorInteraction_Panning)
 	{
-		static int2 clickPos = {};
-		static float3 cameraPositionOnClick = camera.position;
-		if (input.startPan)
-		{
-			clickPos = mouse.pos;
-			cameraPositionOnClick = camera.position;
-		}
-		if (input.pan)
-		{
-			const f32 windowHeight = window.height;
-			const int2 dragPixels = mouse.pos - clickPos;
-			const float2 dragNorm = {dragPixels.x/windowHeight, dragPixels.y/windowHeight};
-			const float2 dragScaled = 2.0f * camera.height * dragNorm;
-			camera.position.x = cameraPositionOnClick.x - dragScaled.x;
-			camera.position.y = cameraPositionOnClick.y + dragScaled.y;
-		}
+		const f32 windowHeight = window.height;
+		const int2 dragPixels = mouse.pos - editor.interactionStartMouse;
+		const float2 dragNorm = {dragPixels.x/windowHeight, dragPixels.y/windowHeight};
+		const float2 dragScaled = 2.0f * camera.height * dragNorm;
+		camera.position.x = editor.interactionStartCamera.x - dragScaled.x;
+		camera.position.y = editor.interactionStartCamera.y + dragScaled.y;
 	}
 
-	if (input.zoom != 0.0f)
+	if (actions.zoom != 0.0f)
 	{
 		const f32 ar = (f32) window.width / window.height;
 		const f32 heightPrev = camera.height;
-		camera.height = Max(2.0f, camera.height + input.zoom);
+		camera.height = Max(2.0f, camera.height + actions.zoom);
 		const f32 heightDiff = heightPrev - camera.height;
 		const f32 widthDiff = ar * heightDiff;
 		const f32 xScale = 2.0f * ( (f32) mouse.pos.x / window.width ) - 1.0f;
@@ -2990,7 +3059,7 @@ static void EditorUpdateInteraction2D(const EditorInput &input, const Window &wi
 	// Interaction with keyboard / gamepad
 	const float3 upVector = {0, 1, 0};
 	const float3 rightVector = {1, 0, 0};
-	const float3 dir = NormalizeIfNotZero(input.move.x * rightVector + input.move.y * upVector);
+	const float3 dir = NormalizeIfNotZero(actions.move.x * rightVector + actions.move.y * upVector);
 
 	// Accelerated translation
 	static constexpr f32 MAX_SPEED = 25.0f;
@@ -3013,7 +3082,7 @@ static void EditorUpdateInteraction2D(const EditorInput &input, const Window &wi
 	}
 }
 
-static void EditorBeginSceneEditing(const EditorInput &input)
+static void EditorBeginSceneEditing(const EditorActions &actions)
 {
 	const Mouse &mouse = GetWindow().mouse;
 	Engine &engine = GetEngine();
@@ -3022,7 +3091,7 @@ static void EditorBeginSceneEditing(const EditorInput &input)
 	const Camera &camera = editor.camera[ProjectionOrthographic];
 
 	{
-		if (input.select)
+		if (actions.select)
 		{
 			const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
 			const ID iconHit = editor.showIcons && EditorMode2D() ? EditorPickEntityIcon(mouseWorldPos) : ID{};
@@ -3052,7 +3121,7 @@ static void EditorBeginSceneEditing(const EditorInput &input)
 			}
 		}
 
-		if (input.paint)
+		if (editor.interaction == EditorInteraction_Painting)
 		{
 			Layer *contextLayer = EditorGetContextLayer();
 			if (contextLayer)
@@ -3373,18 +3442,38 @@ void EditorInitialize(Engine &engine)
 	CleanScene(engine);
 }
 
-static void EditorHandleShortcuts(const EditorInput &input)
+static void EditorApplyActions(const EditorActions &actions)
 {
 	Engine &engine = GetEngine();
 	Editor &editor = GetEditor();
 
-	if (input.toggleIcons)
+	if ( actions.startGame )
+	{
+		EditorPlay();
+	}
+	else if ( actions.stopGame )
+	{
+		EditorStop();
+	}
+	else if ( actions.toggleUI )
+	{
+		editor.showUI = !editor.showUI;
+	}
+
+	if ( actions.openContextMenu )
+	{
+		const Camera &camera = editor.camera[ProjectionOrthographic];
+		editor.contextMenuWorldPos = GetWorld2DCoord(engine, camera, GetWindow().mouse.pos);
+		editor.showContextMenu = true;
+	}
+
+	if (actions.toggleIcons)
 	{
 		editor.showIcons = !editor.showIcons;
 	}
 
 	// Delete takes any selection, the rest of the shortcuts only act on an entity
-	if (input.removeSelection)
+	if (actions.removeSelection)
 	{
 		EditorRemoveSelection();
 	}
@@ -3395,11 +3484,19 @@ static void EditorHandleShortcuts(const EditorInput &input)
 		return;
 	}
 
-	if (input.duplicateSelection)
+	if (actions.duplicateSelection)
 	{
 		const ID newEntity = DuplicateEntity(engine, selectedEntity);
 		EditorSelectEntity(newEntity);
 		Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_MoveXY);
+	}
+	else if (actions.startMoveDrag)
+	{
+		Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_MoveXY);
+	}
+	else if (actions.startScaleDrag)
+	{
+		Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_Scale);
 	}
 }
 
@@ -3414,23 +3511,8 @@ void EditorUpdate(Engine &engine)
 	editor.frameMillisIndex = (editor.frameMillisIndex + 1) % MAX_PROFILE_FRAMES;
 #endif // USE_PROFILE
 
-	const EditorInput input = EditorReadInput();
-
-	if ( input.startGame )
-	{
-		engine.game.state = GameStateStarting;
-		editor.showUI = false;
-	}
-	else if ( input.stopGame )
-	{
-		engine.game.state = GameStateStopping;
-		EditorSetCamera();
-		editor.showUI = true;
-	}
-	else if ( input.toggleUI )
-	{
-		editor.showUI = !editor.showUI;
-	}
+	const EditorActions actions = EditorProcessInput();
+	EditorApplyActions(actions);
 
 	if ( engine.game.state == GameStateStopped )
 	{
@@ -3445,19 +3527,10 @@ void EditorUpdate(Engine &engine)
 		EditorUpdateUI();
 	}
 
-	EditorHandleShortcuts(input);
-
 	// Avoid Editor interaction
 	if ( engine.game.state != GameStateStopped )
 	{
 		return;
-	}
-
-	if ( input.openContextMenu )
-	{
-		const Camera &camera = editor.camera[ProjectionOrthographic];
-		editor.contextMenuWorldPos = GetWorld2DCoord(engine, camera, window.mouse.pos);
-		editor.showContextMenu = true;
 	}
 
 	if (EditorMode3D())
@@ -3468,18 +3541,18 @@ void EditorUpdate(Engine &engine)
 		}
 		else
 		{
-			EditorUpdateCamera3D(input, window, editor.camera[ProjectionPerspective], gfx.deltaSeconds);
+			EditorUpdateCamera3D(actions, window, editor.camera[ProjectionPerspective], gfx.deltaSeconds);
 		}
 
 		SetCamera(editor.camera[ProjectionPerspective]);
 	}
 	else
 	{
-		EditorUpdateInteraction2D(input, window, editor.camera[ProjectionOrthographic], gfx.deltaSeconds);
+		EditorUpdateInteraction2D(actions, window, editor.camera[ProjectionOrthographic], gfx.deltaSeconds);
 		SetCamera(editor.camera[ProjectionOrthographic]);
 	}
 
-	EditorBeginSceneEditing(input);
+	EditorBeginSceneEditing(actions);
 
 	EditorDebugDraw();
 }

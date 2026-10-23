@@ -166,6 +166,22 @@ struct EditorSpriteSheet
 
 constexpr u32 EditorNoLayer = U32_MAX;
 
+enum EditorState
+{
+	EditorState_Playing,
+	EditorState_EditEntities,
+	EditorState_EditTiles,
+	EditorState_Edit3D,
+};
+
+enum EditorInteraction
+{
+	EditorInteraction_None,
+	EditorInteraction_Panning,
+	EditorInteraction_Painting,
+	EditorInteraction_Rotating,
+};
+
 struct EditorContext
 {
 	FileNode *selectedFile;
@@ -200,6 +216,11 @@ struct Editor
 	float2 contextMenuWorldPos;
 
 	bool selectEntity;
+
+	EditorInteraction interaction;
+	EditorState interactionState;
+	int2 interactionStartMouse;
+	float3 interactionStartCamera;
 
 	Gizmo gizmo;
 
