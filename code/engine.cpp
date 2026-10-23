@@ -171,7 +171,6 @@ static void GameUpdate(Engine &engine, const Host &host)
 			game.accumulatedSeconds -= fixedStepSeconds;
 		}
 
-		UpdateParticles(engine.scene, Min(engine.gfx.deltaSeconds, MAX_FRAME_SECONDS));
 		RunScriptHooks(engine, ScriptHook_Update);
 	}
 
@@ -179,6 +178,8 @@ static void GameUpdate(Engine &engine, const Host &host)
 	{
 		GameStop(engine);
 	}
+
+	UpdateParticles(engine.scene, Min(engine.gfx.deltaSeconds, MAX_FRAME_SECONDS));
 }
 
 
