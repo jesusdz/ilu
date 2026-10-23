@@ -194,7 +194,7 @@ static void GameUpdate(Engine &engine, const Host &host)
 
 // Bumped by hand whenever the layout of the retained engine state changes in a way its size
 // does not capture, for instance reordering fields that happen to have the same size.
-#define ENGINE_STATE_VERSION 2
+#define ENGINE_STATE_VERSION 3
 
 // Signature to let the platform know if the memory layout of engine data changed
 ENGINE_API u32 OnPlatformGetStateSignature()

@@ -547,7 +547,8 @@ struct UI
 	UIColorPicker colorPicker;
 
 	bool avoidWindowInteraction;
-	bool wantsInput;
+	bool wantsMouse;
+	bool wantsKeyboard;
 
 	UIIcon *icons;
 	u32 iconCount;
@@ -682,6 +683,17 @@ bool UI_IsMouseIdle(const UI &ui)
 {
 	const bool idle = ui.input.mouse.buttons[MOUSE_BUTTON_LEFT] == BUTTON_STATE_IDLE;
 	return idle;
+}
+
+// A press decides who owns the mouse until every button is released again, so a drag
+// keeps its owner while the cursor crosses into or out of a window
+bool UI_CanClaimMouse(const UI &ui)
+{
+	bool idle = true;
+	for (u32 i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
+		idle = idle && ui.input.mouse.buttons[i] == BUTTON_STATE_IDLE;
+	}
+	return idle || UI_IsMousePressWithAnyButton(ui);
 }
 
 bool UI_IsHovered(const UI &ui)
@@ -4605,17 +4617,22 @@ void UI_BeginFrame(UI &ui)
 				UI_RaiseWindow(ui, *ui.hoveredWindow);
 				ui.activeWindow = ui.hoveredWindow;
 				ui.activeWindow->dragging = ( ui.activeWindow->flags & UIWindowFlag_Draggable );
-				ui.wantsInput = true;
 			}
 		}
 		else
 		{
 			ui.activeWindow = nullptr;
-			ui.wantsInput = false;
 		}
 
 		ui.activeWidgetId = 0;
 	}
+
+	if ( UI_CanClaimMouse(ui) )
+	{
+		// An open menu or combo takes the click outside of it too, since that click closes it
+		ui.wantsMouse = ui.hoveredWindow != nullptr || ui.activeMenu != nullptr || ui.comboBox.id != 0;
+	}
+	ui.wantsKeyboard = ui.activeWidgetId != 0;
 
 	// Deactivate menus on click outside
 	if ( ui.activeMenu )

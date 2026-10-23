@@ -56,7 +56,7 @@ struct Gizmo
 	GizmoHandle requested;
 	// Modal drags follow the mouse with no button held: a left click confirms them
 	bool modal;
-	bool mouseConsumed;
+	bool wantsMouse;
 
 	float2 dragStartMouse;
 	float3 dragStartPosition;
@@ -125,11 +125,6 @@ bool Gizmo_IsActive(const Gizmo &g)
 	return g.active != GizmoHandle_None;
 }
 
-bool Gizmo_WantsMouse(const Gizmo &g)
-{
-	return g.active != GizmoHandle_None || g.mouseConsumed;
-}
-
 void Gizmo_StartModalDrag(Gizmo &g, GizmoHandle handle)
 {
 	g.requested = handle;
@@ -154,9 +149,8 @@ void Gizmo_SetCamera(Gizmo &g, float2 center, f32 worldPerPixel)
 
 void Gizmo_BeginFrame(Gizmo &g)
 {
-	g.inputBlocked = UI_IsHovered(*g.ui);
+	g.inputBlocked = g.ui->wantsMouse || !UI_CanClaimMouse(*g.ui);
 	g.visible = false;
-	g.mouseConsumed = false;
 	g.hot = GizmoHandle_None;
 }
 
@@ -168,6 +162,7 @@ void Gizmo_EndFrame(Gizmo &g)
 		g.active = GizmoHandle_None;
 	}
 	g.requested = GizmoHandle_None;
+	g.wantsMouse = g.hot != GizmoHandle_None || g.active != GizmoHandle_None;
 }
 
 bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f32 scaleSnap = 0.0f)
@@ -214,7 +209,6 @@ bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f3
 		{
 			g.active = g.requested ? g.requested : g.hot;
 			g.modal = g.requested != GizmoHandle_None;
-			g.mouseConsumed = clicked;
 			g.dragStartMouse = mouseWorld;
 			g.dragStartPosition = position;
 			g.dragStartScale = scale;
@@ -230,7 +224,6 @@ bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f3
 	{
 		const float3 start = g.dragStartPosition;
 		committed = position.x != start.x || position.y != start.y || scale != g.dragStartScale;
-		g.mouseConsumed = g.modal;
 		g.active = GizmoHandle_None;
 	}
 	else

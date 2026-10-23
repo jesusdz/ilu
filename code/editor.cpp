@@ -2757,6 +2757,100 @@ static bool GetMovementTouchId(const Window &window, u32 *touchId)
 }
 #endif
 
+struct EditorInput
+{
+	bool startGame;
+	bool stopGame;
+	bool toggleUI;
+
+	bool toggleIcons;
+	bool removeSelection;
+	bool duplicateSelection;
+
+	bool startMoveDrag;
+	bool startScaleDrag;
+	bool snap;
+
+	bool openContextMenu;
+	bool select;
+	bool paint;
+	bool rotate;
+	bool startPan;
+	bool pan;
+	f32 zoom;
+	float2 move;
+};
+
+static EditorInput EditorReadInput()
+{
+	const Engine &engine = GetEngine();
+	const Editor &editor = GetEditor();
+	const Window &window = GetWindow();
+	const Keyboard &keyboard = window.keyboard;
+	const Mouse &mouse = window.mouse;
+	const Gamepad &gamepad = *GetHost().gamepad;
+
+	EditorInput input = {};
+
+	const bool keyboardFree = !engine.ui.wantsKeyboard;
+	// The gizmo only runs in 2D, so in 3D its flag is whatever it was left at
+	const bool mouseFree = !engine.ui.wantsMouse && !( EditorMode2D() && editor.gizmo.wantsMouse );
+
+	if ( keyboardFree )
+	{
+		input.startGame = KeyPress(keyboard, K_F5) && engine.game.state == GameStateStopped;
+		input.stopGame = KeyPress(keyboard, K_ESCAPE) && engine.game.state == GameStateRunning;
+		input.toggleUI = KeyPress(keyboard, K_TAB);
+	}
+
+	if ( engine.game.state != GameStateStopped )
+	{
+		return input;
+	}
+
+	input.snap = KeyPressed(keyboard, K_CONTROL);
+
+	if ( keyboardFree )
+	{
+		const bool shift = KeyPressed(keyboard, K_SHIFT);
+
+		input.toggleIcons = KeyPress(keyboard, K_I);
+		input.removeSelection = KeyPress(keyboard, K_DELETE);
+		input.duplicateSelection = shift && KeyPress(keyboard, K_D);
+		input.startMoveDrag = KeyPress(keyboard, K_T);
+		input.startScaleDrag = KeyPress(keyboard, K_E);
+
+		if ( !shift )
+		{
+			// Keyboard
+			input.move.y += KeyPressed(keyboard, K_W) ? 1.0f : 0.0f;
+			input.move.x += KeyPressed(keyboard, K_A) ? -1.0f : 0.0f;
+			input.move.y += KeyPressed(keyboard, K_S) ? -1.0f : 0.0f;
+			input.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
+		}
+	}
+
+	// Gamepad
+	input.move += gamepad.leftAxis;
+
+	if ( mouseFree )
+	{
+		input.zoom = mouse.wheel.y;
+		input.openContextMenu = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
+
+		// While the Tilesets panel is open, left click paints/erases tiles instead of selecting entities
+		const bool tileEditMode = EditorMode2D() && EditorGetContextLayer() != nullptr;
+		input.select = !tileEditMode && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT);
+		input.paint = tileEditMode && MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT);
+		input.rotate = EditorMode3D() && MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT);
+
+		input.startPan = MouseButtonPress(mouse, MOUSE_BUTTON_MIDDLE);
+		input.pan = MouseButtonPressed(mouse, MOUSE_BUTTON_MIDDLE);
+	}
+
+	return input;
+}
+
 static void EditorUpdateCamera3DOrbit(Camera &camera, f32 deltaSeconds)
 {
 	static f32 yaw = 0;
@@ -2771,13 +2865,12 @@ static void EditorUpdateCamera3DOrbit(Camera &camera, f32 deltaSeconds)
 	camera.orientation = angles;
 }
 
-static void EditorUpdateCamera3D(const Window &window, Camera &camera, f32 deltaSeconds, bool handleInput)
+static void EditorUpdateCamera3D(const EditorInput &input, const Window &window, Camera &camera, f32 deltaSeconds)
 {
 	const Mouse &mouse = window.mouse;
 
 	float3 dir = { 0, 0, 0 };
 
-	if ( handleInput )
 	{
 		// Camera rotation
 		f32 deltaYaw = 0.0f;
@@ -2790,7 +2883,7 @@ static void EditorUpdateCamera3D(const Window &window, Camera &camera, f32 delta
 			deltaPitch = - window.touches[touchId].dy * ToRadians * 0.2f;
 		}
 #else
-		if (MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT)) {
+		if (input.rotate) {
 			deltaYaw = - mouse.delta.x * ToRadians * 0.2f;
 			deltaPitch = - mouse.delta.y * ToRadians * 0.2f;
 		}
@@ -2812,10 +2905,7 @@ static void EditorUpdateCamera3D(const Window &window, Camera &camera, f32 delta
 			dir = Add(Mul(forward, scaleForward), Mul(right, scaleRight));
 		}
 #else
-		if ( KeyPressed(window.keyboard, K_W) ) { dir = Add(dir, ForwardDirectionFromAngles(angles)); }
-		if ( KeyPressed(window.keyboard, K_S) ) { dir = Add(dir, Negate( ForwardDirectionFromAngles(angles) )); }
-		if ( KeyPressed(window.keyboard, K_D) ) { dir = Add(dir, RightDirectionFromAngles(angles)); }
-		if ( KeyPressed(window.keyboard, K_A) ) { dir = Add(dir, Negate( RightDirectionFromAngles(angles) )); }
+		dir = Add(Mul(ForwardDirectionFromAngles(angles), input.move.y), Mul(RightDirectionFromAngles(angles), input.move.x));
 #endif
 		dir = NormalizeIfNotZero(dir);
 	}
@@ -2838,11 +2928,9 @@ static void EditorUpdateCamera3D(const Window &window, Camera &camera, f32 delta
 	speed = Mul(speed, 0.9);
 }
 
-static void EditorUpdateInteraction2D(const Window &window, const Gamepad &gamepad, Camera &camera, f32 deltaSeconds, bool handleInput)
+static void EditorUpdateInteraction2D(const EditorInput &input, const Window &window, Camera &camera, f32 deltaSeconds)
 {
-	Engine &engine = GetEngine();
 	Editor &editor = GetEditor();
-	UI &ui = engine.ui;
 	const Mouse &mouse = window.mouse;
 
 	const ID selectedEntity = EditorGetSelectedEntity(editor);
@@ -2853,31 +2941,29 @@ static void EditorUpdateInteraction2D(const Window &window, const Gamepad &gamep
 	Gizmo_BeginFrame(gizmo);
 	if ( selectedEntity )
 	{
-		if ( handleInput && KeyPress(window.keyboard, K_T) ) {
+		if ( input.startMoveDrag ) {
 			Gizmo_StartModalDrag(gizmo, GizmoHandle_MoveXY);
-		} else if ( handleInput && KeyPress(window.keyboard, K_E) ) {
+		} else if ( input.startScaleDrag ) {
 			Gizmo_StartModalDrag(gizmo, GizmoHandle_Scale);
 		}
 
 		Entity &entity = GetEntity(selectedEntity);
-		const bool ctrl = KeyPressed(window.keyboard, K_CONTROL);
-		const f32 snap = ctrl ? 1.0f : 1.0f / ART_PIXELS_PER_METER;
-		const f32 scaleSnap = ctrl ? 0.5f : 0.0f;
+		const f32 snap = input.snap ? 1.0f : 1.0f / ART_PIXELS_PER_METER;
+		const f32 scaleSnap = input.snap ? 0.5f : 0.0f;
 		Gizmo_Transform(gizmo, entity.position, entity.scale, snap, scaleSnap);
 	}
 	Gizmo_EndFrame(gizmo);
 
 	// Camera navigation
-	if ( handleInput )
 	{
 		static int2 clickPos = {};
 		static float3 cameraPositionOnClick = camera.position;
-		if (MouseButtonPress(mouse, MOUSE_BUTTON_MIDDLE))
+		if (input.startPan)
 		{
 			clickPos = mouse.pos;
 			cameraPositionOnClick = camera.position;
 		}
-		if (MouseButtonPressed(mouse, MOUSE_BUTTON_MIDDLE))
+		if (input.pan)
 		{
 			const f32 windowHeight = window.height;
 			const int2 dragPixels = mouse.pos - clickPos;
@@ -2888,44 +2974,23 @@ static void EditorUpdateInteraction2D(const Window &window, const Gamepad &gamep
 		}
 	}
 
-	if ( ui.hoveredWindow == nullptr )
+	if (input.zoom != 0.0f)
 	{
-		if (mouse.wheel.y != 0.0)
-		{
-			const f32 ar = (f32) window.width / window.height;
-			const f32 heightPrev = camera.height;
-			camera.height = Max(2.0f, camera.height + mouse.wheel.y);
-			const f32 heightDiff = heightPrev - camera.height;
-			const f32 widthDiff = ar * heightDiff;
-			const f32 xScale = 2.0f * ( (f32) mouse.pos.x / window.width ) - 1.0f;
-			const f32 yScale = 1.0 - 2.0f * ( (f32) mouse.pos.y / window.height );
-			camera.position.x += widthDiff * xScale;
-			camera.position.y += heightDiff * yScale;
-		}
+		const f32 ar = (f32) window.width / window.height;
+		const f32 heightPrev = camera.height;
+		camera.height = Max(2.0f, camera.height + input.zoom);
+		const f32 heightDiff = heightPrev - camera.height;
+		const f32 widthDiff = ar * heightDiff;
+		const f32 xScale = 2.0f * ( (f32) mouse.pos.x / window.width ) - 1.0f;
+		const f32 yScale = 1.0 - 2.0f * ( (f32) mouse.pos.y / window.height );
+		camera.position.x += widthDiff * xScale;
+		camera.position.y += heightDiff * yScale;
 	}
-
-	float3 dir = { 0, 0, 0 };
 
 	// Interaction with keyboard / gamepad
-	if ( handleInput )
-	{
-		f32 dx = 0.0f;
-		f32 dy = 0.0f;
-
-		// Keyboard
-		dy += KeyPressed(window.keyboard, K_W) ? 1.0f : 0.0f;
-		dx += KeyPressed(window.keyboard, K_A) ? -1.0f : 0.0f;
-		dy += KeyPressed(window.keyboard, K_S) ? -1.0f : 0.0f;
-		dx += KeyPressed(window.keyboard, K_D) ? 1.0f : 0.0f;
-
-		// Gamepad
-		dx += gamepad.leftAxis.x;
-		dy += gamepad.leftAxis.y;
-
-		const float3 upVector = {0, 1, 0};
-		const float3 rightVector = {1, 0, 0};
-		dir = NormalizeIfNotZero(dx * rightVector + dy * upVector);
-	}
+	const float3 upVector = {0, 1, 0};
+	const float3 rightVector = {1, 0, 0};
+	const float3 dir = NormalizeIfNotZero(input.move.x * rightVector + input.move.y * upVector);
 
 	// Accelerated translation
 	static constexpr f32 MAX_SPEED = 25.0f;
@@ -2948,7 +3013,7 @@ static void EditorUpdateInteraction2D(const Window &window, const Gamepad &gamep
 	}
 }
 
-static void EditorBeginSceneEditing(bool handleInput)
+static void EditorBeginSceneEditing(const EditorInput &input)
 {
 	const Mouse &mouse = GetWindow().mouse;
 	Engine &engine = GetEngine();
@@ -2956,12 +3021,8 @@ static void EditorBeginSceneEditing(bool handleInput)
 	Scene &scene = engine.scene;
 	const Camera &camera = editor.camera[ProjectionOrthographic];
 
-	if ( handleInput )
 	{
-		// While the Tilesets panel is open, left click paints/erases tiles instead of selecting entities
-		const bool tileEditMode = EditorMode2D() && EditorGetContextLayer() != nullptr;
-
-		if (!tileEditMode && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) && !Gizmo_WantsMouse(editor.gizmo))
+		if (input.select)
 		{
 			const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
 			const ID iconHit = editor.showIcons && EditorMode2D() ? EditorPickEntityIcon(mouseWorldPos) : ID{};
@@ -2991,7 +3052,7 @@ static void EditorBeginSceneEditing(bool handleInput)
 			}
 		}
 
-		if (tileEditMode && MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT))
+		if (input.paint)
 		{
 			Layer *contextLayer = EditorGetContextLayer();
 			if (contextLayer)
@@ -3312,21 +3373,18 @@ void EditorInitialize(Engine &engine)
 	CleanScene(engine);
 }
 
-static bool EditorHandleKeyboardShortcuts()
+static void EditorHandleShortcuts(const EditorInput &input)
 {
 	Engine &engine = GetEngine();
 	Editor &editor = GetEditor();
-	const Window &window = GetWindow();
 
-	bool handleInput = true;
-
-	if (KeyPress(window.keyboard, K_I) && !engine.ui.wantsInput)
+	if (input.toggleIcons)
 	{
 		editor.showIcons = !editor.showIcons;
 	}
 
 	// Delete takes any selection, the rest of the shortcuts only act on an entity
-	if (KeyPress(window.keyboard, K_DELETE))
+	if (input.removeSelection)
 	{
 		EditorRemoveSelection();
 	}
@@ -3334,29 +3392,20 @@ static bool EditorHandleKeyboardShortcuts()
 	const ID selectedEntity = EditorGetSelectedEntity(editor);
 	if ( !selectedEntity )
 	{
-		return handleInput;
+		return;
 	}
 
-	if (KeyPressed(window.keyboard, K_SHIFT))
+	if (input.duplicateSelection)
 	{
-		handleInput = false; // K_SHIFT is for commands, so abort camera translation
-
-		if (KeyPress(window.keyboard, K_D))
-		{
-			const ID newEntity = DuplicateEntity(engine, selectedEntity);
-			EditorSelectEntity(newEntity);
-			Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_MoveXY);
-		}
+		const ID newEntity = DuplicateEntity(engine, selectedEntity);
+		EditorSelectEntity(newEntity);
+		Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_MoveXY);
 	}
-
-	return handleInput;
 }
 
 void EditorUpdate(Engine &engine)
 {
 	Editor &editor = GetEditor();
-	const Host &host = GetHost();
-	const Gamepad &gamepad = *host.gamepad;
 	const Window &window = GetWindow();
 	Graphics &gfx = engine.gfx;
 
@@ -3365,22 +3414,20 @@ void EditorUpdate(Engine &engine)
 	editor.frameMillisIndex = (editor.frameMillisIndex + 1) % MAX_PROFILE_FRAMES;
 #endif // USE_PROFILE
 
-	if ( KeyPress(window.keyboard, K_F5) )
+	const EditorInput input = EditorReadInput();
+
+	if ( input.startGame )
 	{
-		if ( engine.game.state == GameStateStopped ) {
-			engine.game.state = GameStateStarting;
-			editor.showUI = false;
-		}
+		engine.game.state = GameStateStarting;
+		editor.showUI = false;
 	}
-	else if ( KeyPress(window.keyboard, K_ESCAPE) )
+	else if ( input.stopGame )
 	{
-		if ( engine.game.state == GameStateRunning ) {
-			engine.game.state = GameStateStopping;
-			EditorSetCamera();
-			editor.showUI = true;
-		}
+		engine.game.state = GameStateStopping;
+		EditorSetCamera();
+		editor.showUI = true;
 	}
-	else if ( KeyPress(window.keyboard, K_TAB) )
+	else if ( input.toggleUI )
 	{
 		editor.showUI = !editor.showUI;
 	}
@@ -3398,9 +3445,7 @@ void EditorUpdate(Engine &engine)
 		EditorUpdateUI();
 	}
 
-	bool handleInput = !engine.ui.wantsInput && engine.game.state == GameStateStopped;
-
-	EditorHandleKeyboardShortcuts();
+	EditorHandleShortcuts(input);
 
 	// Avoid Editor interaction
 	if ( engine.game.state != GameStateStopped )
@@ -3408,15 +3453,11 @@ void EditorUpdate(Engine &engine)
 		return;
 	}
 
-	if ( handleInput )
+	if ( input.openContextMenu )
 	{
-		if ( UI_IsMousePress(engine.ui, MOUSE_BUTTON_RIGHT) && !Gizmo_IsActive(editor.gizmo) )
-		{
-			const Mouse &mouse = GetWindow().mouse;
-			const Camera &camera = editor.camera[ProjectionOrthographic];
-			editor.contextMenuWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
-			editor.showContextMenu = true;
-		}
+		const Camera &camera = editor.camera[ProjectionOrthographic];
+		editor.contextMenuWorldPos = GetWorld2DCoord(engine, camera, window.mouse.pos);
+		editor.showContextMenu = true;
 	}
 
 	if (EditorMode3D())
@@ -3427,18 +3468,18 @@ void EditorUpdate(Engine &engine)
 		}
 		else
 		{
-			EditorUpdateCamera3D(window, editor.camera[ProjectionPerspective], gfx.deltaSeconds, handleInput);
+			EditorUpdateCamera3D(input, window, editor.camera[ProjectionPerspective], gfx.deltaSeconds);
 		}
 
 		SetCamera(editor.camera[ProjectionPerspective]);
 	}
 	else
 	{
-		EditorUpdateInteraction2D(window, gamepad, editor.camera[ProjectionOrthographic], gfx.deltaSeconds, handleInput);
+		EditorUpdateInteraction2D(input, window, editor.camera[ProjectionOrthographic], gfx.deltaSeconds);
 		SetCamera(editor.camera[ProjectionOrthographic]);
 	}
 
-	EditorBeginSceneEditing(handleInput);
+	EditorBeginSceneEditing(input);
 
 	EditorDebugDraw();
 }
