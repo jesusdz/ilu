@@ -365,6 +365,7 @@ ENGINE_API bool OnPlatformWindowInit(Host &host)
 #else
 		const FilePath assetsFilepath = MakePath(DataDir, "assets.dat");
 		LoadSceneFromBin(engine, assetsFilepath.str);
+		engine.game.state = GameStateStarting;
 #endif
 	}
 
