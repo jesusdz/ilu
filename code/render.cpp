@@ -1387,6 +1387,9 @@ bool RenderGraphics(Engine &engine)
 
 		TransitionImageLayout(commandList, gfx.renderTargets.effectsImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
+		// Black bars where the integer-scaled scene does not cover the display
+		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 1.0f } );
+
 		const Framebuffer displayFramebuffer = GetDisplayFramebuffer(gfx);
 		{
 		PROFILE_GFX_BLOCK(BeginRenderPass);
