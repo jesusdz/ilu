@@ -49,6 +49,17 @@ static Layer *EditorGetContextLayer()
 	return layer;
 }
 
+// Null while one of the room's layers is selected instead
+static Room *EditorGetSelectedRoom()
+{
+	Editor &editor = GetEditor();
+	Room *room = nullptr;
+	if ( editor.inspector.selected.type == EditorSelectedType_Room ) {
+		room = EditorGetContextRoom();
+	}
+	return room;
+}
+
 static bool EditorMode3D()
 {
 	Editor &editor = GetEditor();
@@ -181,9 +192,10 @@ static constexpr ComponentType kIconOrder[] = {
 	ComponentType_CameraRegion,
 };
 
-struct EditorEntityIcon
+struct EditorViewportIcon
 {
-	ID entityId;
+	ID id;
+	EditorSelectedType type;
 	ImageH image;
 	float2 pos;
 	float2 size;
@@ -201,9 +213,10 @@ static u32 EditorEntityIconSlot(const Scene &scene, const Entity &entity)
 	return ARRAY_COUNT(kIconOrder);
 }
 
-// Ordered by kIconOrder: consecutive icons share an image and DebugDrawAppendBatch
-// merges them, one batch per icon type
-static u32 EditorGatherEntityIcons(Arena &arena, EditorEntityIcon *&outIcons)
+// Rooms first, so entity icons draw over them and win the pick. Then ordered by
+// kIconOrder: consecutive icons share an image and DebugDrawAppendBatch merges them,
+// one batch per icon type
+static u32 EditorGatherIcons(Arena &arena, EditorViewportIcon *&outIcons)
 {
 	const Engine &engine = GetEngine();
 	const Editor &editor = GetEditor();
@@ -213,8 +226,21 @@ static u32 EditorGatherEntityIcons(Arena &arena, EditorEntityIcon *&outIcons)
 	const f32 iconSizePixels = 32.0f;
 	const float2 size = iconSizePixels * float2{ worldPerPixel, worldPerPixel };
 
-	EditorEntityIcon *icons = PushArray(arena, EditorEntityIcon, scene.entityCount);
+	EditorViewportIcon *icons = PushArray(arena, EditorViewportIcon, scene.roomCount + scene.entityCount);
 	u32 iconCount = 0;
+
+	for (u32 i = 0; i < scene.roomCount; ++i)
+	{
+		const Room &room = scene.rooms[i];
+		icons[iconCount++] = {
+			.id = room.id,
+			.type = EditorSelectedType_Room,
+			.image = editor.roomIcon,
+			.pos = Float2(room.pos),
+			.size = size,
+		};
+	}
+
 	for (u32 pass = 0; pass <= ARRAY_COUNT(kIconOrder); ++pass)
 	{
 		const u32 slot = pass == 0 ? ARRAY_COUNT(kIconOrder) : pass - 1;
@@ -225,7 +251,8 @@ static u32 EditorGatherEntityIcons(Arena &arena, EditorEntityIcon *&outIcons)
 			if ( entity.visible && EditorEntityIconSlot(scene, entity) == slot )
 			{
 				icons[iconCount++] = {
-					.entityId = entity.id,
+					.id = entity.id,
+					.type = EditorSelectedType_Entity,
 					.image = editor.gizmoIcons[iconType],
 					.pos = entity.position.xy - 0.5f * size,
 					.size = size,
@@ -238,24 +265,24 @@ static u32 EditorGatherEntityIcons(Arena &arena, EditorEntityIcon *&outIcons)
 	return iconCount;
 }
 
-static ID EditorPickEntityIcon(const float2 mouseWorldPos)
+static EditorViewportIcon EditorPickIcon(const float2 mouseWorldPos)
 {
 	Scratch scratch;
-	EditorEntityIcon *icons;
-	const u32 iconCount = EditorGatherEntityIcons(scratch.arena, icons);
+	EditorViewportIcon *icons;
+	const u32 iconCount = EditorGatherIcons(scratch.arena, icons);
 
 	// Reverse draw order, so the icon drawn on top of an overlap is the one picked
 	for (u32 i = iconCount; i-- > 0; )
 	{
-		const EditorEntityIcon &icon = icons[i];
+		const EditorViewportIcon &icon = icons[i];
 		const float2 max = icon.pos + icon.size;
 		if ( mouseWorldPos.x >= icon.pos.x && mouseWorldPos.x < max.x &&
 		     mouseWorldPos.y >= icon.pos.y && mouseWorldPos.y < max.y )
 		{
-			return icon.entityId;
+			return icon;
 		}
 	}
-	return {};
+	return { .type = EditorSelectedType_None };
 }
 
 static void EditorUpdateUI_MenuBar()
@@ -810,6 +837,7 @@ static void EditorEntityDropTarget(ID layerId)
 		if ( droppedId ) {
 			AddComponent(engine, droppedId, ComponentType_Sprite);
 			GetSprite(engine.scene, droppedId).layerId = layerId;
+			GetEntity(droppedId).roomId = GetLayerRoom(GetLayer(layerId)).id;
 		}
 	}
 }
@@ -1757,6 +1785,23 @@ static void EditorUpdateUI_Inspector()
 				UI_InputFloat(ui, "Scale", &entity.scale);
 				UI_Checkbox(ui, "Visible", &entity.visible);
 
+				// Removed rooms keep their slot until compacted
+				const Scene &scene = engine.scene;
+				const char *roomNames[MAX_ROOMS + 1] = { "None" };
+				ID roomIds[MAX_ROOMS + 1] = {};
+				u32 roomItemCount = 1;
+				u32 roomIndex = 0;
+				for (u32 i = 0; i < scene.roomCount; ++i)
+				{
+					const Room &room = scene.rooms[i];
+					if ( !room.id ) { continue; }
+					if ( room.id == entity.roomId ) { roomIndex = roomItemCount; }
+					roomIds[roomItemCount] = room.id;
+					roomNames[roomItemCount++] = room.name;
+				}
+				UI_Combo(ui, "Room", roomNames, roomItemCount, &roomIndex);
+				entity.roomId = roomIds[roomIndex];
+
 				for (u32 type = 0; type < ComponentType_Count; ++type)
 				{
 					const ComponentFlags bit = 1 << type;
@@ -2245,6 +2290,7 @@ static ID EditorSpawnEntityAtMouse(ID spriteId)
 
 	const EntityDesc entityDesc = {
 		.name = InternString("entity"),
+		.roomId = FindRoomAt(engine.scene, worldPos),
 		.pos = Float3(worldPos, 0.0),
 		.scale = 1.0f,
 	};
@@ -2388,6 +2434,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("empty"),
+					.roomId = FindRoomAt(engine.scene, editor.contextMenuWorldPos),
 					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
@@ -2405,6 +2452,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("light"),
+					.roomId = FindRoomAt(engine.scene, editor.contextMenuWorldPos),
 					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
@@ -2423,6 +2471,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("particles"),
+					.roomId = FindRoomAt(engine.scene, editor.contextMenuWorldPos),
 					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
@@ -2441,6 +2490,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("script"),
+					.roomId = FindRoomAt(engine.scene, editor.contextMenuWorldPos),
 					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
@@ -2459,6 +2509,7 @@ static void EditorUpdateUI_ContextMenu()
 			{
 				const EntityDesc entityDesc = {
 					.name = InternString("camera_region"),
+					.roomId = FindRoomAt(engine.scene, editor.contextMenuWorldPos),
 					.pos = Float3(editor.contextMenuWorldPos, 0.0),
 					.scale = 1.0f,
 				};
@@ -2903,8 +2954,7 @@ static EditorActions EditorProcessInput()
 		const MouseButton button = editor.interaction == EditorInteraction_Panning ? MOUSE_BUTTON_MIDDLE : MOUSE_BUTTON_LEFT;
 		if ( !MouseButtonPressed(mouse, button) || state != editor.interactionState )
 		{
-			// Selection happens on release, and only if the mouse barely moved. In 3D, rotating
-			// starts on any left press, so a short drag there is also a click to select
+			// Select on release if the mouse barely moved: in 3D a click starts as a rotation
 			const bool clickInteraction = editor.interaction == EditorInteraction_Selecting || editor.interaction == EditorInteraction_Rotating;
 			if ( clickInteraction && state == editor.interactionState )
 			{
@@ -3077,6 +3127,7 @@ static void EditorUpdateInteraction2D(const EditorActions &actions, const Window
 	const Mouse &mouse = window.mouse;
 
 	const ID selectedEntity = EditorGetSelectedEntity(editor);
+	Room *selectedRoom = EditorGetSelectedRoom();
 
 	Gizmo &gizmo = editor.gizmo;
 	Gizmo_SetViewportSize(gizmo, uint2{window.width, window.height});
@@ -3088,6 +3139,18 @@ static void EditorUpdateInteraction2D(const EditorActions &actions, const Window
 		const f32 snap = actions.snap ? 1.0f : 1.0f / ART_PIXELS_PER_METER;
 		const f32 scaleSnap = actions.snap ? 0.5f : 0.0f;
 		Gizmo_Transform(gizmo, entity.position, entity.scale, snap, scaleSnap);
+	}
+	else if ( selectedRoom )
+	{
+		// The gizmo works from the drag start, so rounding to whole cells each frame loses nothing
+		Room &room = *selectedRoom;
+		float3 position = Float3(Float2(room.pos), 0.0f);
+		Gizmo_Translate(gizmo, position, 1.0f);
+		const int2 target = { (i32)Round(position.x), (i32)Round(position.y) };
+		if ( target.x != room.pos.x || target.y != room.pos.y )
+		{
+			MoveRoom(room, target - room.pos);
+		}
 	}
 	Gizmo_EndFrame(gizmo);
 
@@ -3152,9 +3215,13 @@ static void EditorBeginSceneEditing(const EditorActions &actions)
 	if (actions.select)
 	{
 		const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
-		const ID iconHit = editor.showIcons && EditorMode2D() ? EditorPickEntityIcon(mouseWorldPos) : ID{};
-		if ( iconHit ) {
-			EditorSelectEntity(iconHit);
+		const EditorViewportIcon iconHit = editor.showIcons && EditorMode2D()
+			? EditorPickIcon(mouseWorldPos)
+			: EditorViewportIcon{ .type = EditorSelectedType_None };
+		if ( iconHit.type == EditorSelectedType_Room ) {
+			EditorSelectRoom(iconHit.id);
+		} else if ( iconHit.type == EditorSelectedType_Entity ) {
+			EditorSelectEntity(iconHit.id);
 		} else {
 			editor.selectEntity = true;
 		}
@@ -3251,7 +3318,7 @@ void EditorDebugDraw()
 								u32 collider = chunk->cells[x][y].collider;
 								if ( collider != 0 )
 								{
-									const float2 cellWorldPos = {(f32)(chunk->x + x), (f32)(chunk->y + y)};
+									const float2 cellWorldPos = Float2(contextRoom->origin + int2{chunk->x + x, chunk->y + y});
 									DrawBox(cellWorldPos, float2{1, 1}, colliderColors[collider]);
 								}
 							}
@@ -3294,14 +3361,17 @@ void EditorDebugDraw()
 
 	if (editor.showIcons && EditorMode2D())
 	{
-		const ID selected = EditorGetSelectedEntity(editor);
+		const EditorSelection &selected = editor.inspector.selected;
 		Scratch scratch;
-		EditorEntityIcon *icons;
-		const u32 iconCount = EditorGatherEntityIcons(scratch.arena, icons);
+		EditorViewportIcon *icons;
+		const u32 iconCount = EditorGatherIcons(scratch.arena, icons);
 		for (u32 i = 0; i < iconCount; ++i)
 		{
-			const EditorEntityIcon &icon = icons[i];
-			DrawImage(icon.image, icon.pos, icon.size, icon.entityId == selected ? ColorOrange : ColorWhite);
+			const EditorViewportIcon &icon = icons[i];
+			const bool isSelected = icon.type == EditorSelectedType_Room
+				? selected.type == EditorSelectedType_Room && editor.context.roomId == icon.id
+				: selected.type == EditorSelectedType_Entity && selected.id == icon.id;
+			DrawImage(icon.image, icon.pos, icon.size, isSelected ? ColorOrange : ColorWhite);
 		}
 	}
 }
@@ -3462,6 +3532,7 @@ void EditorInitialize(Engine &engine)
 	editor.gizmoIcons[ComponentType_Script] = EditorLoadIcon("editor/script_32.png", "icon_script");
 	editor.gizmoIcons[ComponentType_CameraRegion] = EditorLoadIcon("editor/camera_region_32.png", "icon_camera_region");
 	editor.gizmoIcons[ComponentType_Count] = EditorLoadIcon("editor/entity_32.png", "icon_entity");
+	editor.roomIcon = EditorLoadIcon("editor/room_32.png", "icon_room");
 
 	EditorUnselectAll();
 
@@ -3543,6 +3614,11 @@ static void EditorApplyActions(const EditorActions &actions)
 	if (triggered[EditorAction_RemoveSelection])
 	{
 		EditorRemoveSelection();
+	}
+
+	if ( EditorGetSelectedRoom() && triggered[EditorAction_StartMoveDrag] )
+	{
+		Gizmo_StartModalDrag(editor.gizmo, GizmoHandle_MoveXY);
 	}
 
 	const ID selectedEntity = EditorGetSelectedEntity(editor);

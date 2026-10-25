@@ -444,7 +444,7 @@ static float2 SnapToPixel(float2 pos, f32 pixelSize)
 // What a sprite layer covers in world units. The layer's own bounds will not do for
 // fitting it to the view: they are rounded out to whole chunks, and a sprite can be
 // larger than the cell it sits in.
-static bool GetLayerSpriteBounds(const Layer &layer, float2 &min, float2 &size)
+static bool GetLayerSpriteBounds(const Room &room, const Layer &layer, float2 &min, float2 &size)
 {
 	bool any = false;
 	float2 max = {};
@@ -461,7 +461,7 @@ static bool GetLayerSpriteBounds(const Layer &layer, float2 &min, float2 &size)
 						continue;
 					}
 					const Sprite &sprite = GetSprite(spriteId);
-					const float2 tileMin = Float2(int2{chunk->x + x, chunk->y + y});
+					const float2 tileMin = Float2(room.origin + int2{chunk->x + x, chunk->y + y});
 					const float2 tileMax = tileMin + float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
 					min = any ? Min(min, tileMin) : tileMin;
 					max = any ? Max(max, tileMax) : tileMax;
@@ -670,7 +670,7 @@ bool RenderGraphics(Engine &engine)
 						float2 contentMin = {};
 						float2 contentSize = {};
 
-						if ( GetLayerSpriteBounds(layer, contentMin, contentSize) )
+						if ( GetLayerSpriteBounds(room, layer, contentMin, contentSize) )
 						{
 							float2 viewMin;
 							float2 viewSize;
@@ -880,15 +880,16 @@ bool RenderGraphics(Engine &engine)
 
 				// Tiles are emitted row by row across the whole layer, not chunk by chunk:
 				// sprites larger than a cell overlap their neighbours, and which one ends
-				// up on top must not depend on where the chunk borders fall.
-				const i32 layerMaxX = layer.pos.x + (i32)layer.size.x;
-				const i32 layerMaxY = layer.pos.y + (i32)layer.size.y;
-				for (i32 y = layer.pos.y; y < layerMaxY; ++y)
+				// up on top must not depend on where the chunk borders fall. Walked in room-local cells.
+				const int2 localMin = layer.pos - room.origin;
+				const i32 layerMaxX = localMin.x + (i32)layer.size.x;
+				const i32 layerMaxY = localMin.y + (i32)layer.size.y;
+				for (i32 y = localMin.y; y < layerMaxY; ++y)
 				{
 					const CellChunk *chunk = nullptr;
-					for (i32 x = layer.pos.x; x < layerMaxX; ++x)
+					for (i32 x = localMin.x; x < layerMaxX; ++x)
 					{
-						if (x == layer.pos.x || (x & (CELL_CHUNK_SIZE - 1)) == 0) {
+						if (x == localMin.x || (x & (CELL_CHUNK_SIZE - 1)) == 0) {
 							chunk = FindCellChunk(layer, int2{x, y});
 						}
 						if (!chunk) {
@@ -902,7 +903,7 @@ bool RenderGraphics(Engine &engine)
 
 						const Sprite &sprite = GetSprite(spriteId);
 						const float2 tileSize = layerScale * float2{(f32)sprite.size.x, (f32)sprite.size.y} / ART_PIXELS_PER_METER;
-						const float2 tileMin = layerOrigin + layerScale * Float2(int2{x, y});
+						const float2 tileMin = layerOrigin + layerScale * Float2(room.origin + int2{x, y});
 						const float2 tileMax = tileMin + tileSize;
 
 						// The cell range above is conservative; this trims the cells whose own

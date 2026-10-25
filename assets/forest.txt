@@ -351,6 +351,7 @@ ParticleEffect fireflies_fx = {
 
 Entity player = {
  .id = 1027,
+ .roomId = 1021,
  .pos = {2.776660, 1.000000, 0.000000},
  .scale = 1.000000,
  .collider = {
@@ -383,6 +384,7 @@ Entity player = {
 
 Entity light = {
  .id = 1043,
+ .roomId = 1021,
  .pos = {9.000000, 1.000000, 0.000000},
  .scale = 1.000000,
  .light = {
@@ -400,6 +402,7 @@ Entity light = {
 
 Entity light = {
  .id = 1044,
+ .roomId = 1021,
  .pos = {19.000000, 1.000000, 0.000000},
  .scale = 1.000000,
  .light = {
@@ -417,6 +420,7 @@ Entity light = {
 
 Entity light = {
  .id = 1045,
+ .roomId = 1021,
  .pos = {32.000000, 1.000000, 0.000000},
  .scale = 1.000000,
  .light = {
@@ -434,6 +438,7 @@ Entity light = {
 
 Entity waterfall = {
  .id = 1047,
+ .roomId = 1021,
  .pos = {22.724094, 4.900259, 0.000000},
  .scale = 1.000000,
  .particles = {
@@ -445,6 +450,7 @@ Entity waterfall = {
 
 Entity fireflies = {
  .id = 1049,
+ .roomId = 1021,
  .pos = {20.000000, 7.000000, 0.000000},
  .scale = 1.000000,
  .particles = {
@@ -456,6 +462,7 @@ Entity fireflies = {
 
 Entity light = {
  .id = 1050,
+ .roomId = 1021,
  .pos = {14.061110, 9.777778, -6.000000},
  .scale = 1.000000,
  .light = {
@@ -472,6 +479,7 @@ Entity light = {
 
 Entity script = {
  .id = 1051,
+ .roomId = 1021,
  .pos = {-2.007693, 5.146153, 0.000000},
  .scale = 1.000000,
  .script = {
@@ -485,6 +493,7 @@ Entity script = {
 
 Entity camera_region = {
  .id = 1052,
+ .roomId = 1021,
  .pos = {0.000000, -6.000000, 0.000000},
  .scale = 1.000000,
  .cameraRegion = {
@@ -495,6 +504,7 @@ Entity camera_region = {
 
 Entity waterfall2 = {
  .id = 1058,
+ .roomId = 1021,
  .pos = {23.000000, 0.100000, -0.900000},
  .scale = 1.000000,
  .particles = {

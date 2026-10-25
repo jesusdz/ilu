@@ -409,6 +409,8 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 		PushIndent(ctx);
 		WriteLine(ctx, ".id = %u,", desc.id.slot);
+		// Not in prefabs: instances take the room they are dropped in
+		WriteLine(ctx, ".roomId = %u,", desc.roomId.slot);
 		WriteEntityDescBody(ctx, desc);
 		PopIndent(ctx);
 
@@ -1279,11 +1281,15 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 {
 	static const String sId = MakeString("id");
 	static const String sName = MakeString("name");
+	static const String sRoomId = MakeString("roomId");
 	static const String sPos = MakeString("pos");
 	static const String sScale = MakeString("scale");
 
 	if ( StrEq( field, sId ) ) {
 		entity.id = DParser_ConsumeID(parser);
+		return true;
+	} else if ( StrEq( field, sRoomId ) ) {
+		entity.roomId = DParser_ConsumeID(parser);
 		return true;
 	} else if ( StrEq( field, sName ) ) {
 		entity.name = PushString(*parser.arena, DParser_ConsumeString(parser));
@@ -1822,6 +1828,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 	d = {};
 	d.id           = desc.id;
 	d.name         = DataInternString(stringPool, desc.name);
+	d.roomId       = desc.roomId;
 	d.pos          = desc.pos;
 	d.scale        = desc.scale;
 
@@ -2535,13 +2542,14 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 			layerDesc.tiles =(TileDesc*)(arena.base + arena.used);
 			layerDesc.tileCount = 0;
 			// Walking the layer bounds rather than the hash table keeps the tiles in the
-			// same column-by-column order from one save to the next.
-			const i32 maxX = layer.pos.x + (i32)layer.size.x;
-			const i32 maxY = layer.pos.y + (i32)layer.size.y;
-			for (i32 x = layer.pos.x; x < maxX; ++x) {
+			// same column-by-column order from one save to the next. Tiles are saved in world cells.
+			const int2 localMin = layer.pos - room.origin;
+			const i32 maxX = localMin.x + (i32)layer.size.x;
+			const i32 maxY = localMin.y + (i32)layer.size.y;
+			for (i32 x = localMin.x; x < maxX; ++x) {
 				const CellChunk *chunk = nullptr;
-				for (i32 y = layer.pos.y; y < maxY; ++y) {
-					if (y == layer.pos.y || (y & (CELL_CHUNK_SIZE - 1)) == 0) {
+				for (i32 y = localMin.y; y < maxY; ++y) {
+					if (y == localMin.y || (y & (CELL_CHUNK_SIZE - 1)) == 0) {
 						chunk = FindCellChunk(layer, int2{x, y});
 					}
 					if (!chunk) continue;
@@ -2549,8 +2557,8 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 					const u32 collider = chunk->cells[x - chunk->x][y - chunk->y].collider;
 					if (collider == 0) continue;
 					TileDesc &tile = *PushStruct(arena, TileDesc);
-					tile.x = (i16)x;
-					tile.y = (i16)y;
+					tile.x = (i16)(x + room.origin.x);
+					tile.y = (i16)(y + room.origin.y);
 					tile.collider = collider;
 					layerDesc.tileCount++;
 				}

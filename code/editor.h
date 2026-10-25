@@ -238,6 +238,7 @@ struct Editor
 	ImageH iconImg;
 	ImageH iluLogo;
 	ImageH gizmoIcons[ComponentType_Count + 1];
+	ImageH roomIcon;
 
 	SnapshotNode *snapshots;
 

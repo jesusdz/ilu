@@ -1001,6 +1001,7 @@ struct EntityDesc
 {
 	ID id;
 	const char *name;
+	ID roomId;
 	// Transform
 	float3 pos;
 	f32 scale;
@@ -1020,6 +1021,7 @@ struct Entity
 {
 	ID id;
 	const char *name;
+	ID roomId; // Can be none
 	// Transform
 	float3 position;
 	float3 prevPosition;
@@ -1211,8 +1213,9 @@ struct Layer
 	bool visible;
 	bool isCollider;
 	bool isBackground;
-	int2 pos;   // Bounds of the filled cells, see UpdateLayerBounds
-	uint2 size; // (both zero while the layer is empty)
+	int2 pos;   // Bounds of the filled cells in world cells, see UpdateLayerBounds
+	uint2 size; // (size zero while the layer is empty)
+	// Keyed by room-local cell coordinates, see Room::origin
 	CellGrid cells;
 	f32 depth; // depth in world units
 	float2 depthOffset; // Set when the room changes (UpdateLayerTransforms): keeps sprite pixels the
@@ -1226,7 +1229,8 @@ struct Room
 {
 	ID id;
 	const char *name;
-	int2 pos;   // Bounds of the base and collider layers together, see UpdateRoomBounds
+	int2 origin; // World cell of local (0,0): cells are stored relative to it, so a move only changes this
+	int2 pos;    // Bounds of the base and collider layers together in world cells, see UpdateRoomBounds
 	uint2 size;
 	Layer layers[MAX_LAYERS];
 	u32 layerCount;
@@ -1335,6 +1339,7 @@ struct BinEntityDesc
 {
 	ID id;
 	const char *name;
+	ID roomId;
 	ID materialId;
 	ID spriteId;
 	ID layerId;
@@ -1489,7 +1494,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 29; // 29: particle effect distortion
+constexpr u32 BinAssetsVersion = 30; // 30: entity room
 
 #pragma pack(push, 1)
 
@@ -1872,9 +1877,9 @@ ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition);
 
 float2 GetWorld2DCoord(const Engine &engine, const Camera &camera, int2 pixelCoord);
 int2 GetGridTileCoord(const Engine &engine, const Camera &camera, int2 pixelCoord);
-void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord);
+void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord); // coord in world cells
 void SetGridTileAtCoord(Engine &engine, Layer &layer, ID spriteId, int2 coord);
-const CellChunk *FindCellChunk(const Layer &layer, int2 coord); // Null where the layer has no chunk
+const CellChunk *FindCellChunk(const Layer &layer, int2 localCoord); // Room-local coord, null where the layer has no chunk
 u32 GetColliderAtWorldPos(float2 worldPos);
 bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 
@@ -1899,6 +1904,8 @@ void UpdateLayerTransforms(Room &room);
 f32 GameCameraDistance();
 f32 DepthScale(f32 depth, f32 referenceDepth = 0.0f); // Sizes things at depth to look as they would at referenceDepth
 Room &GetLayerRoom(Layer &layer);
+void MoveRoom(Room &room, int2 delta); // Moves its entities too
+ID FindRoomAt(const Scene &scene, float2 worldPos);
 ID CreateRoom(Engine &engine);
 ID CreateRoom(Engine &engine, const RoomDesc &desc);
 ID CreateRoom(Engine &engine, const BinRoom &binRoom);

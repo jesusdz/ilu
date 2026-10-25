@@ -1041,6 +1041,7 @@ EntityDesc GetEntityDesc(Engine &engine, ID entityId)
 	EntityDesc entityDesc = {
 		.id      = entity.id,
 		.name    = entity.name,
+		.roomId  = entity.roomId,
 		.pos     = entity.position,
 		.scale   = entity.scale,
 	};
@@ -1078,6 +1079,7 @@ ID CreateEntity(Engine &engine, const EntityDesc &desc)
 	}
 
 	entity->name = desc.name;
+	entity->roomId = desc.roomId;
 	entity->visible = true;
 	EntitySetPosition(*entity, desc.pos);
 	entity->scale = desc.scale;
@@ -1095,6 +1097,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, ComponentDescPool
 	EntityDesc entityDesc = {
 		.id = desc.id,
 		.name = desc.name,
+		.roomId = desc.roomId,
 		.pos = desc.pos,
 		.scale = desc.scale,
 		.components = AllocEmptyArray(componentPool, ComponentType_Count),
@@ -1367,6 +1370,7 @@ ID InstantiatePrefab(Engine &engine, ID prefabId, float3 atPosition)
 		EntityDesc entityDesc = prefab.entities[i];
 		entityDesc.id = {}; // Each instance is a new entity, not the template's own
 		entityDesc.pos = entityDesc.pos + atPosition;
+		entityDesc.roomId = FindRoomAt(engine.scene, entityDesc.pos.xy);
 
 		const ID entityId = CreateEntity(engine, entityDesc);
 		if (i == 0) {
@@ -1421,8 +1425,9 @@ void UpdateLayerTransforms(Room &room)
 // A room spans its base layer and its collider layers together
 void UpdateRoomBounds(Room &room)
 {
-	int2 min = {};
-	int2 max = {};
+	// An empty room sits at its origin
+	int2 min = room.origin;
+	int2 max = room.origin;
 	bool empty = true;
 	for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 	{
@@ -1443,8 +1448,9 @@ void UpdateRoomBounds(Room &room)
 
 void UpdateLayerBounds(Layer &layer)
 {
-	int2 min = {};
-	int2 max = {};
+	Room &room = GetLayerRoom(layer);
+	int2 min = room.origin;
+	int2 max = room.origin;
 	bool empty = true;
 	for (u32 i = 0; i < ARRAY_COUNT(layer.cells.chunks); ++i)
 	{
@@ -1457,7 +1463,7 @@ void UpdateLayerBounds(Layer &layer)
 					if (chunk->cells[x][y].collider == 0) {
 						continue;
 					}
-					const int2 cellMin = { chunk->x + x, chunk->y + y };
+					const int2 cellMin = room.origin + int2{ chunk->x + x, chunk->y + y };
 					const int2 cellMax = cellMin + int2{1, 1};
 					min = empty ? cellMin : Min(min, cellMin);
 					max = empty ? cellMax : Max(max, cellMax);
@@ -1469,7 +1475,43 @@ void UpdateLayerBounds(Layer &layer)
 	layer.pos = min;
 	layer.size = { (u32)(max.x - min.x), (u32)(max.y - min.y) };
 
-	UpdateRoomBounds(GetLayerRoom(layer));
+	UpdateRoomBounds(room);
+}
+
+void MoveRoom(Room &room, int2 delta)
+{
+	room.origin = room.origin + delta;
+	room.pos = room.pos + delta;
+	for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+	{
+		Layer &layer = room.layers[i];
+		layer.pos = layer.pos + delta;
+	}
+	UpdateLayerTransforms(room); // The parallax pivots on the room center
+
+	Scene &scene = GetEngine().scene;
+	for (u32 i = 0; i < scene.entityCount; ++i)
+	{
+		Entity &entity = scene.entities[i];
+		if ( entity.id && entity.roomId == room.id )
+		{
+			EntitySetPosition(entity, entity.position + Float3(Float2(delta), 0.0f));
+		}
+	}
+}
+
+ID FindRoomAt(const Scene &scene, float2 worldPos)
+{
+	for (u32 i = 0; i < scene.roomCount; ++i)
+	{
+		const Room &room = scene.rooms[i];
+		const float4 bounds = RoomOuterBounds(room);
+		if ( room.id && worldPos.x >= bounds.x && worldPos.x < bounds.z && worldPos.y >= bounds.y && worldPos.y < bounds.w )
+		{
+			return room.id;
+		}
+	}
+	return {};
 }
 
 // Layers are stored inside their room, so the address alone says which one it is
@@ -1497,6 +1539,7 @@ static u32 CellChunkBucket(int2 origin)
 	return bucket;
 }
 
+// Chunk lookups and edits below take room-local coordinates
 const CellChunk *FindCellChunk(const Layer &layer, int2 coord)
 {
 	const int2 origin = CellChunkOrigin(coord);
@@ -1621,14 +1664,16 @@ int2 GetGridTileCoord(const Engine &engine, const Camera &camera, int2 pixelCoor
 
 void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord)
 {
-	if ( SetGridCell(engine, layer, coord, collider) ) {
+	const int2 localCoord = coord - GetLayerRoom(layer).origin;
+	if ( SetGridCell(engine, layer, localCoord, collider) ) {
 		UpdateLayerBounds(layer);
 	}
 }
 
 void SetGridTileAtCoord(Engine &engine, Layer &layer, ID spriteId, int2 coord)
 {
-	if ( SetGridCell(engine, layer, coord, spriteId.slot) ) {
+	const int2 localCoord = coord - GetLayerRoom(layer).origin;
+	if ( SetGridCell(engine, layer, localCoord, spriteId.slot) ) {
 		UpdateLayerBounds(layer);
 	}
 }
@@ -1644,17 +1689,18 @@ static u32 GetColliderAtGridCoord(Scene &scene, int2 coord)
 	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
 		const Room &room = scene.rooms[roomIndex];
+		const int2 localCoord = coord - room.origin;
 
 		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
 		{
 			const Layer &layer = room.layers[i];
 			if (!layer.initialized || !layer.isCollider) continue;
 
-			const CellChunk *chunk = FindCellChunk(layer, coord);
+			const CellChunk *chunk = FindCellChunk(layer, localCoord);
 			if (!chunk) continue;
 
-			u32 coord_x = coord.x - chunk->x;
-			u32 coord_y = coord.y - chunk->y;
+			u32 coord_x = localCoord.x - chunk->x;
+			u32 coord_y = localCoord.y - chunk->y;
 			if ( chunk->cells[coord_x][coord_y].collider != 0 )
 			{
 				return chunk->cells[coord_x][coord_y].collider;
@@ -1859,6 +1905,7 @@ ID CreateRoom(Engine &engine, const RoomDesc &desc)
 			continue;
 		}
 
+		// Saved tiles are in world cells, which are local ones while the origin is zero
 		Layer &layer = room.layers[index];
 		if (layerDesc.isCollider) {
 			for (u32 t = 0; t < layerDesc.tileCount; ++t) {
@@ -1923,6 +1970,14 @@ void RemoveRoom(Engine &engine, ID id)
 			if (room.layers[i].initialized) {
 				Invalidate(room.layers[i].id);
 				FreeCellChunks(engine, room.layers[i]);
+			}
+		}
+
+		Scene &scene = engine.scene;
+		for (u32 i = 0; i < scene.entityCount; ++i)
+		{
+			if ( scene.entities[i].roomId == id ) {
+				scene.entities[i].roomId = {};
 			}
 		}
 

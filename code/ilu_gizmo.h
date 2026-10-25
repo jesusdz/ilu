@@ -165,7 +165,8 @@ void Gizmo_EndFrame(Gizmo &g)
 	g.wantsMouse = g.hot != GizmoHandle_None || g.active != GizmoHandle_None;
 }
 
-bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f32 scaleSnap = 0.0f)
+// A null scale hides the scale handle
+static bool Gizmo_TransformInternal(Gizmo &g, float3 &position, f32 *scale, f32 snap, f32 scaleSnap)
 {
 	ASSERT( g.ui != nullptr );
 	UI &ui = *g.ui;
@@ -191,7 +192,7 @@ bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f3
 	{
 		if ( Gizmo_PointInRect(mousePos, centerMin, centerMax) ) {
 			g.hot = GizmoHandle_MoveXY;
-		} else if ( Gizmo_PointInRect(mousePos, scalePos - float2{halfScale, halfScale}, scalePos + float2{halfScale, halfScale}) ) {
+		} else if ( scale && Gizmo_PointInRect(mousePos, scalePos - float2{halfScale, halfScale}, scalePos + float2{halfScale, halfScale}) ) {
 			g.hot = GizmoHandle_Scale;
 		} else if ( Gizmo_PointInRect(mousePos, float2{centerMax.x, origin.y - halfArrow}, xTip + float2{GIZMO_ARROW_SIZE, halfArrow}) ) {
 			g.hot = GizmoHandle_MoveX;
@@ -204,26 +205,27 @@ bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f3
 
 	if ( !g.active )
 	{
+		const GizmoHandle requested = g.requested == GizmoHandle_Scale && !scale ? GizmoHandle_None : g.requested;
 		const bool clicked = g.hot && MouseButtonPress(mouse, MOUSE_BUTTON_LEFT);
-		if ( g.requested || clicked )
+		if ( requested || clicked )
 		{
-			g.active = g.requested ? g.requested : g.hot;
-			g.modal = g.requested != GizmoHandle_None;
+			g.active = requested ? requested : g.hot;
+			g.modal = requested != GizmoHandle_None;
 			g.dragStartMouse = mouseWorld;
 			g.dragStartPosition = position;
-			g.dragStartScale = scale;
+			g.dragStartScale = scale ? *scale : 1.0f;
 		}
 	}
 	else if ( KeyPress(ui.input.keyboard, K_ESCAPE) || MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT) )
 	{
 		position = g.dragStartPosition;
-		scale = g.dragStartScale;
+		if ( scale ) { *scale = g.dragStartScale; }
 		g.active = GizmoHandle_None;
 	}
 	else if ( g.modal ? MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) : !MouseButtonPressed(mouse, MOUSE_BUTTON_LEFT) )
 	{
 		const float3 start = g.dragStartPosition;
-		committed = position.x != start.x || position.y != start.y || scale != g.dragStartScale;
+		committed = position.x != start.x || position.y != start.y || ( scale && *scale != g.dragStartScale );
 		g.active = GizmoHandle_None;
 	}
 	else
@@ -250,7 +252,7 @@ bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f3
 				const f32 distance = Length(mouseWorld - center);
 				const f32 ratio = startDistance > 0.0f ? distance / startDistance : 1.0f;
 				const f32 snapped = Gizmo_Snap(g.dragStartScale * ratio, scaleSnap);
-				scale = scaleSnap > 0.0f ? Max(snapped, scaleSnap) : snapped;
+				*scale = scaleSnap > 0.0f ? Max(snapped, scaleSnap) : snapped;
 				break;
 			}
 			default:
@@ -277,12 +279,25 @@ bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f3
 	Gizmo_AddRect(ui, y - float2{halfThickness, 0.0f}, o + float2{halfThickness, 0.0f}, colorY);
 	UI_AddTriangle(ui, y + float2{halfArrow, 0.0f}, y - float2{0.0f, GIZMO_ARROW_SIZE}, y - float2{halfArrow, 0.0f}, colorY);
 
-	Gizmo_AddRect(ui, s - float2{halfScale, halfScale}, s + float2{halfScale, halfScale}, Gizmo_HandleColor(g, GizmoHandle_Scale, GizmoColorScale));
+	if ( scale )
+	{
+		Gizmo_AddRect(ui, s - float2{halfScale, halfScale}, s + float2{halfScale, halfScale}, Gizmo_HandleColor(g, GizmoHandle_Scale, GizmoColorScale));
+	}
 	Gizmo_AddRect(ui, o - float2{halfCenter, halfCenter}, o + float2{halfCenter, halfCenter}, Gizmo_HandleColor(g, GizmoHandle_MoveXY, GizmoColorXY));
 
 	UI_PopDrawList(ui);
 
 	return committed;
+}
+
+bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f32 scaleSnap = 0.0f)
+{
+	return Gizmo_TransformInternal(g, position, &scale, snap, scaleSnap);
+}
+
+bool Gizmo_Translate(Gizmo &g, float3 &position, f32 snap = 0.0f)
+{
+	return Gizmo_TransformInternal(g, position, nullptr, snap, 0.0f);
 }
 
 #endif // #ifndef ILU_GIZMO_H
