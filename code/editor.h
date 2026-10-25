@@ -180,6 +180,7 @@ enum EditorInteraction
 	EditorInteraction_Panning,
 	EditorInteraction_Painting,
 	EditorInteraction_Rotating,
+	EditorInteraction_Selecting,
 };
 
 struct EditorContext

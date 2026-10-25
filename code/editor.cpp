@@ -2797,6 +2797,7 @@ enum EditorAction
 {
 	EditorAction_Play,
 	EditorAction_Stop,
+	EditorAction_Unselect,
 	EditorAction_ToggleUI,
 	EditorAction_ToggleIcons,
 	EditorAction_RemoveSelection,
@@ -2837,6 +2838,7 @@ struct EditorBinding
 static const EditorBinding kEditorBindings[] = {
 	{ K_F5,     EditorModifier_None,  EditorStates_Edit,    EditorAction_Play },
 	{ K_ESCAPE, EditorModifier_None,  EditorStates_Playing, EditorAction_Stop },
+	{ K_ESCAPE, EditorModifier_None,  EditorStates_Edit2D,  EditorAction_Unselect },
 	{ K_TAB,    EditorModifier_None,  EditorStates_Any,     EditorAction_ToggleUI },
 	{ K_I,      EditorModifier_None,  EditorStates_Edit,    EditorAction_ToggleIcons },
 	{ K_DELETE, EditorModifier_None,  EditorStates_Edit,    EditorAction_RemoveSelection },
@@ -2901,8 +2903,10 @@ static EditorActions EditorProcessInput()
 		const MouseButton button = editor.interaction == EditorInteraction_Panning ? MOUSE_BUTTON_MIDDLE : MOUSE_BUTTON_LEFT;
 		if ( !MouseButtonPressed(mouse, button) || state != editor.interactionState )
 		{
-			// Rotating starts on any left press in 3D: it was a click to select if the mouse barely moved
-			if ( editor.interaction == EditorInteraction_Rotating && state == editor.interactionState )
+			// Selection happens on release, and only if the mouse barely moved. In 3D, rotating
+			// starts on any left press, so a short drag there is also a click to select
+			const bool clickInteraction = editor.interaction == EditorInteraction_Selecting || editor.interaction == EditorInteraction_Rotating;
+			if ( clickInteraction && state == editor.interactionState )
 			{
 				const float2 drag = Float2(mouse.pos - editor.interactionStartMouse);
 				actions.select = Length(drag) < engine.ui.style.dragClickThreshold;
@@ -2967,7 +2971,7 @@ static EditorActions EditorProcessInput()
 					if ( state == EditorState_EditTiles ) {
 						EditorBeginInteraction(EditorInteraction_Painting, state);
 					} else {
-						actions.select = true;
+						EditorBeginInteraction(EditorInteraction_Selecting, state);
 					}
 				}
 			}
@@ -3509,6 +3513,14 @@ static void EditorApplyActions(const EditorActions &actions)
 	else if ( triggered[EditorAction_Stop] )
 	{
 		EditorStop();
+	}
+	else if ( triggered[EditorAction_Unselect] )
+	{
+		// Escape also cancels a gizmo drag, which must keep the entity selected
+		if ( editor.gizmo.active == GizmoHandle_None )
+		{
+			EditorUnselectAll();
+		}
 	}
 	else if ( triggered[EditorAction_ToggleUI] )
 	{

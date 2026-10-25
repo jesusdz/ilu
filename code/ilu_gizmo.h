@@ -214,7 +214,7 @@ bool Gizmo_Transform(Gizmo &g, float3 &position, f32 &scale, f32 snap = 0.0f, f3
 			g.dragStartScale = scale;
 		}
 	}
-	else if ( KeyPress(ui.input.keyboard, K_ESCAPE) || ( g.modal && MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT) ) )
+	else if ( KeyPress(ui.input.keyboard, K_ESCAPE) || MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT) )
 	{
 		position = g.dragStartPosition;
 		scale = g.dragStartScale;
