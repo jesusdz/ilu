@@ -187,7 +187,7 @@ void SetScript(Engine &engine, ScriptComponent &component, const char *scriptNam
 		return;
 	}
 
-	if ( engine.game.state == GameStateRunning ) {
+	if ( engine.game.runState == GameStateRunning ) {
 		RunScriptHook(engine, component.entityId, component, ScriptHook_Stop);
 	}
 
@@ -199,7 +199,7 @@ void SetScript(Engine &engine, ScriptComponent &component, const char *scriptNam
 	component.dataSize = dataSize;
 	component.data = AllocScriptData(engine, dataSize);
 
-	if ( engine.game.state == GameStateRunning ) {
+	if ( engine.game.runState == GameStateRunning ) {
 		RunScriptHook(engine, component.entityId, component, ScriptHook_Start);
 	}
 }
@@ -214,7 +214,7 @@ void RemoveScript(Engine &engine, ID entityId)
 
 	ScriptComponent &component = GetScript(scene, entityId);
 
-	if ( engine.game.state == GameStateRunning ) {
+	if ( engine.game.runState == GameStateRunning ) {
 		RunScriptHook(engine, entityId, component, ScriptHook_Stop);
 	}
 

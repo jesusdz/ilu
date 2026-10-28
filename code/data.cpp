@@ -330,6 +330,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 	PushIndent(ctx);
 	WriteLine(ctx, ".projectionType = \"%s\",", ProjectionTypeToStr(desc.projectionType));
 	WriteLine(ctx, ".ambientLight = {%f, %f, %f},", desc.ambientLight.x, desc.ambientLight.y, desc.ambientLight.z);
+	WriteLine(ctx, ".defaultRoomId = %u,", desc.defaultRoomId.slot);
 	PopIndent(ctx);
 
 	WriteLine(ctx, "};");
@@ -1469,11 +1470,14 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				{
 					static const String sProjectionType = MakeString("projectionType");
 					static const String sAmbientLight = MakeString("ambientLight");
+					static const String sDefaultRoomId = MakeString("defaultRoomId");
 					if ( StrEq( field, sProjectionType ) ) {
 						const char *cstr = StringToCStr( DParser_ConsumeString(parser) );
 						desc.projectionType = StrToProjectionType( cstr );
 					} else if ( StrEq( field, sAmbientLight ) ) {
 						desc.ambientLight = DParser_ConsumeFloat3(parser);
+					} else if ( StrEq( field, sDefaultRoomId ) ) {
+						desc.defaultRoomId = DParser_ConsumeID(parser);
 					} else {
 						LOG(Warning, "Unknown Scene field <%.*s>.\n", field.size, field.str);
 						DParser_SkipFieldValue(parser);
@@ -2217,6 +2221,7 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 		const BinSceneDesc binSceneDesc = {
 			.projectionType = descriptors.sceneDesc.projectionType,
 			.ambientLight = descriptors.sceneDesc.ambientLight,
+			.defaultRoomId = descriptors.sceneDesc.defaultRoomId,
 		};
 		fwrite(&binSceneDesc,     sizeof(binSceneDesc),         1,              file);
 		fwrite(binShaderDescs,    sizeof(binShaderDescs[0]),    shaderCount,    file);
@@ -2334,6 +2339,7 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 		dataArena, file, assets.header.sceneOffset, sizeof(BinSceneDesc));
 	assets.scene.projectionType = binSceneDesc->projectionType;
 	assets.scene.ambientLight = binSceneDesc->ambientLight;
+	assets.scene.defaultRoomId = binSceneDesc->defaultRoomId;
 
 	// Shaders
 	BinShaderDesc *binShaderDescs = (BinShaderDesc*)PushDataFromFile(
@@ -2591,6 +2597,7 @@ static AssetDescriptors GetAssetDescriptors(Engine &engine, Arena &arena)
 	const SceneDesc sceneDesc = {
 		.projectionType = engine.scene.projectionType,
 		.ambientLight = engine.scene.ambientLight,
+		.defaultRoomId = engine.scene.defaultRoomId,
 	};
 
 	const AssetDescriptors assetDescs = {
@@ -2654,6 +2661,7 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 
 		engine.scene.projectionType = assetDescriptors.sceneDesc.projectionType;
 		engine.scene.ambientLight = assetDescriptors.sceneDesc.ambientLight;
+		engine.scene.defaultRoomId = assetDescriptors.sceneDesc.defaultRoomId;
 
 		// Textures
 		for (u32 i = 0; i < assetDescriptors.textureDescCount; ++i)
@@ -2764,6 +2772,7 @@ void LoadSceneFromBin(Engine &engine, const char *filepath)
 
 		engine.scene.projectionType = engine.assets.scene.projectionType;
 		engine.scene.ambientLight = engine.assets.scene.ambientLight;
+		engine.scene.defaultRoomId = engine.assets.scene.defaultRoomId;
 
 		// Textures
 		for (u32 i = 0; i < engine.assets.header.imageCount; ++i)

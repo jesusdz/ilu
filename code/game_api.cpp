@@ -70,6 +70,12 @@ void SetCamera(const Camera &camera)
 	engine.gfx.camera = camera;
 }
 
+GAME_API
+ID GetDefaultRoomId()
+{
+	return GetEngine().scene.defaultRoomId;
+}
+
 // Nullable counterpart to GetRoom, which asserts. Game code holds an ID across frames
 // and has to cope with the room going away.
 GAME_API

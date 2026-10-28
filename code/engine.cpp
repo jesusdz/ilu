@@ -106,10 +106,10 @@ static void GameStop(Engine &engine)
 {
 	Game &game = engine.game;
 
-	if ( game.state != GameStateStopped )
+	if ( game.runState != GameStateStopped )
 	{
 		// If starting never reached its Start hooks, there is nothing to stop
-		if ( game.state != GameStateStarting ) {
+		if ( game.runState != GameStateStarting ) {
 			RunScriptHooks(engine, ScriptHook_Stop);
 		}
 
@@ -120,7 +120,7 @@ static void GameStop(Engine &engine)
 		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
 		CreateRenderTargets(engine.gfx);
 
-		game.state = GameStateStopped;
+		game.runState = GameStateStopped;
 	}
 }
 
@@ -138,7 +138,7 @@ static void GameUpdate(Engine &engine, const Host &host)
 	PROFILE_BLOCK(GameUpdate);
 	Game &game = engine.game;
 
-	if (game.state == GameStateStarting)
+	if (game.runState == GameStateStarting)
 	{
 		GfxWaitDeviceIdle(engine.gfx);
 		DestroyRenderTargets(engine.gfx, engine.gfx.renderTargets);
@@ -150,10 +150,10 @@ static void GameUpdate(Engine &engine, const Host &host)
 		StartParticles(engine.scene);
 		RunScriptHooks(engine, ScriptHook_Start);
 		SnapshotPositions(engine);
-		game.state = GameStateRunning;
+		game.runState = GameStateRunning;
 	}
 
-	if (game.state == GameStateRunning)
+	if (game.runState == GameStateRunning)
 	{
 		constexpr f32 fixedStepSeconds = SIMULATE_SECONDS;
 
@@ -174,7 +174,7 @@ static void GameUpdate(Engine &engine, const Host &host)
 		RunScriptHooks(engine, ScriptHook_Update);
 	}
 
-	if (game.state == GameStateStopping)
+	if (game.runState == GameStateStopping)
 	{
 		GameStop(engine);
 	}
@@ -365,7 +365,7 @@ ENGINE_API bool OnPlatformWindowInit(Host &host)
 #else
 		const FilePath assetsFilepath = MakePath(DataDir, "assets.dat");
 		LoadSceneFromBin(engine, assetsFilepath.str);
-		engine.game.state = GameStateStarting;
+		engine.game.runState = GameStateStarting;
 #endif
 	}
 
@@ -513,7 +513,7 @@ ENGINE_API void OnPlatformRenderGraphics(Host &host)
 
 			u32 sceneWidth = 0;
 			u32 sceneHeight = 0;
-			if ( engine.game.state != GameStateStopped ) {
+			if ( engine.game.runState != GameStateStopped ) {
 				sceneWidth = SCENE_WIDTH;
 				sceneHeight = SCENE_HEIGHT;
 			}

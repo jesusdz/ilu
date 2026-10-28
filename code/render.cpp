@@ -543,7 +543,7 @@ bool RenderGraphics(Engine &engine)
 	float4 frustumTopLeft = {};
 	float4 frustumBottomRight = {};
 
-	const bool interpolate = engine.game.state == GameStateRunning;
+	const bool interpolate = engine.game.runState == GameStateRunning;
 	const f32 interpolationAlpha = engine.game.accumulatedSeconds / SIMULATE_SECONDS;
 
 	Camera camera = engine.gfx.camera;
@@ -557,7 +557,7 @@ bool RenderGraphics(Engine &engine)
 	// entity positions to the pixel grid so sprites don't shimmer at sub-pixel
 	// offsets. The game keeps its own unsnapped camera, so smooth movements
 	// (e.g. lerps) are not affected by this.
-	const bool snapToPixelGrid = engine.game.state == GameStateRunning;
+	const bool snapToPixelGrid = engine.game.runState == GameStateRunning;
 	const f32 pixelSize = 1.0f / gfx.renderTargets.scenePixelsPerMeter;
 
 	if (snapToPixelGrid)
@@ -665,7 +665,7 @@ bool RenderGraphics(Engine &engine)
 			{
 				if ( layer.isBackground )
 				{
-					if ( engine.game.state == GameStateRunning)
+					if ( engine.game.runState == GameStateRunning)
 					{
 						float2 contentMin = {};
 						float2 contentSize = {};
@@ -839,7 +839,7 @@ bool RenderGraphics(Engine &engine)
 	PROFILE_BLOCK(GenerateTiles);
 	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / gfx.renderTargets.scenePixelsPerMeter;
 
-	const bool parallaxEnabled = is2D && engine.game.state == GameStateRunning; // The editor shows all layers unshifted
+	const bool parallaxEnabled = is2D && engine.game.runState == GameStateRunning; // The editor shows all layers unshifted
 
 	// Tiles are only culled under the 2D camera: cameraMinMaxRect comes from the orthographic
 	// height, which says nothing about what a perspective camera can see.
@@ -1231,7 +1231,7 @@ bool RenderGraphics(Engine &engine)
 		}
 
 		// Sky
-		if (camera.projectionType == ProjectionPerspective && engine.game.state == GameStateStopped)
+		if (camera.projectionType == ProjectionPerspective && engine.game.runState == GameStateStopped)
 		{
 			RENDER_BLOCK(Sky);
 
@@ -1255,7 +1255,7 @@ bool RenderGraphics(Engine &engine)
 
 #if USE_EDITOR
 		// Editor grid
-		if (editor.showGrid && engine.game.state == GameStateStopped)
+		if (editor.showGrid && engine.game.runState == GameStateStopped)
 		{
 			RENDER_BLOCK(EditorGrid);
 
@@ -1268,7 +1268,7 @@ bool RenderGraphics(Engine &engine)
 #endif
 
 		// Fog
-		if ( engine.game.state == GameStateRunning )
+		if ( engine.game.runState == GameStateRunning )
 		{
 			RENDER_BLOCK(Fog);
 

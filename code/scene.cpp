@@ -1958,6 +1958,16 @@ ID CreateRoom(Engine &engine, const BinRoom &binRoom)
 	return CreateRoom(engine, desc);
 }
 
+void SetDefaultRoom(Engine &engine, ID roomId)
+{
+	if (roomId)
+	{
+		Engine &engine = GetEngine();
+		Scene &scene = engine.scene;
+		scene.defaultRoomId = roomId;
+	}
+}
+
 void RemoveRoom(Engine &engine, ID id)
 {
 	// Marks only, see RemoveEntity
@@ -1988,8 +1998,9 @@ void RemoveRoom(Engine &engine, ID id)
 
 void CreateScene(Engine &engine)
 {
+	ID roomId = CreateRoom(engine);
 	engine.scene.ambientLight = Float3(1.0f);
-	CreateRoom(engine);
+	engine.scene.defaultRoomId = roomId;
 }
 
 void CleanScene(Engine &engine)

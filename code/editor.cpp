@@ -74,7 +74,7 @@ static bool EditorMode2D()
 static EditorState EditorGetState()
 {
 	const Engine &engine = GetEngine();
-	if ( engine.game.state != GameStateStopped ) {
+	if ( engine.game.runState != GameStateStopped ) {
 		return EditorState_Playing;
 	}
 	if ( EditorMode3D() ) {
@@ -110,8 +110,8 @@ static void EditorPlay()
 {
 	Engine &engine = GetEngine();
 	Editor &editor = GetEditor();
-	if ( engine.game.state == GameStateStopped ) {
-		engine.game.state = GameStateStarting;
+	if ( engine.game.runState == GameStateStopped ) {
+		engine.game.runState = GameStateStarting;
 		editor.showUI = false;
 	}
 }
@@ -120,8 +120,8 @@ static void EditorStop()
 {
 	Engine &engine = GetEngine();
 	Editor &editor = GetEditor();
-	if ( engine.game.state == GameStateRunning ) {
-		engine.game.state = GameStateStopping;
+	if ( engine.game.runState == GameStateRunning ) {
+		engine.game.runState = GameStateStopping;
 		EditorSetCamera();
 		editor.showUI = true;
 	}
@@ -929,6 +929,10 @@ static void EditorUpdateUI_Outliner()
 						};
 						CreateLayer(room, desc);
 					}
+					if (UI_MenuItem(ui, "Set default"))
+					{
+						SetDefaultRoom(engine, scene.rooms[roomIdx].id);
+					}
 					if (UI_MenuItem(ui, "Delete room"))
 					{
 						RemoveRoom(engine, scene.rooms[roomIdx].id);
@@ -1585,6 +1589,32 @@ static void EditorUpdateUI_ScriptComponent(Engine &engine, ID entityId)
 	}
 }
 
+static ID EditorUpdateUI_RoomWidget(ID &roomId)
+{
+	Engine &engine = GetEngine();
+	Editor &editor = GetEditor();
+	UI &ui = engine.ui;
+	EditorInspector &inspector = editor.inspector;
+	EditorContext &context = editor.context;
+
+	// Removed rooms keep their slot until compacted
+	const Scene &scene = engine.scene;
+	const char *roomNames[MAX_ROOMS + 1] = { "None" };
+	ID roomIds[MAX_ROOMS + 1] = {};
+	u32 roomItemCount = 1;
+	u32 roomIndex = 0;
+	for (u32 i = 0; i < scene.roomCount; ++i)
+	{
+		const Room &room = scene.rooms[i];
+		if ( !room.id ) { continue; }
+		if ( room.id == roomId ) { roomIndex = roomItemCount; }
+		roomIds[roomItemCount] = room.id;
+		roomNames[roomItemCount++] = room.name;
+	}
+	UI_Combo(ui, "Room", roomNames, roomItemCount, &roomIndex);
+	return roomIds[roomIndex];
+}
+
 static void EditorUpdateUI_InspectorScene(Scene &scene)
 {
 	Engine &engine = GetEngine();
@@ -1609,6 +1639,8 @@ static void EditorUpdateUI_InspectorScene(Scene &scene)
 		UI_ColorPicker(ui, &ambientToEdit, &ambientPickerOpen);
 		scene.ambientLight = ambientToEdit.xyz;
 	}
+
+	scene.defaultRoomId = EditorUpdateUI_RoomWidget(scene.defaultRoomId);
 }
 
 static void EditorUpdateUI_InspectorRoom(Room &room)
@@ -1785,22 +1817,7 @@ static void EditorUpdateUI_Inspector()
 				UI_InputFloat(ui, "Scale", &entity.scale);
 				UI_Checkbox(ui, "Visible", &entity.visible);
 
-				// Removed rooms keep their slot until compacted
-				const Scene &scene = engine.scene;
-				const char *roomNames[MAX_ROOMS + 1] = { "None" };
-				ID roomIds[MAX_ROOMS + 1] = {};
-				u32 roomItemCount = 1;
-				u32 roomIndex = 0;
-				for (u32 i = 0; i < scene.roomCount; ++i)
-				{
-					const Room &room = scene.rooms[i];
-					if ( !room.id ) { continue; }
-					if ( room.id == entity.roomId ) { roomIndex = roomItemCount; }
-					roomIds[roomItemCount] = room.id;
-					roomNames[roomItemCount++] = room.name;
-				}
-				UI_Combo(ui, "Room", roomNames, roomItemCount, &roomIndex);
-				entity.roomId = roomIds[roomIndex];
+				entity.roomId = EditorUpdateUI_RoomWidget(entity.roomId);
 
 				for (u32 type = 0; type < ComponentType_Count; ++type)
 				{
@@ -3665,7 +3682,7 @@ void EditorUpdate(Engine &engine)
 	}
 
 	// Avoid Editor interaction
-	if ( engine.game.state != GameStateStopped )
+	if ( engine.game.runState != GameStateStopped )
 	{
 		return;
 	}

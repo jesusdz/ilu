@@ -793,6 +793,7 @@ struct SceneDesc
 {
 	ProjectionType projectionType;
 	float3 ambientLight;
+	ID defaultRoomId;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -1021,6 +1022,7 @@ struct Entity
 {
 	ID id;
 	const char *name;
+	REFLEX(Room)
 	ID roomId; // Can be none
 	// Transform
 	float3 position;
@@ -1284,6 +1286,7 @@ struct Scene
 {
 	ProjectionType projectionType;
 	float3 ambientLight;
+	ID defaultRoomId;
 
 	u32 roomCount;
 	Room rooms[MAX_ROOMS];
@@ -1333,6 +1336,7 @@ struct BinSceneDesc
 {
 	ProjectionType projectionType;
 	float3 ambientLight;
+	ID defaultRoomId;
 };
 
 struct BinEntityDesc
@@ -1410,7 +1414,7 @@ struct BinRoom
 // TYPES: Game
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-enum GameState
+enum GameRunState
 {
 	GameStateStopped,
 	GameStateStarting,
@@ -1437,7 +1441,7 @@ constexpr f32 MAX_FRAME_SECONDS = 0.25f; // avoid catch-up bursts after stalls (
 
 struct Game
 {
-	GameState state;
+	GameRunState runState;
 
 	InputAccumulator accumulatedInput;
 	GameInput input;
@@ -1494,7 +1498,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 30; // 30: entity room
+constexpr u32 BinAssetsVersion = 31; // 31: scene default room
 
 #pragma pack(push, 1)
 
@@ -1909,6 +1913,7 @@ ID FindRoomAt(const Scene &scene, float2 worldPos);
 ID CreateRoom(Engine &engine);
 ID CreateRoom(Engine &engine, const RoomDesc &desc);
 ID CreateRoom(Engine &engine, const BinRoom &binRoom);
+void SetDefaultRoom(Engine &engine, ID roomId);
 void RemoveRoom(Engine &engine, ID roomId);
 
 

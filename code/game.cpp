@@ -32,9 +32,7 @@ struct PlayerController
 	REFLEX()
 	u32 randomProperty;
 
-	REFLEX(Room)
 	ID roomId;
-
 	float2 speed;
 	f32 accel;
 };
@@ -45,9 +43,7 @@ struct CameraController
 	REFLEX(Entity)
 	ID playerId;
 
-	REFLEX(Room)
 	ID roomId;
-
 	Camera camera;
 	f32 cameraTargetX;
 	f32 cameraTargetY;
@@ -61,6 +57,7 @@ REFLEX()
 void Start(PlayerController &script)
 {
 	script.playerState = OnAir;
+	script.roomId = GetDefaultRoomId();
 
 	Entity &player = GetSelf();
 	//player.position.xy = float2{1, 1};
@@ -274,6 +271,7 @@ void Start(CameraController &script)
 #endif
 	SetCamera(script.camera);
 
+	script.roomId = GetDefaultRoomId();
 	script.boundsValid = false;
 }
 
