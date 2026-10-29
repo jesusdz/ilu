@@ -19,6 +19,7 @@ void InitializeScene(Engine &engine)
 	BIND_COMPONENT_POOL(Collider, collider);
 	BIND_COMPONENT_POOL(Script, script);
 	BIND_COMPONENT_POOL(CameraRegion, cameraRegion);
+	BIND_COMPONENT_POOL(Trigger, trigger);
 
 #undef BIND_COMPONENT_POOL
 
@@ -790,6 +791,16 @@ static CameraRegionComponent *AddCameraRegion(Scene &scene, ID entityId)
 	return region;
 }
 
+static TriggerComponent *AddTrigger(Engine &engine, ID entityId)
+{
+	TriggerComponent *trigger = (TriggerComponent*)AddComponentSlot(engine.scene, entityId, ComponentType_Trigger);
+	if ( trigger )
+	{
+
+	}
+	return trigger;
+}
+
 ScriptComponent &GetScript(Scene &scene, ID entityId)
 {
 	ScriptComponent &script = *(ScriptComponent*)GetComponentSlot(scene, entityId, ComponentType_Script);
@@ -800,6 +811,18 @@ const ScriptComponent &GetScript(const Scene &scene, ID entityId)
 {
 	const ScriptComponent &script = *(const ScriptComponent*)GetComponentSlot(scene, entityId, ComponentType_Script);
 	return script;
+}
+
+TriggerComponent &GetTrigger(Engine &engine, ID entityId)
+{
+	TriggerComponent &trigger = *(TriggerComponent*)GetComponentSlot(engine.scene, entityId, ComponentType_Trigger);
+	return trigger;
+}
+
+const TriggerComponent &GetTrigger(const Engine &engine, ID entityId)
+{
+	const TriggerComponent &trigger = *(const TriggerComponent*)GetComponentSlot(engine.scene, entityId, ComponentType_Trigger);
+	return trigger;
 }
 
 // The high half indexes the GPU entity buffer, the low half is the entity's ID slot.
@@ -936,6 +959,10 @@ void AddComponent(Engine &engine, ID entityId, ComponentType type)
 
 		case ComponentType_Sprite:
 			AddSpriteComponent(engine.scene, entityId);
+			break;
+
+		case ComponentType_Trigger:
+			AddTrigger(engine, entityId);
 			break;
 
 		default:

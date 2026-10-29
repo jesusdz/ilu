@@ -269,6 +269,8 @@ enum ScriptHookType
 	ScriptHook_Simulate,
 	ScriptHook_Update,
 	ScriptHook_Stop,
+	ScriptHook_TriggerEnter,
+	ScriptHook_TriggerExit,
 	ScriptHook_Count,
 };
 
@@ -808,6 +810,7 @@ enum ComponentType
 	ComponentType_Particles,
 	ComponentType_Script,
 	ComponentType_Sprite,
+	ComponentType_Trigger,
 	ComponentType_Count
 };
 
@@ -820,6 +823,7 @@ enum ComponentBits
 	Component_Particles = (1<<ComponentType_Particles),
 	Component_Script = (1<<ComponentType_Script),
 	Component_Sprite = (1<<ComponentType_Sprite),
+	Component_Trigger = (1<<ComponentType_Trigger),
 };
 
 typedef u32 ComponentFlags;
@@ -833,6 +837,7 @@ const char *ComponentNames[] =
 	"Particles",
 	"Script",
 	"Sprite",
+	"Trigger",
 };
 
 const char *ComponentFieldNames[] =
@@ -844,6 +849,7 @@ const char *ComponentFieldNames[] =
 	"particles",
 	"script",
 	"sprite",
+	"trigger",
 };
 
 CT_ASSERT(ComponentType_Count == ARRAY_COUNT(ComponentNames));
@@ -978,6 +984,24 @@ struct ScriptComponent
 	u16 structIndex;  // NULL_SCRIPT until a script is assigned, and again if a reload drops it
 	u32 dataSize;     // Which bucket data returns to, still known once the script is gone
 	byte *data;
+};
+
+////////////////////////////////////////////////////////////////////////
+// Trigger component
+
+constexpr u32 MAX_TRIGGER_OVERLAPS = 4;
+
+REFLEX(Component)
+struct TriggerComponent
+{
+	ID entityId;
+
+	REFLEX()
+	float2 size;
+
+	// Runtime
+	u32 overlapCount;
+	ID overlapIds[MAX_TRIGGER_OVERLAPS]; // Colliders inside the region as of the last step
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -1271,6 +1295,7 @@ constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 #define MAX_COLLIDER_COMPONENTS 1024
 #define MAX_SCRIPT_COMPONENTS 1024
 #define MAX_CAMERA_REGION_COMPONENTS 256
+#define MAX_TRIGGER_COMPONENTS (MAX_ROOMS * 4)
 
 constexpr u16 NO_COMPONENT = U16_MAX;
 
@@ -1310,6 +1335,7 @@ struct Scene
 	ColliderComponent colliderComponents[MAX_COLLIDER_COMPONENTS];
 	ScriptComponent scriptComponents[MAX_SCRIPT_COMPONENTS];
 	CameraRegionComponent cameraRegionComponents[MAX_CAMERA_REGION_COMPONENTS];
+	TriggerComponent triggerComponents[MAX_TRIGGER_COMPONENTS];
 
 	u32 particleEffectCount;
 	ParticleEffect particleEffects[MAX_PARTICLE_EFFECTS];
@@ -1451,6 +1477,7 @@ struct Game
 	float3 prevCameraPosition;
 
 	ID currentEntity;
+	ID otherEntity; // The entity entering or exiting, during a trigger hook
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1603,6 +1630,8 @@ ScriptComponent *AddScript(Scene &scene, ID entityId);
 void SetScript(Engine &engine, ScriptComponent &component, const char *scriptName);
 void RemoveScript(Engine &engine, ID entityId);
 void RunScriptHooks(Engine &engine, ScriptHookType hook);
+void ResetTriggers(Scene &scene);
+void RunTriggerHooks(Engine &engine);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // FUNCTIONS: Audio
@@ -1862,6 +1891,9 @@ const ColliderComponent &GetCollider(const Scene &scene, ID entityId);
 
 ScriptComponent &GetScript(Scene &scene, ID entityId);
 const ScriptComponent &GetScript(const Scene &scene, ID entityId);
+
+TriggerComponent &GetTrigger(Engine &engine, ID entityId);
+const TriggerComponent &GetTrigger(const Engine &engine, ID entityId);
 
 
 ////////////////////////////////////////////////////////////////////////

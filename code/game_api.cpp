@@ -9,6 +9,15 @@ Entity &GetSelf()
 	return entity;
 }
 
+// The entity entering or exiting the region, only valid inside OnTriggerEnter/OnTriggerExit
+GAME_API
+Entity &GetOther()
+{
+	Game &game = GetGame();
+	Entity &entity = GetEntity(game.otherEntity);
+	return entity;
+}
+
 GAME_API
 const GameInput &GetInput()
 {

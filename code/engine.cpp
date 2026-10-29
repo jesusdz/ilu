@@ -148,6 +148,7 @@ static void GameUpdate(Engine &engine, const Host &host)
 		game.accumulatedSeconds = 0.0f;
 
 		StartParticles(engine.scene);
+		ResetTriggers(engine.scene);
 		RunScriptHooks(engine, ScriptHook_Start);
 		SnapshotPositions(engine);
 		game.runState = GameStateRunning;
@@ -167,6 +168,7 @@ static void GameUpdate(Engine &engine, const Host &host)
 			GameSetInput(game, game.accumulatedInput);
 			SnapshotPositions(engine);
 			RunScriptHooks(engine, ScriptHook_Simulate);
+			RunTriggerHooks(engine);
 			InputConsume(game.accumulatedInput);
 			game.accumulatedSeconds -= fixedStepSeconds;
 		}

@@ -14,7 +14,18 @@ struct ScriptRegistry
 
 static ScriptRegistry scriptRegistry = {};
 
-static void RegisterScript(const ReflexStruct *reflexStruct, ScriptHook start, ScriptHook simulate, ScriptHook update, ScriptHook stop)
+// The function name each hook is looked up by, in ScriptHookType order
+static constexpr const char *sScriptHookNames[] = {
+	"Start",
+	"Simulate",
+	"Update",
+	"Stop",
+	"OnTriggerEnter",
+	"OnTriggerExit",
+};
+CT_ASSERT(ARRAY_COUNT(sScriptHookNames) == ScriptHook_Count);
+
+static void RegisterScript(const ReflexStruct *reflexStruct, const ScriptHook (&hooks)[ScriptHook_Count])
 {
 	if ( scriptRegistry.scriptCount == ARRAY_COUNT(scriptRegistry.scripts) ) {
 		LOG(Warning, "RegisterScript: the script registry is full (%u), <%s> is dropped.\n", MAX_SCRIPTS, reflexStruct->name);
@@ -34,10 +45,10 @@ static void RegisterScript(const ReflexStruct *reflexStruct, ScriptHook start, S
 	}
 
 	Script &script = scriptRegistry.scripts[scriptRegistry.scriptCount++];
-	script = {
-		.reflexStruct = reflexStruct,
-		.hooks = { start, simulate, update, stop },
-	};
+	script = { .reflexStruct = reflexStruct };
+	for (u32 hook = 0; hook < ScriptHook_Count; ++hook) {
+		script.hooks[hook] = hooks[hook];
+	}
 }
 
 static u32 FindScriptIndex(const char *name)
@@ -99,7 +110,7 @@ static void FreeScriptData(Engine &engine, byte *data, u32 size)
 	pool.freeLists[sizeClass] = block;
 }
 
-static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &component, ScriptHookType hook)
+static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &component, ScriptHookType hook, ID otherId = {})
 {
 	const Script &script = scriptRegistry.scripts[component.structIndex];
 
@@ -107,11 +118,14 @@ static void RunScriptHook(Engine &engine, ID entityId, ScriptComponent &componen
 	{
 		Game &game = engine.game;
 		const ID prevEntity = game.currentEntity;
+		const ID prevOther = game.otherEntity;
 		game.currentEntity = entityId;
+		game.otherEntity = otherId;
 
 		hookFn(component.data);
 
 		game.currentEntity = prevEntity;
+		game.otherEntity = prevOther;
 	}
 }
 
@@ -119,18 +133,19 @@ void RegisterScripts(Engine &engine)
 {
 	// Reserved slot 0. For script components without a script assigned
 	static const ReflexStruct nullScriptType = { .name = "None" };
-	RegisterScript(&nullScriptType, nullptr, nullptr, nullptr, nullptr);
+	static const ScriptHook nullHooks[ScriptHook_Count] = {};
+	RegisterScript(&nullScriptType, nullHooks);
 
 	for (u32 i = ReflexID_StructBegin; i < ReflexID_StructEnd; ++i)
 	{
 		const ReflexStruct* rstruct = ReflexGetStruct(i);
 		if (rstruct && (rstruct->meta.flags & ReflexMetaFlag_Script))
 		{
-			ScriptHook start = ReflexGetFunctor(rstruct->name, "Start");
-			ScriptHook simulate = ReflexGetFunctor(rstruct->name, "Simulate");
-			ScriptHook update = ReflexGetFunctor(rstruct->name, "Update");
-			ScriptHook stop = ReflexGetFunctor(rstruct->name, "Stop");
-			RegisterScript(rstruct, start, simulate, update, stop);
+			ScriptHook hooks[ScriptHook_Count];
+			for (u32 hook = 0; hook < ScriptHook_Count; ++hook) {
+				hooks[hook] = ReflexGetFunctor(rstruct->name, sScriptHookNames[hook]);
+			}
+			RegisterScript(rstruct, hooks);
 		}
 	}
 
@@ -230,6 +245,117 @@ void RunScriptHooks(Engine &engine, ScriptHookType hook)
 	{
 		const ID entityId = scene.scriptComponents[i].entityId;
 		RunScriptHook(engine, entityId, scene.scriptComponents[i], hook);
+	}
+}
+
+struct TriggerEvent
+{
+	ID triggerId;
+	ID otherId;
+	ScriptHookType hook;
+};
+
+static bool BoxesOverlap(float2 minA, float2 sizeA, float2 minB, float2 sizeB)
+{
+	return minA.x < minB.x + sizeB.x && minB.x < minA.x + sizeA.x &&
+	       minA.y < minB.y + sizeB.y && minB.y < minA.y + sizeA.y;
+}
+
+void ResetTriggers(Scene &scene)
+{
+	for (u32 i = 0; i < scene.componentPools[ComponentType_Trigger].count; ++i) {
+		scene.triggerComponents[i].overlapCount = 0;
+	}
+}
+
+// Calls OnTriggerEnter/OnTriggerExit on the script of each trigger entity whose region a
+// collider started or stopped overlapping since the last step. The region is anchored at
+// the entity position, like a camera region with no offset.
+void RunTriggerHooks(Engine &engine)
+{
+	Scene &scene = engine.scene;
+	const u32 triggerCount = scene.componentPools[ComponentType_Trigger].count;
+	const u32 colliderCount = scene.componentPools[ComponentType_Collider].count;
+
+	if ( triggerCount == 0 ) {
+		return;
+	}
+
+	// Hooks can add or remove components, which moves them around their pools, so every
+	// overlap is resolved first and the hooks only run once nothing points into the pools.
+	// A trigger can exit at most every entry it held and enter at most a full set again.
+	Scratch scratch;
+	TriggerEvent *events = PushArray(scratch.arena, TriggerEvent, triggerCount * 2 * MAX_TRIGGER_OVERLAPS);
+	u32 eventCount = 0;
+
+	for (u32 i = 0; i < triggerCount; ++i)
+	{
+		TriggerComponent &trigger = scene.triggerComponents[i];
+		const float2 triggerPos = GetEntity(trigger.entityId).position.xy;
+
+		// Exits, including colliders whose entity or component went away
+		u32 keptCount = 0;
+		for (u32 j = 0; j < trigger.overlapCount; ++j)
+		{
+			const ID otherId = trigger.overlapIds[j];
+			bool inside = false;
+			if ( HasComponents(scene, otherId, Component_Collider) ) {
+				const ColliderComponent &collider = GetCollider(scene, otherId);
+				const float2 colliderPos = GetEntity(otherId).position.xy + collider.offset;
+				inside = BoxesOverlap(triggerPos, trigger.size, colliderPos, collider.size);
+			}
+
+			if ( inside ) {
+				trigger.overlapIds[keptCount++] = otherId;
+			} else {
+				events[eventCount++] = { trigger.entityId, otherId, ScriptHook_TriggerExit };
+			}
+		}
+		trigger.overlapCount = keptCount;
+
+		// Enters
+		for (u32 j = 0; j < colliderCount; ++j)
+		{
+			const ColliderComponent &collider = scene.colliderComponents[j];
+			const ID otherId = collider.entityId;
+			if ( otherId == trigger.entityId ) {
+				continue;
+			}
+
+			const float2 colliderPos = GetEntity(otherId).position.xy + collider.offset;
+			if ( !BoxesOverlap(triggerPos, trigger.size, colliderPos, collider.size) ) {
+				continue;
+			}
+
+			bool wasInside = false;
+			for (u32 k = 0; k < trigger.overlapCount; ++k) {
+				wasInside = wasInside || trigger.overlapIds[k] == otherId;
+			}
+			if ( wasInside ) {
+				continue;
+			}
+
+			if ( trigger.overlapCount == MAX_TRIGGER_OVERLAPS )
+			{
+				static bool warned = false;
+				if ( !warned ) {
+					warned = true;
+					LOG(Warning, "RunTriggerHooks: more than %u colliders inside a trigger region, the rest are ignored.\n", MAX_TRIGGER_OVERLAPS);
+				}
+				continue;
+			}
+
+			trigger.overlapIds[trigger.overlapCount++] = otherId;
+			events[eventCount++] = { trigger.entityId, otherId, ScriptHook_TriggerEnter };
+		}
+	}
+
+	for (u32 i = 0; i < eventCount; ++i)
+	{
+		const TriggerEvent &event = events[i];
+		if ( HasComponents(scene, event.triggerId, Component_Script) ) {
+			RunScriptHook(engine, event.triggerId, GetScript(scene, event.triggerId), event.hook, event.otherId);
+		}
 	}
 }
 

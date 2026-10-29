@@ -190,6 +190,7 @@ static constexpr ComponentType kIconOrder[] = {
 	ComponentType_Particles,
 	ComponentType_Script,
 	ComponentType_CameraRegion,
+	ComponentType_Trigger,
 };
 
 struct EditorViewportIcon
@@ -2539,6 +2540,25 @@ static void EditorUpdateUI_ContextMenu()
 				LOG(Debug, "Add camera region not implemented in 3D mode.\n");
 			}
 		}
+		if ( UI_MenuItem(ui, "Add trigger") )
+		{
+			if ( EditorMode2D() )
+			{
+				const EntityDesc entityDesc = {
+					.name = InternString("trigger"),
+					.roomId = FindRoomAt(engine.scene, editor.contextMenuWorldPos),
+					.pos = Float3(editor.contextMenuWorldPos, 0.0),
+					.scale = 1.0f,
+				};
+				const ID entityId = CreateEntity(engine, entityDesc);
+				AddComponent(engine, entityId, ComponentType_Trigger);
+				EditorSelectEntity(entityId);
+			}
+			else
+			{
+				LOG(Debug, "Add trigger not implemented in 3D mode.\n");
+			}
+		}
 		UI_EndMenu(ui);
 	}
 }
@@ -3376,9 +3396,20 @@ void EditorDebugDraw()
 		}
 	}
 
+	const EditorSelection &selected = editor.inspector.selected;
+
+	if (selected.type == EditorSelectedType_Entity)
+	{
+		if (HasComponents(engine.scene, selected.id, Component_Trigger))
+		{
+			const Entity &entity = GetEntity(selected.id);
+			const TriggerComponent &trigger = GetTrigger(engine, selected.id);
+			DrawBoxOutline(entity.position.xy, trigger.size, ColorOrange);
+		}
+	}
+
 	if (editor.showIcons && EditorMode2D())
 	{
-		const EditorSelection &selected = editor.inspector.selected;
 		Scratch scratch;
 		EditorViewportIcon *icons;
 		const u32 iconCount = EditorGatherIcons(scratch.arena, icons);
@@ -3548,6 +3579,7 @@ void EditorInitialize(Engine &engine)
 	editor.gizmoIcons[ComponentType_Particles] = EditorLoadIcon("editor/fx_32.png", "icon_fx");
 	editor.gizmoIcons[ComponentType_Script] = EditorLoadIcon("editor/script_32.png", "icon_script");
 	editor.gizmoIcons[ComponentType_CameraRegion] = EditorLoadIcon("editor/camera_region_32.png", "icon_camera_region");
+	editor.gizmoIcons[ComponentType_Trigger] = EditorLoadIcon("editor/trigger_32.png", "icon_trigger");
 	editor.gizmoIcons[ComponentType_Count] = EditorLoadIcon("editor/entity_32.png", "icon_entity");
 	editor.roomIcon = EditorLoadIcon("editor/room_32.png", "icon_room");
 

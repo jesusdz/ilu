@@ -53,6 +53,19 @@ struct CameraController
 	float2 boundsMax;
 };
 
+REFLEX(Script)
+struct Teleport
+{
+	REFLEX(Entity)
+	ID teleportId;
+};
+
+REFLEX()
+void OnTriggerEnter(Teleport &script)
+{
+	LOG(Info, "OnTriggerEnter\n");
+}
+
 REFLEX()
 void Start(PlayerController &script)
 {
