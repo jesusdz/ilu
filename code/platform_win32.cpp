@@ -711,14 +711,14 @@ static bool InitializeWindow(Window &window, u32 width, u32 height, const char *
 		return false;
 	}
 
+	// Ignore display scaling
+	SetProcessDPIAware();
+
 	// Given the desired client window size, get the full size
 	RECT windowRect = { 0, 0, (int)width, (int)height };
 	AdjustWindowRect( &windowRect, WS_OVERLAPPEDWINDOW, FALSE );
 	int fullWidth = windowRect.right - windowRect.left;
 	int fullHeight = windowRect.bottom - windowRect.top;
-
-	// Ignore display scaling
-	SetProcessDPIAware();
 
 	HWND hWnd = CreateWindowExA(
 			0,                              // Optional window styles.
