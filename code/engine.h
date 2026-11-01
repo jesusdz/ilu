@@ -1306,7 +1306,7 @@ typedef Prefab PrefabDesc;
 #define MAX_PREFABS 256
 #define MAX_TILES 16 * 16 * 8 * MAX_ROOMS
 
-constexpr u32 MAX_PARTICLES = 1024;
+constexpr u32 MAX_PARTICLES = 2048;
 constexpr u32 MAX_PARTICLE_EFFECTS = 64;
 
 #define MAX_MODEL_COMPONENTS 1024

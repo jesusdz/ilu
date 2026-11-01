@@ -486,7 +486,7 @@ Entity fireflies = {
  },
 };
 
-Entity light = {
+Entity moonlight = {
  .id = 1050,
  .roomId = 1021,
  .pos = {14.061110, 9.777778, -6.000000},
@@ -494,7 +494,7 @@ Entity light = {
  .light = {
   .type = LightType_Point,
   .color = {1.000000, 1.000000, 1.000000},
-  .intensity = 1.300000,
+  .intensity = 8.000000,
   .radius = 2.800000,
   .zOffset = 1.000000,
  },
@@ -678,6 +678,22 @@ Entity fireflies = {
  .sprite = {
   .spriteId = 0,
   .layerId = 1022,
+ },
+};
+
+Entity fireflies = {
+ .id = 1073,
+ .roomId = 1061,
+ .pos = {44.812500, 5.500000, 0.000000},
+ .scale = 1.000000,
+ .particles = {
+  .effectId = 1048,
+  .playOnStart = 1,
+  .prewarm = 1,
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1062,
  },
 };
 
