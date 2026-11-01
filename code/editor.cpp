@@ -1102,6 +1102,7 @@ static void EditorUpdateUI_Outliner()
 			const ParticleEffect desc = {
 				.name = "fx",
 				.color = { .min = { 1.0f, 1.0f, 1.0f, 1.0f }, .max = { 1.0f, 1.0f, 1.0f, 0.0f } },
+				.intensity = { .min = 1.0f, .max = 1.0f },
 				.size = { .min = 1.0f, .max = 1.0f },
 				.rate = 20.0f,
 				.loop = 1,

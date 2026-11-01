@@ -40,6 +40,7 @@ void InitializeScene(Engine &engine)
 			.name = InternString("fountain_fx"),
 			// color and size read begin -> end over the particle's life, so this fades out
 			.color = { .min = { 1.0f, 1.0f, 1.0f, 1.0f }, .max = { 1.0f, 1.0f, 1.0f, 0.0f } },
+			.intensity = { .min = 1.0f, .max = 1.0f },
 			.size = { .min = 1.0f, .max = 0.3f },
 			.rate = 20.0f,
 			.burstCount = 20,
@@ -61,6 +62,7 @@ void InitializeScene(Engine &engine)
 			.name = InternString("fire_fx"),
 			// color and size read begin -> end over the particle's life, so this fades out
 			.color = { .min = { 1.0f, 1.0f, 0.0f, 1.0f }, .max = { 1.0f, 0.0f, 0.0f, 0.0f } },
+			.intensity = { .min = 1.0f, .max = 1.0f },
 			.size = { .min = 1.0f, .max = 2.0f },
 			.rate = 50.0f,
 			.burstCount = 20,

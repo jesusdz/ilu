@@ -119,6 +119,10 @@ static ShaderSourceDesc shaderSourceDescs[] = {
 	{ .type = ShaderTypeVertex,   .filename = "distortion_map.hlsl", .entryPoint = "VSMain",      .name = "vs_distortion_map" },
 	{ .type = ShaderTypeFragment, .filename = "distortion_map.hlsl", .entryPoint = "PSMain",      .name = "fs_distortion_map" },
 	{ .type = ShaderTypeFragment, .filename = "distortion.hlsl",     .entryPoint = "PSMain",      .name = "fs_distortion" },
+	{ .type = ShaderTypeFragment, .filename = "bloom.hlsl",          .entryPoint = "PSPrefilter", .name = "fs_bloom_prefilter" },
+	{ .type = ShaderTypeFragment, .filename = "bloom.hlsl",          .entryPoint = "PSDownsample", .name = "fs_bloom_downsample" },
+	{ .type = ShaderTypeFragment, .filename = "bloom.hlsl",          .entryPoint = "PSUpsample",  .name = "fs_bloom_upsample" },
+	{ .type = ShaderTypeFragment, .filename = "bloom.hlsl",          .entryPoint = "PSComposite", .name = "fs_bloom_composite" },
 };
 
 ShaderSourceDesc *GetShaderSourceDescs()
@@ -847,6 +851,8 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Game
 	else
 	{
+		renderTargets.hasBloom = true;
+
 		// Keep scene size at a multiple of art resolution
 		u32 xmul = sceneWidth / ART_WIDTH;
 		u32 ymul = sceneHeight / ART_HEIGHT;
@@ -880,7 +886,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Scene color buffer
 	renderTargets.sceneImage = CreateImage(gfx.device,
 		sceneWidth, sceneHeight, 1,
-		gfx.device.swapchainInfo.format,
+		FormatRG11B10F,
 		ImageUsageColorAttachment | ImageUsageSampled,
 		HeapType_RTs);
 	TransitionImageLayout(commandList, renderTargets.sceneImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
@@ -926,7 +932,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Effects color buffer
 	renderTargets.effectsImage = CreateImage(gfx.device,
 		sceneWidth, sceneHeight, 1,
-		gfx.device.swapchainInfo.format,
+		FormatRG11B10F,
 		ImageUsageColorAttachment | ImageUsageSampled,
 		HeapType_RTs);
 	TransitionImageLayout(commandList, renderTargets.effectsImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
@@ -944,6 +950,49 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 		};
 
 		renderTargets.effectsFramebuffer = CreateFramebuffer(gfx.device, desc);
+	}
+
+	// Bloom pyramid
+	if ( renderTargets.hasBloom )
+	{
+		for ( u32 i = 0; i < BLOOM_LEVEL_COUNT; ++i )
+		{
+			char debugName[16];
+			SPrintf(debugName, "bloom_%u", i);
+
+			const ImageH image = CreateImage(gfx.device,
+				Max(sceneWidth >> (i + 1), 1u), Max(sceneHeight >> (i + 1), 1u), 1,
+				FormatRG11B10F,
+				ImageUsageColorAttachment | ImageUsageSampled,
+				HeapType_RTs);
+			TransitionImageLayout(commandList, image, ImageStateInitial, ImageStateRenderTarget, 0, 1);
+			SetObjectNameImage(gfx.device, image, debugName);
+			renderTargets.bloomImages[i] = image;
+
+			const FramebufferDesc downsampleDesc = {
+				.renderPass = gfx.bloomDownsampleRenderPassH,
+				.attachments = { image },
+				.attachmentCount = 1,
+			};
+			renderTargets.bloomDownsampleFramebuffers[i] = CreateFramebuffer(gfx.device, downsampleDesc);
+
+			if ( i < BLOOM_LEVEL_COUNT - 1 )
+			{
+				const FramebufferDesc upsampleDesc = {
+					.renderPass = gfx.bloomUpsampleRenderPassH,
+					.attachments = { image },
+					.attachmentCount = 1,
+				};
+				renderTargets.bloomUpsampleFramebuffers[i] = CreateFramebuffer(gfx.device, upsampleDesc);
+			}
+		}
+
+		const FramebufferDesc compositeDesc = {
+			.renderPass = gfx.bloomUpsampleRenderPassH,
+			.attachments = { renderTargets.effectsImage },
+			.attachmentCount = 1,
+		};
+		renderTargets.bloomCompositeFramebuffer = CreateFramebuffer(gfx.device, compositeDesc);
 	}
 
 	// Display framebuffer
@@ -1019,6 +1068,20 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 	DestroyImageH(gfx.device, renderTargets.sceneImage);
 	DestroyImageH(gfx.device, renderTargets.distortionImage);
 	DestroyImageH(gfx.device, renderTargets.effectsImage);
+
+	if ( renderTargets.hasBloom )
+	{
+		for ( u32 i = 0; i < BLOOM_LEVEL_COUNT; ++i )
+		{
+			DestroyImageH(gfx.device, renderTargets.bloomImages[i]);
+			DestroyFramebuffer( gfx.device, renderTargets.bloomDownsampleFramebuffers[i] );
+			if ( i < BLOOM_LEVEL_COUNT - 1 )
+			{
+				DestroyFramebuffer( gfx.device, renderTargets.bloomUpsampleFramebuffers[i] );
+			}
+		}
+		DestroyFramebuffer( gfx.device, renderTargets.bloomCompositeFramebuffer );
+	}
 
 	// Reset the heap used for render targets
 	Heap &rtHeap = gfx.device.heaps[HeapType_RTs];
@@ -1380,12 +1443,13 @@ static const ShaderAndPipelineDesc pipelineDescs[] =
 			.vsFunction = "VSMain",
 			.fsFunction = "PSMain",
 			.vertexBufferCount = 1,
-			.vertexBuffers = { { .stride = 24 }, },
-			.vertexAttributeCount = 3,
+			.vertexBuffers = { { .stride = 28 }, },
+			.vertexAttributeCount = 4,
 			.vertexAttributes = {
 				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
 				{ .bufferIndex = 0, .location = 1, .offset = 12, .format = FormatFloat2, },
 				{ .bufferIndex = 0, .location = 2, .offset = 20, .format = FormatRGBA8, },
+				{ .bufferIndex = 0, .location = 3, .offset = 24, .format = FormatFloat, },
 			},
 			.depthTest = true,
 			.depthWrite = false,
@@ -1436,6 +1500,86 @@ static const ShaderAndPipelineDesc pipelineDescs[] =
 			.depthWrite = false,
 			.depthCompareOp = CompareOpGreaterOrEqual,
 			.blending = true,
+		}
+	},
+	{
+		.vsName = "vs_blit",
+		.fsName = "fs_bloom_prefilter",
+		.renderPass = "bloom_downsample_renderpass",
+		.index = Pipeline_BloomPrefilter,
+		.desc = {
+			.name = "pipeline_bloom_prefilter",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSPrefilter",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = false,
+			.blending = false,
+		}
+	},
+	{
+		.vsName = "vs_blit",
+		.fsName = "fs_bloom_downsample",
+		.renderPass = "bloom_downsample_renderpass",
+		.index = Pipeline_BloomDownsample,
+		.desc = {
+			.name = "pipeline_bloom_downsample",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSDownsample",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = false,
+			.blending = false,
+		}
+	},
+	{
+		.vsName = "vs_blit",
+		.fsName = "fs_bloom_upsample",
+		.renderPass = "bloom_upsample_renderpass",
+		.index = Pipeline_BloomUpsample,
+		.desc = {
+			.name = "pipeline_bloom_upsample",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSUpsample",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = false,
+			.additiveBlending = true,
+		}
+	},
+	{
+		.vsName = "vs_blit",
+		.fsName = "fs_bloom_composite",
+		.renderPass = "bloom_upsample_renderpass",
+		.index = Pipeline_BloomComposite,
+		.desc = {
+			.name = "pipeline_bloom_composite",
+			.vsFunction = "VSMain",
+			.fsFunction = "PSComposite",
+			.vertexBufferCount = 1,
+			.vertexBuffers = { { .stride = 32 }, },
+			.vertexAttributeCount = 2,
+			.vertexAttributes = {
+				{ .bufferIndex = 0, .location = 0, .offset = 0,  .format = FormatFloat3, },
+				{ .bufferIndex = 0, .location = 1, .offset = 24, .format = FormatFloat2, },
+			},
+			.depthTest = false,
+			.additiveBlending = true,
 		}
 	},
 };
@@ -1593,13 +1737,11 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 	// Scene render pass
 	{
-		const Format format = gfx.device.swapchainInfo.format;
-
 		const RenderpassDesc renderpassDesc = {
 			.name = "scene_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = format, .loadOp = LoadOpClear, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = FormatRG11B10F, .loadOp = LoadOpClear, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 			.hasDepthAttachment = true,
 			.depthAttachment = {
@@ -1629,13 +1771,11 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	// Effects render pass (continue after scene render pass)
 	// Color is overwritten by the scene copy, depth is kept from the scene
 	{
-		const Format format = gfx.device.swapchainInfo.format;
-
 		const RenderpassDesc renderpassDesc = {
 			.name = "effects_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = format, .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = FormatRG11B10F, .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 			.hasDepthAttachment = true,
 			.depthAttachment = {
@@ -1643,6 +1783,27 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			}
 		};
 		gfx.effectsRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+	}
+
+	// Bloom render passes
+	{
+		const RenderpassDesc downsampleDesc = {
+			.name = "bloom_downsample_renderpass",
+			.colorAttachmentCount = 1,
+			.colorAttachments = {
+				{ .format = FormatRG11B10F, .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
+			},
+		};
+		gfx.bloomDownsampleRenderPassH = CreateRenderPass( gfx.device, downsampleDesc );
+
+		const RenderpassDesc upsampleDesc = {
+			.name = "bloom_upsample_renderpass",
+			.colorAttachmentCount = 1,
+			.colorAttachments = {
+				{ .format = FormatRG11B10F, .loadOp = LoadOpLoad, .storeOp = StoreOpStore, .isSwapchain = false },
+			},
+		};
+		gfx.bloomUpsampleRenderPassH = CreateRenderPass( gfx.device, upsampleDesc );
 	}
 
 	// Display render pass
@@ -1962,6 +2123,11 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.filter = FilterNearest,
 	};
 	gfx.screenSamplerH = CreateSampler(gfx.device, screenSamplerDesc);
+	const SamplerDesc bloomSamplerDesc = {
+		.addressMode = AddressModeClampToEdge,
+		.filter = FilterLinear,
+	};
+	gfx.bloomSamplerH = CreateSampler(gfx.device, bloomSamplerDesc);
 	const SamplerDesc shadowmapSamplerDesc = {
 		.addressMode = AddressModeClampToBorder,
 		.filter = FilterNearest,

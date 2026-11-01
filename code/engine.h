@@ -206,6 +206,7 @@ struct ParticleVertex
 	float3 pos;
 	float2 texCoord;
 	rgba color;
+	f32 intensity;
 };
 
 struct DistortionVertex
@@ -510,6 +511,8 @@ struct Material
 ////////////////////////////////////////////////////////////////////////
 // Render targets
 
+constexpr u32 BLOOM_LEVEL_COUNT = 5;
+
 struct RenderTargets
 {
 	uint2 sceneSize;
@@ -521,6 +524,12 @@ struct RenderTargets
 	Framebuffer distortionFramebuffer;
 	ImageH effectsImage;
 	Framebuffer effectsFramebuffer;
+
+	bool hasBloom;
+	ImageH bloomImages[BLOOM_LEVEL_COUNT];
+	Framebuffer bloomDownsampleFramebuffers[BLOOM_LEVEL_COUNT];
+	Framebuffer bloomUpsampleFramebuffers[BLOOM_LEVEL_COUNT - 1];
+	Framebuffer bloomCompositeFramebuffer;
 
 	Framebuffer displayFramebuffers[MAX_SWAPCHAIN_IMAGE_COUNT];
 
@@ -610,6 +619,10 @@ enum PipelineIndex
 	Pipeline_Particles,
 	Pipeline_DistortionMap,
 	Pipeline_Fog,
+	Pipeline_BloomPrefilter,
+	Pipeline_BloomDownsample,
+	Pipeline_BloomUpsample,
+	Pipeline_BloomComposite,
 	Pipeline_ComputeSelect,
 	Pipeline_LightBinning,
 	Pipeline_Count,
@@ -708,10 +721,13 @@ struct Graphics
 	SamplerH shadowmapSamplerH;
 	SamplerH skySamplerH;
 	SamplerH screenSamplerH;
+	SamplerH bloomSamplerH;
 
 	RenderPassH litRenderPassH;
 	RenderPassH distortionRenderPassH;
 	RenderPassH effectsRenderPassH;
+	RenderPassH bloomDownsampleRenderPassH;
+	RenderPassH bloomUpsampleRenderPassH;
 	RenderPassH shadowmapRenderPassH;
 	RenderPassH idRenderPassH;
 	RenderPassH displayRenderPassH;
@@ -1071,9 +1087,12 @@ struct ParticleEffect
 	// Look
 	REFLEX(Sprite)
 	ID spriteID;
-	// color, size and distortion read begin -> end over the particle's life
+	// color, intensity, size and distortion read begin -> end over the particle's life
 	REFLEX(Color)
 	float4_range color;
+	// Multiplies the color, not its alpha. Above 1 the particle reaches the bloom threshold
+	REFLEX()
+	f32_range intensity;
 	REFLEX()
 	f32_range size;
 	// Positive bulges, negative pinches; 1 moves the scene up to the particle radius
@@ -1525,7 +1544,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 31; // 31: scene default room
+constexpr u32 BinAssetsVersion = 32; // 32: particle effect intensity
 
 #pragma pack(push, 1)
 

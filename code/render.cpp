@@ -155,6 +155,7 @@ static void GenerateParticles(const Scene &scene, bool is2D, bool interpolate, f
 
 			const f32 t = p.age / p.lifetime;
 			const float4 color = Lerp(effect.color.min, effect.color.max, t);
+			const f32 intensity = Lerp(effect.intensity.min, effect.intensity.max, t);
 			const f32 size = Lerp(effect.size.min, effect.size.max, t);
 
 			// Local-space particles ride along with their emitter
@@ -174,7 +175,7 @@ static void GenerateParticles(const Scene &scene, bool is2D, bool interpolate, f
 				const rgba c = Rgba(color);
 				ParticleVertex *v = vertices + gfx.particleVertexCount;
 				for (u32 k = 0; k < 6; ++k) {
-					v[k] = ParticleVertex{ boxPos + Float3(quadCorners[k] * boxSize, 0.0f), quadCorners[k], c };
+					v[k] = ParticleVertex{ boxPos + Float3(quadCorners[k] * boxSize, 0.0f), quadCorners[k], c, intensity };
 				}
 				gfx.particleVertexCount += 6;
 			//}
@@ -499,6 +500,32 @@ static void DrawTexturedBatch(Graphics &gfx, CommandList &commandList, const Bin
 	SetBindGroup(commandList, 3, bindGroup);
 
 	Draw(commandList, batch.vertexCount, batch.vertexIndex);
+}
+
+static void DrawBloomPass(Graphics &gfx, CommandList &commandList, const Framebuffer &framebuffer, PipelineIndex pipelineIndex, ImageH sourceImage)
+{
+	const u32 frameIndex = gfx.device.frameIndex;
+	const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[pipelineIndex]);
+
+	BeginRenderPass(commandList, framebuffer);
+	SetViewportAndScissor(commandList, GetFramebufferSize(framebuffer));
+
+	SetPipeline(commandList, gfx.pipelines[pipelineIndex]);
+	SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+
+	const BindGroupDesc bindGroupDesc = {
+		.layout = pipeline.layout.bindGroupLayouts[3],
+		.bindings = {
+			{ .index = 0, .sampler = gfx.bloomSamplerH },
+			{ .index = 1, .image = sourceImage },
+		},
+	};
+	const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);
+	SetBindGroup(commandList, 3, bindGroup);
+
+	DrawScreenQuad(gfx, commandList);
+
+	EndRenderPass(commandList);
 }
 
 bool RenderGraphics(Engine &engine)
@@ -1379,13 +1406,60 @@ bool RenderGraphics(Engine &engine)
 		}
 
 		EndRenderPass(commandList);
+
+		TransitionImageLayout(commandList, gfx.renderTargets.effectsImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
+	}
+
+	// Bloom
+	if ( gfx.renderTargets.hasBloom )
+	{
+		RENDER_BLOCK(Bloom);
+
+		const RenderTargets &renderTargets = gfx.renderTargets;
+
+		{ // Downsample
+			RENDER_BLOCK(BloomDownsample);
+
+			for (u32 i = 0; i < BLOOM_LEVEL_COUNT; ++i)
+			{
+				const PipelineIndex pipelineIndex = i == 0 ? Pipeline_BloomPrefilter : Pipeline_BloomDownsample;
+				const ImageH sourceImage = i == 0 ? renderTargets.effectsImage : renderTargets.bloomImages[i - 1];
+
+				DrawBloomPass(gfx, commandList, renderTargets.bloomDownsampleFramebuffers[i], pipelineIndex, sourceImage);
+
+				TransitionImageLayout(commandList, renderTargets.bloomImages[i], ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
+			}
+		}
+
+		{ // Upsample
+			RENDER_BLOCK(BloomUpsample);
+
+			for (u32 i = BLOOM_LEVEL_COUNT - 1; i > 0; --i)
+			{
+				const ImageH targetImage = renderTargets.bloomImages[i - 1];
+
+				TransitionImageLayout(commandList, targetImage, ImageStateShaderInput, ImageStateRenderTarget, 0, 1);
+
+				DrawBloomPass(gfx, commandList, renderTargets.bloomUpsampleFramebuffers[i - 1], Pipeline_BloomUpsample, renderTargets.bloomImages[i]);
+
+				TransitionImageLayout(commandList, targetImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
+			}
+		}
+
+		{ // Composite
+			RENDER_BLOCK(BloomComposite);
+
+			TransitionImageLayout(commandList, renderTargets.effectsImage, ImageStateShaderInput, ImageStateRenderTarget, 0, 1);
+
+			DrawBloomPass(gfx, commandList, renderTargets.bloomCompositeFramebuffer, Pipeline_BloomComposite, renderTargets.bloomImages[0]);
+
+			TransitionImageLayout(commandList, renderTargets.effectsImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
+		}
 	}
 
 	// Display
 	{
 		RENDER_BLOCK(Display);
-
-		TransitionImageLayout(commandList, gfx.renderTargets.effectsImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
 		// Black bars where the integer-scaled scene does not cover the display
 		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 1.0f } );

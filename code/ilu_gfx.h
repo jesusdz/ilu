@@ -263,6 +263,7 @@ enum Format
 	FormatD32S1,
 	FormatD24S1,
 	FormatRG16F,
+	FormatRG11B10F,
 	FormatCount,
 	FormatInvalid = FormatCount,
 };
@@ -1379,6 +1380,7 @@ static VkFormat FormatToVulkan(Format format)
 		VK_FORMAT_D32_SFLOAT_S8_UINT,
 		VK_FORMAT_D24_UNORM_S8_UINT,
 		VK_FORMAT_R16G16_SFLOAT,
+		VK_FORMAT_B10G11R11_UFLOAT_PACK32,
 	};
 	CT_ASSERT(ARRAY_COUNT(vkFormats) == FormatCount);
 	const VkFormat vkFormat = format < FormatCount ? vkFormats[format] : VK_FORMAT_MAX_ENUM;
@@ -1406,6 +1408,7 @@ static Format FormatFromVulkan(VkFormat format)
 		case VK_FORMAT_D32_SFLOAT_S8_UINT: return FormatD32S1;
 		case VK_FORMAT_D24_UNORM_S8_UINT: return FormatD24S1;
 		case VK_FORMAT_R16G16_SFLOAT: return FormatRG16F;
+		case VK_FORMAT_B10G11R11_UFLOAT_PACK32: return FormatRG11B10F;
 		default:;
 	};
 	return FormatInvalid;
@@ -1432,6 +1435,7 @@ const char *FormatName(Format format)
 		"VK_FORMAT_D32_SFLOAT_S8_UINT",
 		"VK_FORMAT_D24_UNORM_S8_UINT",
 		"VK_FORMAT_R16G16_SFLOAT",
+		"VK_FORMAT_B10G11R11_UFLOAT_PACK32",
 	};
 	CT_ASSERT(ARRAY_COUNT(names) == FormatCount);
 	const char *name = format < FormatCount ? names[format] : "VK_FORMAT_INVALID";
