@@ -63,7 +63,15 @@ struct Teleport
 REFLEX()
 void OnTriggerEnter(Teleport &script)
 {
-	LOG(Info, "OnTriggerEnter\n");
+	const Entity *target = TryGetEntity(script.teleportId);
+	if ( !target ) {
+		return;
+	}
+
+	// The room goes along with the position so the controllers clamp to the new one
+	Entity &other = GetOther();
+	EntitySetPosition(other, target->position);
+	other.roomId = target->roomId;
 }
 
 REFLEX()
@@ -88,6 +96,11 @@ void Simulate(PlayerController &script)
 	Entity &player = GetSelf();
 	SpriteComponent &sprite = GetSpriteComponent(player.id);
 	const ColliderComponent &collider = GetColliderComponent(player.id);
+
+	// The entity's room changes when it is teleported elsewhere
+	if ( player.roomId ) {
+		script.roomId = player.roomId;
+	}
 
 	const Room &room = GetRoom(script.roomId);
 	const float4 roomBounds = RoomOuterBounds(room);
@@ -260,16 +273,6 @@ void Stop(PlayerController &script)
 REFLEX()
 void Start(CameraController &script)
 {
-#if 0
-	script.camera = {
-		.projectionType = ProjectionOrthographic,
-		.position = {0, 0, -1},
-		.znear = -10.0f,
-		.zfar = 10.0f,
-		//.height = 180.0f / ART_PIXELS_PER_METER,
-		.height = 90.0f / ART_PIXELS_PER_METER,
-	};
-#else
 	const f32 fovyDeg = GAME_CAMERA_FOVY;
 	const f32 zcam = GameCameraDistance();
 
@@ -281,7 +284,7 @@ void Start(CameraController &script)
 		.zfar = 1000.0f,
 		.fovy = fovyDeg,
 	};
-#endif
+
 	SetCamera(script.camera);
 
 	script.roomId = GetDefaultRoomId();
@@ -292,6 +295,16 @@ REFLEX()
 void Simulate(CameraController &script)
 {
 	Entity &player = GetEntity(script.playerId);
+
+	// Following the player into another room is a cut, panning across would show the gap
+	const bool roomChanged = player.roomId && player.roomId != script.roomId;
+	if ( roomChanged ) {
+		script.roomId = player.roomId;
+		script.boundsValid = false;
+		script.camera.position.xy = player.position.xy;
+		script.cameraTargetY = player.position.y;
+	}
+
 	const Room &room = GetRoom(script.roomId);
 
 	const float2 playerPos = player.position.xy;
@@ -417,7 +430,11 @@ void Simulate(CameraController &script)
 		camera.position.y = playerPos.y + Round(offset.y / pixelSize) * pixelSize;
 	}
 
-	SetCamera(camera);
+	if ( roomChanged ) {
+		SetCamera(camera);
+	} else {
+		MoveCamera(camera);
+	}
 }
 
 REFLEX()

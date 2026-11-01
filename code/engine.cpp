@@ -167,8 +167,9 @@ static void GameUpdate(Engine &engine, const Host &host)
 			game.deltaSeconds = fixedStepSeconds;
 			GameSetInput(game, game.accumulatedInput);
 			SnapshotPositions(engine);
-			RunScriptHooks(engine, ScriptHook_Simulate);
+			// Ahead of Simulate, so a camera reacts to a teleport in the same step
 			RunTriggerHooks(engine);
+			RunScriptHooks(engine, ScriptHook_Simulate);
 			InputConsume(game.accumulatedInput);
 			game.accumulatedSeconds -= fixedStepSeconds;
 		}

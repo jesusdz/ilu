@@ -352,8 +352,8 @@ ParticleEffect fireflies_fx = {
 
 Entity player = {
  .id = 1027,
- .roomId = 1021,
- .pos = {4.445353, 1.000000, 0.000000},
+ .roomId = 1061,
+ .pos = {45.133541, 1.000000, 0.000000},
  .scale = 1.000000,
  .collider = {
   .size = {1.000000, 1.000000},
@@ -530,7 +530,6 @@ Entity teleport = {
  },
  .trigger = {
   .size = {1.000000, 6.000000},
-  .spawnId = 1065,
  },
 };
 
@@ -538,6 +537,36 @@ Entity Spawn = {
  .id = 1065,
  .roomId = 1061,
  .pos = {42.000000, 1.000000, 0.000000},
+ .scale = 1.000000,
+};
+
+Entity teleport = {
+ .id = 1066,
+ .roomId = 1021,
+ .pos = {41.000000, 1.000000, 0.000000},
+ .scale = 1.000000,
+ .script = {
+  .name = "Teleport",
+  .properties = {
+   .teleportId = 1067,
+  },
+ },
+ .trigger = {
+  .size = {1.000000, 6.000000},
+ },
+};
+
+Entity Spawn = {
+ .id = 1067,
+ .roomId = 1021,
+ .pos = {38.000000, 1.000000, 0.000000},
+ .scale = 1.000000,
+};
+
+Entity empty = {
+ .id = 1068,
+ .roomId = 1021,
+ .pos = {39.034958, 1.026667, 0.000000},
  .scale = 1.000000,
 };
 

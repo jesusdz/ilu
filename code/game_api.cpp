@@ -72,11 +72,21 @@ f32 GetScenePixelsPerMeter()
 	return GetEngine().gfx.renderTargets.scenePixelsPerMeter;
 }
 
+// Rendering blends the camera here from where it was on the previous step
+GAME_API
+void MoveCamera(const Camera &camera)
+{
+	Engine &engine = GetEngine();
+	engine.gfx.camera = camera;
+}
+
+// Places the camera with no blend, like EntitySetPosition does for an entity
 GAME_API
 void SetCamera(const Camera &camera)
 {
 	Engine &engine = GetEngine();
 	engine.gfx.camera = camera;
+	engine.game.prevCameraPosition = camera.position;
 }
 
 GAME_API
