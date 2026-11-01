@@ -1871,6 +1871,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 				d.lightColor = light.color;
 				d.lightIntensity = light.intensity;
 				d.lightRadius = light.radius;
+				d.lightZOffset = light.zOffset;
 				break;
 			}
 

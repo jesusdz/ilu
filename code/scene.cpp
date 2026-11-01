@@ -61,8 +61,8 @@ void InitializeScene(Engine &engine)
 			.id = { BuiltinID_FireParticleEffect },
 			.name = InternString("fire_fx"),
 			// color and size read begin -> end over the particle's life, so this fades out
-			.color = { .min = { 1.0f, 1.0f, 0.0f, 1.0f }, .max = { 1.0f, 0.0f, 0.0f, 0.0f } },
-			.intensity = { .min = 1.0f, .max = 1.0f },
+			.color = { .min = { 1.0f, 0.3f, 0.0f, 0.7f }, .max = { 1.0f, 0.0f, 0.0f, 0.0f } },
+			.intensity = { .min = 5.0f, .max = 3.0f },
 			.size = { .min = 1.0f, .max = 2.0f },
 			.rate = 50.0f,
 			.burstCount = 20,
@@ -1158,6 +1158,7 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, ComponentDescPool
 				.color = desc.lightColor,
 				.intensity = desc.lightIntensity,
 				.radius = desc.lightRadius,
+				.zOffset = desc.lightZOffset,
 			};
 			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Light), &light, propertyPool);
 		}

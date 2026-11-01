@@ -28,11 +28,8 @@ float LightAttenuation(float dist, float radius)
 	return res;
 }
 
-// Unlit sprites: no normal to work with, so the light only falls off with distance.
-float3 AccumulateLights2D(float3 positionWs, float4 pixelCoord)
+float3 AccumulateLights2D(float3 positionWs, float3 N, float4 pixelCoord)
 {
-	positionWs.z *= 2; // Hacky tweak to have background layers darker
-
 	float3 res = float3(0.0, 0.0, 0.0);
 
 	uint4 mask = LightCellMask(pixelCoord.xy);
@@ -45,8 +42,11 @@ float3 AccumulateLights2D(float3 positionWs, float4 pixelCoord)
 			bits &= bits - 1;
 
 			const SLight light = GetLight(w * 32 + bit);
-			const float dist = length(light.positionWs - positionWs);
-			res += light.color * light.intensity * LightAttenuation(dist, light.radius);
+			const float3 lightVector = light.positionWs - positionWs;
+			const float dist = length(lightVector);
+			const float3 L = lightVector / max(dist, 0.0001);
+			const float NoL = saturate(dot(L, N));
+			res += light.color * light.intensity * NoL * LightAttenuation(dist, light.radius);
 		}
 	}
 

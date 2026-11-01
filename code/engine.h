@@ -932,6 +932,8 @@ struct LightComponent
 	f32 intensity;
 	REFLEX()
 	f32 radius;
+	REFLEX()
+	f32 zOffset;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -1400,6 +1402,7 @@ struct BinEntityDesc
 	float3 lightColor;
 	f32 lightIntensity;
 	f32 lightRadius;
+	f32 lightZOffset;
 	ID particlesEffectId;
 	u8 particlesPlayOnStart;
 	u8 particlesPrewarm;
@@ -1544,7 +1547,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 32; // 32: particle effect intensity
+constexpr u32 BinAssetsVersion = 33; // 33: light z offset
 
 #pragma pack(push, 1)
 

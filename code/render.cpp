@@ -756,6 +756,7 @@ bool RenderGraphics(Engine &engine)
 			lightPosition.xy = layer.renderScale * lightPosition.xy + layer.renderOffset;
 			lightRadius *= layer.renderScale;
 		}
+		lightPosition.z += light.zOffset;
 
 		if ( cullLights )
 		{

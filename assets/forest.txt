@@ -335,7 +335,7 @@ ParticleEffect fireflies_fx = {
  .intensity = {9.000000, 9.000000},
  .size = {0.500000, 0.500000},
  .distortion = {0.000000, 0.000000},
- .rate = 10.000000,
+ .rate = 2.000000,
  .burstCount = 0,
  .duration = 0.000000,
  .loop = 1,
@@ -343,7 +343,7 @@ ParticleEffect fireflies_fx = {
  .speed = {0.100000, 0.500000},
  .angle = {0.000000, 360.000000},
  .spawnOffset = {0.000000, 0.000000, 0.000000},
- .spawnExtent = {20.000000, 5.000000, 0.000000},
+ .spawnExtent = {3.000000, 3.000000, 0.000000},
  .gravity = {0.000000, 0.000000, 0.000000},
  .drag = 0.000000,
  .worldSpace = 1,
@@ -366,6 +366,7 @@ Entity player = {
   .color = {1.000000, 0.584102, 0.268750},
   .intensity = 2.000000,
   .radius = 10.000000,
+  .zOffset = 1.000000,
  },
  .script = {
   .name = "PlayerController",
@@ -384,7 +385,7 @@ Entity player = {
  },
 };
 
-Entity light = {
+Entity fire = {
  .id = 1043,
  .roomId = 1021,
  .pos = {9.000000, 1.000000, 0.000000},
@@ -394,15 +395,20 @@ Entity light = {
   .color = {1.000000, 0.506250, 0.000000},
   .intensity = 4.000000,
   .radius = 5.000000,
+  .zOffset = 1.000000,
  },
  .particles = {
   .effectId = 5,
   .playOnStart = 1,
   .prewarm = 1,
  },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
+ },
 };
 
-Entity light = {
+Entity fire = {
  .id = 1044,
  .roomId = 1021,
  .pos = {19.000000, 1.000000, 0.000000},
@@ -412,15 +418,20 @@ Entity light = {
   .color = {1.000000, 0.506250, 0.000000},
   .intensity = 4.000000,
   .radius = 5.000000,
+  .zOffset = 1.000000,
  },
  .particles = {
   .effectId = 5,
   .playOnStart = 1,
   .prewarm = 1,
  },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
+ },
 };
 
-Entity light = {
+Entity fire = {
  .id = 1045,
  .roomId = 1021,
  .pos = {32.000000, 1.000000, 0.000000},
@@ -430,11 +441,16 @@ Entity light = {
   .color = {1.000000, 0.506250, 0.000000},
   .intensity = 4.000000,
   .radius = 5.000000,
+  .zOffset = 1.000000,
  },
  .particles = {
   .effectId = 5,
   .playOnStart = 1,
   .prewarm = 1,
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
  },
 };
 
@@ -448,17 +464,25 @@ Entity waterfall = {
   .playOnStart = 1,
   .prewarm = 1,
  },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
+ },
 };
 
 Entity fireflies = {
  .id = 1049,
  .roomId = 1021,
- .pos = {20.000000, 7.000000, 0.000000},
+ .pos = {4.687500, 6.187500, 0.000000},
  .scale = 1.000000,
  .particles = {
   .effectId = 1048,
   .playOnStart = 1,
   .prewarm = 1,
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
  },
 };
 
@@ -470,8 +494,9 @@ Entity light = {
  .light = {
   .type = LightType_Point,
   .color = {1.000000, 1.000000, 1.000000},
-  .intensity = 60.000000,
-  .radius = 4.000000,
+  .intensity = 1.300000,
+  .radius = 2.800000,
+  .zOffset = 1.000000,
  },
  .sprite = {
   .spriteId = 0,
@@ -500,6 +525,10 @@ Entity camera_region = {
  .cameraRegion = {
   .size = {40.000000, 6.000000},
   .offset = {0.000000, 0.000000},
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
  },
 };
 
@@ -530,6 +559,10 @@ Entity teleport = {
    .teleportId = 1065,
   },
  },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
+ },
  .trigger = {
   .size = {1.000000, 6.000000},
  },
@@ -540,11 +573,15 @@ Entity Spawn = {
  .roomId = 1061,
  .pos = {42.000000, 1.000000, 0.000000},
  .scale = 1.000000,
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1062,
+ },
 };
 
 Entity teleport = {
  .id = 1066,
- .roomId = 1021,
+ .roomId = 1061,
  .pos = {41.000000, 1.000000, 0.000000},
  .scale = 1.000000,
  .script = {
@@ -552,6 +589,10 @@ Entity teleport = {
   .properties = {
    .teleportId = 1067,
   },
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1062,
  },
  .trigger = {
   .size = {1.000000, 6.000000},
@@ -563,13 +604,81 @@ Entity Spawn = {
  .roomId = 1021,
  .pos = {38.000000, 1.000000, 0.000000},
  .scale = 1.000000,
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
+ },
 };
 
-Entity empty = {
- .id = 1068,
- .roomId = 1021,
- .pos = {39.034962, 1.026667, 0.000000},
+Entity fire = {
+ .id = 1069,
+ .roomId = 1061,
+ .pos = {46.000000, 1.000000, 0.000000},
  .scale = 1.000000,
+ .light = {
+  .type = LightType_Point,
+  .color = {1.000000, 0.506250, 0.000000},
+  .intensity = 4.000000,
+  .radius = 5.000000,
+  .zOffset = 1.000000,
+ },
+ .particles = {
+  .effectId = 5,
+  .playOnStart = 1,
+  .prewarm = 1,
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1062,
+ },
+};
+
+Entity fireflies = {
+ .id = 1070,
+ .roomId = 1021,
+ .pos = {18.312500, 9.000000, 0.000000},
+ .scale = 1.000000,
+ .particles = {
+  .effectId = 1048,
+  .playOnStart = 1,
+  .prewarm = 1,
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
+ },
+};
+
+Entity fireflies = {
+ .id = 1071,
+ .roomId = 1021,
+ .pos = {25.562500, 8.875000, 0.000000},
+ .scale = 1.000000,
+ .particles = {
+  .effectId = 1048,
+  .playOnStart = 1,
+  .prewarm = 1,
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
+ },
+};
+
+Entity fireflies = {
+ .id = 1072,
+ .roomId = 1021,
+ .pos = {32.812500, 5.812500, 0.000000},
+ .scale = 1.000000,
+ .particles = {
+  .effectId = 1048,
+  .playOnStart = 1,
+  .prewarm = 1,
+ },
+ .sprite = {
+  .spriteId = 0,
+  .layerId = 1022,
+ },
 };
 
 
@@ -733,7 +842,7 @@ Room room_2 = {
  .layers = {
   {
    .id = 1062,
-   .name = "Layer",
+   .name = "Main",
    .isBase = 1,
    .visible = 1,
    .isCollider = 0,

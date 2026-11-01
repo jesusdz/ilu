@@ -18,6 +18,7 @@ struct Interpolators
 	nointerpolation float4 uvRect : TEXCOORD1;
 	float depth : POSITION0;
 	float3 positionWs : POSITION1;
+	float3 normalWs : NORMAL0;
 #if USE_ENTITY_SELECTION
 	nointerpolation bool isSelected : POSITION2;
 #endif
@@ -45,6 +46,7 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 	float3 posOs = float3(IN.position.xy * sprite.worldSize * tile.scale, IN.position.z);
 	float3 disp = tile.pos;
 	float4 posWs = float4(posOs + disp, 1.0);
+	float3 normalWs = IN.normal;
 
 #elif USE_ENTITY_RENDERING
 
@@ -53,6 +55,7 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 	SSpriteData sprite = spriteData.Load<SSpriteData>(entityData.spriteIndex * sizeof(SSpriteData));
 	float3 posOs = float3(IN.position.xy * sprite.worldSize, IN.position.z);
 	float4 posWs = mul(entityData.world, float4(posOs, 1.0));
+	float3 normalWs = mul(entityData.world, float4(IN.normal, 0.0)).xyz;
 
 	if (entityData.flipX)
 		texCoord.x = 1.0 - texCoord.x;
@@ -70,6 +73,7 @@ VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 	OUT.uvRect = float4(sprite.uvOffset, sprite.uvOffset + sprite.uvSize);
 	OUT.depth = posWs.z;
 	OUT.positionWs = posWs.xyz;
+	OUT.normalWs = normalWs;
 
 	return OUT;
 }
@@ -86,7 +90,8 @@ float4 PSMain(PixelInput IN) : SV_Target
 	if (albedo.a == 0.0)
 		discard;
 
-	const float3 lighting = globals.ambientLight.rgb + AccumulateLights2D(IN.positionWs, IN.position);
+	const float3 N = normalize(IN.normalWs);
+	const float3 lighting = globals.ambientLight.rgb + AccumulateLights2D(IN.positionWs, N, IN.position);
 	albedo.rgb *= lighting;
 
 #if USE_ENTITY_SELECTION
