@@ -470,6 +470,7 @@ struct UI
 	u32 vertexCount;
 	u32 vertexCountLimit;
 	bool vertexOverflow;
+	bool windowOverflow;
 
 	UIDrawList drawLists[UI_MAX_DRAW_LISTS];
 	u32 drawListCount;
@@ -506,7 +507,9 @@ struct UI
 	UIInput input;
 	uint2 viewportSize;
 
-	UIWindow windows[UI_MAX_WINDOWS];
+	// The slot past UI_MAX_WINDOWS is shared by every window that did not fit. Callers keep
+	// drawing into the window they get, but windowCount excludes it so it is never hovered.
+	UIWindow windows[UI_MAX_WINDOWS + 1];
 	u32 windowCount;
 
 	u32 windowStack[UI_MAX_WINDOW_STACK];
@@ -1582,6 +1585,11 @@ UIWindow &UI_FindWindow(UI &ui, UIID windowId)
 		}
 	}
 
+	if ( ui.windows[UI_MAX_WINDOWS].id == windowId )
+	{
+		return ui.windows[UI_MAX_WINDOWS];
+	}
+
 	ASSERT(0 && "Could not find window.");
 	static UIWindow window = {};
 	return window;
@@ -1600,14 +1608,16 @@ UIWindow &UI_FindOrCreateWindow(UI &ui, UIID windowId, const char *caption)
 		}
 	}
 
-	ASSERT(ui.windowCount < ARRAY_COUNT(ui.windows));
-	const u32 windowIndex = ui.windowCount++;
+	const bool overflow = ui.windowCount == UI_MAX_WINDOWS;
+	ui.windowOverflow |= overflow;
+	const u32 windowIndex = overflow ? UI_MAX_WINDOWS : ui.windowCount++;
 	UIWindow &window = ui.windows[windowIndex];
 
+	window = {};
 	window.id = windowId;
 	window.index = windowIndex;
 	StrCopy(window.caption, caption);
-	window.layer = windowIndex;
+	window.layer = overflow ? 0 : windowIndex;
 
 	window.displacement = ui.defaultWindowDisplacement;
 	window.size = ui.defaultWindowSize;
@@ -1660,6 +1670,12 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 	UIWindow &window = UI_FindWindow(ui, windowId);
 	ui.windowStack[ui.windowStackSize++] = window.index;
 	window.visible = true;
+
+	// Nested overflow windows share clippedContents, which would unbalance UI_EndWindow's pop.
+	if ( window.index == UI_MAX_WINDOWS )
+	{
+		flags &= ~UIWindowFlag_ClipContents;
+	}
 	window.flags = flags;
 
 	const UINextWindow next = ui.nextWindow;
@@ -4538,6 +4554,7 @@ void UI_BeginFrame(UI &ui)
 	ui.vertexPtr = ui.frontendVertices;
 	ui.vertexCount = 0;
 	ui.vertexOverflow = false;
+	ui.windowOverflow = false;
 	ui.drawListCount = 0;
 	ui.drawListStackSize = 0;
 
@@ -4779,6 +4796,11 @@ void UI_EndFrame(UI &ui)
 	if ( ui.vertexOverflow )
 	{
 		LOG(Warning, "UI vertexCount limit (%u) reached!\n", ui.vertexCountLimit);
+	}
+
+	if ( ui.windowOverflow )
+	{
+		LOG(Warning, "UI window limit (%u) reached, extra windows are not interactive.\n", UI_MAX_WINDOWS);
 	}
 }
 
