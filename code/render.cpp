@@ -384,7 +384,21 @@ static float4 GetOrthographicCameraMinMaxRect(const Camera &camera, f32 ar)
 	return minMaxRect;
 }
 
-static bool Intersects(float2 aMin, float2 aMax, float2 bMin, float2 bMax)
+float4 GetCameraViewRect(const Camera &camera, f32 ar, f32 z)
+{
+	if (camera.projectionType == ProjectionOrthographic) {
+		return GetOrthographicCameraMinMaxRect(camera, ar);
+	}
+
+	// Assumes the camera looks down -z, as the game camera does.
+	const f32 distance = camera.position.z - z;
+	const f32 halfHeight = distance * Tan(0.5f * camera.fovy * ToRadians);
+	const float2 halfExtent = { halfHeight * ar, halfHeight };
+	const float4 minMaxRect = { .xy = camera.position.xy - halfExtent, .zw = camera.position.xy + halfExtent };
+	return minMaxRect;
+}
+
+bool Intersects(float2 aMin, float2 aMax, float2 bMin, float2 bMax)
 {
 	const bool outsideX = aMax.x < bMin.x || aMin.x > bMax.x;
 	const bool outsideY = aMax.y < bMin.y || aMin.y > bMax.y;
@@ -408,7 +422,7 @@ static bool EntityIsInFrustum2D(const Entity &entity, ID spriteId, float2 rectMi
 }
 
 
-static f32 GetSceneAspectRatio(const Graphics &gfx)
+f32 GetSceneAspectRatio(const Graphics &gfx)
 {
 	const uint2 sceneSize = gfx.renderTargets.sceneSize;
 	const f32 preRotationDegrees = gfx.device.swapchain.preRotationDegrees;
@@ -699,21 +713,9 @@ bool RenderGraphics(Engine &engine)
 
 						if ( GetLayerSpriteBounds(room, layer, contentMin, contentSize) )
 						{
-							float2 viewMin;
-							float2 viewSize;
-							if (camera.projectionType == ProjectionPerspective)
-							{
-								// Assumes the camera looks down -z, as the game camera does.
-								const f32 distance = camera.position.z - layer.depth;
-								const f32 halfHeight = distance * Tan(0.5f * camera.fovy * ToRadians);
-								viewSize = float2{2.0f * halfHeight * ar, 2.0f * halfHeight};
-								viewMin = camera.position.xy - 0.5f * viewSize;
-							}
-							else
-							{
-								viewMin = cameraMinMaxRect.xy;
-								viewSize = cameraMinMaxRect.zw - cameraMinMaxRect.xy;
-							}
+							const float4 viewRect = GetCameraViewRect(camera, ar, layer.depth);
+							const float2 viewMin = viewRect.xy;
+							const float2 viewSize = viewRect.zw - viewRect.xy;
 							const float2 layerSize = contentSize;
 							const f32 layerScale = Max(viewSize.x / layerSize.x, viewSize.y / layerSize.y);
 							const float2 layerOrigin = viewMin + 0.5f * (viewSize - layerScale * layerSize);

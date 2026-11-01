@@ -989,6 +989,7 @@ struct ParticlesComponent
 	u8 playing;
 	f32 emitAccum; // ???
 	f32 elapsedTime; // from 0 to duration
+	f32 culledSeconds; // Emission skipped since going out of view, prewarmed back on return
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -1135,6 +1136,7 @@ struct ParticleEffect
 
 	// Runtime fields ///////////
 	f32 dragFactor;
+	f32 reach; // Furthest a particle can show from its emitter, ignoring drag
 };
 
 struct Particle
@@ -1998,6 +2000,9 @@ float3 UpDirectionFromAngles(const float2 &angles);
 float3 ForwardDirectionFromAngles(const float2 &angles);
 float3 RightDirectionFromAngles(const float2 &angles);
 float4x4 ViewMatrixFromCamera(const Camera &camera);
+float4 GetCameraViewRect(const Camera &camera, f32 ar, f32 z);
+f32 GetSceneAspectRatio(const Graphics &gfx);
+bool Intersects(float2 aMin, float2 aMax, float2 bMin, float2 bMax);
 
 
 ////////////////////////////////////////////////////////////////////////

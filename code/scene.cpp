@@ -232,6 +232,12 @@ void ResolveParticleEffect(ParticleEffect &effect)
 		LOG(Warning, "Particle effect <%s> refers to sprite ID %u, which does not exist.\n", effect.name, effect.spriteID.slot);
 		effect.spriteID = {};
 	}
+
+	const f32 life = effect.lifetime.max;
+	effect.reach = Length(effect.spawnOffset) + Length(effect.spawnExtent)
+		+ Max(Abs(effect.speed.min), Abs(effect.speed.max)) * life
+		+ 0.5f * Length(effect.gravity) * life * life
+		+ Max(effect.size.min, effect.size.max) / ART_PIXELS_PER_METER;
 }
 
 ID CreateParticleEffect(Engine &engine, const ParticleEffect &desc)
@@ -307,8 +313,53 @@ static void StepParticle(Particle &p, const ParticleEffect &effect, f32 deltaSec
 	p.pos += deltaSeconds * p.vel;
 }
 
+static bool EmitterReachesView(const Graphics &gfx, const Entity &entity, const ParticleEffect &effect)
+{
+	constexpr f32 CAMERA_MARGIN = 2.0f;
+
+	const float4 view = GetCameraViewRect(gfx.camera, GetSceneAspectRatio(gfx), entity.position.z);
+	const f32 reach = effect.reach + CAMERA_MARGIN;
+	const float2 extent = { reach, reach };
+	return Intersects(entity.position.xy - extent, entity.position.xy + extent, view.xy, view.zw);
+}
+
+static bool EmitsContinuously(const ParticleEffect &effect)
+{
+	return effect.loop || effect.duration <= 0.0f;
+}
+
+static void PrewarmParticles(Scene &scene, ID entityId, ParticleEffect &effect, f32 seconds)
+{
+	const u32 count = (u32)(effect.rate * seconds);
+	effect.dragFactor = Exp(-effect.drag * SIMULATE_SECONDS);
+	for (u32 i = 1; i <= count && scene.particleCount < MAX_PARTICLES; ++i)
+	{
+		SpawnParticle(scene, entityId, effect);
+		Particle &p = scene.particles[scene.particleCount - 1];
+
+		const f32 age = (f32)i / effect.rate;
+		if ( age >= p.lifetime ) {
+			--scene.particleCount;
+			continue;
+		}
+
+		// Stepped rather than solved, because drag is integrated per step
+		// and a closed form would not land where the simulation does
+		while ( p.age < age )
+		{
+			StepParticle(p, effect, SIMULATE_SECONDS);
+			p.age += SIMULATE_SECONDS;
+		}
+	}
+}
+
 void UpdateParticles(Scene &scene, f32 deltaSeconds)
 {
+	Engine &engine = GetEngine();
+
+	// Only the game camera fits GetCameraViewRect: the editor's can look anywhere
+	const bool cullEmitters = engine.game.runState == GameStateRunning;
+
 	// Emission
 	const u32 particleComponentCount = scene.componentPools[ComponentType_Particles].count;
 	for (u32 i = 0; i < particleComponentCount; ++i)
@@ -316,7 +367,7 @@ void UpdateParticles(Scene &scene, f32 deltaSeconds)
 		ParticlesComponent &particles = scene.particlesComponents[i];
 		if ( !particles.playing || !particles.effectId ) { continue; }
 
-		const ParticleEffect &effect = GetParticleEffect(particles.effectId);
+		ParticleEffect &effect = GetParticleEffect(particles.effectId);
 
 		particles.elapsedTime += deltaSeconds;
 		if ( effect.duration > 0.0f && particles.elapsedTime >= effect.duration )
@@ -327,6 +378,24 @@ void UpdateParticles(Scene &scene, f32 deltaSeconds)
 				particles.playing = 0; // Already-live particles still finish their lives
 				continue;
 			}
+		}
+
+		// After the timers so a one-shot still ends on time, and before the accumulator
+		// so coming back into view does not release everything owed as one burst
+		if ( cullEmitters && !EmitterReachesView(engine.gfx, GetEntity(particles.entityId), effect) )
+		{
+			particles.culledSeconds += deltaSeconds;
+			continue;
+		}
+
+		if ( particles.culledSeconds > 0.0f )
+		{
+			// Only the time spent culled: what was emitted before that is still alive,
+			// and replaying it would double the density at the edge of the view
+			if ( EmitsContinuously(effect) ) {
+				PrewarmParticles(scene, particles.entityId, effect, Min(particles.culledSeconds, effect.lifetime.max));
+			}
+			particles.culledSeconds = 0.0f;
 		}
 
 		// The accumulator is what keeps a rate of 3.5/s from rounding to 3 or 4
@@ -378,35 +447,15 @@ void PlayParticles(Scene &scene, ID entityId)
 				particles.playing = 1;
 				particles.elapsedTime = 0.0f;
 				particles.emitAccum = 0.0f;
+				particles.culledSeconds = 0.0f;
 
 				ParticleEffect &effect = GetParticleEffect(particles.effectId);
 
-				const bool continuous = ( effect.loop || effect.duration <= 0.0f );
-				if ( particles.prewarm && continuous && effect.rate > 0.0f )
+				if ( particles.prewarm && EmitsContinuously(effect) && effect.rate > 0.0f )
 				{
 					// Past the longest lifetime everything emitted earlier is dead, so this
 					// window is the whole steady state. The burst would be dead too.
-					const u32 count = (u32)(effect.rate * effect.lifetime.max);
-					effect.dragFactor = Exp(-effect.drag * SIMULATE_SECONDS);
-					for (u32 i = 1; i <= count && scene.particleCount < MAX_PARTICLES; ++i)
-					{
-						SpawnParticle(scene, entityId, effect);
-						Particle &p = scene.particles[scene.particleCount - 1];
-
-						const f32 age = (f32)i / effect.rate;
-						if ( age >= p.lifetime ) {
-							--scene.particleCount;
-							continue;
-						}
-
-						// Stepped rather than solved, because drag is integrated per step
-						// and a closed form would not land where the simulation does
-						while ( p.age < age )
-						{
-							StepParticle(p, effect, SIMULATE_SECONDS);
-							p.age += SIMULATE_SECONDS;
-						}
-					}
+					PrewarmParticles(scene, entityId, effect, effect.lifetime.max);
 				}
 				else
 				{
@@ -455,6 +504,7 @@ void ClearParticles(Scene &scene)
 		particles.playing = 0;
 		particles.emitAccum = 0.0f;
 		particles.elapsedTime = 0.0f;
+		particles.culledSeconds = 0.0f;
 	}
 }
 
