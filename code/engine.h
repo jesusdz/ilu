@@ -1189,6 +1189,10 @@ struct SpriteAnimState
 #define TILE_SIZE_PIXELS 16.0f // size of each grid cell, in pixels (at ART_PIXELS_PER_METER scale)
 #define MAX_LAYERS 4
 
+constexpr u32 COLLIDER_SOLID = 1;
+constexpr u32 COLLIDER_PLATFORM = 2;
+constexpr u32 COLLIDER_LADDER = 3;
+
 struct TileDesc
 {
 	i16 x;

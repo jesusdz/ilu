@@ -6,6 +6,7 @@ enum PlayerState
 {
 	OnFloor,
 	OnPlatform,
+	OnLadder,
 	OnAir,
 };
 
@@ -128,6 +129,69 @@ void Simulate(PlayerController &script)
 		constexpr f32 jumpCutMultiplier = 0.35f; // Kills upward speed quickly if the button is released early
 		//constexpr f32 ADVANCE_EPSILON = 0.5f / ART_PIXELS_PER_METER;
 		constexpr f32 SPEED_EPSILON = 0.2f;
+		constexpr f32 climbSpeed = 4.0f;
+
+		// Ladder //////////////////////////////////////////////////////
+
+		const f32 ladderX = pos.x + 0.5f * size.x;
+		const bool ladderAtBody = GetColliderAtWorldPos(float2{ladderX, pos.y + 0.5f * size.y}) == COLLIDER_LADDER;
+		const bool ladderBelow = GetColliderAtWorldPos(float2{ladderX, pos.y - 0.1f}) == COLLIDER_LADDER;
+
+		if (script.playerState != OnLadder)
+		{
+			const bool onGround = script.playerState == OnFloor || script.playerState == OnPlatform;
+			const bool grabUp = input.action.press && input.move.y > 0.5f && ladderAtBody && speed.y <= 0.0f;
+			const bool grabDown = input.action.press && input.move.y < -0.5f && ladderBelow && onGround;
+			if (grabUp || grabDown)
+			{
+				// A box one cell wide touches both neighbouring columns when aligned to the grid,
+				// so it sits a hair towards the free side or leaving the ladder would hit the wall.
+				const f32 snapX = Floor(ladderX) + 0.5f - 0.5f * size.x;
+				const bool leftBlocked = IsColliderInBox(float2{snapX - 0.01f, pos.y}, size, COLLIDER_SOLID);
+				pos.x = leftBlocked ? snapX + 0.01f : snapX - 0.01f;
+				speed = {};
+				script.playerState = OnLadder;
+			}
+		}
+
+		if (script.playerState == OnLadder)
+		{
+			if (input.jump.press)
+			{
+				speed.y = jumpSpeed;
+				script.playerState = OnAir;
+				PlayAudioClip(script.sndJump);
+			}
+			else
+			{
+				const float2 prevPos = pos;
+				pos += climbSpeed * deltaSeconds * input.move;
+
+				const bool leftColumn = false;// Floor(pos.x + 0.5f * size.x) != Floor(ladderX);
+				if (leftColumn || IsColliderInBox(float2{pos.x, prevPos.y}, size, COLLIDER_SOLID)) {
+					pos.x = prevPos.x;
+				}
+
+				const u32 atFeet = GetColliderAtWorldPos(float2{ladderX, pos.y});
+				if (atFeet == COLLIDER_SOLID) {
+					pos.y = Ceil(pos.y);
+					script.playerState = OnFloor;
+				} else if (GetColliderAtWorldPos(float2{ladderX, pos.y + size.y}) == COLLIDER_SOLID) {
+					pos.y = prevPos.y;
+				} else if (atFeet != COLLIDER_LADDER) {
+					if (GetColliderAtWorldPos(float2{ladderX, pos.y - 0.1f}) == COLLIDER_LADDER) {
+						pos.y = Floor(pos.y);
+						script.playerState = OnPlatform;
+					} else if (GetColliderAtWorldPos(float2{ladderX, pos.y + 0.5f * size.y}) != COLLIDER_LADDER) {
+						script.playerState = OnAir;
+					}
+				}
+
+				player.position.xy = pos - collider.offset;
+				sprite.spriteId = script.sprPlayerIdle;
+				return;
+			}
+		}
 
 		// Speed epsilon ///////////////////////////////////////////////
 
@@ -154,7 +218,7 @@ void Simulate(PlayerController &script)
 		const f32 prevX = pos.x;
 		pos.x += speed.x * deltaSeconds;
 
-		if (IsColliderInBox(pos, size, 1)) {
+		if (IsColliderInBox(pos, size, COLLIDER_SOLID)) {
 			pos.x = prevX;
 			speed.x = 0.0f;
 		}
@@ -193,7 +257,7 @@ void Simulate(PlayerController &script)
 		// Only landing on a surface grounds the player, hitting a ceiling does not
 		script.playerState = OnAir;
 
-		if (IsColliderInBox(pos, size, 1)) {
+		if (IsColliderInBox(pos, size, COLLIDER_SOLID)) {
 			if (prevY < pos.y) {
 				pos.y = Ceil(prevY);
 			} else {
@@ -207,8 +271,9 @@ void Simulate(PlayerController &script)
 		{
 			const f32 centerX = pos.x + 0.5f * size.x;
 			const float2 prevVertical = {centerX, prevY};
+			const u32 colliderBelow = GetColliderAtWorldPos(float2{centerX, pos.y});
 			if (GetColliderAtWorldPos(prevVertical) == 0 &&
-				GetColliderAtWorldPos(float2{centerX, pos.y}) == 2) {
+				(colliderBelow == COLLIDER_PLATFORM || colliderBelow == COLLIDER_LADDER)) {
 				if (prevY > pos.y) {
 					pos.y = Floor(prevY);
 					speed.y = 0.0f;

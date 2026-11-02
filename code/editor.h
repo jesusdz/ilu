@@ -102,6 +102,7 @@ enum EditorTool
 	EditorTool_Draw,
 	EditorTool_ColliderSolid,
 	EditorTool_ColliderPlatform,
+	EditorTool_ColliderLadder,
 	EditorTool_Erase,
 };
 

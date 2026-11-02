@@ -444,6 +444,9 @@ static void EditorUpdateUI_ToolBar()
 					if (UI_Radio(ui, "Platform", context.tool == EditorTool_ColliderPlatform)) {
 						context.tool = EditorTool_ColliderPlatform;
 					}
+					if (UI_Radio(ui, "Ladder", context.tool == EditorTool_ColliderLadder)) {
+						context.tool = EditorTool_ColliderLadder;
+					}
 					if (UI_Radio(ui, "Erase", context.tool == EditorTool_Erase)) {
 						context.tool = EditorTool_Erase;
 					}
@@ -3296,8 +3299,9 @@ static void EditorBeginSceneEditing(const EditorActions &actions)
 			if ( layer.isCollider )
 			{
 				const u32 collider =
-					editor.context.tool == EditorTool_ColliderSolid ? 1
-					: editor.context.tool == EditorTool_ColliderPlatform ? 2
+					editor.context.tool == EditorTool_ColliderSolid ? COLLIDER_SOLID
+					: editor.context.tool == EditorTool_ColliderPlatform ? COLLIDER_PLATFORM
+					: editor.context.tool == EditorTool_ColliderLadder ? COLLIDER_LADDER
 					: 0;
 				SetGridTileAtCoord(engine, layer, collider, gridCoord);
 			}
@@ -3338,6 +3342,7 @@ void EditorDebugDraw()
 					{0.0, 0.0, 0.0, 0.0},
 					{1.0, 0.0, 0.0, 0.3},
 					{1.0, 0.5, 0.0, 0.3},
+					{0.0, 0.6, 1.0, 0.3},
 				};
 
 				if ( !UI_IsHovered(engine.ui) )
@@ -3384,19 +3389,6 @@ void EditorDebugDraw()
 		DrawBoxOutline(innerBounds.xy, innerBounds.zw - innerBounds.xy, ColorOrange);
 	}
 
-	if (EditorMode2D())
-	{
-		const Scene &scene = engine.scene;
-		const ID selected = EditorGetSelectedEntity(editor);
-		const u32 regionCount = scene.componentPools[ComponentType_CameraRegion].count;
-		for (u32 i = 0; i < regionCount; ++i)
-		{
-			const CameraRegionComponent &region = scene.cameraRegionComponents[i];
-			const float2 pos = GetEntity(region.entityId).position.xy + region.offset;
-			DrawBoxOutline(pos, region.size, region.entityId == selected ? ColorOrange : ColorGreen);
-		}
-	}
-
 	const EditorSelection &selected = editor.inspector.selected;
 
 	if (selected.type == EditorSelectedType_Entity)
@@ -3406,6 +3398,13 @@ void EditorDebugDraw()
 			const Entity &entity = GetEntity(selected.id);
 			const TriggerComponent &trigger = GetTrigger(engine, selected.id);
 			DrawBoxOutline(entity.position.xy, trigger.size, ColorOrange);
+		}
+
+		if (HasComponents(engine.scene, selected.id, Component_CameraRegion))
+		{
+			const Entity &entity = GetEntity(selected.id);
+			const CameraRegionComponent &region = *(const CameraRegionComponent*)GetComponentSlot(engine.scene, selected.id, ComponentType_CameraRegion);
+			DrawBoxOutline(entity.position.xy + region.offset, region.size, ColorOrange);
 		}
 	}
 
