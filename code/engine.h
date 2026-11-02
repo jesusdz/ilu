@@ -1484,6 +1484,7 @@ struct GameInput
 {
 	float2 move;
 	InputButton jump;
+	InputButton action;
 };
 
 constexpr f32 SIMULATE_SECONDS = (1.0f / 60.0f);

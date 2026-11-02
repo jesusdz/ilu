@@ -92,6 +92,9 @@ static void GameSetInput(Game &game, const InputAccumulator &input)
 	game.input.jump.press = KeyPress(keyboard, K_SPACE);
 	game.input.jump.pressed = KeyPressed(keyboard, K_SPACE);
 	game.input.jump.release = KeyRelease(keyboard, K_SPACE);
+	game.input.action.press = KeyPress(keyboard, K_RETURN);
+	game.input.action.pressed = KeyPressed(keyboard, K_RETURN);
+	game.input.action.release = KeyRelease(keyboard, K_RETURN);
 
 	// Gamepad
 
@@ -100,6 +103,9 @@ static void GameSetInput(Game &game, const InputAccumulator &input)
 	game.input.jump.press |= ButtonPress(gamepad.a);
 	game.input.jump.pressed |= ButtonPressed(gamepad.a);
 	game.input.jump.release |= ButtonRelease(gamepad.a);
+	game.input.action.press |= ButtonPress(gamepad.x);
+	game.input.action.pressed |= ButtonPressed(gamepad.x);
+	game.input.action.release |= ButtonRelease(gamepad.x);
 }
 
 static void GameStop(Engine &engine)
