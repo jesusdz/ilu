@@ -2921,6 +2921,7 @@ enum EditorAction
 	EditorAction_ToggleGrid,
 	EditorAction_SetMode2D,
 	EditorAction_SetMode3D,
+	EditorAction_FocusSelection,
 	EditorAction_RemoveSelection,
 	EditorAction_DuplicateSelection,
 	EditorAction_StartMoveDrag,
@@ -2959,13 +2960,14 @@ struct EditorBinding
 static const EditorBinding kEditorBindings[] = {
 	{ K_F5,     EditorModifier_None,  EditorStates_Edit,    EditorAction_Play },
 	{ K_ESCAPE, EditorModifier_None,  EditorStates_Playing, EditorAction_Stop },
-	{ K_ESCAPE, EditorModifier_None,  EditorStates_Edit2D,  EditorAction_Unselect },
+	{ K_ESCAPE, EditorModifier_None,  EditorStates_Edit,    EditorAction_Unselect },
 	{ K_TAB,    EditorModifier_None,  EditorStates_Any,     EditorAction_ToggleUI },
 	{ K_I,      EditorModifier_None,  EditorStates_Edit,    EditorAction_ToggleIcons },
 	{ K_C,      EditorModifier_None,  EditorStates_Edit,    EditorAction_ToggleColliders },
 	{ K_G,      EditorModifier_None,  EditorStates_Edit,    EditorAction_ToggleGrid },
 	{ K_2,      EditorModifier_None,  EditorStates_Edit,    EditorAction_SetMode2D },
 	{ K_3,      EditorModifier_None,  EditorStates_Edit,    EditorAction_SetMode3D },
+	{ K_F,      EditorModifier_None,  EditorStates_Edit,    EditorAction_FocusSelection },
 	{ K_DELETE, EditorModifier_None,  EditorStates_Edit,    EditorAction_RemoveSelection },
 	{ K_D,      EditorModifier_Shift, EditorStates_Edit,    EditorAction_DuplicateSelection },
 	{ K_T,      EditorModifier_None,  EditorStates_Edit2D,  EditorAction_StartMoveDrag },
@@ -3105,11 +3107,18 @@ static EditorActions EditorProcessInput()
 		{
 			if ( idle && mouseFree )
 			{
+				actions.zoom = mouse.wheel.y;
 				actions.triggered[EditorAction_OpenContextMenu] = MouseButtonPress(mouse, MOUSE_BUTTON_RIGHT);
 
-				if ( MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) )
+				if ( MouseButtonPress(mouse, MOUSE_BUTTON_MIDDLE) )
 				{
-					EditorBeginInteraction(EditorInteraction_Rotating, state);
+					EditorBeginInteraction(EditorInteraction_Panning, state);
+				}
+				else if ( MouseButtonPress(mouse, MOUSE_BUTTON_LEFT) )
+				{
+					const EditorInteraction interaction = KeyPressed(keyboard, K_ALT)
+						? EditorInteraction_Orbiting : EditorInteraction_Rotating;
+					EditorBeginInteraction(interaction, state);
 				}
 			}
 			break;
@@ -3118,20 +3127,6 @@ static EditorActions EditorProcessInput()
 	}
 
 	return actions;
-}
-
-static void EditorUpdateCamera3DOrbit(Camera &camera, f32 deltaSeconds)
-{
-	static f32 yaw = 0;
-	yaw += 0.25 * Pi * deltaSeconds;
-
-	const f32 pitch = -0.45f;
-	const float2 angles = {yaw, pitch};
-	const float3 forward = ForwardDirectionFromAngles(angles);
-	const float3 position = -3.0f * forward;
-
-	camera.position = position;
-	camera.orientation = angles;
 }
 
 static void EditorUpdateCamera3D(const EditorActions &actions, const Window &window, Camera &camera, f32 deltaSeconds)
@@ -3151,7 +3146,8 @@ static void EditorUpdateCamera3D(const EditorActions &actions, const Window &win
 		deltaPitch = - window.touches[touchId].dy * ToRadians * 0.2f;
 	}
 #else
-	if (GetEditor().interaction == EditorInteraction_Rotating) {
+	const EditorInteraction interaction = GetEditor().interaction;
+	if (interaction == EditorInteraction_Rotating || interaction == EditorInteraction_Orbiting) {
 		deltaYaw = - mouse.delta.x * ToRadians * 0.2f;
 		deltaPitch = - mouse.delta.y * ToRadians * 0.2f;
 	}
@@ -3160,7 +3156,30 @@ static void EditorUpdateCamera3D(const EditorActions &actions, const Window &win
 	angles.x = angles.x + deltaYaw;
 	angles.y = Clamp(angles.y + deltaPitch, -Pi * 0.49, Pi * 0.49);
 
+#if !PLATFORM_ANDROID
+	if (interaction == EditorInteraction_Orbiting) {
+		const f32 distance = GetEditor().cameraOrbitDistance;
+		const float3 pivot = camera.position + distance * ForwardDirectionFromAngles(camera.orientation);
+		camera.position = pivot + (-distance) * ForwardDirectionFromAngles(angles);
+	}
+
+	if (interaction == EditorInteraction_Panning) {
+		const f32 halfHeight = GetEditor().cameraOrbitDistance * Tan(0.5f * camera.fovy * ToRadians);
+		const f32 worldPerPixel = 2.0f * halfHeight / window.height;
+		const float3 right = RightDirectionFromAngles(angles);
+		const float3 up = UpDirectionFromAngles(angles);
+		camera.position = camera.position + (-mouse.delta.x * worldPerPixel) * right + (mouse.delta.y * worldPerPixel) * up;
+	}
+#endif
+
 	camera.orientation = angles;
+
+	if (actions.zoom != 0.0f) {
+		Editor &editor = GetEditor();
+		const f32 distance = Max(0.1f, editor.cameraOrbitDistance * Pow(1.1f, actions.zoom));
+		camera.position = camera.position + (editor.cameraOrbitDistance - distance) * ForwardDirectionFromAngles(angles);
+		editor.cameraOrbitDistance = distance;
+	}
 
 	// Movement direction
 #if PLATFORM_ANDROID
@@ -3637,6 +3656,7 @@ void EditorInitialize(Engine &engine)
 	editor.camera[ProjectionPerspective].fovy = 60.0f;
 	editor.camera[ProjectionPerspective].znear = 0.1f;
 	editor.camera[ProjectionPerspective].zfar = 1000.0f;
+	editor.cameraOrbitDistance = Length(editor.camera[ProjectionPerspective].position);
 
 	editor.camera[ProjectionOrthographic].position = {0, 0, -5};
 	editor.camera[ProjectionOrthographic].orientation = {};
@@ -3701,6 +3721,87 @@ void EditorInitialize(Engine &engine)
 	CleanScene(engine);
 }
 
+static void EditorFocusSelection()
+{
+	Editor &editor = GetEditor();
+	const Window &window = GetWindow();
+	Camera camera = editor.camera[editor.cameraType];
+	const bool isOrtho = camera.projectionType == ProjectionOrthographic;
+	const float3 forward = ForwardDirectionFromAngles(camera.orientation);
+	const EditorSelectedType selectedType = editor.inspector.selected.type;
+	const bool roomSelected = selectedType == EditorSelectedType_Room || selectedType == EditorSelectedType_Layer;
+
+	if ( const Room *room = roomSelected ? EditorGetContextRoom() : nullptr )
+	{
+		const float4 bounds = RoomOuterBounds(*room);
+		const float2 center = 0.5f * (bounds.xy + bounds.zw);
+		const float2 halfSize = 0.5f * (bounds.zw - bounds.xy);
+		const f32 aspect = (f32)window.width / window.height;
+		const f32 halfHeight = Max(2.0f, 1.1f * Max(halfSize.y, halfSize.x / aspect));
+		if ( isOrtho ) {
+			camera.position.x = center.x;
+			camera.position.y = center.y;
+			camera.height = halfHeight;
+		} else {
+			const f32 distance = halfHeight / Tan(0.5f * camera.fovy * ToRadians);
+			camera.position = Float3(center, 0.0f) + (-distance) * forward;
+			editor.cameraOrbitDistance = distance;
+		}
+	}
+	else if ( const ID entityId = EditorGetSelectedEntity(editor) )
+	{
+		const float3 target = GetEntity(entityId).position;
+		const f32 halfHeight = 6.0f;
+		if ( isOrtho ) {
+			camera.position.x = target.x;
+			camera.position.y = target.y;
+			camera.height = halfHeight;
+		} else {
+			const f32 distance = halfHeight / Tan(0.5f * camera.fovy * ToRadians);
+			camera.position = target + (-distance) * forward;
+			editor.cameraOrbitDistance = distance;
+		}
+	}
+
+	editor.cameraFocusing = true;
+	editor.cameraFocusType = editor.cameraType;
+	editor.cameraFocusPosition = camera.position;
+	editor.cameraFocusHeight = camera.height;
+}
+
+static void EditorUpdateCameraFocus(const EditorActions &actions, f32 deltaSeconds)
+{
+	Editor &editor = GetEditor();
+	if ( !editor.cameraFocusing ) {
+		return;
+	}
+
+	const bool userMovedCamera =
+		editor.cameraType != editor.cameraFocusType ||
+		editor.interaction == EditorInteraction_Panning ||
+		editor.interaction == EditorInteraction_Rotating ||
+		editor.interaction == EditorInteraction_Orbiting ||
+		actions.zoom != 0.0f ||
+		actions.move.x != 0.0f || actions.move.y != 0.0f;
+	if ( userMovedCamera ) {
+		editor.cameraFocusing = false;
+		return;
+	}
+
+	Camera &camera = editor.camera[editor.cameraFocusType];
+	const f32 t = 1.0f - Exp(-12.0f * deltaSeconds);
+	camera.position = Lerp(camera.position, editor.cameraFocusPosition, t);
+	camera.height = Lerp(camera.height, editor.cameraFocusHeight, t);
+
+	if ( Length(FromTo(camera.position, editor.cameraFocusPosition)) < 0.001f &&
+	     Abs(camera.height - editor.cameraFocusHeight) < 0.001f )
+	{
+		camera.position = editor.cameraFocusPosition;
+		camera.height = editor.cameraFocusHeight;
+		editor.cameraFocusing = false;
+	}
+}
+
 static void EditorApplyActions(const EditorActions &actions)
 {
 	Engine &engine = GetEngine();
@@ -3758,6 +3859,11 @@ static void EditorApplyActions(const EditorActions &actions)
 	if (triggered[EditorAction_SetMode3D])
 	{
 		EditorSetMode3D();
+	}
+
+	if (triggered[EditorAction_FocusSelection])
+	{
+		EditorFocusSelection();
 	}
 
 	// Delete takes any selection, the rest of the shortcuts only act on an entity
@@ -3820,16 +3926,11 @@ void EditorUpdate(Engine &engine)
 		return;
 	}
 
+	EditorUpdateCameraFocus(actions, gfx.deltaSeconds);
+
 	if (EditorMode3D())
 	{
-		if (editor.cameraOrbit)
-		{
-			EditorUpdateCamera3DOrbit(editor.camera[ProjectionPerspective], gfx.deltaSeconds);
-		}
-		else
-		{
-			EditorUpdateCamera3D(actions, window, editor.camera[ProjectionPerspective], gfx.deltaSeconds);
-		}
+		EditorUpdateCamera3D(actions, window, editor.camera[ProjectionPerspective], gfx.deltaSeconds);
 
 		SetCamera(editor.camera[ProjectionPerspective]);
 	}

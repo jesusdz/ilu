@@ -182,6 +182,7 @@ enum EditorInteraction
 	EditorInteraction_Painting,
 	EditorInteraction_Rotating,
 	EditorInteraction_Selecting,
+	EditorInteraction_Orbiting,
 };
 
 struct EditorContext
@@ -229,7 +230,14 @@ struct Editor
 
 	Camera camera[ProjectionTypeCount];
 	ProjectionType cameraType;
-	bool cameraOrbit;
+
+	bool cameraFocusing;
+	f32 cameraOrbitDistance;
+
+	// State while focusing
+	ProjectionType cameraFocusType;
+	float3 cameraFocusPosition;
+	f32 cameraFocusHeight;
 
 	EditorCommand commands[128];
 	u32 commandCount;

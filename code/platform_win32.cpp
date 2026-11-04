@@ -391,13 +391,16 @@ static LRESULT CALLBACK Win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
 	{
 		case WM_KEYDOWN:
 		case WM_KEYUP:
+		case WM_SYSKEYDOWN:
+		case WM_SYSKEYUP:
 			if ( processKeyboardEvents )
 			{
 				WPARAM keyCode = wParam;
 				ASSERT( keyCode < ARRAY_COUNT(Win32KeyMappings) );
 				const Key mapping = Win32KeyMappings[ keyCode ];
 				ASSERT( mapping < K_COUNT );
-				const KeyState state = uMsg == WM_KEYDOWN ? KEY_STATE_PRESS : KEY_STATE_RELEASE;
+				const bool down = uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN;
+				const KeyState state = down ? KEY_STATE_PRESS : KEY_STATE_RELEASE;
 				const PlatformEvent event = {
 					.type = PlatformEventTypeKeyPress,
 					.keyPress = {
@@ -407,13 +410,24 @@ static LRESULT CALLBACK Win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
 				};
 				SendPlatformEvent(platform, event);
 			}
+			if ( uMsg == WM_SYSKEYDOWN && wParam == VK_RETURN )
+				ToggleFullscreen(hWnd);
+			else if ( uMsg == WM_SYSKEYDOWN || uMsg == WM_SYSKEYUP )
+				return DefWindowProc(hWnd, uMsg, wParam, lParam);
 			break;
 
-		case WM_SYSKEYDOWN:
-			if (wParam == VK_RETURN)
-				ToggleFullscreen(hWnd);
-			else
-				return DefWindowProc(hWnd, uMsg, wParam, lParam);
+		case WM_KILLFOCUS:
+			{
+				// Alt+Tab releases Alt in the window it switched to, so it would stay held here
+				const PlatformEvent event = {
+					.type = PlatformEventTypeKeyPress,
+					.keyPress = {
+						.code = K_ALT,
+						.state = KEY_STATE_RELEASE,
+					},
+				};
+				SendPlatformEvent(platform, event);
+			}
 			break;
 
 		case WM_SYSCHAR:
@@ -624,6 +638,12 @@ static LRESULT CALLBACK Win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
 			{
 				WPARAM param = ( wParam & 0xFFF0 );
 				AudioDevice &audio = platform.audio;
+
+				// A lone Alt would enter the window menu loop, which swallows keys until Alt is pressed again
+				if (param == SC_KEYMENU && lParam == 0)
+				{
+					return 0;
+				}
 
 				if (param == SC_MINIMIZE)
 				{
