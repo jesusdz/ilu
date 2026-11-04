@@ -198,9 +198,20 @@ struct EditorViewportIcon
 	ID id;
 	EditorSelectedType type;
 	ImageH image;
-	float2 pos;
-	float2 size;
+	float3 pos;
+	float2 pivot;
 };
+
+static constexpr f32 kIconSizePixels = 32.0f;
+
+static f32 EditorViewHalfHeight(const Camera &camera, float3 pos)
+{
+	if ( camera.projectionType == ProjectionOrthographic ) {
+		return camera.height;
+	}
+	const f32 depth = Dot(FromTo(camera.position, pos), ForwardDirectionFromAngles(camera.orientation));
+	return depth * Tan(0.5f * camera.fovy * ToRadians);
+}
 
 static u32 EditorEntityIconSlot(const Scene &scene, const Entity &entity)
 {
@@ -222,10 +233,6 @@ static u32 EditorGatherIcons(Arena &arena, EditorViewportIcon *&outIcons)
 	const Engine &engine = GetEngine();
 	const Editor &editor = GetEditor();
 	const Scene &scene = engine.scene;
-	const Camera &camera = editor.camera[editor.cameraType];
-	const f32 worldPerPixel = 2.0f * camera.height / GetWindow().height;
-	const f32 iconSizePixels = 32.0f;
-	const float2 size = iconSizePixels * float2{ worldPerPixel, worldPerPixel };
 
 	EditorViewportIcon *icons = PushArray(arena, EditorViewportIcon, scene.roomCount + scene.entityCount);
 	u32 iconCount = 0;
@@ -237,8 +244,8 @@ static u32 EditorGatherIcons(Arena &arena, EditorViewportIcon *&outIcons)
 			.id = room.id,
 			.type = EditorSelectedType_Room,
 			.image = editor.roomIcon,
-			.pos = Float2(room.pos),
-			.size = size,
+			.pos = Float3(Float2(room.pos), 0.0f),
+			.pivot = { 0.0f, 0.0f },
 		};
 	}
 
@@ -255,8 +262,8 @@ static u32 EditorGatherIcons(Arena &arena, EditorViewportIcon *&outIcons)
 					.id = entity.id,
 					.type = EditorSelectedType_Entity,
 					.image = editor.gizmoIcons[iconType],
-					.pos = entity.position.xy - 0.5f * size,
-					.size = size,
+					.pos = entity.position,
+					.pivot = { 0.5f, 0.5f },
 				};
 			}
 		}
@@ -266,8 +273,17 @@ static u32 EditorGatherIcons(Arena &arena, EditorViewportIcon *&outIcons)
 	return iconCount;
 }
 
-static EditorViewportIcon EditorPickIcon(const float2 mouseWorldPos)
+static EditorViewportIcon EditorPickIcon(const int2 mousePixel)
 {
+	const Editor &editor = GetEditor();
+	const Window &window = GetWindow();
+	const Camera &camera = editor.camera[editor.cameraType];
+	const float3 right = RightDirectionFromAngles(camera.orientation);
+	const float3 up = UpDirectionFromAngles(camera.orientation);
+	const float2 windowSize = { (f32)window.width, (f32)window.height };
+	const f32 aspect = windowSize.x / windowSize.y;
+	const float2 mouse = { (f32)mousePixel.x, windowSize.y - (f32)mousePixel.y };
+
 	Scratch scratch;
 	EditorViewportIcon *icons;
 	const u32 iconCount = EditorGatherIcons(scratch.arena, icons);
@@ -276,9 +292,14 @@ static EditorViewportIcon EditorPickIcon(const float2 mouseWorldPos)
 	for (u32 i = iconCount; i-- > 0; )
 	{
 		const EditorViewportIcon &icon = icons[i];
-		const float2 max = icon.pos + icon.size;
-		if ( mouseWorldPos.x >= icon.pos.x && mouseWorldPos.x < max.x &&
-		     mouseWorldPos.y >= icon.pos.y && mouseWorldPos.y < max.y )
+		const f32 halfHeight = EditorViewHalfHeight(camera, icon.pos);
+		if ( halfHeight <= 0.0f ) { continue; }
+
+		const float3 toIcon = FromTo(camera.position, icon.pos);
+		const float2 ndc = { Dot(toIcon, right) / (halfHeight * aspect), Dot(toIcon, up) / halfHeight };
+		const float2 min = 0.5f * (ndc + float2{1, 1}) * windowSize - kIconSizePixels * icon.pivot;
+		const float2 max = min + float2{ kIconSizePixels, kIconSizePixels };
+		if ( mouse.x >= min.x && mouse.x < max.x && mouse.y >= min.y && mouse.y < max.y )
 		{
 			return icon;
 		}
@@ -371,6 +392,10 @@ static void EditorUpdateUI_MenuBar()
 			if ( UI_MenuItem(ui, "Icons", editor.showIcons) )
 			{
 				editor.showIcons = !editor.showIcons;
+			}
+			if ( UI_MenuItem(ui, "Colliders", editor.showColliders) )
+			{
+				editor.showColliders = !editor.showColliders;
 			}
 
 			UI_Separator(ui);
@@ -2892,6 +2917,10 @@ enum EditorAction
 	EditorAction_Unselect,
 	EditorAction_ToggleUI,
 	EditorAction_ToggleIcons,
+	EditorAction_ToggleColliders,
+	EditorAction_ToggleGrid,
+	EditorAction_SetMode2D,
+	EditorAction_SetMode3D,
 	EditorAction_RemoveSelection,
 	EditorAction_DuplicateSelection,
 	EditorAction_StartMoveDrag,
@@ -2933,6 +2962,10 @@ static const EditorBinding kEditorBindings[] = {
 	{ K_ESCAPE, EditorModifier_None,  EditorStates_Edit2D,  EditorAction_Unselect },
 	{ K_TAB,    EditorModifier_None,  EditorStates_Any,     EditorAction_ToggleUI },
 	{ K_I,      EditorModifier_None,  EditorStates_Edit,    EditorAction_ToggleIcons },
+	{ K_C,      EditorModifier_None,  EditorStates_Edit,    EditorAction_ToggleColliders },
+	{ K_G,      EditorModifier_None,  EditorStates_Edit,    EditorAction_ToggleGrid },
+	{ K_2,      EditorModifier_None,  EditorStates_Edit,    EditorAction_SetMode2D },
+	{ K_3,      EditorModifier_None,  EditorStates_Edit,    EditorAction_SetMode3D },
 	{ K_DELETE, EditorModifier_None,  EditorStates_Edit,    EditorAction_RemoveSelection },
 	{ K_D,      EditorModifier_Shift, EditorStates_Edit,    EditorAction_DuplicateSelection },
 	{ K_T,      EditorModifier_None,  EditorStates_Edit2D,  EditorAction_StartMoveDrag },
@@ -3255,9 +3288,8 @@ static void EditorBeginSceneEditing(const EditorActions &actions)
 
 	if (actions.select)
 	{
-		const float2 mouseWorldPos = GetWorld2DCoord(engine, camera, mouse.pos);
-		const EditorViewportIcon iconHit = editor.showIcons && EditorMode2D()
-			? EditorPickIcon(mouseWorldPos)
+		const EditorViewportIcon iconHit = editor.showIcons
+			? EditorPickIcon(mouse.pos)
 			: EditorViewportIcon{ .type = EditorSelectedType_None };
 		if ( iconHit.type == EditorSelectedType_Room ) {
 			EditorSelectRoom(iconHit.id);
@@ -3315,6 +3347,37 @@ static void EditorBeginSceneEditing(const EditorActions &actions)
 	}
 }
 
+static void EditorDrawColliderCells(const Room &room, const Layer &layer)
+{
+	const float4 colliderColors[] = {
+		{0.0, 0.0, 0.0, 0.0},
+		{1.0, 0.0, 0.0, 0.3},
+		{1.0, 0.5, 0.0, 0.3},
+		{0.0, 0.6, 1.0, 0.3},
+	};
+
+	for (u32 i = 0; i < ARRAY_COUNT(layer.cells.chunks); ++i)
+	{
+		for (const CellChunk *chunk = layer.cells.chunks[i]; chunk; chunk = chunk->next)
+		{
+			for (i32 y = 0; y < CELL_CHUNK_SIZE; ++y)
+			{
+				for (i32 x = 0; x < CELL_CHUNK_SIZE; )
+				{
+					const u32 collider = chunk->cells[x][y].collider;
+					const i32 runStart = x;
+					while ( x < CELL_CHUNK_SIZE && chunk->cells[x][y].collider == collider ) { ++x; }
+					if ( collider != 0 )
+					{
+						const float2 runWorldPos = Float2(room.origin + int2{chunk->x + runStart, chunk->y + y});
+						DrawBox(runWorldPos, float2{(f32)(x - runStart), 1}, colliderColors[collider]);
+					}
+				}
+			}
+		}
+	}
+}
+
 void EditorDebugDraw()
 {
 	Engine &engine = GetEngine();
@@ -3338,35 +3401,15 @@ void EditorDebugDraw()
 			if ( layer.isCollider )
 			{
 				const float4 color = {1.0, 0.0, 0.0, 0.3};
-				const float4 colliderColors[] = {
-					{0.0, 0.0, 0.0, 0.0},
-					{1.0, 0.0, 0.0, 0.3},
-					{1.0, 0.5, 0.0, 0.3},
-					{0.0, 0.6, 1.0, 0.3},
-				};
 
 				if ( !UI_IsHovered(engine.ui) )
 				{
 					DrawBox(worldPos, float2{1, 1}, color);
 				}
 
-				for (u32 i = 0; i < ARRAY_COUNT(layer.cells.chunks); ++i)
+				if ( !editor.showColliders )
 				{
-					for (const CellChunk *chunk = layer.cells.chunks[i]; chunk; chunk = chunk->next)
-					{
-						for (i32 y = 0; y < CELL_CHUNK_SIZE; ++y)
-						{
-							for (i32 x = 0; x < CELL_CHUNK_SIZE; ++x)
-							{
-								u32 collider = chunk->cells[x][y].collider;
-								if ( collider != 0 )
-								{
-									const float2 cellWorldPos = Float2(contextRoom->origin + int2{chunk->x + x, chunk->y + y});
-									DrawBox(cellWorldPos, float2{1, 1}, colliderColors[collider]);
-								}
-							}
-						}
-					}
+					EditorDrawColliderCells(*contextRoom, layer);
 				}
 			}
 			else
@@ -3389,6 +3432,34 @@ void EditorDebugDraw()
 		DrawBoxOutline(innerBounds.xy, innerBounds.zw - innerBounds.xy, ColorOrange);
 	}
 
+	if (editor.showColliders)
+	{
+		const Scene &scene = engine.scene;
+
+		for (u32 i = 0; i < scene.roomCount; ++i)
+		{
+			const Room &room = scene.rooms[i];
+			for (u32 j = 0; j < ARRAY_COUNT(room.layers); ++j)
+			{
+				const Layer &layer = room.layers[j];
+				if ( layer.initialized && layer.isCollider )
+				{
+					EditorDrawColliderCells(room, layer);
+				}
+			}
+		}
+
+		const EditorSelection &selected = editor.inspector.selected;
+		const u32 colliderCount = scene.componentPools[ComponentType_Collider].count;
+		for (u32 i = 0; i < colliderCount; ++i)
+		{
+			const ColliderComponent &collider = scene.colliderComponents[i];
+			const Entity &entity = GetEntity(collider.entityId);
+			const bool isSelected = selected.type == EditorSelectedType_Entity && selected.id == collider.entityId;
+			DrawBoxOutline(entity.position.xy + collider.offset, collider.size, isSelected ? ColorOrange : ColorGreen);
+		}
+	}
+
 	const EditorSelection &selected = editor.inspector.selected;
 
 	if (selected.type == EditorSelectedType_Entity)
@@ -3408,18 +3479,28 @@ void EditorDebugDraw()
 		}
 	}
 
-	if (editor.showIcons && EditorMode2D())
+	if (editor.showIcons)
 	{
+		const Camera &camera = editor.camera[editor.cameraType];
+		const float3 right = RightDirectionFromAngles(camera.orientation);
+		const float3 up = UpDirectionFromAngles(camera.orientation);
+		const f32 windowHeight = (f32)GetWindow().height;
+
 		Scratch scratch;
 		EditorViewportIcon *icons;
 		const u32 iconCount = EditorGatherIcons(scratch.arena, icons);
 		for (u32 i = 0; i < iconCount; ++i)
 		{
 			const EditorViewportIcon &icon = icons[i];
+			const f32 halfHeight = EditorViewHalfHeight(camera, icon.pos);
+			if ( halfHeight <= 0.0f ) { continue; }
+
+			const f32 size = kIconSizePixels * 2.0f * halfHeight / windowHeight;
+			const float3 origin = icon.pos + (-icon.pivot.x * size) * right + (-icon.pivot.y * size) * up;
 			const bool isSelected = icon.type == EditorSelectedType_Room
 				? selected.type == EditorSelectedType_Room && editor.context.roomId == icon.id
 				: selected.type == EditorSelectedType_Entity && selected.id == icon.id;
-			DrawImage(icon.image, icon.pos, icon.size, isSelected ? ColorOrange : ColorWhite);
+			DrawImage(icon.image, origin, size * right, size * up, isSelected ? ColorOrange : ColorWhite);
 		}
 	}
 }
@@ -3657,6 +3738,26 @@ static void EditorApplyActions(const EditorActions &actions)
 	if (triggered[EditorAction_ToggleIcons])
 	{
 		editor.showIcons = !editor.showIcons;
+	}
+
+	if (triggered[EditorAction_ToggleColliders])
+	{
+		editor.showColliders = !editor.showColliders;
+	}
+
+	if (triggered[EditorAction_ToggleGrid])
+	{
+		editor.showGrid = !editor.showGrid;
+	}
+
+	if (triggered[EditorAction_SetMode2D])
+	{
+		EditorSetMode2D();
+	}
+
+	if (triggered[EditorAction_SetMode3D])
+	{
+		EditorSetMode3D();
 	}
 
 	// Delete takes any selection, the rest of the shortcuts only act on an entity

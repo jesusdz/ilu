@@ -225,6 +225,7 @@ void Simulate(PlayerController &script)
 
 		// Y ///////////////////////////////////////////////////////////
 
+		static f32 secondsSinceJump = 99.9f;
 		static f32 secondsSinceJumpPress = 99.9f;
 		if (input.jump.press) {
 			secondsSinceJumpPress = 0.0f;
@@ -234,7 +235,8 @@ void Simulate(PlayerController &script)
 
 		// Grounded state comes from last frame's collision resolution, before this frame moves the player
 		if (script.playerState == OnFloor || script.playerState == OnPlatform) {
-			if (secondsSinceJumpPress < 0.2f) {
+			if (secondsSinceJump > 0.2f && secondsSinceJumpPress < 0.1f) {
+				secondsSinceJump = 0.0f;
 				if (input.move.y < 0.0 && Abs(input.move.y) > Abs(2 * input.move.x) && script.playerState == OnPlatform) {
 					pos.y -= 0.1;
 				} else {
@@ -244,6 +246,8 @@ void Simulate(PlayerController &script)
 				PlayAudioClip(script.sndJump);
 			}
 		}
+
+		secondsSinceJump += deltaSeconds;
 
 		if (speed.y > 0 && !input.jump.pressed) {
 			speed.y *= jumpCutMultiplier;
@@ -259,7 +263,7 @@ void Simulate(PlayerController &script)
 
 		if (IsColliderInBox(pos, size, COLLIDER_SOLID)) {
 			if (prevY < pos.y) {
-				pos.y = Ceil(prevY);
+				pos.y = prevY;
 			} else {
 				pos.y = Floor(prevY);
 				script.playerState = OnFloor;

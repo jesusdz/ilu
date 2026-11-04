@@ -62,6 +62,26 @@ static void DrawImage(ImageH imageH, float2 worldPos, float2 worldSize, float4 c
 	DrawImage(imageH, worldPos, worldSize, {0, 0}, {1, 1}, color);
 }
 
+static void DrawImage(ImageH imageH, float3 worldPos, float3 right, float3 up, float4 color)
+{
+	Engine &engine = GetEngine();
+	Graphics &gfx = engine.gfx;
+
+	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
+
+	const rgba rgbaColor = Rgba(color);
+	DebugDrawVertex *v = gfx.debugDrawVerticesCPU + gfx.debugDrawVertexCount;
+	v[0] = DebugDrawVertex{ worldPos,              float2{0, 1}, rgbaColor };
+	v[1] = DebugDrawVertex{ worldPos + right + up, float2{1, 0}, rgbaColor };
+	v[2] = DebugDrawVertex{ worldPos + up,         float2{0, 0}, rgbaColor };
+	v[3] = DebugDrawVertex{ worldPos,              float2{0, 1}, rgbaColor };
+	v[4] = DebugDrawVertex{ worldPos + right,      float2{1, 1}, rgbaColor };
+	v[5] = DebugDrawVertex{ worldPos + right + up, float2{1, 0}, rgbaColor };
+	gfx.debugDrawVertexCount += 6;
+
+	DebugDrawAppendBatch(gfx, imageH, 6);
+}
+
 
 void DrawSprite(ID spriteId, float2 worldPos, float4 color)
 {

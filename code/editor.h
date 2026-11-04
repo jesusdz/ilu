@@ -208,6 +208,7 @@ struct Editor
 	bool showProfiler;
 	bool showGrid;
 	bool showIcons;
+	bool showColliders;
 	bool showAbout;
 	bool showContextMenu;
 	bool showSettings;
