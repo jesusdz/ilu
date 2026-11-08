@@ -31,6 +31,7 @@ if [[ ${target} = "build" ]]; then
 	INCLUDES="-I../../ -I../../vulkan/include"
 	GCC_FLAGS="-fPIC"
 	GCC_FLAGS="${GCC_FLAGS} -g -O0" # With debug info
+	GCC_FLAGS="${GCC_FLAGS} -DDEVELOPMENT_BUILD"
 	GXX_FLAGS="${GCC_FLAGS} -std=gnu++20"
 	LDD_FLAGS="-Wl,--build-id=sha1 -Wl,-z,max-page-size=16384"
 

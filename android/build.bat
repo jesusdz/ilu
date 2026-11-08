@@ -51,6 +51,7 @@ set CODE_DIR="../../code"
 set INCLUDES=-I../../ -I../../vulkan/include
 set GCC_FLAGS=-fPIC
 set GCC_FLAGS=%GCC_FLAGS% -g -O0
+set GCC_FLAGS=%GCC_FLAGS% -DDEVELOPMENT_BUILD
 set GXX_FLAGS=%GCC_FLAGS% -std=gnu++20
 set LINK_FLAGS=-shared -Wl,-z,max-page-size=16384
 

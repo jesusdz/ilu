@@ -264,6 +264,7 @@ enum Format
 	FormatD24S1,
 	FormatRG16F,
 	FormatRG11B10F,
+	FormatRGBA16F,
 	FormatCount,
 	FormatInvalid = FormatCount,
 };
@@ -674,6 +675,7 @@ struct GraphicsDevice
 	struct
 	{
 		bool linearFilteredSampling;
+		bool colorAttachmentBlend;
 	} formatSupport[FormatCount];
 
 	VkDebugUtilsMessengerEXT debugUtilsMessenger;
@@ -1381,6 +1383,7 @@ static VkFormat FormatToVulkan(Format format)
 		VK_FORMAT_D24_UNORM_S8_UINT,
 		VK_FORMAT_R16G16_SFLOAT,
 		VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+		VK_FORMAT_R16G16B16A16_SFLOAT,
 	};
 	CT_ASSERT(ARRAY_COUNT(vkFormats) == FormatCount);
 	const VkFormat vkFormat = format < FormatCount ? vkFormats[format] : VK_FORMAT_MAX_ENUM;
@@ -1409,6 +1412,7 @@ static Format FormatFromVulkan(VkFormat format)
 		case VK_FORMAT_D24_UNORM_S8_UINT: return FormatD24S1;
 		case VK_FORMAT_R16G16_SFLOAT: return FormatRG16F;
 		case VK_FORMAT_B10G11R11_UFLOAT_PACK32: return FormatRG11B10F;
+		case VK_FORMAT_R16G16B16A16_SFLOAT: return FormatRGBA16F;
 		default:;
 	};
 	return FormatInvalid;
@@ -1436,6 +1440,7 @@ const char *FormatName(Format format)
 		"VK_FORMAT_D24_UNORM_S8_UINT",
 		"VK_FORMAT_R16G16_SFLOAT",
 		"VK_FORMAT_B10G11R11_UFLOAT_PACK32",
+		"VK_FORMAT_R16G16B16A16_SFLOAT",
 	};
 	CT_ASSERT(ARRAY_COUNT(names) == FormatCount);
 	const char *name = format < FormatCount ? names[format] : "VK_FORMAT_INVALID";
@@ -2099,6 +2104,7 @@ void WaitDeviceIdle(const GraphicsDevice &device)
 void BeginDebugGroup(const CommandList &cmd, const char *labelName, float4 labelColor)
 {
 #if DEVELOPMENT_BUILD
+	if ( !cmd.device->support.debugUtils ) { return; }
 	const VkDebugUtilsLabelEXT label = {
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
 		.pNext = NULL,
@@ -2112,6 +2118,7 @@ void BeginDebugGroup(const CommandList &cmd, const char *labelName, float4 label
 void EndDebugGroup(const CommandList &cmd)
 {
 #if DEVELOPMENT_BUILD
+	if ( !cmd.device->support.debugUtils ) { return; }
 	vkCmdEndDebugUtilsLabelEXT(cmd.handle);
 #endif
 }
@@ -2119,6 +2126,7 @@ void EndDebugGroup(const CommandList &cmd)
 void InsertDebugLabel(const CommandList &cmd, const char *labelName, float4 labelColor)
 {
 #if DEVELOPMENT_BUILD
+	if ( !cmd.device->support.debugUtils ) { return; }
 	const VkDebugUtilsLabelEXT label = {
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
 		.pNext = NULL,
@@ -2132,6 +2140,7 @@ void InsertDebugLabel(const CommandList &cmd, const char *labelName, float4 labe
 void SetObjectNamePipeline(const GraphicsDevice &device, PipelineH handle, const char *name)
 {
 #if DEVELOPMENT_BUILD
+	if ( !device.support.debugUtils ) { return; }
 	const Pipeline &pipeline = GetPipeline(device, handle);
 
 	const VkDebugUtilsObjectNameInfoEXT objectName = {
@@ -2147,6 +2156,7 @@ void SetObjectNamePipeline(const GraphicsDevice &device, PipelineH handle, const
 void SetObjectNameShader(const GraphicsDevice &device, const ShaderModule &shader, const char *name)
 {
 #if DEVELOPMENT_BUILD
+	if ( !device.support.debugUtils ) { return; }
 	const VkDebugUtilsObjectNameInfoEXT objectName = {
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
 		.objectType = VK_OBJECT_TYPE_SHADER_MODULE,
@@ -2160,6 +2170,7 @@ void SetObjectNameShader(const GraphicsDevice &device, const ShaderModule &shade
 void SetObjectNameImage(const GraphicsDevice &device, ImageH handle, const char *name)
 {
 #if DEVELOPMENT_BUILD
+	if ( !device.support.debugUtils ) { return; }
 	const Image &image = GetImageConst(device, handle);
 
 	const VkDebugUtilsObjectNameInfoEXT objectName = {
@@ -2222,6 +2233,9 @@ void RecreateSwapchain(GraphicsDevice &device, Window &window)
 	// Log info
 	LOG(Debug, "Swapchain:\n");
 #if PLATFORM_ANDROID
+	// TODO: Pick the largest divisor of the window size that keeps the scene's on-screen integer
+	// scale, instead of always halving. Halving makes the compositor upscale by a non-integer
+	// factor when a window dimension is odd, and can lose integer scale steps on some aspect ratios.
 	const u32 baseWidth = swapchain.extent.width;
 	const u32 baseHeight = swapchain.extent.height;
 	swapchain.extent.width = Max(baseWidth/2, surfaceCapabilities.minImageExtent.width);
@@ -2944,6 +2958,7 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 		VkFormatProperties formatProperties;
 		vkGetPhysicalDeviceFormatProperties(device.physicalDevice, vkFormat, &formatProperties);
 		device.formatSupport[format].linearFilteredSampling = formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+		device.formatSupport[format].colorAttachmentBlend = formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
 	}
 
 

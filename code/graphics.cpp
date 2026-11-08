@@ -80,9 +80,9 @@ static const Vertex screenTriangleVertices[] = {
 };
 
 static const Vertex screenTriangleVertices90[] = {
-	{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-	{{ 3.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 2.0f}},
-	{{-1.0f,  3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f}},
+	{{ 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+	{{-3.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 2.0f}},
+	{{ 1.0f, -3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f}},
 };
 
 static const Vertex screenTriangleVertices180[] = {
@@ -92,9 +92,9 @@ static const Vertex screenTriangleVertices180[] = {
 };
 
 static const Vertex screenTriangleVertices270[] = {
-	{{ 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-	{{-3.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 2.0f}},
-	{{ 1.0f, -3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f}},
+	{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+	{{ 3.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 2.0f}},
+	{{-1.0f,  3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f}},
 };
 
 static const Index screenTriangleIndices[] = {
@@ -849,6 +849,14 @@ BufferChunk GetIndicesForGeometryType(Graphics &gfx, GeometryType geometryType)
 ////////////////////////////////////////////////////////////////////////
 // Render targets
 
+static Format HdrColorFormat(const GraphicsDevice &device)
+{
+	const bool supported =
+		device.formatSupport[FormatRG11B10F].colorAttachmentBlend &&
+		device.formatSupport[FormatRG11B10F].linearFilteredSampling;
+	return supported ? FormatRG11B10F : FormatRGBA16F;
+}
+
 void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 {
 	RenderTargets renderTargets = {};
@@ -906,7 +914,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Scene color buffer
 	renderTargets.sceneImage = CreateImage(gfx.device,
 		sceneWidth, sceneHeight, 1,
-		FormatRG11B10F,
+		HdrColorFormat(gfx.device),
 		ImageUsageColorAttachment | ImageUsageSampled,
 		HeapType_RTs);
 	TransitionImageLayout(commandList, renderTargets.sceneImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
@@ -952,7 +960,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Effects color buffer
 	renderTargets.effectsImage = CreateImage(gfx.device,
 		sceneWidth, sceneHeight, 1,
-		FormatRG11B10F,
+		HdrColorFormat(gfx.device),
 		ImageUsageColorAttachment | ImageUsageSampled,
 		HeapType_RTs);
 	TransitionImageLayout(commandList, renderTargets.effectsImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
@@ -982,7 +990,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 
 			const ImageH image = CreateImage(gfx.device,
 				Max(sceneWidth >> (i + 1), 1u), Max(sceneHeight >> (i + 1), 1u), 1,
-				FormatRG11B10F,
+				HdrColorFormat(gfx.device),
 				ImageUsageColorAttachment | ImageUsageSampled,
 				HeapType_RTs);
 			TransitionImageLayout(commandList, image, ImageStateInitial, ImageStateRenderTarget, 0, 1);
@@ -1074,7 +1082,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	renderTargets.initialized = true;
 
 	gfx.renderTargets = renderTargets;
-	gfx.shouldUpdateGlobalBindGroups = true;
+	gfx.globalBindGroupUpdateMask = (1u << MAX_FRAMES_IN_FLIGHT) - 1;
 }
 
 void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
@@ -1119,8 +1127,10 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 	DestroyImageH(gfx.device, renderTargets.shadowmapImage);
 	DestroyFramebuffer( gfx.device, renderTargets.shadowmapFramebuffer );
 
+#if USE_EDITOR
 	DestroyImageH(gfx.device, renderTargets.idImage);
 	DestroyFramebuffer( gfx.device, renderTargets.idFramebuffer );
+#endif
 
 	renderTargets = {};
 }
@@ -1755,13 +1765,15 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		return false;
 	}
 
+	LOG(Info, "HDR color format: %s\n", FormatName(HdrColorFormat(gfx.device)));
+
 	// Scene render pass
 	{
 		const RenderpassDesc renderpassDesc = {
 			.name = "scene_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = FormatRG11B10F, .loadOp = LoadOpClear, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = HdrColorFormat(gfx.device), .loadOp = LoadOpClear, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 			.hasDepthAttachment = true,
 			.depthAttachment = {
@@ -1795,7 +1807,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			.name = "effects_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = FormatRG11B10F, .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = HdrColorFormat(gfx.device), .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 			.hasDepthAttachment = true,
 			.depthAttachment = {
@@ -1811,7 +1823,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			.name = "bloom_downsample_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = FormatRG11B10F, .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = HdrColorFormat(gfx.device), .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 		};
 		gfx.bloomDownsampleRenderPassH = CreateRenderPass( gfx.device, downsampleDesc );
@@ -1820,7 +1832,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			.name = "bloom_upsample_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = FormatRG11B10F, .loadOp = LoadOpLoad, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = HdrColorFormat(gfx.device), .loadOp = LoadOpLoad, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 		};
 		gfx.bloomUpsampleRenderPassH = CreateRenderPass( gfx.device, upsampleDesc );
@@ -2170,7 +2182,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		gfx.globalBindGroups[i] = CreateBindGroup(gfx.device, gfx.globalBindGroupLayout, gfx.globalBindGroupAllocator);
 	}
 
-	gfx.shouldUpdateGlobalBindGroups = true;
+	gfx.globalBindGroupUpdateMask = (1u << MAX_FRAMES_IN_FLIGHT) - 1;
 
 	// Timestamp queries
 	PROFILE_GPU_INIT(gfx.device);
@@ -2224,13 +2236,10 @@ BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameIndex)
 	return bindGroupDesc;
 }
 
-void UpdateGlobalBindGroups(Graphics &gfx)
+void UpdateGlobalBindGroup(Graphics &gfx, u32 frameIndex)
 {
-	for (u32 i = 0; i < ARRAY_COUNT(gfx.globalBindGroups); ++i)
-	{
-		const BindGroupDesc globalBindGroupDesc = GlobalBindGroupDesc(gfx, i);
-		UpdateBindGroup(gfx.device, globalBindGroupDesc, gfx.globalBindGroups[i]);
-	}
+	const BindGroupDesc globalBindGroupDesc = GlobalBindGroupDesc(gfx, frameIndex);
+	UpdateBindGroup(gfx.device, globalBindGroupDesc, gfx.globalBindGroups[frameIndex]);
 }
 
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)

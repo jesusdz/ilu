@@ -751,7 +751,7 @@ struct Graphics
 
 	// Updated each frame so we need MAX_FRAMES_IN_FLIGHT elements
 	BindGroup globalBindGroups[MAX_FRAMES_IN_FLIGHT];
-	bool shouldUpdateGlobalBindGroups;
+	u32 globalBindGroupUpdateMask;
 
 	BindGroup materialBindGroups[MAX_MATERIALS]; // Parallel to materials
 	bool shouldUpdateMaterialBindGroups;
@@ -1813,7 +1813,7 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets);
 
 bool InitializeGraphics(Engine &engine, Arena &globalArena);
 BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameIndex);
-void UpdateGlobalBindGroups(Graphics &gfx);
+void UpdateGlobalBindGroup(Graphics &gfx, u32 frameIndex);
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material);
 void UpdateMaterialBindGroups(Graphics &gfx);
 void UploadMaterialData(Graphics &gfx);

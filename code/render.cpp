@@ -1033,10 +1033,11 @@ bool RenderGraphics(Engine &engine)
 	}
 
 	// Update bind groups
-	if (gfx.shouldUpdateGlobalBindGroups)
+	const u32 globalBindGroupBit = 1u << frameIndex;
+	if (gfx.globalBindGroupUpdateMask & globalBindGroupBit)
 	{
-		gfx.shouldUpdateGlobalBindGroups = false;
-		UpdateGlobalBindGroups(gfx);
+		gfx.globalBindGroupUpdateMask &= ~globalBindGroupBit;
+		UpdateGlobalBindGroup(gfx, frameIndex);
 	}
 
 	if (gfx.shouldUpdateMaterialBindGroups)
