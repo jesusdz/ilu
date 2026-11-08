@@ -445,10 +445,7 @@ static bool EntityIsInFrustum2D(const Entity &entity, ID spriteId, float2 rectMi
 f32 GetSceneAspectRatio(const Graphics &gfx)
 {
 	const uint2 sceneSize = gfx.renderTargets.sceneSize;
-	const f32 preRotationDegrees = gfx.device.swapchain.preRotationDegrees;
-	ASSERT(preRotationDegrees == 0 || preRotationDegrees == 90 || preRotationDegrees == 180 || preRotationDegrees == 270);
-	const bool isLandscapeRotation = preRotationDegrees == 0 || preRotationDegrees == 180;
-	const f32 ar = isLandscapeRotation ? (f32) sceneSize.x / sceneSize.y : (f32) sceneSize.y / sceneSize.x;
+	const f32 ar = (f32) sceneSize.x / sceneSize.y;
 	return ar;
 }
 
@@ -509,10 +506,14 @@ static bool GetLayerSpriteBounds(const Room &room, const Layer &layer, float2 &m
 	return any;
 }
 
-static void DrawScreenQuad(Graphics &gfx, CommandList &commandList)
+static void DrawScreenQuad(Graphics &gfx, CommandList &commandList, f32 rotationDegrees = 0.0f)
 {
 	const BufferChunk indices = GetIndicesForGeometryType(gfx, GeometryTypeScreen);
-	const BufferChunk vertices = GetVerticesForGeometryType(gfx, GeometryTypeScreen);
+	const BufferChunk vertices =
+		rotationDegrees == 90.0f  ? gfx.screenTriangleVertices90 :
+		rotationDegrees == 180.0f ? gfx.screenTriangleVertices180 :
+		rotationDegrees == 270.0f ? gfx.screenTriangleVertices270 :
+		GetVerticesForGeometryType(gfx, GeometryTypeScreen);
 	const uint32_t indexCount = indices.size/sizeof(Index);
 	const uint32_t firstIndex = indices.offset/sizeof(Index);
 	const int32_t firstVertex = vertices.offset/sizeof(Vertex); // assuming all vertices in the buffer are the same
@@ -631,8 +632,6 @@ bool RenderGraphics(Engine &engine)
 	const float4 cameraMinMaxRect = GetOrthographicCameraMinMaxRect(camera, ar);
 
 	const float4x4 viewMatrix = ViewMatrixFromCamera(camera);
-	const float4x4 viewportRotationMatrix = Rotate(float3{0.0, 0.0, 1.0}, preRotationDegrees);
-	//const float4x4 preTransformMatrixInv = Float4x4(Transpose(Float3x3(viewportRotationMatrix)));
 
 	if (camera.projectionType == ProjectionPerspective)
 	{
@@ -642,7 +641,7 @@ bool RenderGraphics(Engine &engine)
 		const float znear = camera.znear;
 		const float zfar = camera.zfar;
 		const float4x4 perspectiveMatrix = Perspective(fovy, ar, znear, zfar);
-		projectionMatrix = Mul(viewportRotationMatrix, perspectiveMatrix);
+		projectionMatrix = perspectiveMatrix;
 
 		// Frustum vectors
 		const float hypotenuse  = znear / Cos( 0.5f * fovy * ToRadians );
@@ -669,7 +668,7 @@ bool RenderGraphics(Engine &engine)
 		// Calculate camera matrices
 		//inverseViewMatrix = Inverse2D(viewMatrix);
 		const float4x4 orthographicMatrix = Orthogonal(-height*ar, height*ar, -height, height, camera.znear, camera.zfar);
-		projectionMatrix = Mul(viewportRotationMatrix, orthographicMatrix);
+		projectionMatrix = orthographicMatrix;
 
 		// Frustum vectors
 		frustumTopLeft = Float4( Float3(-height*ar, height, 0), 0.0f );
@@ -804,7 +803,6 @@ bool RenderGraphics(Engine &engine)
 		.cameraViewInv = inverseViewMatrix,
 		.cameraProj = projectionMatrix,
 		.camera2dProj = camera2dProjection, // UI
-		.viewportRotationMatrix = viewportRotationMatrix,
 		.cameraFrustumTopLeft = frustumTopLeft,
 		.cameraFrustumBottomRight = frustumBottomRight,
 		.sunView = sunViewMatrix,
@@ -1499,7 +1497,8 @@ bool RenderGraphics(Engine &engine)
 		{ // Scene blit
 			RENDER_BLOCK(Blit);
 
-			const uint2 sceneSize = gfx.renderTargets.sceneSize;
+			const bool isPortraitRotation = preRotationDegrees == 90.0f || preRotationDegrees == 270.0f;
+			const uint2 sceneSize = isPortraitRotation ? uint2{ gfx.renderTargets.sceneSize.y, gfx.renderTargets.sceneSize.x } : gfx.renderTargets.sceneSize;
 			const u32 multiplier = Max(1u, Min(displaySize.x / sceneSize.x, displaySize.y / sceneSize.y));
 			const uint2 scaledSceneSize = multiplier * sceneSize;
 			const rect viewport = {
@@ -1528,7 +1527,7 @@ bool RenderGraphics(Engine &engine)
 			const BindGroup textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);
 			SetBindGroup(commandList, 3, textureBindGroup);
 
-			DrawScreenQuad(gfx, commandList);
+			DrawScreenQuad(gfx, commandList, preRotationDegrees);
 
 			SetViewportAndScissor(commandList, displaySize);
 		}

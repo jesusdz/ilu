@@ -79,6 +79,24 @@ static const Vertex screenTriangleVertices[] = {
 	{{ 3.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f}},
 };
 
+static const Vertex screenTriangleVertices90[] = {
+	{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+	{{ 3.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 2.0f}},
+	{{-1.0f,  3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f}},
+};
+
+static const Vertex screenTriangleVertices180[] = {
+	{{ 1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+	{{ 1.0f,  3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 2.0f}},
+	{{-3.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f}},
+};
+
+static const Vertex screenTriangleVertices270[] = {
+	{{ 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+	{{-3.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 2.0f}},
+	{{ 1.0f, -3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f}},
+};
+
 static const Index screenTriangleIndices[] = {
 	0, 1, 2,
 };
@@ -838,8 +856,10 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	CommandList commandList = BeginTransientCommandList(gfx.device);
 
 	const Format depthFormat = gfx.device.defaultDepthFormat;
-	const u32 swapchainWidth = gfx.device.swapchain.extent.width;
-	const u32 swapchainHeight = gfx.device.swapchain.extent.height;
+	const Swapchain &swapchain = gfx.device.swapchain;
+	const bool isPortraitRotation = swapchain.preRotationDegrees == 90.0f || swapchain.preRotationDegrees == 270.0f;
+	const u32 swapchainWidth = isPortraitRotation ? swapchain.extent.height : swapchain.extent.width;
+	const u32 swapchainHeight = isPortraitRotation ? swapchain.extent.width : swapchain.extent.height;
 	f32 scenePixelsPerMeter = ART_PIXELS_PER_METER;
 
 	// Editor
@@ -1899,6 +1919,9 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.spriteVertices = PushData(gfx, commandList, gfx.globalVertexArena, spriteVertices, sizeof(spriteVertices));
 	gfx.spriteIndices = PushData(gfx, commandList, gfx.globalIndexArena, spriteIndices, sizeof(spriteIndices));
 	gfx.screenTriangleVertices = PushData(gfx, commandList, gfx.globalVertexArena, screenTriangleVertices, sizeof(screenTriangleVertices));
+	gfx.screenTriangleVertices90 = PushData(gfx, commandList, gfx.globalVertexArena, screenTriangleVertices90, sizeof(screenTriangleVertices90));
+	gfx.screenTriangleVertices180 = PushData(gfx, commandList, gfx.globalVertexArena, screenTriangleVertices180, sizeof(screenTriangleVertices180));
+	gfx.screenTriangleVertices270 = PushData(gfx, commandList, gfx.globalVertexArena, screenTriangleVertices270, sizeof(screenTriangleVertices270));
 	gfx.screenTriangleIndices = PushData(gfx, commandList, gfx.globalIndexArena, screenTriangleIndices, sizeof(screenTriangleIndices));
 
 	EndUploadCommandList(gfx, commandList);

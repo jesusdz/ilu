@@ -1,7 +1,5 @@
 #include "globals.hlsl"
 
-#define USE_VIEWPORT_ROTATION 1
-
 SamplerState skySampler : REGISTER_S(3, 0);
 Texture2D<float4> skyTexture : REGISTER_T(3, 1);
 
@@ -28,11 +26,6 @@ typedef Interpolators PixelInput;
 VertexOutput VSMain(VertexInput IN, uint instanceID : SV_InstanceID)
 {
 	float2 texCoord = IN.texCoord.xy;
-#if USE_VIEWPORT_ROTATION
-	float4 centeredTexCoord = float4(texCoord - 0.5.xx, 0.0, 1.0);
-	float4 rotatedTexCoord = mul(globals.viewportRotationMatrix, centeredTexCoord);
-	texCoord = rotatedTexCoord.xy + 0.5.xx;
-#endif
 
 	VertexOutput OUT;
 	OUT.position = float4(IN.position, 1.0);

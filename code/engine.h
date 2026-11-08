@@ -684,6 +684,9 @@ struct Graphics
 	BufferChunk spriteVertices;
 	BufferChunk spriteIndices;
 	BufferChunk screenTriangleVertices;
+	BufferChunk screenTriangleVertices90;
+	BufferChunk screenTriangleVertices180;
+	BufferChunk screenTriangleVertices270;
 	BufferChunk screenTriangleIndices;
 
 	BufferH globalsBuffer[MAX_FRAMES_IN_FLIGHT];

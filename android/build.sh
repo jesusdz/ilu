@@ -28,11 +28,11 @@ if [[ ${target} = "build" ]]; then
 	echo ""
 
 	CODE_DIR="../../code"
-	INCLUDES="-I../../"
+	INCLUDES="-I../../ -I../../vulkan/include"
 	GCC_FLAGS="-fPIC"
 	GCC_FLAGS="${GCC_FLAGS} -g -O0" # With debug info
 	GXX_FLAGS="${GCC_FLAGS} -std=gnu++20"
-	LDD_FLAGS="-Wl,--build-id=sha1"
+	LDD_FLAGS="-Wl,--build-id=sha1 -Wl,-z,max-page-size=16384"
 
 	echo "android_native_app_glue.o:"
 	echo ${GCC} ${GCC_FLAGS} -c ${NATIVE_APP_GLUE_DIR}/android_native_app_glue.c -o android_native_app_glue.o
@@ -52,6 +52,11 @@ if [[ ${target} = "build" ]]; then
 	echo "libgame.so:"
 	echo ${GXX} ${LDD_FLAGS} main.o -L. -landroid_native_app_glue -u ANativeActivity_onCreate -landroid -llog -laaudio -shared -o ../${OUT_LIB_DIR}/libgame.so
 	${GXX} ${LDD_FLAGS} main.o -L. -landroid_native_app_glue -u ANativeActivity_onCreate -landroid -llog -laaudio -shared -o ../${OUT_LIB_DIR}/libgame.so
+	echo ""
+
+	echo "libengine.so:"
+	echo ${GXX} -I${NATIVE_APP_GLUE_DIR} ${INCLUDES} ${GXX_FLAGS} ${LDD_FLAGS} ${CODE_DIR}/engine.cpp -llog -shared -o ../${OUT_LIB_DIR}/libengine.so
+	${GXX} -I${NATIVE_APP_GLUE_DIR} ${INCLUDES} ${GXX_FLAGS} ${LDD_FLAGS} ${CODE_DIR}/engine.cpp -llog -shared -o ../${OUT_LIB_DIR}/libengine.so
 	echo ""
 
 	echo "Popd..."
@@ -99,6 +104,7 @@ if [[ ${target} = "apk" ]]; then
 	# Add the native activity and other libs to the APK
 
 	${AAPT} add bin/NativeActivity.unaligned.apk "${OUT_LIB_DIR}/libgame.so"
+	${AAPT} add bin/NativeActivity.unaligned.apk "${OUT_LIB_DIR}/libengine.so"
 	cp "${TOOLCHAIN_LIB_DIR}/libc++_shared.so" ${OUT_LIB_DIR}
 	${AAPT} add bin/NativeActivity.unaligned.apk "${OUT_LIB_DIR}/libc++_shared.so"
 	#cp "../vulkan/lib/arm64_v8a/libVkLayer_khronos_validation.so" ${OUT_LIB_DIR}
