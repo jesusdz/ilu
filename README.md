@@ -50,17 +50,31 @@ Lightweight instrumentation/profiling macros for timing code blocks and frames, 
 
 ## Building
 
+`make` builds on both platforms: `make.bat` on Windows, the `Makefile` on Linux. Both take the same target names.
+
 ```
 # Windows (requires Visual Studio; vcenv.bat auto-detects it)
 make
 build\ilu.exe
 
-# Linux
+# Linux (builds and runs)
 make
-./build/ilu
 ```
 
-For unit tests specifically, see [docs/TESTS.md](docs/TESTS.md).
+On Windows, `make.bat` sets up the Visual Studio environment the first time it runs in a terminal and reuses it afterwards. From PowerShell, type `.\make`.
+
+Main targets:
+
+* `ilu` (default on Windows): builds `reflex` if it's missing, regenerates `code/reflex.generated.h`, then builds the executable and the engine DLL/SO
+* `dll`: builds `reflex` if it's missing, regenerates `code/reflex.generated.h`, then rebuilds only the engine DLL/SO, for hot reload
+* `data`: builds `ilu`, then runs `ilu --build-assets` to turn `assets/assets.txt` into `build/assets.dat`
+* `reflex`: builds the reflection generator
+* `clean`: deletes `build/`
+* `build_and_run`, `build_and_debug` (Linux only, `make` defaults to `build_and_run`)
+
+Shaders are compiled into `build/shaders.dat` by the engine itself when the file is missing, using the vendored DXC.
+
+For unit tests specifically, see [docs/TESTS.md](docs/TESTS.md). The tools in `code/misc/` each have a target of the same name, see [docs/MISC.md](docs/MISC.md).
 
 
 ## Library dependencies
