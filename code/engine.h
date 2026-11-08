@@ -1494,6 +1494,23 @@ struct GameInput
 	InputButton action;
 };
 
+// Input edge latching
+//
+// This is a method to accumulate and retain input state so that Simulate, which can
+// be executed more or less often than the platform update, doesn't miss input events.
+
+struct InputAccumulator
+{
+	Gamepad gamepad;
+	Keyboard keyboard;
+
+	Touch touches[ARRAY_COUNT(Window::touches)];
+
+	bool keyPendingRelease[K_COUNT];
+	bool buttonPendingRelease[ARRAY_COUNT(Gamepad::buttons)];
+	bool touchPendingRelease[ARRAY_COUNT(Window::touches)];
+};
+
 constexpr f32 SIMULATE_SECONDS = (1.0f / 60.0f);
 constexpr f32 MAX_FRAME_SECONDS = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 

@@ -47,6 +47,7 @@ enum PlatformEventType
 	PlatformEventTypeMouseClick,
 	PlatformEventTypeMouseMove,
 	PlatformEventTypeMouseWheel,
+	PlatformEventTypeTouch,
 	PlatformEventTypeCount,
 };
 
@@ -77,6 +78,14 @@ struct PlatformEventMouseWheel
 	int2 delta;
 };
 
+// TOUCH_STATE_PRESSED reports a move of a touch that is already down
+struct PlatformEventTouch
+{
+	u32 index;
+	TouchState state;
+	f32 x, y;
+};
+
 struct PlatformEvent
 {
 	PlatformEventType type;
@@ -87,6 +96,7 @@ struct PlatformEvent
 		PlatformEventMouseClick mouseClick;
 		PlatformEventMouseMove mouseMove;
 		PlatformEventMouseWheel mouseWheel;
+		PlatformEventTouch touch;
 	};
 };
 
@@ -136,6 +146,10 @@ struct Platform
 	volatile_i64 eventTail;
 	volatile_i64 eventHead;
 	PlatformEvent events[128];
+
+	bool keyPendingRelease[K_COUNT];
+	bool mouseButtonPendingRelease[MOUSE_BUTTON_COUNT];
+	bool touchPendingRelease[ARRAY_COUNT(Window::touches)];
 
 	volatile bool paused;
 	volatile bool keepRunning;
@@ -358,12 +372,15 @@ static void SendPlatformEvent(Platform &platform, PlatformEvent event)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Input state helpers
 
-static void TransitionInputStatesSinceLastFrame(Window &window)
+static void TransitionInputStatesSinceLastFrame(Platform &platform)
 {
+	Window &window = platform.window;
+
 	// Transition key states
 	for ( u32 i = 0; i < K_COUNT; ++i ) {
 		if ( window.keyboard.keys[i] == KEY_STATE_PRESS ) {
-			window.keyboard.keys[i] = KEY_STATE_PRESSED;
+			window.keyboard.keys[i] = platform.keyPendingRelease[i] ? KEY_STATE_RELEASE : KEY_STATE_PRESSED;
+			platform.keyPendingRelease[i] = false;
 		} else if ( window.keyboard.keys[i] == KEY_STATE_RELEASE ) {
 			window.keyboard.keys[i] = KEY_STATE_IDLE;
 		}
@@ -372,7 +389,8 @@ static void TransitionInputStatesSinceLastFrame(Window &window)
 	// Transition mouse button states
 	for ( u32 i = 0; i < MOUSE_BUTTON_COUNT; ++i ) {
 		if ( window.mouse.buttons[i] == BUTTON_STATE_PRESS ) {
-			window.mouse.buttons[i] = BUTTON_STATE_PRESSED;
+			window.mouse.buttons[i] = platform.mouseButtonPendingRelease[i] ? BUTTON_STATE_RELEASE : BUTTON_STATE_PRESSED;
+			platform.mouseButtonPendingRelease[i] = false;
 		} else if ( window.mouse.buttons[i] == BUTTON_STATE_RELEASE ) {
 			window.mouse.buttons[i] = BUTTON_STATE_IDLE;
 		}
@@ -386,7 +404,8 @@ static void TransitionInputStatesSinceLastFrame(Window &window)
 	// Transition touch states
 	for ( u32 i = 0; i < ARRAY_COUNT(window.touches); ++i ) {
 		if ( window.touches[i].state == TOUCH_STATE_PRESS ) {
-			window.touches[i].state = TOUCH_STATE_PRESSED;
+			window.touches[i].state = platform.touchPendingRelease[i] ? TOUCH_STATE_RELEASE : TOUCH_STATE_PRESSED;
+			platform.touchPendingRelease[i] = false;
 		} else if ( window.touches[i].state == TOUCH_STATE_RELEASE ) {
 			window.touches[i].state = TOUCH_STATE_IDLE;
 		}
@@ -758,7 +777,7 @@ static void ProcessPlatformEvents(Platform &platform)
 {
 	Window &window = platform.window;
 
-	TransitionInputStatesSinceLastFrame(window);
+	TransitionInputStatesSinceLastFrame(platform);
 
 	while (platform.eventTail < platform.eventHead)
 	{
@@ -796,12 +815,28 @@ static void ProcessPlatformEvents(Platform &platform)
 			};
 			case PlatformEventTypeKeyPress:
 			{
-				window.keyboard.keys[event.keyPress.code] = event.keyPress.state;
+				KeyState &state = window.keyboard.keys[event.keyPress.code];
+				bool &pendingRelease = platform.keyPendingRelease[event.keyPress.code];
+				if (event.keyPress.state == KEY_STATE_RELEASE && state == KEY_STATE_PRESS) {
+					// The press was not seen by the engine yet: keep it and release next frame
+					pendingRelease = true;
+				} else {
+					state = event.keyPress.state;
+					pendingRelease = false;
+				}
 				break;
 			};
 			case PlatformEventTypeMouseClick:
 			{
-				window.mouse.buttons[event.mouseClick.button] = event.mouseClick.state;
+				ButtonState &state = window.mouse.buttons[event.mouseClick.button];
+				bool &pendingRelease = platform.mouseButtonPendingRelease[event.mouseClick.button];
+				if (event.mouseClick.state == BUTTON_STATE_RELEASE && state == BUTTON_STATE_PRESS) {
+					// The press was not seen by the engine yet: keep it and release next frame
+					pendingRelease = true;
+				} else {
+					state = event.mouseClick.state;
+					pendingRelease = false;
+				}
 				if (event.mouseClick.button == MOUSE_BUTTON_LEFT)
 				{
 					window.mouse.click = window.mouse.pos;
@@ -817,6 +852,35 @@ static void ProcessPlatformEvents(Platform &platform)
 			case PlatformEventTypeMouseWheel:
 			{
 				window.mouse.wheel += event.mouseWheel.delta;
+				break;
+			};
+			case PlatformEventTypeTouch:
+			{
+				Touch &touch = window.touches[event.touch.index];
+				bool &pendingRelease = platform.touchPendingRelease[event.touch.index];
+				if (event.touch.state == TOUCH_STATE_PRESS)
+				{
+					touch.x0 = event.touch.x;
+					touch.y0 = event.touch.y;
+					touch.state = TOUCH_STATE_PRESS;
+					pendingRelease = false;
+				}
+				else
+				{
+					touch.dx += event.touch.x - touch.x;
+					touch.dy += event.touch.y - touch.y;
+				}
+				if (event.touch.state == TOUCH_STATE_RELEASE)
+				{
+					if (touch.state == TOUCH_STATE_PRESS) {
+						// The press was not seen by the engine yet: keep it and release next frame
+						pendingRelease = true;
+					} else {
+						touch.state = TOUCH_STATE_RELEASE;
+					}
+				}
+				touch.x = event.touch.x;
+				touch.y = event.touch.y;
 				break;
 			};
 			case PlatformEventTypeCount: break;

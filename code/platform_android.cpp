@@ -143,44 +143,45 @@ static int32_t AndroidHandleInputEvent(struct android_app *app, AInputEvent *eve
 		const float x = AMotionEvent_getX(event, pointerIndex);
 		const float y = AMotionEvent_getY(event, pointerIndex);
 
-		if (pointerId < ARRAY_COUNT(platform->window.touches))
-		{
-			Touch *touches = platform->window.touches;
+		const u32 touchCount = ARRAY_COUNT(platform->window.touches);
 
-			switch( action )
-			{
-				case AMOTION_EVENT_ACTION_DOWN:
-				case AMOTION_EVENT_ACTION_POINTER_DOWN:
-					{
-						touches[pointerId].state = TOUCH_STATE_PRESS;
-						touches[pointerId].x0 = x;
-						touches[pointerId].y0 = y;
-						touches[pointerId].x = x;
-						touches[pointerId].y = y;
-					}
-					break;
-				case AMOTION_EVENT_ACTION_UP:
-				case AMOTION_EVENT_ACTION_POINTER_UP:
-					{
-						touches[pointerId].state = TOUCH_STATE_RELEASE;
-						touches[pointerId].x = x;
-						touches[pointerId].y = y;
-					}
-					break;
-				case AMOTION_EVENT_ACTION_MOVE:
-					// On move ements, we are meant to handle all pointers in the gesture
-					for (u32 pointerIndex = 0; pointerIndex < pointerCount; ++pointerIndex)
-					{
-						const float x = AMotionEvent_getX(event, pointerIndex);
-						const float y = AMotionEvent_getY(event, pointerIndex);
-						const uint32_t pointerId = AMotionEvent_getPointerId(event, pointerIndex);
-						touches[pointerId].dx = x - touches[pointerId].x;
-						touches[pointerId].dy = y - touches[pointerId].y;
-						touches[pointerId].x = x;
-						touches[pointerId].y = y;
-					}
-					break;
-			}
+		PlatformEvent touchEvent = { .type = PlatformEventTypeTouch };
+
+		switch( action )
+		{
+			case AMOTION_EVENT_ACTION_DOWN:
+			case AMOTION_EVENT_ACTION_POINTER_DOWN:
+			case AMOTION_EVENT_ACTION_UP:
+			case AMOTION_EVENT_ACTION_POINTER_UP:
+				if (pointerId < touchCount)
+				{
+					const bool down = action == AMOTION_EVENT_ACTION_DOWN || action == AMOTION_EVENT_ACTION_POINTER_DOWN;
+					touchEvent.touch = { pointerId, down ? TOUCH_STATE_PRESS : TOUCH_STATE_RELEASE, x, y };
+					SendPlatformEvent(*platform, touchEvent);
+				}
+				break;
+			case AMOTION_EVENT_ACTION_MOVE:
+				// On move ements, we are meant to handle all pointers in the gesture
+				for (u32 pointerIndex = 0; pointerIndex < pointerCount; ++pointerIndex)
+				{
+					const uint32_t pointerId = AMotionEvent_getPointerId(event, pointerIndex);
+					if (pointerId >= touchCount) { continue; }
+					const float x = AMotionEvent_getX(event, pointerIndex);
+					const float y = AMotionEvent_getY(event, pointerIndex);
+					touchEvent.touch = { pointerId, TOUCH_STATE_PRESSED, x, y };
+					SendPlatformEvent(*platform, touchEvent);
+				}
+				break;
+			case AMOTION_EVENT_ACTION_CANCEL:
+				// The system took over the gesture: no UP follows, so release every pointer in it
+				for (u32 pointerIndex = 0; pointerIndex < pointerCount; ++pointerIndex)
+				{
+					const uint32_t pointerId = AMotionEvent_getPointerId(event, pointerIndex);
+					if (pointerId >= touchCount) { continue; }
+					touchEvent.touch = { pointerId, TOUCH_STATE_RELEASE, AMotionEvent_getX(event, pointerIndex), AMotionEvent_getY(event, pointerIndex) };
+					SendPlatformEvent(*platform, touchEvent);
+				}
+				break;
 		}
 		return 1;
 	}

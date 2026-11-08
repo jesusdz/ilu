@@ -78,12 +78,145 @@ static const char * InternString(const char *str)
 ////////////////////////////////////////////////////////////////////////
 // Game loop
 
-static void GameSetInput(Game &game, const InputAccumulator &input)
+static void InputAccumulate(InputAccumulator &input, const Gamepad &newGamepad, const Keyboard &newKeyboard, const Touch *newTouches)
+{
+	// Keyboard
+	for (u32 i = 0; i < K_COUNT; ++i)
+	{
+		const KeyState newState = newKeyboard.keys[i];
+		KeyState &state = input.keyboard.keys[i];
+
+		if (newState == KEY_STATE_PRESS)
+		{
+			// Latch the edge until a fixed step consumes it
+			state = KEY_STATE_PRESS;
+			input.keyPendingRelease[i] = false;
+		}
+		else if (newState == KEY_STATE_RELEASE)
+		{
+			if (state == KEY_STATE_PRESS) {
+				// The press was not consumed yet: keep it and release right after
+				input.keyPendingRelease[i] = true;
+			} else {
+				state = KEY_STATE_RELEASE;
+			}
+		}
+	}
+
+	// Gamepad
+	for (u32 i = 0; i < ARRAY_COUNT(input.gamepad.buttons); ++i)
+	{
+		const ButtonState newState = newGamepad.buttons[i];
+		ButtonState &state = input.gamepad.buttons[i];
+
+		if (newState == BUTTON_STATE_PRESS)
+		{
+			// Latch the edge until a fixed step consumes it
+			state = BUTTON_STATE_PRESS;
+			input.buttonPendingRelease[i] = false;
+		}
+		else if (newState == BUTTON_STATE_RELEASE)
+		{
+			if (state == BUTTON_STATE_PRESS) {
+				// The press was not consumed yet: keep it and release right after
+				input.buttonPendingRelease[i] = true;
+			} else {
+				state = BUTTON_STATE_RELEASE;
+			}
+		}
+	}
+	input.gamepad.leftTrigger = newGamepad.leftTrigger;
+	input.gamepad.rightTrigger = newGamepad.rightTrigger;
+	input.gamepad.leftAxis = newGamepad.leftAxis;
+	input.gamepad.rightAxis = newGamepad.rightAxis;
+
+	// Touches
+	for (u32 i = 0; i < ARRAY_COUNT(input.touches); ++i)
+	{
+		const Touch &newTouch = newTouches[i];
+		Touch &touch = input.touches[i];
+
+		if (newTouch.state == TOUCH_STATE_PRESS)
+		{
+			touch.state = TOUCH_STATE_PRESS;
+			touch.x0 = newTouch.x0;
+			touch.y0 = newTouch.y0;
+			input.touchPendingRelease[i] = false;
+		}
+		else if (newTouch.state == TOUCH_STATE_RELEASE)
+		{
+			if (touch.state == TOUCH_STATE_PRESS) {
+				input.touchPendingRelease[i] = true;
+			} else {
+				touch.state = TOUCH_STATE_RELEASE;
+			}
+		}
+
+		touch.x = newTouch.x;
+		touch.y = newTouch.y;
+		touch.dx += newTouch.dx;
+		touch.dy += newTouch.dy;
+	}
+}
+
+static void InputConsume(InputAccumulator &input)
+{
+	// Keyboard
+	for (u32 i = 0; i < K_COUNT; ++i)
+	{
+		KeyState &state = input.keyboard.keys[i];
+
+		if (state == KEY_STATE_PRESS)
+		{
+			state = input.keyPendingRelease[i] ? KEY_STATE_RELEASE : KEY_STATE_PRESSED;
+			input.keyPendingRelease[i] = false;
+		}
+		else if (state == KEY_STATE_RELEASE)
+		{
+			state = KEY_STATE_IDLE;
+		}
+	}
+
+	// Gamepad
+	for (u32 i = 0; i < ARRAY_COUNT(input.gamepad.buttons); ++i)
+	{
+		ButtonState &state = input.gamepad.buttons[i];
+
+		if (state == BUTTON_STATE_PRESS)
+		{
+			state = input.buttonPendingRelease[i] ? BUTTON_STATE_RELEASE : BUTTON_STATE_PRESSED;
+			input.buttonPendingRelease[i] = false;
+		}
+		else if (state == BUTTON_STATE_RELEASE)
+		{
+			state = BUTTON_STATE_IDLE;
+		}
+	}
+
+	// Touches
+	for (u32 i = 0; i < ARRAY_COUNT(input.touches); ++i)
+	{
+		Touch &touch = input.touches[i];
+
+		if (touch.state == TOUCH_STATE_PRESS)
+		{
+			touch.state = input.touchPendingRelease[i] ? TOUCH_STATE_RELEASE : TOUCH_STATE_PRESSED;
+			input.touchPendingRelease[i] = false;
+		}
+		else if (touch.state == TOUCH_STATE_RELEASE)
+		{
+			touch.state = TOUCH_STATE_IDLE;
+		}
+		touch.dx = 0.0f;
+		touch.dy = 0.0f;
+	}
+}
+
+static void GameSetInput(Game &game, const InputAccumulator &input, const Window &window)
 {
 	game.input = {};
 
 	// Keyboard
-
 	const Keyboard &keyboard = input.keyboard;
 	game.input.move.x += KeyPressed(keyboard, K_D) ? 1.0f : 0.0f;
 	game.input.move.x -= KeyPressed(keyboard, K_A) ? 1.0f : 0.0f;
@@ -97,7 +230,6 @@ static void GameSetInput(Game &game, const InputAccumulator &input)
 	game.input.action.release = KeyRelease(keyboard, K_RETURN);
 
 	// Gamepad
-
 	const Gamepad &gamepad = input.gamepad;
 	game.input.move += gamepad.leftAxis;
 	game.input.jump.press |= ButtonPress(gamepad.a);
@@ -106,6 +238,36 @@ static void GameSetInput(Game &game, const InputAccumulator &input)
 	game.input.action.press |= ButtonPress(gamepad.x);
 	game.input.action.pressed |= ButtonPressed(gamepad.x);
 	game.input.action.release |= ButtonRelease(gamepad.x);
+
+	// Touch
+	const f32 stickRadius = 0.1f * window.height;
+	const f32 stickDeadZone = 0.2f;
+	for (u32 i = 0; i < ARRAY_COUNT(input.touches); ++i)
+	{
+		const Touch &touch = input.touches[i];
+		if (touch.state == TOUCH_STATE_IDLE) { continue; }
+
+		const bool down = touch.state == TOUCH_STATE_PRESS || touch.state == TOUCH_STATE_PRESSED;
+		if (touch.x0 <= 0.5f * window.width)
+		{
+			if (down)
+			{
+				const float2 stick = float2{ touch.x - touch.x0, touch.y0 - touch.y } / stickRadius;
+				const f32 length = Length(stick);
+				if (length > stickDeadZone) {
+					const f32 magnitude = Min((length - stickDeadZone) / (1.0f - stickDeadZone), 1.0f);
+					game.input.move += (magnitude / length) * stick;
+				}
+			}
+		}
+		else
+		{
+			InputButton &button = touch.y0 < 0.5f * window.height ? game.input.action : game.input.jump;
+			button.press |= touch.state == TOUCH_STATE_PRESS;
+			button.pressed |= down;
+			button.release |= touch.state == TOUCH_STATE_RELEASE;
+		}
+	}
 }
 
 static void GameStop(Engine &engine)
@@ -164,14 +326,14 @@ static void GameUpdate(Engine &engine, const Host &host)
 	{
 		constexpr f32 fixedStepSeconds = SIMULATE_SECONDS;
 
-		InputAccumulate(game.accumulatedInput, *host.gamepad, host.window->keyboard);
+		InputAccumulate(game.accumulatedInput, *host.gamepad, host.window->keyboard, host.window->touches);
 
 		game.accumulatedSeconds += Min(engine.gfx.deltaSeconds, MAX_FRAME_SECONDS);
 
 		while (game.accumulatedSeconds >= fixedStepSeconds)
 		{
 			game.deltaSeconds = fixedStepSeconds;
-			GameSetInput(game, game.accumulatedInput);
+			GameSetInput(game, game.accumulatedInput, *host.window);
 			SnapshotPositions(engine);
 			// Ahead of Simulate, so a camera reacts to a teleport in the same step
 			RunTriggerHooks(engine);
