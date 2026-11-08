@@ -1238,6 +1238,14 @@ static EntityDesc EntityDescFromBin(const BinEntityDesc &desc, ComponentDescPool
 		}
 	}
 
+	if ( desc.components & Component_Trigger )
+	{
+		if ( ComponentDesc *component = PushComponentDesc(components, ComponentType_Trigger) ) {
+			const TriggerComponent trigger = { .size = desc.triggerSize };
+			component->properties = MakePropertyDescArray(*ComponentReflexStruct(ComponentType_Trigger), &trigger, propertyPool);
+		}
+	}
+
 	if ( desc.components & Component_Script )
 	{
 		const BinScriptDesc &binScript = desc.script;

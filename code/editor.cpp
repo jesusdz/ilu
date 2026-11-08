@@ -3574,6 +3574,7 @@ static void EditorProcessCommands(Arena scratch)
 				case EditorCommandBuildBin:
 				{
 					SaveSceneToBin(engine, command.filepath);
+					BuildShaders(engine, MakePath(DataDir, "shaders.dat").str);
 					break;
 				}
 

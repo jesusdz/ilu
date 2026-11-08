@@ -1419,6 +1419,7 @@ struct BinEntityDesc
 	float2 colliderOffset;
 	float2 cameraRegionSize;
 	float2 cameraRegionOffset;
+	float2 triggerSize;
 	BinScriptDesc script;
 };
 
@@ -1574,7 +1575,7 @@ struct AssetDescriptors
 ////////////////////////////////////////////////////////////////////////
 // Binary data
 
-constexpr u32 BinAssetsVersion = 33; // 33: light z offset
+constexpr u32 BinAssetsVersion = 34; // 34: trigger component
 
 #pragma pack(push, 1)
 

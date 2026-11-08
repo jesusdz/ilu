@@ -1910,6 +1910,15 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 				break;
 			}
 
+			case ComponentType_Trigger:
+			{
+				TriggerComponent trigger = {};
+				ApplyPropertyDescArray(*ComponentReflexStruct(ComponentType_Trigger), &trigger, component.properties);
+				d.components |= Component_Trigger;
+				d.triggerSize = trigger.size;
+				break;
+			}
+
 			case ComponentType_Script:
 			{
 				const PropertyDescArray &properties = component.properties;
@@ -1932,6 +1941,7 @@ static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStr
 			}
 
 			default:
+				ASSERTMSG(false, "Component type %s has no binary format in BuildBinEntityDesc\n", ComponentNames[component.type]);
 				break;
 		}
 	}

@@ -416,13 +416,6 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 		engine.componentDescPool.arena = &engine.descArena;
 
 #if USE_DATA_BUILD
-		// Shaders
-		const FilePath binaryShadersFilepath = MakePath(DataDir, "shaders.dat");
-		if ( !ExistsFile(binaryShadersFilepath.str) ) {
-			BuildShaders(engine, binaryShadersFilepath.str);
-		}
-
-		// Scene
 		bool buildAssets = false;
 		bool exitAfterBuild = false;
 		for ( u32 i = 0; i < host.argc; ++i ) {
@@ -432,6 +425,13 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 			}
 		}
 
+		// Shaders
+		const FilePath binaryShadersFilepath = MakePath(DataDir, "shaders.dat");
+		if ( buildAssets || !ExistsFile(binaryShadersFilepath.str) ) {
+			BuildShaders(engine, binaryShadersFilepath.str);
+		}
+
+		// Scene
 		if ( buildAssets ) {
 			const FilePath descriptorsFilepath = MakePath(AssetDir, "assets.txt");
 			const FilePath binarySceneFilepath = MakePath(DataDir, "assets.dat");
