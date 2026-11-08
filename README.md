@@ -52,7 +52,7 @@ Lightweight instrumentation/profiling macros for timing code blocks and frames, 
 
 ```
 # Windows (requires Visual Studio; vcenv.bat auto-detects it)
-build.bat
+make
 build\ilu.exe
 
 # Linux

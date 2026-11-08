@@ -1,9 +1,9 @@
 @echo off
-setlocal
-
-
 
 REM Prepare the VC compiler environment
+call "%~dp0vcenv.bat"
+
+setlocal
 
 set RootDir=%~dp0
 set RootDir=%RootDir:~0,-1%
@@ -61,11 +61,10 @@ REM Reflex
 REM ######################################################
 : reflex
 
-call vcenv.bat
-pushd build
+pushd %BuildDir%
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags%
-cl %CommonCompilerFlags% ..\code\reflex\reflex.cpp /link %CommonLinkerFlags%
+cl %CommonCompilerFlags% ..\code\reflex\reflex.cpp /link %CommonLinkerFlags% || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -76,15 +75,14 @@ REM ilu
 REM ######################################################
 : ilu
 
-call vcenv.bat
-pushd build
+pushd %BuildDir%
 copy nul ..\code\reflex.generated.h > nul
 reflex.exe ..\code\engine.h ..\code\game.cpp > ..\code\reflex.generated.h
 if errorlevel 1 (popd & exit /b 1)
 set CommonCompilerFlags=%CommonCompilerFlags% -I %RootDir%\vulkan\include
 set CommonLinkerFlags=%CommonLinkerFlags% user32.lib
-cl %CommonCompilerFlags% ..\code\platform.cpp /Feilu.exe /link %CommonLinkerFlags%
-cl %CommonCompilerFlags% /LD ..\code\engine.cpp /Feengine.dll
+cl %CommonCompilerFlags% ..\code\platform.cpp /Feilu.exe /link %CommonLinkerFlags% || (popd & exit /b 1)
+cl %CommonCompilerFlags% /LD ..\code\engine.cpp /Feengine.dll || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -95,13 +93,12 @@ REM DLL
 REM ######################################################
 : dll
 
-call vcenv.bat
-pushd build
+pushd %BuildDir%
 copy nul ..\code\reflex.generated.h > nul
 reflex.exe ..\code\engine.h ..\code\game.cpp > ..\code\reflex.generated.h
 if errorlevel 1 (popd & exit /b 1)
 set CommonCompilerFlags=%CommonCompilerFlags% -I %RootDir%\vulkan\include
-cl %CommonCompilerFlags% /LD ..\code\engine.cpp /Feengine.dll
+cl %CommonCompilerFlags% /LD ..\code\engine.cpp /Feengine.dll || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -112,8 +109,7 @@ REM game
 REM ######################################################
 : game
 
-call vcenv.bat
-pushd build
+pushd %BuildDir%
 echo No build configuration to compile the game yet.
 popd
 exit /b 0
@@ -125,11 +121,10 @@ REM main_interpreter
 REM ######################################################
 : main_interpreter
 
-call vcenv.bat
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags%
-pushd build
-cl %CommonCompilerFlags% ..\code\misc\main_interpreter.cpp /link %CommonLinkerFlags%
+pushd %BuildDir%
+cl %CommonCompilerFlags% ..\code\misc\main_interpreter.cpp /link %CommonLinkerFlags% || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -140,11 +135,10 @@ REM main_d3d12
 REM ######################################################
 : main_d3d12
 
-call vcenv.bat
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags% d3d12.lib dxgi.lib dxguid.lib user32.lib d3dcompiler.lib
-pushd build
-cl %CommonCompilerFlags% ..\code\misc\main_d3d12.cpp /link %CommonLinkerFlags%
+pushd %BuildDir%
+cl %CommonCompilerFlags% ..\code\misc\main_d3d12.cpp /link %CommonLinkerFlags% || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -155,11 +149,10 @@ REM main_atof
 REM ######################################################
 : main_atof
 
-call vcenv.bat
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags%
-pushd build
-cl %CommonCompilerFlags% ..\code\misc\main_atof.cpp /link %CommonLinkerFlags%
+pushd %BuildDir%
+cl %CommonCompilerFlags% ..\code\misc\main_atof.cpp /link %CommonLinkerFlags% || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -170,11 +163,10 @@ REM main_spirv
 REM ######################################################
 : main_spirv
 
-call vcenv.bat
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags%
-pushd build
-cl %CommonCompilerFlags% ..\code\misc\main_spirv.cpp /link %CommonLinkerFlags%
+pushd %BuildDir%
+cl %CommonCompilerFlags% ..\code\misc\main_spirv.cpp /link %CommonLinkerFlags% || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -185,11 +177,10 @@ REM unit_test_ilu
 REM ######################################################
 : unit_test_ilu
 
-call vcenv.bat
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags%
-pushd build
-cl %CommonCompilerFlags% ..\code\tests\unit_test_ilu.cpp /link %CommonLinkerFlags%
+pushd %BuildDir%
+cl %CommonCompilerFlags% ..\code\tests\unit_test_ilu.cpp /link %CommonLinkerFlags% || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -200,11 +191,10 @@ REM cast
 REM ######################################################
 : cast
 
-call vcenv.bat
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags%
-pushd build
-cl %CommonCompilerFlags% ..\code\misc\cast.cpp /link %CommonLinkerFlags%
+pushd %BuildDir%
+cl %CommonCompilerFlags% ..\code\misc\cast.cpp /link %CommonLinkerFlags% || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -215,11 +205,10 @@ REM main_reflect_serialize
 REM ######################################################
 : main_reflect_serialize
 
-call vcenv.bat
 set CommonCompilerFlags=%CommonCompilerFlags%
 set CommonLinkerFlags=%CommonLinkerFlags%
-pushd build
-cl %CommonCompilerFlags% ..\code\misc\main_reflect_serialize.cpp /link %CommonLinkerFlags%
+pushd %BuildDir%
+cl %CommonCompilerFlags% ..\code\misc\main_reflect_serialize.cpp /link %CommonLinkerFlags% || (popd & exit /b 1)
 popd
 exit /b 0
 
@@ -230,7 +219,7 @@ REM Shaders
 REM ######################################################
 : data
 
-pushd shaders
+pushd %RootDir%\code\shaders
 
 %DXC% -spirv -T vs_6_7 -Fo %DataShadersDir%\vs_shading.spv     -Fc %DataShadersDir%\vs_shading.dis     shading.hlsl -E VSMain
 %DXC% -spirv -T ps_6_7 -Fo %DataShadersDir%\fs_shading.spv     -Fc %DataShadersDir%\fs_shading.dis     shading.hlsl -E PSMain
@@ -263,7 +252,7 @@ REM ######################################################
 : reflection
 
 echo build\reflex.exe assets\assets.h > code\assets.reflex.h
-build\reflex.exe assets\assets.h > code\assets.reflex.h
+%BuildDir%\reflex.exe %RootDir%\assets\assets.h > %RootDir%\code\assets.reflex.h || exit /b 1
 exit /b 0
 
 
@@ -273,7 +262,7 @@ REM Clean
 REM ######################################################
 : clean
 
-rmdir /S /Q build\
+rmdir /S /Q %BuildDir%
 exit /b 0
 
 

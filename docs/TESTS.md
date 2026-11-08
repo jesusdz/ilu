@@ -6,7 +6,7 @@ Unit tests live in `code/tests/unit_test_ilu.cpp` — the only file under `code/
 
 ```
 # Windows
-build.bat unit_test_ilu
+make unit_test_ilu
 .\build\unit_test_ilu.exe
 
 # Linux
