@@ -3270,7 +3270,7 @@ Alloc Allocate(Heap &heap, u32 size, u32 alignment)
 		const u32 totalSize = size + alignment;
 		const OffsetAllocator::Allocation allocation = generalAllocator.allocate(totalSize);
 		if (allocation.offset == OffsetAllocator::Allocation::NO_SPACE) {
-			LOG(Error, "Allocate - Heap: %s (%uMB) - Could not allocate size(%uB) with alignment (%uB)\n", HeapTypeToString(heap.type), heap.size / MB(1), size, alignment);
+			LOG(Error, "Allocate - Heap: %s (%luMB) - Could not allocate size(%uB) with alignment (%uB)\n", HeapTypeToString(heap.type), heap.size / MB(1), size, alignment);
 		}
 
 		const VkDeviceSize offset = AlignUp( allocation.offset, alignment );
@@ -3288,7 +3288,7 @@ Alloc Allocate(Heap &heap, u32 size, u32 alignment)
 	{
 		const VkDeviceSize offset = AlignUp( heap.used, alignment );
 
-		ASSERTMSG( offset + size <= heap.size, "Allocate - Heap: %s (%uMB) - Could not allocate size (%uB) with alignment (%uB)\n", HeapTypeToString(heap.type), heap.size / MB(1), size, alignment);
+		ASSERTMSG( offset + size <= heap.size, "Allocate - Heap: %s (%luMB) - Could not allocate size (%uB) with alignment (%uB)\n", HeapTypeToString(heap.type), heap.size / MB(1), size, alignment);
 		heap.used = offset + size;
 
 		const Alloc alloc = {

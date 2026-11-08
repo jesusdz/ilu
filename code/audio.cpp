@@ -78,7 +78,8 @@ static void AudioCmdQueue_Process(Audio &audio)
     {
         const AudioCmd &cmd = queue.slots[queue.readPos % AUDIO_CMD_QUEUE_CAPACITY];
         AudioCmdQueue_ProcessCommand(audio, cmd);
-        ++queue.readPos;
+        FullReadBarrier();
+        queue.readPos = queue.readPos + 1;
     }
 }
 

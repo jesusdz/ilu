@@ -105,7 +105,7 @@ enum LogVerbosityLevel
 	LogVerbosityLevelCount,
 };
 
-#define LOG_VERBOSITY Info
+#define LOG_VERBOSITY Debug
 
 #if PLATFORM_ANDROID
 static const int __android_log_channel[] = {
@@ -130,7 +130,7 @@ static const int __android_log_channel[] = {
 		QUIT_ABNORMALLY(); \
 	}
 #define ASSERTMSG(expression, message, ...) if ( !(expression) ) { \
-		LOG(Error, "Assertion failed: ASSERT(" #expression " )\nAssertion message: " message, ##__VA_ARGS__); \
+		LOG(Error, "Assertion failed: ASSERT( %s )\nAssertion message: " message, #expression, ##__VA_ARGS__); \
 		QUIT_ABNORMALLY(); \
 	}
 

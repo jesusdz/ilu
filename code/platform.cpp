@@ -819,6 +819,7 @@ static void ProcessPlatformEvents(Platform &platform)
 				window.mouse.wheel += event.mouseWheel.delta;
 				break;
 			};
+			case PlatformEventTypeCount: break;
 		}
 	}
 
