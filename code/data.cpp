@@ -1719,6 +1719,8 @@ AssetDescriptors ParseDescriptors(const char *filepath, Arena &arena)
 
 
 
+#endif // USE_DATA_BUILD
+
 ////////////////////////////////////////////////////////////////////////
 // Binary output
 
@@ -1826,6 +1828,8 @@ static void *DataReadPackedArray( Arena &dataArena, File file, const char *strin
 	}
 	return structs;
 }
+
+#if USE_DATA_BUILD
 
 static void BuildBinEntityDesc(BinEntityDesc &d, const EntityDesc &desc, DataStringPool &stringPool)
 {

@@ -8,13 +8,13 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "libs/stb/stb_truetype.h"
 
+#endif // #if USE_UI
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_STDIO
 #define STBI_NO_LINEAR // Only stbi_load_from_memory (LDR) is used, never stbi_loadf (HDR) - this also drops stb_image.h's own <math.h> include, only needed by the linear/HDR path.
 #define STBI_NO_HDR
 #include "libs/stb/stb_image.h"
-
-#endif // #if USE_UI
 
 #define TOOLS_GFX_FUNCTION_POINTERS
 #include "ilu_gfx.h"
@@ -290,7 +290,9 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 
 	if ( !firstLoad )
 	{
+#if USE_UI
 		UI_ResetStyle(engine.ui);
+#endif
 
 		PROFILE_GPU_INIT(engine.gfx.device);
 	}

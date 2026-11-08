@@ -176,7 +176,7 @@ enum ThreadID
 // These functions are implemented by the platform-specific file included further below
 // (platform_win32.cpp, platform_linux.cpp or platform_android.cpp). Each platform file
 // additionally provides:
-// - The USE_UPDATE_THREAD and USE_AUDIO_THREAD macros
+// - The USE_UPDATE_THREAD, USE_AUDIO_THREAD and USE_ENGINE_HOT_RELOAD macros
 // - The WindowImpl struct
 // - The engineLibFilename / engineLibTmpFilename constants
 // - The program entry point (main / android_main), which calls Main below
@@ -853,7 +853,9 @@ static void UpdateAndRender(Platform &platform)
 		platform.host.fileChangesDetected = false;
 	}
 
+#if USE_ENGINE_HOT_RELOAD
 	CheckEngineHotReload(platform);
+#endif
 }
 
 #if USE_UPDATE_THREAD
@@ -1011,6 +1013,7 @@ static bool LoadEngineDLL(Platform &platform)
 {
 	LOG(Info, "Loading engine DLL:\n");
 
+#if USE_ENGINE_HOT_RELOAD
 	sEngineLibPath = MakePath(BinDir, engineLibFilename);
 	sEngineTmpLibPath = MakePath(BinDir, engineLibTmpFilename);
 
@@ -1019,6 +1022,11 @@ static bool LoadEngineDLL(Platform &platform)
 	}
 
 	platform.engineLib = OpenLibrary(sEngineTmpLibPath.str);
+#else
+	// A bare name makes the dynamic linker search the APK's native library directory.
+	// Libraries on external storage (BinDir) cannot be loaded: it is mounted noexec.
+	platform.engineLib = OpenLibrary(engineLibFilename);
+#endif
 	if ( !platform.engineLib ) {
 		LOG(Error, "- Couldn't load %s\n", engineLibTmpFilename);
 		return false;

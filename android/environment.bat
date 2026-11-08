@@ -4,8 +4,8 @@ REM Java / Android paths
 REM Make these variables point to java/android directories
 REM ######################################################
 
-set JAVA_HOME="C:\path\to\java\home"
-set ANDROID_HOME="C:\path\to\android\home"
+if not defined JAVA_HOME set JAVA_HOME="C:\path\to\java\home"
+if not defined ANDROID_HOME set ANDROID_HOME="C:\path\to\android\home"
 
 
 

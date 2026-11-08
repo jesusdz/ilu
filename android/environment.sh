@@ -4,22 +4,22 @@
 # Environment variables
 ##########################################################
 
-# Check JAVA_HOME environment var exists
-if [ -z ${JAVA_HOME} ]; then
-	echo "Could not find environment var JAVA_HOME"
+JAVA_HOME=${JAVA_HOME:-/path/to/java/home}
+ANDROID_HOME=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/path/to/android/home}}
+
+if [ ! -d "${JAVA_HOME}" ]; then
+	echo "Configure JAVA_HOME in environment.sh."
 	exit -1
 fi
 
-# Check ANDROID_SDK_ROOT environment var exists
-if [ -z ${ANDROID_SDK_ROOT} ]; then
-	echo "Could not find environment var ANDROID_SDK_ROOT"
+if [ ! -d "${ANDROID_HOME}" ]; then
+	echo "Configure ANDROID_HOME in environment.sh."
 	exit -1
 fi
 
 PACKAGE_NAME=com.tools.game
 
 # Directories
-ANDROID_HOME=${ANDROID_SDK_ROOT}
 BUILD_TOOLS=${ANDROID_HOME}/build-tools/33.0.2
 PLATFORM_TOOLS=${ANDROID_HOME}/platform-tools
 ANDROID_PLATFORM_DIR=${ANDROID_HOME}/platforms/android-33

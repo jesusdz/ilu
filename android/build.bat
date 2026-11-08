@@ -48,10 +48,11 @@ mkdir %OUT_LIB_DIR% 2> nul
 pushd obj
 
 set CODE_DIR="../../code"
-set INCLUDES="-I../../"
+set INCLUDES=-I../../ -I../../vulkan/include
 set GCC_FLAGS=-fPIC
 set GCC_FLAGS=%GCC_FLAGS% -g -O0
 set GXX_FLAGS=%GCC_FLAGS% -std=gnu++20
+set LINK_FLAGS=-shared -Wl,-z,max-page-size=16384
 
 REM Have a look at this compile arguments
 REM /Users/thomas/Documents/android-ndk-r5b/toolchains/arm-eabi-4.4.0/prebuilt/darwin-x86/bin/arm-eabi-g++ --sysroot=/Users/thomas/Documents/android-ndk-r5b/platforms/android-8/arch-arm -march=armv7-a -mfloat-abi=softfp -mfpu=neon -Wl,--fix-cortex-a8 -fno-exceptions -fno-rtti -nostdlib -fpic -shared -o GLmove.so -O3
@@ -68,8 +69,11 @@ call %AR% rcs libandroid_native_app_glue.a android_native_app_glue.o
 echo %GXX% --sysroot=%TOOLCHAIN%\sysroot -I%NATIVE_APP_GLUE_DIR% %INCLUDES% %GXX_FLAGS% -c %CODE_DIR%\platform.cpp -o main.o
 call %GXX% --sysroot=%TOOLCHAIN%\sysroot -I%NATIVE_APP_GLUE_DIR% %INCLUDES% %GXX_FLAGS% -c %CODE_DIR%\platform.cpp -o main.o
 
-echo %GXX% main.o -L. -landroid_native_app_glue -u ANativeActivity_onCreate -landroid -llog -laaudio -shared -o ..\%OUT_LIB_DIR%\libgame.so
-call %GXX% main.o -L. -landroid_native_app_glue -u ANativeActivity_onCreate -landroid -llog -laaudio -shared -o ..\%OUT_LIB_DIR%\libgame.so
+echo %GXX% main.o -L. -landroid_native_app_glue -u ANativeActivity_onCreate -landroid -llog -laaudio %LINK_FLAGS% -o ..\%OUT_LIB_DIR%\libgame.so
+call %GXX% main.o -L. -landroid_native_app_glue -u ANativeActivity_onCreate -landroid -llog -laaudio %LINK_FLAGS% -o ..\%OUT_LIB_DIR%\libgame.so
+
+echo %GXX% --sysroot=%TOOLCHAIN%\sysroot -I%NATIVE_APP_GLUE_DIR% %INCLUDES% %GXX_FLAGS% %CODE_DIR%\engine.cpp -llog %LINK_FLAGS% -o ..\%OUT_LIB_DIR%\libengine.so
+call %GXX% --sysroot=%TOOLCHAIN%\sysroot -I%NATIVE_APP_GLUE_DIR% %INCLUDES% %GXX_FLAGS% %CODE_DIR%\engine.cpp -llog %LINK_FLAGS% -o ..\%OUT_LIB_DIR%\libengine.so
 
 popd
 
@@ -122,6 +126,7 @@ REM ------------------------------------------------------
 REM Add the native activity and other libs to the APK
 
 call %AAPT% add bin\NativeActivity.unaligned.apk "%AAPT_LIB_DIR%/libgame.so"
+call %AAPT% add bin\NativeActivity.unaligned.apk "%AAPT_LIB_DIR%/libengine.so"
 
 copy "%TOOLCHAIN_LIB_DIR%\libc++_shared.so" %OUT_LIB_DIR%\
 call %AAPT% add bin\NativeActivity.unaligned.apk "%AAPT_LIB_DIR%/libc++_shared.so"

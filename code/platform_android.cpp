@@ -1,6 +1,7 @@
 
 #define USE_UPDATE_THREAD 0
 #define USE_AUDIO_THREAD 0 // Do not set to 1, Android invokes AAudioFillAudioBuffer from its own audio thread
+#define USE_ENGINE_HOT_RELOAD 0
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -17,8 +18,8 @@ static struct android_app *androidApp;
 
 static AAudioStream *audioStream;
 
-static const char *engineLibFilename = "engine.so";
-static const char *engineLibTmpFilename = "engine.tmp.so";
+static const char *engineLibFilename = "libengine.so";
+static const char *engineLibTmpFilename = "libengine.so";
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
