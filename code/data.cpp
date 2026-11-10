@@ -750,18 +750,27 @@ static void DScanner_ScanToken(DScanner &scanner, DTokenList &tokenList)
 			}
 			else if ( DScanner_Consume(scanner, '*') )
 			{
-				while( !(DScanner_Consume(scanner, '*') && DScanner_Consume(scanner, '/')) || DScanner_IsAtEnd(scanner) )
+				bool closed = false;
+				while ( !closed && !DScanner_IsAtEnd(scanner) )
 				{
-					if ( Char_IsEOL( DScanner_Peek(scanner) ) ) {
+					const char commentChar = DScanner_Advance(scanner);
+					if ( Char_IsEOL(commentChar) ) {
 						scanner.line++;
 						scanner.currentInLine = 0;
 					}
-					DScanner_Advance(scanner);
+					// Checking one '*' at a time, so in "**/" the second '*' still closes it
+					closed = commentChar == '*' && DScanner_Consume(scanner, '/');
+				}
+
+				if ( !closed )
+				{
+					DScanner_SetError( scanner, "Unterminated comment." );
+					return;
 				}
 			}
 			else
 			{
-				DScanner_SetError( scanner, "Unterminated comment." );
+				DScanner_SetError( scanner, "Unexpected character '/'." );
 				return;
 			}
 			break;
