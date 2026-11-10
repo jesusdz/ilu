@@ -431,20 +431,12 @@ ID CreateAudioClip(Audio &audio, const AudioClip &audioClipDesc)
 		return {};
 	}
 
-	if ( audioClipDesc.flags & AssetFlag_Bin )
+	if ( IsAssetFromFile(audioClipDesc.flags) &&
+		 !LoadAudioClipFromWAVFile(audioClipDesc.filename, *audioClip) )
 	{
-		audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_ASSETS;
-	}
-	else
-	{
-		if ( !LoadAudioClipFromWAVFile(audioClipDesc.filename, *audioClip) )
-		{
-			LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
-			RemoveAudioClip(audioClip->id);
-			return {};
-		}
-
-		audioClip->loadSource = AUDIO_CLIP_LOAD_SOURCE_WAV;
+		LOG(Warning, "Could not load audio clip %s (not enough memory for audio clips)\n", audioClipDesc.filename);
+		RemoveAudioClip(audioClip->id);
+		return {};
 	}
 
 	return audioClip->id;
@@ -750,12 +742,12 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 					chunk->index = chunkIndex;
 
 					const u32 chunkSampleCount = (chunkIndex == chunkCount - 1) ? audioClip.sampleCount % AUDIO_CHUNK_SAMPLE_COUNT : AUDIO_CHUNK_SAMPLE_COUNT;
-					if ( audioClip.loadSource == AUDIO_CLIP_LOAD_SOURCE_ASSETS )
+					if ( IsAssetFromBin(audioClip.flags) )
 					{
 						FileSeek(engine.assets.file, audioClip.location.offset + firstSampleIndex * sizeof(i16));
 						ReadFromFile(engine.assets.file, chunk->samples, chunkSampleCount * sizeof(i16));
 					}
-					else // id ( audioClip.loadSource == AUDIO_CLIP_LOAD_SOURCE_WAV )
+					else
 					{
 						LoadSamplesFromWAVFile(audioClip.filename, chunk->samples, firstSampleIndex, chunkSampleCount);
 					}
@@ -873,15 +865,6 @@ ID CreateMusicFile(Audio &audio, const MusicFile &musicFileDesc)
 		return {};
 	}
 
-	if ( musicFileDesc.flags & AssetFlag_Bin )
-	{
-		musicFile->loadSource = LOAD_SOURCE_ASSET_FILE;
-	}
-	else
-	{
-		musicFile->loadSource = LOAD_SOURCE_MOD_FILE;
-	}
-
 	return musicFile->id;
 }
 
@@ -929,7 +912,7 @@ void MusicPlay(Engine &engine, ID musicId)
 		MusicFile &musicFile = GetMusicFile(musicId);
 		DataChunk chunk = {};
 
-		if (musicFile.loadSource == LOAD_SOURCE_MOD_FILE)
+		if ( IsAssetFromFile(musicFile.flags) )
 		{
 			const char *filename = musicFile.filename;
 			FilePath filePath = MakePath( AssetDir, filename );
@@ -939,7 +922,7 @@ void MusicPlay(Engine &engine, ID musicId)
 				LOG(Info, "%s loaded correctly from disk\n", filename);
 			}
 		}
-		else if (musicFile.loadSource == LOAD_SOURCE_ASSET_FILE)
+		else
 		{
 			FileSeek(engine.assets.file, musicFile.location.offset);
 			chunk.size = musicFile.location.size;

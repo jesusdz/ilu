@@ -758,8 +758,7 @@ static void DScanner_ScanToken(DScanner &scanner, DTokenList &tokenList)
 						scanner.line++;
 						scanner.currentInLine = 0;
 					}
-					// Checking one '*' at a time, so in "**/" the second '*' still closes it
-					closed = commentChar == '*' && DScanner_Consume(scanner, '/');
+						closed = commentChar == '*' && DScanner_Consume(scanner, '/');
 				}
 
 				if ( !closed )

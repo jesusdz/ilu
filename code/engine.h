@@ -164,6 +164,16 @@ enum AssetFlags
 // will not convert back to the enum on its own, so give the type the operator it is used as if it had.
 inline AssetFlags operator|(AssetFlags a, AssetFlags b) { return (AssetFlags)((u32)a | (u32)b); }
 
+inline bool IsAssetFromBin(AssetFlags flags)
+{
+	return ( flags & AssetFlag_Bin ) != 0;
+}
+
+inline bool IsAssetFromFile(AssetFlags flags)
+{
+	return !IsAssetFromBin(flags);
+}
+
 ////////////////////////////////////////////////////////////////////////
 // Geometry and vertices
 
@@ -339,13 +349,6 @@ struct BinScriptDesc
 
 #define MAX_MUSIC_FILES 16
 
-enum AudioClipLoadSource
-{
-	AUDIO_CLIP_LOAD_SOURCE_WAV,
-	//AUDIO_CLIP_LOAD_SOURCE_MOD,
-	AUDIO_CLIP_LOAD_SOURCE_ASSETS,
-};
-
 REFLEX()
 struct AudioClip
 {
@@ -366,8 +369,6 @@ struct AudioClip
 	REFLEX(Bin)
 	BinLocation location;
 	AssetFlags flags;
-
-	AudioClipLoadSource loadSource;
 };
 
 enum AudioState
@@ -393,12 +394,6 @@ struct AudioChunk
 	AudioChunk *next;
 };
 
-enum LoadSource
-{
-	LOAD_SOURCE_MOD_FILE,
-	LOAD_SOURCE_ASSET_FILE,
-};
-
 REFLEX()
 struct MusicFile
 {
@@ -411,8 +406,6 @@ struct MusicFile
 	REFLEX(Bin)
 	BinLocation location;
 	AssetFlags flags;
-
-	LoadSource loadSource;
 };
 
 struct Audio

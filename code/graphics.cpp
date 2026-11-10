@@ -504,7 +504,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 	// every texture's own size would take a new slot for each larger one until they run out
 	Scratch scratch(Max(desc.location.size, (u32)MB(16)));
 
-	if ( desc.flags & AssetFlag_Bin )
+	if ( IsAssetFromBin(desc.flags) )
 	{
 		const byte *pixels = PushDataFromFile(scratch.arena, gfx.assetsFile, desc.location.offset, desc.location.size);
 
@@ -554,7 +554,7 @@ ID GetOrCreateTexture(Graphics &gfx, const Texture &desc)
 	{
 		const Texture &texture = gfx.textures[i];
 		const Texture &desc = texture;
-		if ( desc.flags & AssetFlag_Bin ) { continue; }
+		if ( IsAssetFromBin(desc.flags) ) { continue; }
 		const FilePath imagePath2 = MakePath(AssetDir, desc.filename);
 		if ( !( desc.flags & AssetFlag_Ghost ) && StrEq(imagePath.str, imagePath2.str)) {
 			id = desc.id;
@@ -624,7 +624,7 @@ static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
 
 	if ( !desc.id ) { return; }
 
-	if ( desc.flags & AssetFlag_Bin ) { return; }
+	if ( IsAssetFromBin(desc.flags) ) { return; }
 	if ( StrEq(desc.filename, "") ) { return; };
 
 	const FilePath imagePath = MakePath(AssetDir, desc.filename);
