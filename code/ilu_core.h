@@ -781,39 +781,40 @@ i64 StrToI64(const String &s)
 
 f32 StrToFloat(const char *str, u32 len = U32_MAX)
 {
-	i32 integer = 0;
+	u64 integer = 0;
 
 	// scan sign
 	f32 sign = 1.0f;
-	if (*str == '-') {
+	if (len > 0 && *str == '-') {
 		sign = -1.0f;
 		str++;
 		len--;
 	}
 
 	// scan integer part
-	while (*str >= '0' && *str <= '9' && len > 0) {
+	while (len > 0 && *str >= '0' && *str <= '9') {
 		integer = (integer << 3) + (integer << 1); // x10
 		integer += *str++ - '0';
 		len--;
 	}
 
-	switch (*str++) {
-		case '.': break;
-		default: return integer;
+	if (len == 0 || *str != '.') {
+		return sign * integer;
 	}
+
+	str++;
 	len--;
 
 	// scan decimal part
-	u32 tenPower = 1;
-	while (*str >= '0' && *str <= '9' && len > 0) {
+	u64 tenPower = 1;
+	while (len > 0 && *str >= '0' && *str <= '9') {
 		tenPower = (tenPower << 3) + (tenPower << 1);
 		integer = (integer << 3) + (integer << 1); // x10
 		integer += *str++ - '0';
 		len--;
 	}
 
-	const f32 value = sign * integer / (f32)tenPower;
+	const f32 value = (f32)( sign * (f64)integer / (f64)tenPower );
 	return value;
 }
 
@@ -1946,8 +1947,15 @@ struct rect
 
 struct float2
 {
-	union { f32 x, r; };
-	union { f32 y, g; };
+	union
+	{
+		f32 vec[2];
+		struct
+		{
+			union { f32 x, r; };
+			union { f32 y, g; };
+		};
+	};
 };
 
 struct float3

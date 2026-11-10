@@ -570,7 +570,6 @@ enum DTokenId
 	TOKEN_RIGHT_BRACE,
 	TOKEN_COMMA,
 	TOKEN_DOT,
-	TOKEN_MINUS,
 	TOKEN_SEMICOLON,
 	TOKEN_EQUAL,
 	// Literals
@@ -590,7 +589,6 @@ static const char *DTokenIdNames[] =
 	"TOKEN_RIGHT_BRACE",
 	"TOKEN_COMMA",
 	"TOKEN_DOT",
-	"TOKEN_MINUS",
 	"TOKEN_SEMICOLON",
 	"TOKEN_EQUAL",
 	// Literals
@@ -736,7 +734,6 @@ static void DScanner_ScanToken(DScanner &scanner, DTokenList &tokenList)
 		case '}': DScanner_AddToken(scanner, tokenList, TOKEN_RIGHT_BRACE); break;
 		case ',': DScanner_AddToken(scanner, tokenList, TOKEN_COMMA); break;
 		case '.': DScanner_AddToken(scanner, tokenList, TOKEN_DOT); break;
-		case '-': DScanner_AddToken(scanner, tokenList, TOKEN_MINUS); break;
 		case ';': DScanner_AddToken(scanner, tokenList, TOKEN_SEMICOLON); break;
 		case '=': DScanner_AddToken(scanner, tokenList, TOKEN_EQUAL ); break;
 		case '/':
@@ -825,7 +822,7 @@ static void DScanner_ScanToken(DScanner &scanner, DTokenList &tokenList)
 			break;
 
 		default:
-			if ( Char_IsDigit(c) )
+			if ( Char_IsDigit(c) || ( c == '-' && Char_IsDigit( DScanner_Peek(scanner) ) ) )
 			{
 				while ( Char_IsDigit( DScanner_Peek(scanner) ) ) DScanner_Advance(scanner);
 
@@ -1007,10 +1004,9 @@ static f32 DParser_ConsumeF32( DParser &parser )
 
 static i32 DParser_ConsumeI32( DParser &parser )
 {
-	const bool neg = DParser_TryConsume(parser, TOKEN_MINUS);
 	const DToken &token = DParser_Consume(parser);
 	const i32 res = StrToInt(token.lexeme);
-	return neg ? -res : res;
+	return res;
 }
 
 static u32 DParser_ConsumeU32( DParser &parser )
@@ -1070,64 +1066,35 @@ static uint2 DParser_ConsumeUint2( DParser &parser )
 	return res;
 }
 
+static void DParser_ConsumeFloats( DParser &parser, f32 *values, u32 count )
+{
+	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
+	for (u32 i = 0; i < count && !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE); ++i)
+	{
+		values[i] = DParser_ConsumeF32(parser);
+		DParser_TryConsume(parser, TOKEN_COMMA);
+	}
+	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+}
+
 static float2 DParser_ConsumeFloat2( DParser &parser )
 {
 	float2 res = {};
-	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
-	const bool sx = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.x = DParser_ConsumeF32(parser);
-	res.x = sx ? -res.x : res.x;
-	DParser_TryConsume(parser, TOKEN_COMMA);
-	const bool sy = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.y = DParser_ConsumeF32(parser);
-	res.y = sy ? -res.y : res.y;
-	DParser_TryConsume(parser, TOKEN_COMMA);
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+	DParser_ConsumeFloats(parser, res.vec, 2);
 	return res;
 }
 
 static float3 DParser_ConsumeFloat3( DParser &parser )
 {
 	float3 res = {};
-	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
-	const bool sx = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.x = DParser_ConsumeF32(parser);
-	res.x = sx ? -res.x : res.x;
-	DParser_TryConsume(parser, TOKEN_COMMA);
-	const bool sy = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.y = DParser_ConsumeF32(parser);
-	res.y = sy ? -res.y : res.y;
-	DParser_TryConsume(parser, TOKEN_COMMA);
-	// Fields widened from float2 are still saved with two components
-	if ( !DParser_IsNextToken(parser, TOKEN_RIGHT_BRACE) ) {
-		const bool sz = DParser_TryConsume(parser, TOKEN_MINUS);
-		res.z = DParser_ConsumeF32(parser);
-		res.z = sz ? -res.z : res.z;
-	}
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+	DParser_ConsumeFloats(parser, res.vec, 3);
 	return res;
 }
 
 static float4 DParser_ConsumeFloat4( DParser &parser )
 {
 	float4 res = {};
-	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
-	const bool sx = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.x = DParser_ConsumeF32(parser);
-	res.x = sx ? -res.x : res.x;
-	DParser_TryConsume(parser, TOKEN_COMMA);
-	const bool sy = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.y = DParser_ConsumeF32(parser);
-	res.y = sy ? -res.y : res.y;
-	DParser_TryConsume(parser, TOKEN_COMMA);
-	const bool sz = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.z = DParser_ConsumeF32(parser);
-	res.z = sz ? -res.z : res.z;
-	DParser_TryConsume(parser, TOKEN_COMMA);
-	const bool sw = DParser_TryConsume(parser, TOKEN_MINUS);
-	res.w = DParser_ConsumeF32(parser);
-	res.w = sw ? -res.w : res.w;
-	DParser_TryConsume(parser, TOKEN_RIGHT_BRACE);
+	DParser_ConsumeFloats(parser, res.vec, 4);
 	return res;
 }
 

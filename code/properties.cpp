@@ -325,12 +325,10 @@ static void WriteProperty_Bool(WriteContext &ctx, const ReflexMember &member, co
 	WriteText(ctx, "%u", *(const bool*)field ? 1u : 0u);
 }
 
-// The lexer holds no sign, so a negative value arrives as a minus token of its own
 static bool ParseProperty_Bool(DParser &parser, const ReflexMember &member, void *field)
 {
-	const bool negative = DParser_TryConsume(parser, TOKEN_MINUS);
 	const i64 value = StrToI64(DParser_ConsumeLexeme(parser));
-	*(bool*)field = !negative && value != 0;
+	*(bool*)field = value > 0;
 	return true;
 }
 
@@ -341,9 +339,8 @@ static void WriteProperty_Int(WriteContext &ctx, const ReflexMember &member, con
 
 static bool ParseProperty_Int(DParser &parser, const ReflexMember &member, void *field)
 {
-	const bool negative = DParser_TryConsume(parser, TOKEN_MINUS);
 	const i64 value = StrToI64(DParser_ConsumeLexeme(parser));
-	WriteSignedField(field, ReflexGetTypeSize(member.reflexId), negative ? -value : value);
+	WriteSignedField(field, ReflexGetTypeSize(member.reflexId), value);
 	return true;
 }
 
@@ -352,12 +349,11 @@ static void WriteProperty_UInt(WriteContext &ctx, const ReflexMember &member, co
 	WriteText(ctx, "%llu", ReadUnsignedField(field, ReflexGetTypeSize(member.reflexId)));
 }
 
-// An unsigned field has no negative to hold, so it takes the minus and reads zero
+// An unsigned field has no negative to hold, so a negative value reads zero
 static bool ParseProperty_UInt(DParser &parser, const ReflexMember &member, void *field)
 {
-	const bool negative = DParser_TryConsume(parser, TOKEN_MINUS);
 	const i64 value = StrToI64(DParser_ConsumeLexeme(parser));
-	WriteUnsignedField(field, ReflexGetTypeSize(member.reflexId), negative || value < 0 ? 0 : (u64)value);
+	WriteUnsignedField(field, ReflexGetTypeSize(member.reflexId), value < 0 ? 0 : (u64)value);
 	return true;
 }
 
@@ -369,9 +365,8 @@ static void WriteProperty_Float(WriteContext &ctx, const ReflexMember &member, c
 // StrToFloat is the only float parser there is, so a double round trips through f32 precision
 static bool ParseProperty_Float(DParser &parser, const ReflexMember &member, void *field)
 {
-	const bool negative = DParser_TryConsume(parser, TOKEN_MINUS);
 	const f32 value = StrToFloat(DParser_ConsumeLexeme(parser));
-	WriteFloatField(field, ReflexGetTypeSize(member.reflexId), negative ? -value : value);
+	WriteFloatField(field, ReflexGetTypeSize(member.reflexId), value);
 	return true;
 }
 

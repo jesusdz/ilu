@@ -446,6 +446,23 @@ void TestStrings()
         TEST("StrToFloat integer", val == 42.0f);
     }
     {
+        f32 val = StrToFloat("-42");
+        TEST("StrToFloat negative integer", val == -42.0f);
+    }
+    {
+        f32 val = StrToFloat("3000.000000");
+        TEST("StrToFloat large with 6 decimals", val == 3000.0f);
+    }
+    {
+        f32 val = StrToFloat("-123456.500000");
+        TEST("StrToFloat large negative with 6 decimals", val == -123456.5f);
+    }
+    {
+        String s = MakeString("5.25", 1);
+        f32 val = StrToFloat(s);
+        TEST("StrToFloat stops at the String length", val == 5.0f);
+    }
+    {
         String s = MakeString("2.5", 3);
         f32 val = StrToFloat(s);
         TEST("StrToFloat String", val > 2.49f && val < 2.51f);
