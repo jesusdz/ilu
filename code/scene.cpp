@@ -843,13 +843,9 @@ static CameraRegionComponent *AddCameraRegion(Scene &scene, ID entityId)
 	return region;
 }
 
-static TriggerComponent *AddTrigger(Engine &engine, ID entityId)
+static TriggerComponent *AddTrigger(Scene &scene, ID entityId)
 {
-	TriggerComponent *trigger = (TriggerComponent*)AddComponentSlot(engine.scene, entityId, ComponentType_Trigger);
-	if ( trigger )
-	{
-
-	}
+	TriggerComponent *trigger = (TriggerComponent*)AddComponentSlot(scene, entityId, ComponentType_Trigger);
 	return trigger;
 }
 
@@ -1014,7 +1010,7 @@ void AddComponent(Engine &engine, ID entityId, ComponentType type)
 			break;
 
 		case ComponentType_Trigger:
-			AddTrigger(engine, entityId);
+			AddTrigger(engine.scene, entityId);
 			break;
 
 		default:

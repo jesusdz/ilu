@@ -319,8 +319,6 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 	LOG(Info, "Saving data to text file: %s\n", path);
 
-	char line[MAX_PATH_LENGTH];
-
 	WriteSectionLine(ctx, "Scene");
 
 	const SceneDesc &desc = assets.sceneDesc;
@@ -2715,12 +2713,9 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 		}
 
 		// Rooms
-		if (assetDescriptors.roomDescCount > 0)
+		for (u32 i = 0; i < assetDescriptors.roomDescCount; ++i)
 		{
-			for (u32 i = 0; i < assetDescriptors.roomDescCount; ++i)
-			{
-				CreateRoom(engine, assetDescriptors.roomDescs[i]);
-			}
+			CreateRoom(engine, assetDescriptors.roomDescs[i]);
 		}
 
 		// Audio clips
@@ -2739,7 +2734,7 @@ void LoadSceneFromTxt(Engine &engine, const char *filepath)
 	}
 }
 
-static bool IsSceneFromBin(const Engine &engine, const char *filepath)
+static bool IsSceneFromBin(const Engine &engine)
 {
 	const bool fromBin = engine.assets.file.isOpen;
 	return fromBin;
@@ -2747,7 +2742,7 @@ static bool IsSceneFromBin(const Engine &engine, const char *filepath)
 
 void SaveSceneToTxt(Engine &engine, const char *filepath)
 {
-	if ( IsSceneFromBin(engine, filepath) ) {
+	if ( IsSceneFromBin(engine) ) {
 		LOG(Error, "Cannot save %s: the scene was loaded from a binary file, which lacks the REFLEX(Dev) fields such as filenames.\n", filepath);
 		return;
 	}
@@ -2760,7 +2755,7 @@ void SaveSceneToTxt(Engine &engine, const char *filepath)
 
 void SaveSceneToBin(Engine &engine, const char *filepath)
 {
-	if ( IsSceneFromBin(engine, filepath) ) {
+	if ( IsSceneFromBin(engine) ) {
 		LOG(Error, "Cannot save %s: the scene was loaded from a binary file, which lacks the REFLEX(Dev) fields such as filenames.\n", filepath);
 		return;
 	}
@@ -2826,12 +2821,9 @@ void LoadSceneFromBin(Engine &engine, const char *filepath)
 		}
 
 		// Rooms
-		if (engine.assets.header.roomCount > 0)
+		for (u32 i = 0; i < engine.assets.header.roomCount; ++i)
 		{
-			for (u32 i = 0; i < engine.assets.header.roomCount; ++i)
-			{
-				CreateRoom(engine, engine.assets.rooms[i]);
-			}
+			CreateRoom(engine, engine.assets.rooms[i]);
 		}
 
 		// Audio clips

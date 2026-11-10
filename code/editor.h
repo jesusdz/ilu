@@ -201,7 +201,6 @@ struct Editor
 	bool showSaveScene;
 	bool showLoadSceneBin;
 	bool showBuildSceneBin;
-	bool showDebugUI;
 	bool showOutliner;
 	bool showAssets;
 	bool showInspector;

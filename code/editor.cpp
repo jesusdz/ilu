@@ -378,10 +378,6 @@ static void EditorUpdateUI_MenuBar()
 				editor.showProfiler = !editor.showProfiler;
 			}
 			#endif // USE_PROFILE
-			//if ( UI_MenuItem(ui, "Debug UI", editor.showDebugUI) )
-			//{
-			//	editor.showDebugUI = !editor.showDebugUI;
-			//}
 
 			UI_Separator(ui);
 
@@ -869,20 +865,6 @@ static void EditorEntityDropTarget(ID layerId)
 			GetEntity(droppedId).roomId = GetLayerRoom(GetLayer(layerId)).id;
 		}
 	}
-}
-
-static void EditorUpdateUI_DebugUI()
-{
-	Engine &engine = GetEngine();
-	Editor &editor = GetEditor();
-	UI &ui = engine.ui;
-	Graphics &gfx = engine.gfx;
-	Scene &scene = engine.scene;
-
-	UI_BeginWindow(ui, "Debug UI", &editor.showDebugUI);
-
-
-	UI_EndWindow(ui);
 }
 
 static void EditorUpdateUI_Outliner()
@@ -2842,11 +2824,6 @@ static void EditorUpdateUI()
 	}
 	#endif // USE_PROFILE
 
-	if ( editor.showDebugUI )
-	{
-		EditorUpdateUI_DebugUI();
-	}
-
 	if ( editor.showAbout )
 	{
 		EditorUpdateUI_About();
@@ -3634,7 +3611,6 @@ void EditorInitialize(Engine &engine)
 	editor.showInspector = true;
 	editor.showSpriteSheet = false;
 	editor.showProfiler = false;
-	editor.showDebugUI = false;
 	editor.showGrid = true;
 	editor.showIcons = true;
 
