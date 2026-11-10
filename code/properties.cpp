@@ -497,7 +497,8 @@ static void WriteProperty_Enum(WriteContext &ctx, const ReflexMember &member, co
 static bool ParseProperty_Enum(DParser &parser, const ReflexMember &member, void *field)
 {
 	const ReflexEnum *reflexEnum = ReflexGetEnum(member.reflexId);
-	const String name = DParser_ConsumeLexeme(parser);
+	// Scene files written before SceneDesc was reflected quote the projection type
+	const String name = DParser_IsNextToken(parser, TOKEN_STRING) ? DParser_ConsumeString(parser) : DParser_ConsumeLexeme(parser);
 
 	for (u32 i = 0; i < reflexEnum->enumeratorCount; ++i) {
 		if ( StrEq(name, reflexEnum->enumerators[i].name) ) {

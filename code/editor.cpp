@@ -1635,7 +1635,12 @@ static void EditorUpdateUI_InspectorScene(Scene &scene)
 	UI_Text(ui, "Entities", "%u", scene.entityCount);
 	UI_Text(ui, "Sprites", "%u", scene.spriteCount);
 
-	UI_Combo(ui, "Projection", (const char **)ProjectionTypeStr, ProjectionTypeCount, (u32*)&scene.projectionType);
+	const ReflexEnum *projectionEnum = ReflexGetEnum(ReflexID_ProjectionType);
+	const char *projectionNames[ProjectionTypeCount];
+	for (u32 i = 0; i < ProjectionTypeCount; ++i) {
+		projectionNames[i] = projectionEnum->enumerators[i].name;
+	}
+	UI_Combo(ui, "Projection", projectionNames, ProjectionTypeCount, (u32*)&scene.projectionType);
 
 	static float4 ambientToEdit = {};
 	static bool ambientPickerOpen = false;

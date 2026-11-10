@@ -2,7 +2,7 @@
 // Scene ///////////////////////////////////////////////////////////////
 
 Scene scene = {
- .projectionType = "ProjectionPerspective",
+ .projectionType = ProjectionPerspective,
  .ambientLight = {0.132129, 0.263956, 0.515625},
  .defaultRoomId = 1021,
 };

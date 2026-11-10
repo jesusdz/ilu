@@ -538,6 +538,7 @@ struct RenderTargets
 ////////////////////////////////////////////////////////////////////////
 // Camera
 
+REFLEX(Count)
 enum ProjectionType
 {
 	ProjectionPerspective,
@@ -545,37 +546,9 @@ enum ProjectionType
 	ProjectionTypeCount,
 };
 
-constexpr const char *ProjectionTypeStr[] = {
-	"ProjectionPerspective",
-	"ProjectionOrthographic",
-};
-
-CT_ASSERT(ARRAY_COUNT(ProjectionTypeStr) == ProjectionTypeCount);
-
 // The light culling shader branches on globals.projectionType
 CT_ASSERT(ProjectionPerspective == PROJECTION_PERSPECTIVE);
 CT_ASSERT(ProjectionOrthographic == PROJECTION_ORTHOGRAPHIC);
-
-inline const char *ProjectionTypeToStr(ProjectionType type)
-{
-	if ( type < ProjectionTypeCount ) {
-		return ProjectionTypeStr[type];
-	} else {
-		return "<unknown>";
-	}
-}
-
-inline ProjectionType StrToProjectionType(const char *str)
-{
-	ProjectionType type = ProjectionTypeCount;
-	for (u32 i = 0; i < ProjectionTypeCount; ++i) {
-		if ( StrEq(ProjectionTypeStr[i], str) ) {
-			return (ProjectionType)i;
-		}
-	}
-	LOG(Warning, "StrToProjectionType could not find projection type for: %s\n", str);
-	return type;
-}
 
 struct Camera
 {
@@ -803,10 +776,14 @@ struct BinShader
 ////////////////////////////////////////////////////////////////////////
 // Scene descriptor
 
+REFLEX()
 struct SceneDesc
 {
+	REFLEX()
 	ProjectionType projectionType;
+	REFLEX(Color)
 	float3 ambientLight;
+	REFLEX(Room)
 	ID defaultRoomId;
 };
 
@@ -1037,13 +1014,19 @@ struct ComponentDesc
 ////////////////////////////////////////////////////////////////////////
 // Entities
 
+REFLEX()
 struct EntityDesc
 {
+	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
+	REFLEX(Room)
 	ID roomId;
 	// Transform
+	REFLEX()
 	float3 pos;
+	REFLEX()
 	f32 scale;
 
 	ComponentDescArray components;
@@ -1202,21 +1185,31 @@ struct TileDesc
 	};
 };
 
+REFLEX()
 struct LayerDesc
 {
+	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
+	REFLEX()
 	bool isBase;
+	REFLEX()
 	bool visible;
+	REFLEX()
 	bool isCollider;
+	REFLEX()
 	bool isBackground;
 	TileDesc *tiles; // non-empty grid cells only
 	u32 tileCount;
 };
 
+REFLEX()
 struct RoomDesc
 {
+	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
 	LayerDesc layers[MAX_LAYERS];
 	u32 layerCount;
@@ -1291,7 +1284,9 @@ struct Room
 REFLEX()
 struct Prefab
 {
+	REFLEX()
 	ID id;
+	REFLEX()
 	const char *name;
 	EntityDescArray entities;
 };
@@ -1380,13 +1375,6 @@ struct Scene
 // Binary data
 
 #pragma pack(push, 1)
-
-struct BinSceneDesc
-{
-	ProjectionType projectionType;
-	float3 ambientLight;
-	ID defaultRoomId;
-};
 
 struct BinEntityDesc
 {
@@ -1610,7 +1598,7 @@ struct BinAssets
 
 	BinAssetsHeader header;
 
-	BinSceneDesc scene;
+	SceneDesc scene;
 	BinShader *shaders;
 	Texture *images;
 	AudioClip *audioClips;

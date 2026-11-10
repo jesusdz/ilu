@@ -253,13 +253,13 @@ static void WritePropertyDescArrayField(WriteContext &ctx, const char *fieldName
 	WriteLine(ctx, "},");
 }
 
-static void WriteStruct(WriteContext &ctx, const ReflexStruct &type, const void *base)
+// A declaration writes its name as its identifier, so only nested structs ask for it as a field
+static void WriteStruct(WriteContext &ctx, const ReflexStruct &type, const void *base, bool writeName = false)
 {
 	for (u32 i = 0; i < type.memberCount; ++i)
 	{
 		const ReflexMember &member = type.members[i];
-		// The name is written as the identifier of the declaration instead
-		if ( StrEq(member.name, "name") ) { continue; }
+		if ( !writeName && StrEq(member.name, "name") ) { continue; }
 		if ( member.meta.flags & ReflexMetaFlag_Bin ) { continue; }
 		WriteProperty(ctx, member, ReflexGetMemberPtr(base, &member));
 	}
@@ -299,10 +299,9 @@ static void WriteComponentDesc(WriteContext &ctx, const ComponentDesc &desc)
 	}
 }
 
-static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc)
+static void WriteEntityDescBody(WriteContext &ctx, const EntityDesc &desc, bool writeName)
 {
-	WriteLine(ctx, ".pos = {%f, %f, %f},", desc.pos.x, desc.pos.y, desc.pos.z);
-	WriteLine(ctx, ".scale = %f,", desc.scale);
+	WriteStruct(ctx, *ReflexGetStruct(ReflexID_EntityDesc), &desc, writeName);
 
 	for (u32 i = 0; i < desc.components.count; ++i)
 	{
@@ -321,14 +320,10 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 	WriteSectionLine(ctx, "Scene");
 
-	const SceneDesc &desc = assets.sceneDesc;
-
 	WriteLine(ctx, "Scene scene = {");
 
 	PushIndent(ctx);
-	WriteLine(ctx, ".projectionType = \"%s\",", ProjectionTypeToStr(desc.projectionType));
-	WriteLine(ctx, ".ambientLight = {%f, %f, %f},", desc.ambientLight.x, desc.ambientLight.y, desc.ambientLight.z);
-	WriteLine(ctx, ".defaultRoomId = %u,", desc.defaultRoomId.slot);
+	WriteStruct(ctx, *ReflexGetStruct(ReflexID_SceneDesc), &assets.sceneDesc);
 	PopIndent(ctx);
 
 	WriteLine(ctx, "};");
@@ -407,10 +402,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Entity %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".id = %u,", desc.id.slot);
-		// Not in prefabs: instances take the room they are dropped in
-		WriteLine(ctx, ".roomId = %u,", desc.roomId.slot);
-		WriteEntityDescBody(ctx, desc);
+		WriteEntityDescBody(ctx, desc, false);
 		PopIndent(ctx);
 
 		WriteLine(ctx, "};");
@@ -426,7 +418,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Prefab %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".id = %u,", desc.id.slot);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_Prefab), &desc);
 		WriteLine(ctx, ".entities = {");
 		PushIndent(ctx);
 
@@ -436,8 +428,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 			WriteLine(ctx, "{");
 			PushIndent(ctx);
-			WriteLine(ctx, ".name = \"%s\",", entity.name);
-			WriteEntityDescBody(ctx, entity);
+			WriteEntityDescBody(ctx, entity, true);
 			PopIndent(ctx);
 			WriteLine(ctx, "},");
 		}
@@ -459,7 +450,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 		WriteLine(ctx, "Room %s = {", desc.name);
 
 		PushIndent(ctx);
-		WriteLine(ctx, ".id = %u,", desc.id.slot);
+		WriteStruct(ctx, *ReflexGetStruct(ReflexID_RoomDesc), &desc);
 		WriteLine(ctx, ".layers = {");
 		PushIndent(ctx);
 
@@ -469,12 +460,7 @@ void SaveAssetDescriptors(const char *path, const AssetDescriptors &assets)
 
 			WriteLine(ctx, "{");
 			PushIndent(ctx);
-			WriteLine(ctx, ".id = %u,", layer.id.slot);
-			WriteLine(ctx, ".name = \"%s\",", layer.name);
-			WriteLine(ctx, ".isBase = %d,", layer.isBase);
-			WriteLine(ctx, ".visible = %d,", layer.visible);
-			WriteLine(ctx, ".isCollider = %d,", layer.isCollider);
-			WriteLine(ctx, ".isBackground = %d,", layer.isBackground);
+			WriteStruct(ctx, *ReflexGetStruct(ReflexID_LayerDesc), &layer, true);
 
 			if (layer.tileCount > 0)
 			{
@@ -981,20 +967,6 @@ static String DParser_ConsumeString( DParser &parser )
 	return str;
 }
 
-static u8 DParser_ConsumeU8( DParser &parser )
-{
-	const DToken &token = DParser_Consume(parser);
-	const u8 res = I32ToU8(StrToInt(token.lexeme));
-	return res;
-}
-
-static u16 DParser_ConsumeU16( DParser &parser )
-{
-	const DToken &token = DParser_Consume(parser);
-	const u16 res = I32ToU16(StrToInt(token.lexeme));
-	return res;
-}
-
 static f32 DParser_ConsumeF32( DParser &parser )
 {
 	const DToken &token = DParser_Consume(parser);
@@ -1144,6 +1116,24 @@ static void DParser_ConsumeProperty( DParser &parser, const ReflexMember &member
 	}
 }
 
+// False when the struct has no such member, leaving the value for the caller to handle or skip
+static bool DParser_ConsumeStructField( DParser &parser, const ReflexStruct &reflexStruct, void *structPtr, String field )
+{
+	const ReflexMember *member = FindProperty(reflexStruct, field);
+	if ( !member || (member->meta.flags & ReflexMetaFlag_Bin) ) {
+		return false;
+	}
+
+	DParser_ConsumeProperty(parser, *member, ReflexGetMemberPtr(structPtr, member));
+	return true;
+}
+
+static void DParser_SkipUnknownField( DParser &parser, const ReflexStruct &reflexStruct, String field )
+{
+	LOG(Warning, "<%s> has no property <%.*s>, its value is skipped.\n", reflexStruct.name, field.size, field.str);
+	DParser_SkipFieldValue(parser);
+}
+
 static void DParser_ConsumeStruct( DParser &parser, const ReflexStruct &reflexStruct, void *structPtr )
 {
 	DParser_TryConsume(parser, TOKEN_LEFT_BRACE);
@@ -1151,13 +1141,8 @@ static void DParser_ConsumeStruct( DParser &parser, const ReflexStruct &reflexSt
 	String field;
 	while ( DParser_NextField(parser, field) )
 	{
-		const ReflexMember *member = FindProperty(reflexStruct, field);
-		if ( !member || (member->meta.flags & ReflexMetaFlag_Bin) ) {
-			LOG(Warning, "<%s> has no property <%.*s>, its value is skipped.\n", reflexStruct.name, field.size, field.str);
-			DParser_SkipFieldValue(parser);
-		} else {
-			void *fieldPtr = ReflexGetMemberPtr(structPtr, member);
-			DParser_ConsumeProperty(parser, *member, fieldPtr);
+		if ( !DParser_ConsumeStructField(parser, reflexStruct, structPtr, field) ) {
+			DParser_SkipUnknownField(parser, reflexStruct, field);
 		}
 	}
 }
@@ -1251,31 +1236,8 @@ static void DParser_ConsumeEntityScript( DParser &parser, EntityDesc &entity )
 	}
 }
 
-static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDesc &entity )
+static void DParser_ConsumeEntityField( DParser &parser, String field, EntityDesc &entity )
 {
-	static const String sId = MakeString("id");
-	static const String sName = MakeString("name");
-	static const String sRoomId = MakeString("roomId");
-	static const String sPos = MakeString("pos");
-	static const String sScale = MakeString("scale");
-
-	if ( StrEq( field, sId ) ) {
-		entity.id = DParser_ConsumeID(parser);
-		return true;
-	} else if ( StrEq( field, sRoomId ) ) {
-		entity.roomId = DParser_ConsumeID(parser);
-		return true;
-	} else if ( StrEq( field, sName ) ) {
-		entity.name = PushString(*parser.arena, DParser_ConsumeString(parser));
-		return true;
-	} else if ( StrEq( field, sPos ) ) {
-		entity.pos = DParser_ConsumeFloat3(parser);
-		return true;
-	} else if ( StrEq( field, sScale ) ) {
-		entity.scale = DParser_ConsumeF32(parser);
-		return true;
-	}
-
 	for (u32 type = 0; type < ComponentType_Count; ++type)
 	{
 		if ( StrEq( field, ComponentFieldNames[type] ) )
@@ -1285,15 +1247,15 @@ static bool DParser_ConsumeEntityField( DParser &parser, String field, EntityDes
 			} else {
 				DParser_ConsumeEntityComponent(parser, entity, (ComponentType)type);
 			}
-			return true;
+			return;
 		}
 	}
 
-	return false;
+	const ReflexStruct &entityType = *ReflexGetStruct(ReflexID_EntityDesc);
+	if ( !DParser_ConsumeStructField(parser, entityType, &entity, field) ) {
+		DParser_SkipUnknownField(parser, entityType, field);
+	}
 }
-
-
-
 
 
 static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
@@ -1311,10 +1273,7 @@ static void DParser_ConsumePrefabEntities( DParser &parser, PrefabDesc &prefab )
 		String field;
 		while ( DParser_NextField(parser, field) )
 		{
-			if ( !DParser_ConsumeEntityField(parser, field, entityDesc) ) {
-				LOG(Warning, "Unknown prefab entity field <%.*s>.\n", field.size, field.str);
-				DParser_SkipFieldValue(parser);
-			}
+			DParser_ConsumeEntityField(parser, field, entityDesc);
 		}
 
 		DParser_TryConsume(parser, TOKEN_COMMA);
@@ -1334,35 +1293,15 @@ static void DParser_ConsumeRoomLayers( DParser &parser, RoomDesc &room )
 	while ( DParser_TryConsume(parser, TOKEN_LEFT_BRACE) && !DParser_HasFinished(parser) )
 	{
 		LayerDesc layerDesc = {};
+		const ReflexStruct &layerType = *ReflexGetStruct(ReflexID_LayerDesc);
 
 		String field;
 		while ( DParser_NextField(parser, field) )
 		{
-			static const String sId = MakeString("id");
-			static const String sName = MakeString("name");
-			static const String sIsBase = MakeString("isBase");
-			static const String sVisible = MakeString("visible");
-			static const String sIsCollider = MakeString("isCollider");
-			static const String sIsBackground = MakeString("isBackground");
-			static const String sTiles = MakeString("tiles");
-
-			if ( StrEq( field, sId ) ) {
-				layerDesc.id = DParser_ConsumeID(parser);
-			} else if ( StrEq( field, sName ) ) {
-				layerDesc.name = PushString(*parser.arena, DParser_ConsumeString(parser));
-			} else if ( StrEq( field, sIsBase ) ) {
-				layerDesc.isBase = DParser_ConsumeU8(parser) != 0;
-			} else if ( StrEq( field, sVisible ) ) {
-				layerDesc.visible = DParser_ConsumeU8(parser) != 0;
-			} else if ( StrEq( field, sIsCollider ) ) {
-				layerDesc.isCollider = DParser_ConsumeU8(parser) != 0;
-			} else if ( StrEq( field, sIsBackground ) ) {
-				layerDesc.isBackground = DParser_ConsumeU8(parser) != 0;
-			} else if ( StrEq( field, sTiles ) ) {
+			if ( StrEq( field, "tiles" ) ) {
 				DParser_ConsumeTiles(parser, layerDesc);
-			} else {
-				LOG(Warning, "Unknown Layer field <%.*s>.\n", field.size, field.str);
-				DParser_SkipFieldValue(parser);
+			} else if ( !DParser_ConsumeStructField(parser, layerType, &layerDesc, field) ) {
+				DParser_SkipUnknownField(parser, layerType, field);
 			}
 		}
 
@@ -1412,13 +1351,6 @@ static const String sRoomStr = MakeString("Room");
 static const String sAudioClipStr = MakeString("AudioClip");
 static const String sMusicFileStr = MakeString("MusicFile");
 
-const char *StringToCStr( String str )
-{
-	static char cstr[128];
-	StrCopy(cstr, str);
-	return cstr;
-}
-
 static void DParseDescriptors(DParser &parser, bool countOnly)
 {
 	AssetDescriptors &descriptors = *parser.descriptors;
@@ -1433,29 +1365,9 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 			if ( StrEq(type, sSceneStr) ) {
 				if ( countOnly ) goto parse_descriptors_continue;
 
-				SceneDesc &desc = descriptors.sceneDesc;
-				const String name = DParser_ConsumeLexeme( parser ); // Unused for now
-
+				DParser_ConsumeLexeme( parser ); // The name, unused for now
 				DParser_TryConsume( parser, TOKEN_EQUAL );
-				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
-				String field;
-				while ( DParser_NextField( parser, field ) )
-				{
-					static const String sProjectionType = MakeString("projectionType");
-					static const String sAmbientLight = MakeString("ambientLight");
-					static const String sDefaultRoomId = MakeString("defaultRoomId");
-					if ( StrEq( field, sProjectionType ) ) {
-						const char *cstr = StringToCStr( DParser_ConsumeString(parser) );
-						desc.projectionType = StrToProjectionType( cstr );
-					} else if ( StrEq( field, sAmbientLight ) ) {
-						desc.ambientLight = DParser_ConsumeFloat3(parser);
-					} else if ( StrEq( field, sDefaultRoomId ) ) {
-						desc.defaultRoomId = DParser_ConsumeID(parser);
-					} else {
-						LOG(Warning, "Unknown Scene field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
-					}
-				}
+				DParser_ConsumeStruct( parser, *ReflexGetStruct(ReflexID_SceneDesc), &descriptors.sceneDesc );
 			}
 
 			// Texture
@@ -1521,10 +1433,7 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				String field;
 				while ( DParser_NextField( parser, field ) )
 				{
-					if ( !DParser_ConsumeEntityField( parser, field, desc ) ) {
-						LOG(Warning, "Unknown Entity field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
-					}
+					DParser_ConsumeEntityField( parser, field, desc );
 				}
 
 			// Prefab
@@ -1538,19 +1447,14 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
+				const ReflexStruct &prefabType = *ReflexGetStruct(ReflexID_Prefab);
 				String field;
 				while ( DParser_NextField( parser, field ) )
 				{
-					static const String sId = MakeString("id");
-					static const String sEntities = MakeString("entities");
-
-					if ( StrEq( field, sId ) ) {
-						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sEntities ) ) {
+					if ( StrEq( field, "entities" ) ) {
 						DParser_ConsumePrefabEntities(parser, desc);
-					} else {
-						LOG(Warning, "Unknown Prefab field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
+					} else if ( !DParser_ConsumeStructField(parser, prefabType, &desc, field) ) {
+						DParser_SkipUnknownField(parser, prefabType, field);
 					}
 				}
 
@@ -1565,19 +1469,14 @@ static void DParseDescriptors(DParser &parser, bool countOnly)
 				desc.name = PushString(*parser.arena, name);
 				DParser_TryConsume( parser, TOKEN_EQUAL );
 				DParser_TryConsume( parser, TOKEN_LEFT_BRACE );
+				const ReflexStruct &roomType = *ReflexGetStruct(ReflexID_RoomDesc);
 				String field;
 				while ( DParser_NextField( parser, field ) )
 				{
-					static const String sId = MakeString("id");
-					static const String sLayers = MakeString("layers");
-
-					if ( StrEq( field, sId ) ) {
-						desc.id = DParser_ConsumeID(parser);
-					} else if ( StrEq( field, sLayers ) ) {
+					if ( StrEq( field, "layers" ) ) {
 						DParser_ConsumeRoomLayers(parser, desc);
-					} else {
-						LOG(Warning, "Unknown Room field <%.*s>.\n", field.size, field.str);
-						DParser_SkipFieldValue(parser);
+					} else if ( !DParser_ConsumeStructField(parser, roomType, &desc, field) ) {
+						DParser_SkipUnknownField(parser, roomType, field);
 					}
 				}
 
@@ -1931,7 +1830,9 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 	{
 		u32 offset = sizeof( BinAssetsHeader );
 
-		const u32 sceneOffset = PostIncrement(&offset, sizeof(BinSceneDesc));
+		const ReflexStruct &sceneType = *ReflexGetStruct(ReflexID_SceneDesc);
+		const u32 sceneSize = DataPackedSize(sceneType);
+		const u32 sceneOffset = PostIncrement(&offset, sceneSize);
 
 		const u32 shaderCount = descriptors.shaderDescCount;
 		const u32 shadersSize = shaderCount * sizeof(BinShaderDesc);
@@ -2206,12 +2107,9 @@ void BuildAssets(const AssetDescriptors &descriptors, const char *filepath, Aren
 
 		// Write asset descs
 		fseek(file, sceneOffset, SEEK_SET);
-		const BinSceneDesc binSceneDesc = {
-			.projectionType = descriptors.sceneDesc.projectionType,
-			.ambientLight = descriptors.sceneDesc.ambientLight,
-			.defaultRoomId = descriptors.sceneDesc.defaultRoomId,
-		};
-		fwrite(&binSceneDesc,     sizeof(binSceneDesc),         1,              file);
+		u8 *binSceneDesc = PushZeroArray(tempArena, u8, sceneSize);
+		DataPackStruct(stringPool, sceneType, binSceneDesc, &descriptors.sceneDesc);
+		fwrite(binSceneDesc,      sceneSize,                    1,              file);
 		fwrite(binShaderDescs,    sizeof(binShaderDescs[0]),    shaderCount,    file);
 		fwrite(binImageDescs,     imagesSize,                   1,              file);
 		fwrite(binAudioClipDescs, audioClipsSize,               1,              file);
@@ -2323,11 +2221,8 @@ BinAssets OpenAssets(Arena &dataArena, const char *filepath)
 		dataArena, file, assets.header.stringPoolOffset, assets.header.stringPoolSize);
 
 	// Scene
-	BinSceneDesc *binSceneDesc = (BinSceneDesc*)PushDataFromFile(
-		dataArena, file, assets.header.sceneOffset, sizeof(BinSceneDesc));
-	assets.scene.projectionType = binSceneDesc->projectionType;
-	assets.scene.ambientLight = binSceneDesc->ambientLight;
-	assets.scene.defaultRoomId = binSceneDesc->defaultRoomId;
+	assets.scene = *(SceneDesc*)DataReadPackedArray(
+		dataArena, file, stringPool, *ReflexGetStruct(ReflexID_SceneDesc), assets.header.sceneOffset, 1);
 
 	// Shaders
 	BinShaderDesc *binShaderDescs = (BinShaderDesc*)PushDataFromFile(
