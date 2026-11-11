@@ -607,10 +607,32 @@ static LRESULT CALLBACK Win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
 			{
 				// ptMinTrackSize is the full window size, borders and caption included
 				RECT minRect = { 0, 0, (int)MIN_WINDOW_WIDTH, (int)MIN_WINDOW_HEIGHT };
-				AdjustWindowRect( &minRect, GetWindowLong(hWnd, GWL_STYLE), FALSE );
+				AdjustWindowRectExForDpi( &minRect, GetWindowLong(hWnd, GWL_STYLE), FALSE, 0, GetDpiForWindow(hWnd) );
 				MINMAXINFO *info = (MINMAXINFO*)lParam;
 				info->ptMinTrackSize.x = minRect.right - minRect.left;
 				info->ptMinTrackSize.y = minRect.bottom - minRect.top;
+				return 0;
+			}
+
+		case WM_GETDPISCALEDSIZE:
+			{
+				// DPI change: keep client size in pixels
+				RECT rect;
+				GetClientRect(hWnd, &rect);
+				AdjustWindowRectExForDpi( &rect, GetWindowLong(hWnd, GWL_STYLE), FALSE, 0, (UINT)wParam );
+				SIZE *size = (SIZE*)lParam;
+				size->cx = rect.right - rect.left;
+				size->cy = rect.bottom - rect.top;
+				return TRUE;
+			}
+
+		case WM_DPICHANGED:
+			{
+				// Apply rect suggested from WM_GETDPISCALEDSIZE
+				const RECT *rect = (const RECT*)lParam;
+				SetWindowPos(hWnd, NULL, rect->left, rect->top,
+						rect->right - rect->left, rect->bottom - rect->top,
+						SWP_NOZORDER | SWP_NOACTIVATE);
 				return 0;
 			}
 
@@ -712,6 +734,9 @@ static bool InitializeWindow(Window &window, u32 width, u32 height, const char *
 
 	FilePath iconPath = MakePath(ProjectDir, "editor/ilu.ico");
 
+	// Ignore display scaling, render 1:1 on every monitor (no blurry stretching)
+	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
 	// Register the window class.
 	const char CLASS_NAME[]  = "Ilu Class";
 	HINSTANCE hInstance = GetModuleHandle(NULL);
@@ -731,9 +756,6 @@ static bool InitializeWindow(Window &window, u32 width, u32 height, const char *
 		Win32ReportError("InitializeWindow - RegisterClassA");
 		return false;
 	}
-
-	// Ignore display scaling
-	SetProcessDPIAware();
 
 	// Given the desired client window size, get the full size
 	RECT windowRect = { 0, 0, (int)width, (int)height };
