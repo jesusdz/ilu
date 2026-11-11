@@ -192,6 +192,26 @@ static int32_t AndroidHandleInputEvent(struct android_app *app, AInputEvent *eve
 	return 0;
 }
 
+// Tells MainActivity (Java) that the first frame was rendered, so it can let its window be
+// drawn, which dismisses the splash screen. Until then the splash screen stays on screen.
+static void AndroidFrameRendered()
+{
+	static bool firstFrameReported = false;
+	if ( firstFrameReported )
+	{
+		return;
+	}
+	firstFrameReported = true;
+
+	JavaVM *vm = androidApp->activity->vm;
+	JNIEnv *env;
+	vm->AttachCurrentThread(&env, NULL);
+	jobject activity = androidApp->activity->clazz;
+	jmethodID method = env->GetMethodID(env->GetObjectClass(activity), "onFirstFrameRendered", "()V");
+	env->CallVoidMethod(activity, method);
+	vm->DetachCurrentThread(); // Also frees the local references
+}
+
 static bool InitializeWindow(Window &window, u32 width, u32 height, const char *title)
 {
 	ZeroStruct(&window);

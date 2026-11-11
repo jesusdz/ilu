@@ -914,6 +914,10 @@ static void UpdateAndRender(Platform &platform)
 		platform.OnPlatformUpdate(platform.host);
 		platform.OnPlatformRenderGraphics(platform.host);
 
+#if PLATFORM_ANDROID
+		AndroidFrameRendered(); // Dismisses the splash screen after the first frame
+#endif
+
 		platform.window.flags = 0;
 		platform.host.fileChangesDetected = false;
 	}
