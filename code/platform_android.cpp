@@ -84,6 +84,10 @@ static void AndroidHandleAppCommand(struct android_app *app, int32_t cmd)
 			if (app->window && app->window != windowImpl.nativeWindow)
 			{
 				windowImpl.nativeWindow = app->window;
+				// No swapchain owns this window yet, so this is still the real window size.
+				// It must be non-zero for the engine to create the swapchain (TERM_WINDOW zeroes it).
+				platform->window.width = ANativeWindow_getWidth(app->window);
+				platform->window.height = ANativeWindow_getHeight(app->window);
 				const PlatformEvent event = { .type = PlatformEventTypeWindowWasCreated };
 				SendPlatformEvent(*platform, event);
 			}
@@ -98,18 +102,13 @@ static void AndroidHandleAppCommand(struct android_app *app, int32_t cmd)
 				SendPlatformEvent(*platform, event);
 			}
 			break;
-		case APP_CMD_WINDOW_RESIZED:
-			{
-				const PlatformEvent event = {
-					.type = PlatformEventTypeWindowResize,
-					.windowResize = {
-						.width = (u16)ANativeWindow_getWidth(app->window),
-						.height = (u16)ANativeWindow_getHeight(app->window),
-					},
-				};
-				SendPlatformEvent(*platform, event);
-			}
-			break;
+		//case APP_CMD_WINDOW_RESIZED:
+			// Ignored. ANativeWindow_getWidth/Height return the size of the window buffers, which
+			// the swapchain sets to its own (downscaled, pre-rotated) extent, so comparing them
+			// with the window size recreated the swapchain on every resize (one comes right after
+			// INIT_WINDOW). The window can't really change size: it's landscape only (a 180 degree
+			// flip makes vkQueuePresentKHR return VK_SUBOPTIMAL_KHR, which recreates the swapchain)
+			// and other changes (e.g. foldables) restart the activity, creating a new window.
 		//case APP_CMD_WINDOW_REDRAW_NEEDED: break;
 		//case APP_CMD_CONTENT_RECT_CHANGED: break;
 		//case APP_CMD_GAINED_FOCUS: break;
