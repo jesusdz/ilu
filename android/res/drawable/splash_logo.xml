@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+	Splash screen icon (Android 12+). The icon area is 288dp but it's masked to a
+	centered circle of 192dp, so the whole logo (including its corners) must fit
+	inside that circle: a 26% inset on each side leaves a square of ~48% of the area.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+	android:drawable="@drawable/ilu_logo"
+	android:inset="26%" />
