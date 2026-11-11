@@ -9,7 +9,7 @@ set ANDROID_HOME=C:\Users\jesus\Soft\android-sdk
 set BUILD_TOOLS= %ANDROID_HOME%\build-tools\33.0.1
 set PLATFORM_TOOLS=%ANDROID_HOME%\platform-tools
 set ANDROID_PLATFORM_DIR=%ANDROID_HOME%\platforms\android-33
-set APPLICATION_REL_PATH=com\tools\game
+set APPLICATION_REL_PATH=com\ilu\game
 set HOST=windows-x86_64
 
 REM clang.exe --print-targets to see a full list of targets

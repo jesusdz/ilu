@@ -31,7 +31,10 @@ if [ "$mScreenLocked" == "true" ]; then
 	sleep 0.2
 fi
 
-adb shell am start -a android.intent.action.MAIN -n com.tools.game/.MainActivity
+source ./environment.sh
+
+# Launch the app's LAUNCHER activity without hardcoding the activity class
+adb shell monkey -p ${PACKAGE_NAME} -c android.intent.category.LAUNCHER 1
 
 ./logcat.sh
 

@@ -85,21 +85,22 @@ if [[ ${target} = "apk" ]]; then
 	${AAPT} package -v -f -m -S res -J src -M AndroidManifest.xml -I ${ANDROID_PLATFORM_DIR}/android.jar
 
 	# ----------------------------------------------------
-	# Compile java code from 'src' to 'obj' directory
+	# Compile all java code in 'src' (including R.java) to 'obj/classes'
 
-	${JAVAC} -source 1.7 -target 1.7 -d obj -classpath ${ANDROID_PLATFORM_DIR}/android.jar -sourcepath src src/${APPLICATION_REL_PATH}/R.java
-	${JAVAC} -source 1.7 -target 1.7 -d obj -classpath ${ANDROID_PLATFORM_DIR}/android.jar -sourcepath src src/${APPLICATION_REL_PATH}/MainActivity.java
+	rm -rf obj/classes
+	mkdir -p obj/classes
+	${JAVAC} --release 11 -d obj/classes -classpath ${ANDROID_PLATFORM_DIR}/android.jar -sourcepath src $(find src -name '*.java')
 
 	# ----------------------------------------------------
 	# Compile java bytecode to dex bytecode. Reference
 	# https://developer.android.com/studio/command-line/d8
 
-	${D8} obj/${APPLICATION_REL_PATH}/* --classpath ${ANDROID_PLATFORM_DIR}/android.jar --output bin/
+	${D8} $(find obj/classes -name '*.class') --min-api 24 --classpath ${ANDROID_PLATFORM_DIR}/android.jar --output bin/
 
 	# ----------------------------------------------------
 	# Generate the first unsigned version of the APK
 
-	${AAPT} package -v -f -M AndroidManifest.xml -S res -I ${ANDROID_PLATFORM_DIR}/android.jar -F bin/NativeActivity.unaligned.apk bin/
+	${AAPT} package -v -f -M AndroidManifest.xml -S res -I ${ANDROID_PLATFORM_DIR}/android.jar --rename-manifest-package ${PACKAGE_NAME} -F bin/NativeActivity.unaligned.apk bin/
 
 	# ------------------------------------------------------
 	# Add the native activity and other libs to the APK
@@ -136,16 +137,18 @@ fi
 if [[ ${target} = "install" ]]; then
 	echo Installing application
 	# -k argument would keep the data and cache directories
-	${ADB} uninstall com.tools.game
+	if ${ADB} shell pm list packages ${PACKAGE_NAME} | grep -qx "package:${PACKAGE_NAME}"; then
+		${ADB} uninstall ${PACKAGE_NAME}
+	fi
 	${ADB} install -r bin/NativeActivity.apk
-	${ADB} shell mkdir -p /sdcard/Android/data/com.tools.game/files/
-	${ADB} shell chmod o+rwx /sdcard/Android/data/com.tools.game/files
-	${ADB} push ../build/shaders.dat /sdcard/Android/data/com.tools.game/files/
-	${ADB} shell chmod o+r /sdcard/Android/data/com.tools.game/files/shaders.dat
-	${ADB} push ../build/assets.dat /sdcard/Android/data/com.tools.game/files/
-	${ADB} shell chmod o+r /sdcard/Android/data/com.tools.game/files/assets.dat
-	#${ADB} push ../build/shaders/ /sdcard/Android/data/com.tools.game/files/
-	#${ADB} shell chmod o+rwx /sdcard/Android/data/com.tools.game/files/shaders
+	${ADB} shell mkdir -p ${DEVICE_DATA_DIR}/
+	${ADB} shell chmod o+rwx ${DEVICE_DATA_DIR}
+	${ADB} push ../build/shaders.dat ${DEVICE_DATA_DIR}/
+	${ADB} shell chmod o+r ${DEVICE_DATA_DIR}/shaders.dat
+	${ADB} push ../build/assets.dat ${DEVICE_DATA_DIR}/
+	${ADB} shell chmod o+r ${DEVICE_DATA_DIR}/assets.dat
+	#${ADB} push ../build/shaders/ ${DEVICE_DATA_DIR}/
+	#${ADB} shell chmod o+rwx ${DEVICE_DATA_DIR}/shaders
 fi
 
 
@@ -156,7 +159,7 @@ fi
 if [[ ${target} = "cleanall" ]]; then
 	rm -rf bin obj lib 2>/dev/null
 	rm -rf bin intermediates 2>/dev/null
-	rm -rf src/com/tools/game/R.java
+	find src -name R.java -delete
 	rm -rf Tools.keystore
 fi
 

@@ -19,15 +19,10 @@ Unzip the **Commandline tools** in a temporary directory (we will remove this di
 Open a command terminal and navigate to the the temporary directory. Go to subdirectory `cmdline-tools\bin`:
 
 ```
-# This is where we installed java
-set JAVA_HOME=C:\Users\jesus\Soft\jdk-17.0.11
-
 # This is where we will install the Android SDK
 set ANDROID_HOME=C:\Users\jesus\Soft\android-sdk
 
-sdkmanager --sdk_root=%ANDROID_HOME% --install
-sdkmanager --sdk_root=%ANDROID_HOME% --list
-sdkmanager --sdk_root=%ANDROID_HOME% --install "cmdline-tools;latest"
+android --sdk=%ANDROID_HOME% sdk install cmdline-tools/latest
 ```
 
 The bootstrap at `ANDROID_HOME` is ready. You can safely remove the temporary directory containing the commandline tools.
@@ -37,25 +32,58 @@ The bootstrap at `ANDROID_HOME` is ready. You can safely remove the temporary di
 Open a command terminal and navigate to the `ANDROID_HOME` directory. Go to subdirectory `cmdline-tools\latest\bin`:
 
 ```
-# This is where we installed java
-set JAVA_HOME=C:\Users\jesus\Soft\jdk-17.0.11
+# The android tool finds the SDK through ANDROID_HOME (or pass --sdk=<path>)
+set ANDROID_HOME=C:\Users\jesus\Soft\android-sdk
 
-# Install build tools: aapt, aapt2, zipalign...
-sdkmanager --install "build-tools;35.0.0"
+# Install build tools: aapt, aapt2, d8, zipalign, apksigner...
+android sdk install build-tools/36.0.0
 
 # Install platform tools: adb...
-sdkmanager --install "platform-tools"
+android sdk install platform-tools
 
 # NDK and SDK development kits
-sdkmanager --install "ndk;25.2.9519653"
-sdkmanager --install "platforms;android-33"
+android sdk install ndk/30.0.16248370
+android sdk install platforms/android-36
+
+# Check what is installed / available
+android sdk list
+android sdk list --all "ndk*"
 ```
 
-**NOTE 1:** With **build-tools** version **35.0.0** APKs are generated correctly. Not sure when exactly, but previous versions of the **build-tools** had an issue in their **d8** script, which was passing the deprecated argument `-Djava.ext.dirs` to java (only accepted by previous versions of the JDK). Simply removing this argument was enough to have **d8** working, but better not to have to modify the Android build tools.
+`android sdk` replaces the older `sdkmanager` tool, which is still shipped in `cmdline-tools\latest\bin`. Package names use `/` instead of the `;` used by `sdkmanager` (`build-tools/36.0.0` vs `"build-tools;36.0.0"`).
 
-**NOTE 2:** Because the new commandline tools are part of the directory structure managed by the sdk manager, there is no need to specify the `--sdk_root` to execute the `sdkmanager` anymore.
+These are the package versions the build was last tested with:
+
+| Package                | Version        |
+|------------------------|----------------|
+| `build-tools`          | 36.0.0         |
+| `cmdline-tools/latest` | 23.0.0         |
+| `ndk`                  | 30.0.16248370  |
+| `platform-tools`       | 37.0.1         |
+| `platforms/android-36` | 2.0.0          |
+
+The build scripts don't detect these versions. If you install different ones, update the paths in `environment.bat` (`ANDROID_PLATFORM_DIR`, `NDK`, `BUILD_TOOLS`).
+
+**NOTE 1:** The **build-tools** version must be at least as new as the **platform** (`android.jar`) version. Older `aapt`/`aapt2` cannot parse the resource table of newer `android.jar` files and spam alignment / out of bounds errors.
+
+**NOTE 2:** Older versions of the **build-tools** had an issue in their **d8** script, which was passing the deprecated argument `-Djava.ext.dirs` to java (only accepted by previous versions of the JDK). This is fixed in recent versions.
+
+**NOTE 3:** Once the commandline tools are installed inside `ANDROID_HOME`, `android` finds the SDK through the `ANDROID_HOME` variable, so `--sdk` is only needed for the bootstrap step.
 
 Close the command line. We have everything we need to compile and deploy the Android app.
+
+
+## Build and install
+
+From the `android` directory:
+
+```
+build.bat          # compile the native libraries (libgame.so, libengine.so)
+build.bat apk      # package, align and sign bin\NativeActivity.apk
+build.bat install  # install the APK and push shaders.dat / assets.dat to the device
+```
+
+The application ID (`com.ilu.game`) is set by `PACKAGE_NAME` in `environment.bat` / `environment.sh`. The Java package of `MainActivity` is declared separately in `src/com/ilu/game/MainActivity.java` and in `AndroidManifest.xml`.
 
 
 ## Prepare your phone for debugging
@@ -66,6 +94,10 @@ Close the command line. We have everything we need to compile and deploy the And
   - [Unlock the developer options](https://developer.android.com/studio/debug/dev-options).
 - Enable the option *USB debugging*
 - Enable the option *Wireless debugging* (for debugging over wireless connections)
+
+### Play Protect
+
+Recent Android versions may block the install with `INSTALL_FAILED_VERIFICATION_FAILURE` and a message saying the app was built for an older Android version. Keep `targetSdkVersion` in `AndroidManifest.xml` up to date (currently 36). If installs over USB are still blocked, disable *Verify apps over USB* in the developer options.
 
 ### Renderdoc captures
 
@@ -91,7 +123,7 @@ To fix this, open the developer options on your phone and:
 ## Debugging commands
 
 ```
-adb shell pm dump com.tools.game | grep versionCode
+adb shell pm dump com.ilu.game | grep versionCode
 
 Server:
 (pc) LLDB_SERVER_DIR=${TOOLCHAIN}/lib64/clang/14.0.7/lib/linux/aarch64
@@ -104,7 +136,7 @@ Server:
 
 Client:
 (pc) adb devices // Note down the name of the device
-(pc) adb shell pidof com.tools.game // Note down the pid of the process
+(pc) adb shell pidof com.ilu.game // Note down the pid of the process
 (pc) adb forward tcp:9999 tcp:9999
 (pc) lldb.sh
 (lldb) platform select remote-android
@@ -121,7 +153,7 @@ Client:
 ```
 lldb
 (lldb) platform select remote-android
-(lldb) platform connect unix-abstract-connect:///com.tools.game/debug.socket
+(lldb) platform connect unix-abstract-connect:///com.ilu.game/debug.socket
 (lldb) attach <pid>
 ```
 

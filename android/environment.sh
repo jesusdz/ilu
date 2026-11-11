@@ -17,13 +17,16 @@ if [ ! -d "${ANDROID_HOME}" ]; then
 	exit -1
 fi
 
-PACKAGE_NAME=com.tools.game
+# Application ID used to install/identify the app on the device.
+# (The Java package of MainActivity is declared in its own source
+# file and in AndroidManifest.xml; it doesn't need to match this.)
+PACKAGE_NAME=com.ilu.game
+DEVICE_DATA_DIR=/sdcard/Android/data/${PACKAGE_NAME}/files
 
 # Directories
 BUILD_TOOLS=${ANDROID_HOME}/build-tools/33.0.2
 PLATFORM_TOOLS=${ANDROID_HOME}/platform-tools
 ANDROID_PLATFORM_DIR=${ANDROID_HOME}/platforms/android-33
-APPLICATION_REL_PATH=com/tools/game
 HOST=linux-x86_64
 TARGET=aarch64-linux-android33
 NDK=${ANDROID_HOME}/ndk/25.2.9519653

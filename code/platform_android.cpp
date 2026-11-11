@@ -33,8 +33,13 @@ static bool IsAbsolutePath(const char *path)
 
 static void InitializeDirectories(Platform &platform)
 {
-	// TODO: Don't hardcode this path here and get it from Android API.
-	DataDir = "/sdcard/Android/data/com.tools.game/files";
+	// App-specific external storage: /storage/emulated/0/Android/data/<package>/files
+	// (same location as /sdcard/Android/data/<package>/files, where 'build install' pushes data).
+	DataDir = androidApp->activity->externalDataPath;
+	if (!DataDir)
+	{
+		DataDir = androidApp->activity->internalDataPath;
+	}
 	BinDir = DataDir;
 	ProjectDir = "";
 
@@ -212,7 +217,7 @@ static void ShowPlatformWindow(Window &window)
 
 static void PlatformWakeMainThread()
 {
-	// No-op: the event loop polls without blocking (ALooper_pollAll with a zero
+	// No-op: the event loop polls without blocking (ALooper_pollOnce with a zero
 	// timeout), so the main loop re-checks keepRunning every iteration on its own.
 }
 
@@ -225,8 +230,15 @@ static void PlatformUpdateEventLoop(Platform &platform)
 
 	const int kWaitForever = -1;
 	const int kDontWait = 0;
-	while ((ident=ALooper_pollAll(kDontWait, NULL, &events, (void**)&source)) >= 0)
+	// ALooper_pollOnce returns ALOOPER_POLL_CALLBACK when it only dispatched callbacks,
+	// so keep polling in that case too (this is what ALooper_pollAll did internally).
+	while ((ident=ALooper_pollOnce(kDontWait, NULL, &events, (void**)&source)) >= 0 || ident == ALOOPER_POLL_CALLBACK)
 	{
+		if (ident == ALOOPER_POLL_CALLBACK)
+		{
+			continue;
+		}
+
 		// Process this event.
 		if (source != NULL)
 		{

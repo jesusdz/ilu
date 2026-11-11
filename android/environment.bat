@@ -19,6 +19,7 @@ if not exist %JAVA_HOME% (
 )
 
 set JAVAC=%JAVA_HOME%\bin\javac
+set JAR=%JAVA_HOME%\bin\jar
 set KEYTOOL=%JAVA_HOME%\bin\keytool
 
 
@@ -32,7 +33,7 @@ if not exist %ANDROID_HOME% (
 	exit /b 1
 )
 
-set ANDROID_PLATFORM_DIR=%ANDROID_HOME%\platforms\android-33
+set ANDROID_PLATFORM_DIR=%ANDROID_HOME%\platforms\android-36
 
 if not exist %ANDROID_PLATFORM_DIR% (
 	echo Could not find %ANDROID_PLATFORM_DIR% directory. Please install.
@@ -46,7 +47,7 @@ REM NDK / TOOLCHAIN
 REM ######################################################
 
 set HOST=windows-x86_64
-set NDK=%ANDROID_HOME%\ndk\25.2.9519653
+set NDK=%ANDROID_HOME%\ndk\30.0.16248370
 set TOOLCHAIN=%NDK%\toolchains\llvm\prebuilt\%HOST%
 
 if not exist %NDK% (
@@ -86,7 +87,9 @@ REM ######################################################
 REM Build tools
 REM ######################################################
 
-set BUILD_TOOLS= %ANDROID_HOME%\build-tools\35.0.0
+REM Build tools must be at least as new as ANDROID_PLATFORM_DIR, otherwise
+REM aapt/aapt2 cannot parse the resource table inside android.jar.
+set BUILD_TOOLS=%ANDROID_HOME%\build-tools\36.0.0
 
 if not exist %BUILD_TOOLS% (
 	echo Could not find %BUILD_TOOLS% directory. Please install.
@@ -95,6 +98,7 @@ if not exist %BUILD_TOOLS% (
 
 set D8=%BUILD_TOOLS%\d8
 set AAPT=%BUILD_TOOLS%\aapt
+set AAPT2=%BUILD_TOOLS%\aapt2
 set ZIPALIGN=%BUILD_TOOLS%\zipalign
 set APKSIGNER=%BUILD_TOOLS%\apksigner
 
@@ -112,7 +116,17 @@ REM set OUT_LIB_DIR=lib\x86_64
 REM Remove backslashes for the AAPT command
 set AAPT_LIB_DIR=%OUT_LIB_DIR:\=/%
 
-set APPLICATION_REL_PATH=com\tools\game
+
+
+REM ######################################################
+REM Application
+REM ######################################################
+
+REM Application ID used to install/identify the app on the device.
+REM (The Java package of MainActivity is declared in its own source
+REM file and in AndroidManifest.xml; it doesn't need to match this.)
+set PACKAGE_NAME=com.ilu.game
+set DEVICE_DATA_DIR=/sdcard/Android/data/%PACKAGE_NAME%/files
 
 
 

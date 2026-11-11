@@ -92,35 +92,48 @@ REM ######################################################
 REM ------------------------------------------------------
 REM Start with a fresh bin directory
 
-rmdir /Q /S bin 2> nul
-mkdir bin 2> nul
+rmdir /Q /S bin intermediates 2> nul
+mkdir bin intermediates 2> nul
 
 
 REM ------------------------------------------------------
-REM Generate the R.java file into the src directory
+REM Compile resources and link them into the first unsigned
+REM version of the APK. Also generates R.java into src.
 
-call %AAPT% package -v -f -m  -S res -J src -M AndroidManifest.xml -I %ANDROID_PLATFORM_DIR%\android.jar
+call %AAPT2% compile --dir res -o intermediates\res.zip
+if %errorlevel% neq 0 exit /b 1
+
+call %AAPT2% link -I %ANDROID_PLATFORM_DIR%\android.jar --manifest AndroidManifest.xml --rename-manifest-package %PACKAGE_NAME% --java src -o bin\NativeActivity.unaligned.apk intermediates\res.zip
+if %errorlevel% neq 0 exit /b 1
 
 
 REM ------------------------------------------------------
-REM Compile java code from 'src' to 'obj' directory
+REM Compile all java code in 'src' (including R.java) into
+REM 'intermediates\classes' and pack it into a jar
 
-call %JAVAC% -source 1.7 -target 1.7 -d obj -classpath %ANDROID_PLATFORM_DIR%\android.jar -sourcepath src src\%APPLICATION_REL_PATH%\R.java
-call %JAVAC% -source 1.7 -target 1.7 -d obj -classpath %ANDROID_PLATFORM_DIR%\android.jar -sourcepath src src\%APPLICATION_REL_PATH%\MainActivity.java
+mkdir intermediates\classes 2> nul
+for /r src %%f in (*.java) do (
+	call %JAVAC% --release 11 -d intermediates\classes -classpath %ANDROID_PLATFORM_DIR%\android.jar -sourcepath src "%%f"
+	if errorlevel 1 exit /b 1
+)
+call %JAR% cf intermediates\classes.jar -C intermediates\classes .
+if %errorlevel% neq 0 exit /b 1
 
 
 REM ------------------------------------------------------
 REM Compile java bytecode to dex bytecode. Reference:
 REM https://developer.android.com/studio/command-line/d8
 
-call %D8% obj\%APPLICATION_REL_PATH%\* --classpath %ANDROID_PLATFORM_DIR%\android.jar --output bin\
+call %D8% intermediates\classes.jar --min-api 24 --classpath %ANDROID_PLATFORM_DIR%\android.jar --output bin\
 if %errorlevel% neq 0 exit /b 1
 
 
 REM ------------------------------------------------------
-REM Generate the first unsigned version of the APK
+REM Add classes.dex to the root of the APK
 
-call %AAPT% package -v -f -M AndroidManifest.xml -S res -I %ANDROID_PLATFORM_DIR%\android.jar -F bin\NativeActivity.unaligned.apk bin\
+pushd bin
+call %AAPT% add NativeActivity.unaligned.apk classes.dex
+popd
 
 
 REM ------------------------------------------------------
@@ -158,19 +171,21 @@ REM Install APK into the device
 REM ######################################################
 : install
 REM -k argument would keep the data and cache directories
-call %ADB% uninstall com.tools.game
+REM Only uninstall if already installed (avoids DELETE_FAILED_INTERNAL_ERROR)
+call %ADB% shell pm list packages %PACKAGE_NAME% | findstr /c:"package:%PACKAGE_NAME%" > nul
+if %errorlevel% equ 0 call %ADB% uninstall %PACKAGE_NAME%
 call %ADB% install -r bin\NativeActivity.apk
-call %ADB% shell mkdir -p /sdcard/Android/data/com.tools.game/files/
+call %ADB% shell mkdir -p %DEVICE_DATA_DIR%/
 call %ADB% shell mkdir -p /sdcard/tmp
 call %ADB% push ..\build\shaders.dat /sdcard/tmp
-call %ADB% shell mv /sdcard/tmp/shaders.dat /sdcard/Android/data/com.tools.game/files/
+call %ADB% shell mv /sdcard/tmp/shaders.dat %DEVICE_DATA_DIR%/
 call %ADB% push ..\build\assets.dat /sdcard/tmp
-call %ADB% shell mv /sdcard/tmp/assets.dat /sdcard/Android/data/com.tools.game/files/
+call %ADB% shell mv /sdcard/tmp/assets.dat %DEVICE_DATA_DIR%/
 REM call %ADB% push ..\shaders\ /sdcard/tmp
-REM call %ADB% shell mv /sdcard/tmp/shaders /sdcard/Android/data/com.tools.game/files/
+REM call %ADB% shell mv /sdcard/tmp/shaders %DEVICE_DATA_DIR%/
 REM call %ADB% push ..\assets\ /sdcard/tmp
-REM call %ADB% shell mv /sdcard/tmp/assets /sdcard/Android/data/com.tools.game/files/
-call %ADB% shell chmod -R 777 /sdcard/Android/data/com.tools.game/files/*
+REM call %ADB% shell mv /sdcard/tmp/assets %DEVICE_DATA_DIR%/
+call %ADB% shell chmod -R 777 %DEVICE_DATA_DIR%/*
 exit /b 0
 
 
@@ -182,7 +197,7 @@ REM ######################################################
 : cleanall
 echo Cleaning APK data...
 rmdir /Q /S intermediates bin 2> nul
-del src\com\tools\game\R.java
+del /s /q src\R.java 2> nul
 del Tools.keystore
 
 : clean
