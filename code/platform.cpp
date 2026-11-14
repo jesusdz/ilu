@@ -1269,6 +1269,7 @@ static bool Run(Platform &platform)
 	}
 
 	platform.host.window = &platform.window;
+	platform.host.gamepad = &platform.gamepad;
 
 #if PLATFORM_LINUX
 	const PlatformEvent event = { .type = PlatformEventTypeWindowWasCreated };

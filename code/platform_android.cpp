@@ -281,8 +281,6 @@ static bool InitializeGamepad(Platform &platform)
 {
 	LOG(Info, "Input system initialization:\n");
 
-	platform.host.gamepad = &platform.gamepad;
-
 	LOG(Info, "- Missing implementation\n");
 
 	return false;

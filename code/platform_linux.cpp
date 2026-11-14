@@ -770,8 +770,6 @@ static bool InitializeGamepad(Platform &platform)
 {
 	LOG(Info, "Input system initialization:\n");
 
-	platform.host.gamepad = &platform.gamepad;
-
 	gamepadFd = -1;
 
 	char path[MAX_PATH_LENGTH] = {};

@@ -955,8 +955,6 @@ static bool InitializeGamepad(Platform &platform)
 {
 	LOG(Info, "Input system initialization:\n");
 
-	platform.host.gamepad = &platform.gamepad;
-
 	bool found = false;
 
 	const char *libraryNames[] = {
