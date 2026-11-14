@@ -47,6 +47,8 @@ void CompileShader(u32 index)
 	constexpr const char *dxc = "dxc/windows/bin/x64/dxc.exe";
 #elif PLATFORM_LINUX
 	constexpr const char *dxc = "dxc/linux/bin/dxc";
+#elif PLATFORM_MACOS
+	constexpr const char *dxc = "dxc/macos/bin/dxc";
 #else
 	constexpr const char *dxc = "<none>";
 #endif

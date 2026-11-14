@@ -509,7 +509,7 @@ u32 FBZ(u32 bitMask)
 bool AtomicSwap(volatile_u32 *currValue, u32 oldValue, u32 newValue)
 {
 #if PLATFORM_WINDOWS
-		const bool swapped = InterlockedCompareExchange(currValue, newValue, oldValue) != *currValue;
+		const bool swapped = InterlockedCompareExchange(currValue, newValue, oldValue) == oldValue; // Returns the initial value
 #elif PLATFORM_POSIX
 		const bool swapped = __sync_bool_compare_and_swap(currValue, oldValue, newValue);
 #else
@@ -521,7 +521,7 @@ bool AtomicSwap(volatile_u32 *currValue, u32 oldValue, u32 newValue)
 bool AtomicSwap(volatile_i64 *currValue, i64 oldValue, i64 newValue)
 {
 #if PLATFORM_WINDOWS
-		const bool swapped = InterlockedCompareExchange64(currValue, newValue, oldValue) != *currValue;
+		const bool swapped = InterlockedCompareExchange64(currValue, newValue, oldValue) == oldValue; // Returns the initial value
 #elif PLATFORM_POSIX
 		const bool swapped = __sync_bool_compare_and_swap(currValue, oldValue, newValue);
 #else
@@ -1673,11 +1673,11 @@ bool CreateDirectory(const char *path)
 	bool ok = false;
 #if PLATFORM_POSIX
 	int res = mkdir(path, S_IRWXU | S_IRWXG | S_IXOTH );
-	if ( res != 0 ) {
+	ok = ( res == 0 );
+	if ( !ok && errno != EEXIST ) {
 		char message[MAX_PATH_LENGTH];
 		SPrintf(message, "mkdir %s", path);
 		perror(message);
-		ok = false;
 	}
 #elif PLATFORM_WINDOWS
 	ok = CreateDirectoryA(path, nullptr);

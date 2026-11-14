@@ -1426,6 +1426,132 @@ void TestClock()
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Threading tests
+
+#define THREADING_TEST_THREAD_COUNT 8
+#define THREADING_TEST_ITERATIONS 100000
+
+struct ThreadingTestState
+{
+    volatile_u32 casCounter32;
+    volatile_i64 casCounter64;
+    volatile_i64 incrementCounter;
+    Mutex mutex;
+    u64 mutexCounter; // Plain counter, only protected by the mutex
+    Semaphore startSemaphore;
+    Semaphore finishSemaphore;
+};
+
+static ThreadingTestState gThreadingTest;
+static ThreadInfo gThreadingTestInfos[THREADING_TEST_THREAD_COUNT]; // Must outlive the threads
+
+static THREAD_FUNCTION(ThreadingTestWorker)
+{
+    ThreadingTestState &state = gThreadingTest;
+
+    // Wait until every thread exists so that they all contend at the same time
+    WaitSemaphore(state.startSemaphore);
+
+    for (u32 i = 0; i < THREADING_TEST_ITERATIONS; ++i)
+    {
+        u32 old32;
+        do { old32 = state.casCounter32; } while (!AtomicSwap(&state.casCounter32, old32, old32 + 1));
+
+        i64 old64;
+        do { old64 = state.casCounter64; } while (!AtomicSwap(&state.casCounter64, old64, old64 + 1));
+
+        AtomicIncrement(&state.incrementCounter);
+
+        LockMutex(state.mutex);
+        state.mutexCounter++;
+        UnlockMutex(state.mutex);
+    }
+
+    SignalSemaphore(state.finishSemaphore);
+    return 0;
+}
+
+void TestThreading()
+{
+    TEST_SECTION("Threading");
+
+    // AtomicSwap (single thread)
+    {
+        volatile_u32 value = 5;
+        TEST("AtomicSwap u32 fails on mismatch", !AtomicSwap(&value, 4, 9));
+        TEST("AtomicSwap u32 mismatch keeps value", value == 5);
+        TEST("AtomicSwap u32 succeeds on match", AtomicSwap(&value, 5, 9));
+        TEST("AtomicSwap u32 match stores value", value == 9);
+        TEST("AtomicSwap u32 same value succeeds", AtomicSwap(&value, 9, 9));
+    }
+    {
+        volatile_i64 value = -5;
+        TEST("AtomicSwap i64 fails on mismatch", !AtomicSwap(&value, 5, 1));
+        TEST("AtomicSwap i64 mismatch keeps value", value == -5);
+        TEST("AtomicSwap i64 succeeds on match", AtomicSwap(&value, -5, (i64)1 << 40));
+        TEST("AtomicSwap i64 match stores 64-bit value", value == ((i64)1 << 40));
+    }
+
+    // AtomicPreIncrement (single thread)
+    {
+        volatile_i64 value = 7;
+        TEST("AtomicPreIncrement returns old value", AtomicPreIncrement(&value) == 7);
+        TEST("AtomicPreIncrement increments", value == 8);
+    }
+
+    // Semaphore initial count: waiting up to the initial count must not block
+    {
+        Semaphore semaphore;
+        TEST("CreateSemaphore", CreateSemaphore(semaphore, 2, 2));
+        TEST("WaitSemaphore consumes initial count", WaitSemaphore(semaphore) && WaitSemaphore(semaphore));
+        TEST("SignalSemaphore", SignalSemaphore(semaphore));
+        TEST("WaitSemaphore consumes signal", WaitSemaphore(semaphore));
+    }
+
+    // Mutex (single thread)
+    {
+        Mutex mutex;
+        TEST("CreateMutex", CreateMutex(mutex));
+        LockMutex(mutex);
+        UnlockMutex(mutex);
+        LockMutex(mutex); // Can be locked again after unlocking
+        UnlockMutex(mutex);
+        DestroyMutex(mutex);
+    }
+
+    // Contention: every thread increments every counter, no update must be lost
+    {
+        ThreadingTestState &state = gThreadingTest;
+        state = {};
+
+        const bool created =
+            CreateMutex(state.mutex) &&
+            CreateSemaphore(state.startSemaphore, 0, THREADING_TEST_THREAD_COUNT) &&
+            CreateSemaphore(state.finishSemaphore, 0, THREADING_TEST_THREAD_COUNT);
+        TEST("Threading primitives created", created);
+
+        u32 threadCount = 0;
+        for (u32 i = 0; i < THREADING_TEST_THREAD_COUNT; ++i)
+        {
+            gThreadingTestInfos[i].globalIndex = i;
+            threadCount += CreateDetachedThread(ThreadingTestWorker, gThreadingTestInfos[i]) ? 1 : 0;
+        }
+        TEST("CreateDetachedThread starts every thread", threadCount == THREADING_TEST_THREAD_COUNT);
+
+        for (u32 i = 0; i < threadCount; ++i) { SignalSemaphore(state.startSemaphore); }
+        for (u32 i = 0; i < threadCount; ++i) { WaitSemaphore(state.finishSemaphore); }
+
+        const u64 expected = (u64)threadCount * THREADING_TEST_ITERATIONS;
+        TEST("AtomicSwap u32 loses no update under contention", state.casCounter32 == expected);
+        TEST("AtomicSwap i64 loses no update under contention", (u64)state.casCounter64 == expected);
+        TEST("AtomicIncrement loses no update under contention", (u64)state.incrementCounter == expected);
+        TEST("Mutex loses no update under contention", state.mutexCounter == expected);
+
+        DestroyMutex(state.mutex);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sized types tests
 
 void TestSizedTypes()
@@ -1963,6 +2089,7 @@ int main()
     TestAlignment();
     TestTicks();
     TestClock();
+    TestThreading();
     TestHandlePool();
     TestCompactArray();
 
