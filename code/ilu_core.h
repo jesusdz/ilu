@@ -31,9 +31,19 @@
 #elif __linux__
 #	define PLATFORM_LINUX 1
 #elif __APPLE__
-#	define PLATFORM_APPLE 1
+#	define PLATFORM_APPLE 1 // Platform family: Darwin (libc, libdispatch), shared by all Apple OSes
+#	include <TargetConditionals.h>
+#	if TARGET_OS_OSX
+#		define PLATFORM_MACOS 1
+#	else
+#		error "Unsupported Apple platform"
+#	endif
 #else
 #	error "Unsupported platform"
+#endif
+
+#if PLATFORM_LINUX || PLATFORM_ANDROID || PLATFORM_APPLE
+#	define PLATFORM_POSIX 1
 #endif
 
 
@@ -52,7 +62,7 @@
 #include <Windows.h>
 #undef Yield          // Empty macro defined in winbase.h
 #include <intrin.h>   // _WriteBarrier
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 #include <time.h>     // TODO: Find out if this header belongs to the C runtime library...
 #include <sys/stat.h> // stat
 #include <fcntl.h>    // open
@@ -65,10 +75,18 @@
 #include <semaphore.h>
 #endif
 
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_APPLE
+#include <dispatch/dispatch.h> // dispatch_semaphore_t
+#endif
+
+#if PLATFORM_POSIX
 #include <sys/wait.h>
 #include <spawn.h>
 #include <dlfcn.h>
+#endif
+
+#if PLATFORM_APPLE
+extern char **environ; // Not declared by macOS system headers (used by posix_spawnp)
 #endif
 
 #if PLATFORM_LINUX
@@ -122,7 +140,7 @@ static const int __android_log_channel[] = {
 #if PLATFORM_ANDROID
 #define QUIT_ABNORMALLY() __builtin_trap();
 #else
-#define QUIT_ABNORMALLY() *((int*)0) = 0;
+#define QUIT_ABNORMALLY() *((volatile int*)0) = 0; // volatile: clang deletes plain null stores
 #endif
 
 #define ASSERT(expression) if ( !(expression) ) { \
@@ -386,12 +404,19 @@ void Win32ReportError(const char *context)
 	}
 }
 
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 
 void LinuxReportError(const char *context)
 {
 	char buffer[1024] = {};
+#if PLATFORM_APPLE
+	// XSI-compliant strerror_r: returns an int and always writes into buffer
+	strerror_r(errno, buffer, ARRAY_COUNT(buffer));
+	const char *errorString = buffer;
+#else
+	// GNU strerror_r: returns a pointer that may or may not point to buffer
 	const char *errorString = strerror_r(errno, buffer, ARRAY_COUNT(buffer));
+#endif
 	LOG(Error, "Error (%s): %s\n", context, errorString);
 }
 
@@ -485,7 +510,7 @@ bool AtomicSwap(volatile_u32 *currValue, u32 oldValue, u32 newValue)
 {
 #if PLATFORM_WINDOWS
 		const bool swapped = InterlockedCompareExchange(currValue, newValue, oldValue) != *currValue;
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 		const bool swapped = __sync_bool_compare_and_swap(currValue, oldValue, newValue);
 #else
 #error "Missing implementation"
@@ -497,7 +522,7 @@ bool AtomicSwap(volatile_i64 *currValue, i64 oldValue, i64 newValue)
 {
 #if PLATFORM_WINDOWS
 		const bool swapped = InterlockedCompareExchange64(currValue, newValue, oldValue) != *currValue;
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 		const bool swapped = __sync_bool_compare_and_swap(currValue, oldValue, newValue);
 #else
 #error "Missing implementation"
@@ -509,7 +534,7 @@ i64 AtomicPreIncrement(volatile_i64 *value)
 {
 #if PLATFORM_WINDOWS
 	const i64 oldValue = InterlockedIncrement64(value) - 1;
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 	const i64 oldValue = __sync_fetch_and_add(value, 1);
 #else
 #error "Missing implementation"
@@ -910,7 +935,7 @@ u32 HashStringFNV(const char *data, u32 initial = 0, u32 prime = TOOLS_HASH_FNV_
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Memory
 
-#if PLATFORM_LINUX || PLATFORM_ANDROID || PLATFORM_APPLE
+#if PLATFORM_POSIX
 
 void* AllocateVirtualMemory(u32 size)
 {
@@ -1204,7 +1229,7 @@ bool GetFileSize(const char *filename, u64 &size, bool reportError = true)
 		if ( reportError ) Win32ReportError("GetFileSize");
 		ok = false;
 	}
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 	struct stat attrib;
 	if ( stat(filename, &attrib) == 0 )
 	{
@@ -1235,7 +1260,7 @@ struct File
 {
 	bool isOpen;
 	u64 size;
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 	int handle;
 #elif PLATFORM_WINDOWS
 	HANDLE handle;
@@ -1255,7 +1280,7 @@ File OpenFile(const char *filename, FileMode mode)
 	File file = {};
 	if ( GetFileSize( filename, file.size ) && file.size > 0 )
 	{
-#if  PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 		const int openMode = mode == FileModeRead ? O_RDONLY : O_WRONLY;
 		file.handle = open(filename, openMode);
 		if ( file.handle == -1 ) {
@@ -1281,7 +1306,7 @@ bool ReadFromFile(File file, void *buffer, u64 size)
 	bool ok = false;
 	u64 bytesToRead = size;
 
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 	while ( bytesToRead > 0 )
 	{
 		u64 bytesRead = read(file.handle, buffer, bytesToRead);
@@ -1314,7 +1339,7 @@ bool ReadFromFile(File file, void *buffer, u64 size)
 bool FileSeek(File file, u64 offset)
 {
 	bool ok = false;
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 	int res = lseek(file.handle, offset, SEEK_SET);
 	if ( res == -1 ) {
 		LinuxReportError("lseek");
@@ -1350,7 +1375,7 @@ void CloseFile(File &file)
 {
 	if (file.isOpen)
 	{
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 		close(file.handle);
 #elif PLATFORM_WINDOWS
 		CloseHandle(file.handle);
@@ -1380,7 +1405,7 @@ bool ReadEntireFile(const char *filename, void *buffer, u64 bytesToRead)
 		}
 		CloseHandle( file );
 	}
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 	int fd = open(filename, O_RDONLY);
 	if ( fd == -1 )
 	{
@@ -1432,7 +1457,7 @@ bool WriteEntireFile(const char *filename, const void *buffer, u64 bytesToWrite)
 		}
 		CloseHandle( file );
 	}
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 	int fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR );
 	if ( fd == -1 )
 	{
@@ -1513,7 +1538,7 @@ bool GetFileLastWriteTimestamp(const char* filename, u64 &ts)
 		ok = false;
 		ts = 0;
 	}
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 	struct stat attrib;
 	if ( stat(filename, &attrib) == 0 )
 	{
@@ -1535,7 +1560,7 @@ bool GetFileLastWriteTimestamp(const char* filename, u64 &ts)
 bool CopyFile(const char *srcPath, const char *dstPath)
 {
 	bool ok = false;
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 	int fd_rd = open(srcPath, O_RDONLY);
 	if ( fd_rd == -1 ) {
 		LinuxReportError("CopyFile open O_RDONLY");
@@ -1617,7 +1642,7 @@ bool HasFileExtension(const char *filename, const char *extension)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Directories
 
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 struct Dir
 {
 	DIR *handle;
@@ -1646,7 +1671,7 @@ struct DirEntry
 bool CreateDirectory(const char *path)
 {
 	bool ok = false;
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 	int res = mkdir(path, S_IRWXU | S_IRWXG | S_IXOTH );
 	if ( res != 0 ) {
 		char message[MAX_PATH_LENGTH];
@@ -1674,7 +1699,7 @@ bool OpenDir(Dir &dir, const char *path)
 {
 	bool res = false;
 
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 	dir.handle = opendir(path);
 	res = dir.handle != nullptr;
 	return dir.handle != nullptr;
@@ -1701,7 +1726,7 @@ bool OpenDir(Dir &dir, const char *path)
 bool ReadDir(Dir &dir, DirEntry &entry)
 {
 	bool res = false;
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 	if ( dir.handle )
 	{
 		do
@@ -1727,7 +1752,7 @@ bool ReadDir(Dir &dir, DirEntry &entry)
 
 void CloseDir(Dir &dir)
 {
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 	if ( dir.handle )
 	{
 		closedir(dir.handle);
@@ -1790,7 +1815,7 @@ bool ExecuteProcess(const char *commandLine)
 	{
 		LOG(Error, "CreateProcessA failed.\n");
 	}
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 	// Split list of arguments
 	char *ptr = commandLineCopy;
 	int argc = 0;
@@ -1836,7 +1861,7 @@ bool ExecuteProcess(const char *commandLine)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Dynamic library loading
 
-#if PLATFORM_LINUX || PLATFORM_ANDROID
+#if PLATFORM_POSIX
 
 	typedef void* DynamicLibrary;
 
@@ -2850,7 +2875,7 @@ u64 GetTicks()
 	LARGE_INTEGER counter;
 	QueryPerformanceCounter(&counter);
 	return (u64)counter.QuadPart;
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 	timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (u64)ts.tv_sec * 1000000000ull + (u64)ts.tv_nsec;
@@ -3026,12 +3051,41 @@ static void UnlockMutex( Mutex &mutex )
 }
 
 
-#elif PLATFORM_LINUX || PLATFORM_ANDROID
+#elif PLATFORM_POSIX
 
 #define THREAD_FUNCTION(name) void* name(void *arguments)
 
 #define FullWriteBarrier() __sync_synchronize()
 #define FullReadBarrier() __sync_synchronize()
+
+#if PLATFORM_APPLE
+
+// macOS does not implement unnamed POSIX semaphores (sem_init fails with ENOSYS)
+typedef dispatch_semaphore_t Semaphore;
+
+static bool CreateSemaphore( Semaphore &semaphore, u32 iniCount, u32 maxCount )
+{
+	semaphore = dispatch_semaphore_create(iniCount);
+	if ( !semaphore ) {
+		LOG(Error, "Error (dispatch_semaphore_create)\n");
+		return false;
+	}
+	return true;
+}
+
+static bool SignalSemaphore( Semaphore &semaphore )
+{
+	dispatch_semaphore_signal(semaphore);
+	return true;
+}
+
+static bool WaitSemaphore( Semaphore &semaphore )
+{
+	dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+	return true;
+}
+
+#else // #if PLATFORM_APPLE
 
 typedef sem_t Semaphore;
 
@@ -3065,6 +3119,8 @@ static bool WaitSemaphore( Semaphore &semaphore )
 	return success;
 }
 
+#endif // #else // #if PLATFORM_APPLE
+
 static bool CreateDetachedThread( THREAD_FUNCTION(threadFunc), const ThreadInfo &threadInfo )
 {
 	bool success = false;
@@ -3091,8 +3147,18 @@ static void SleepSeconds(f32 seconds, f32 spinSeconds = 0.0f)
 	if ( endNanos - GetTicks() > spinNanos )
 	{
 		const u64 wakeNanos = endNanos - spinNanos;
+#if PLATFORM_APPLE
+		// macOS lacks clock_nanosleep, so sleep for a relative duration until the wake time
+		for ( u64 now = GetTicks(); now < wakeNanos; now = GetTicks() )
+		{
+			const u64 sleepNanos = wakeNanos - now;
+			const struct timespec sleepTime = { (time_t)(sleepNanos / 1000000000ull), (long)(sleepNanos % 1000000000ull) };
+			nanosleep(&sleepTime, NULL);
+		}
+#else
 		const struct timespec wakeTime = { (time_t)(wakeNanos / 1000000000ull), (long)(wakeNanos % 1000000000ull) };
 		while ( clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &wakeTime, NULL) == EINTR ) {}
+#endif
 	}
 
 	// Spin wait

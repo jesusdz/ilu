@@ -1,6 +1,17 @@
 .PHONY: default build_and_run build_and_debug main_interpreter ilu dll game unit_test_ilu main_spirv main_atof reflex reflection main_reflect_serialize main_clon cast data clean main_alsa main_gamepad directories
 
-CXX=g++
+UNAME_S := $(shell uname -s)
+
+ifeq (${UNAME_S},Darwin)
+  CXX=clang++
+  PLATFORM_LIBS= -framework Cocoa -framework QuartzCore -framework Metal
+  SHARED_FLAGS= -dynamiclib
+else
+  CXX=g++
+  PLATFORM_LIBS= -lxcb -lpthread
+  SHARED_FLAGS= -fPIC -shared
+endif
+
 CXXFLAGS= -g -DDEVELOPMENT_BUILD
 BUILD_DIR=build
 DATA_DIR=${BUILD_DIR}
@@ -16,12 +27,12 @@ build_and_debug: ilu
 
 ilu: directories ${BUILD_DIR}/reflex
 	${BUILD_DIR}/reflex code/engine.h code/game.cpp > code/reflex.generated.h
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/ilu code/platform.cpp -I"vulkan/include" -lxcb -lpthread
-	${CXX} ${CXXFLAGS} -fPIC -shared -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
+	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/ilu code/platform.cpp -I"vulkan/include" ${PLATFORM_LIBS}
+	${CXX} ${CXXFLAGS} ${SHARED_FLAGS} -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
 
 dll: directories ${BUILD_DIR}/reflex
 	${BUILD_DIR}/reflex code/engine.h code/game.cpp > code/reflex.generated.h
-	${CXX} ${CXXFLAGS} -fPIC -shared -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
+	${CXX} ${CXXFLAGS} ${SHARED_FLAGS} -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
 
 game:
 	echo No build configuration to compile the game yet
