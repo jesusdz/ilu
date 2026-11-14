@@ -53,6 +53,8 @@
 #	define USE_ANDROID 1
 #elif PLATFORM_WINDOWS
 #	define USE_WINAPI 1
+#elif PLATFORM_MACOS
+#	define USE_COCOA 1
 #endif
 
 
@@ -77,6 +79,11 @@
 
 #if PLATFORM_APPLE
 #include <dispatch/dispatch.h> // dispatch_semaphore_t
+#endif
+
+#if PLATFORM_MACOS && defined(__OBJC__)
+// Included here, before '#define internal', which breaks the Mach headers AppKit pulls in.
+#import <AppKit/AppKit.h>
 #endif
 
 #if PLATFORM_POSIX

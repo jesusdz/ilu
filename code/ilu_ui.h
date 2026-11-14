@@ -975,7 +975,7 @@ void UI_PushDrawList(UI &ui, rect scissorRect, ImageH imageHandle, UIDrawListFla
 	drawList.scissorRect = scissorRect;
 	drawList.imageHandle = imageHandle;
 
-	drawList.sortKey.order = ( flags & UIDrawListFlag_Topmost ) ? U32_MAX : drawListIndex;
+	drawList.sortKey.order = ( flags & UIDrawListFlag_Topmost ) ? U16_MAX : drawListIndex;
 	if (ui.drawListStackSize > 0)
 	{
 		const u32 parentDrawListIndex = ui.drawListStack[ui.drawListStackSize-1];
@@ -1603,7 +1603,7 @@ UIWindow &UI_FindOrCreateWindow(UI &ui, UIID windowId, const char *caption)
 		if ( window.id == windowId )
 		{
 			UI_ResetWindowDefaults(ui);
-			ASSERT(window.caption != 0);
+			ASSERT(window.caption[0] != 0);
 			return window;
 		}
 	}

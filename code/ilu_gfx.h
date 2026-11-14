@@ -1024,6 +1024,8 @@ struct DebugGfxBlock
 #	define VK_USE_PLATFORM_ANDROID_KHR 1
 #elif USE_WINAPI
 #	define VK_USE_PLATFORM_WIN32_KHR 1
+#elif USE_COCOA
+	// TODO(macOS): VK_USE_PLATFORM_METAL_EXT (VK_EXT_metal_surface), no surface type until then
 #else
 #	error "Configure the proper platform for Vulkan"
 #endif
@@ -1090,6 +1092,9 @@ struct DebugGfxBlock
 #if defined(VK_KHR_android_surface)
 #define VK_INSTANCE_FUNCTION_LIST_KHR_SURFACE_PLATFORM(EXPAND_MACRO) EXPAND_MACRO(vkCreateAndroidSurfaceKHR)
 #endif /* defined(VK_KHR_android_surface) */
+#if !defined(VK_INSTANCE_FUNCTION_LIST_KHR_SURFACE_PLATFORM)
+#define VK_INSTANCE_FUNCTION_LIST_KHR_SURFACE_PLATFORM(EXPAND_MACRO) // No surface platform yet (macOS)
+#endif
 
 // All instance functions
 #define EXPAND_API_VK_INSTANCE(EXPAND_MACRO) \
@@ -2602,6 +2607,9 @@ bool InitializeGraphicsSurface(GraphicsDevice &device, const Window &window)
 		.hwnd = window.impl->hWnd,
 	};
 	VK_CALL( vkCreateWin32SurfaceKHR( device.instance, &surfaceCreateInfo, VULKAN_ALLOCATORS, &device.surface ) );
+#else
+	LOG(Error, "InitializeGraphicsSurface: Not implemented on this platform yet\n");
+	return false;
 #endif
 
 	return true;

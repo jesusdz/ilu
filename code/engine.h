@@ -16,7 +16,7 @@
 // Every type used by a reflected member needs a PropertyOps_<Type>, see properties.cpp
 #define REFLEX_OPS(Type) &PropertyOps_##Type
 
-#include "reflex\reflex.h"
+#include "reflex/reflex.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

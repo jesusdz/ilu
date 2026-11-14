@@ -4,10 +4,12 @@ UNAME_S := $(shell uname -s)
 
 ifeq (${UNAME_S},Darwin)
   CXX=clang++
+  PLATFORM_LANG= -x objective-c++ # platform.cpp includes platform_macos.mm
   PLATFORM_LIBS= -framework Cocoa -framework QuartzCore -framework Metal
   SHARED_FLAGS= -dynamiclib
 else
   CXX=g++
+  PLATFORM_LANG=
   PLATFORM_LIBS= -lxcb -lpthread
   SHARED_FLAGS= -fPIC -shared
 endif
@@ -27,7 +29,7 @@ build_and_debug: ilu
 
 ilu: directories ${BUILD_DIR}/reflex
 	${BUILD_DIR}/reflex code/engine.h code/game.cpp > code/reflex.generated.h
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/ilu code/platform.cpp -I"vulkan/include" ${PLATFORM_LIBS}
+	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/ilu ${PLATFORM_LANG} code/platform.cpp -I"vulkan/include" ${PLATFORM_LIBS}
 	${CXX} ${CXXFLAGS} ${SHARED_FLAGS} -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
 
 dll: directories ${BUILD_DIR}/reflex

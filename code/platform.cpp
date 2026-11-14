@@ -175,7 +175,7 @@ static Platform platform = {};
 
 #define WORK_QUEUE_WORKER_COUNT 8
 
-enum ThreadID
+enum PlatformThreadID // Not ThreadID: macOS CoreServices (pulled by AppKit) typedefs that name
 {
 	THREAD_ID_UPDATE,
 	THREAD_ID_AUDIO,
@@ -188,7 +188,7 @@ enum ThreadID
 // Per-platform interface
 //
 // These functions are implemented by the platform-specific file included further below
-// (platform_win32.cpp, platform_linux.cpp or platform_android.cpp). Each platform file
+// (platform_win32.cpp, platform_linux.cpp, platform_android.cpp or platform_macos.mm). Each platform file
 // additionally provides:
 // - The USE_UPDATE_THREAD, USE_AUDIO_THREAD and USE_ENGINE_HOT_RELOAD macros
 // - The WindowImpl struct
@@ -455,6 +455,8 @@ static void UpdateKeyModifiers(Window &window)
 #include "platform_linux.cpp"
 #elif PLATFORM_ANDROID
 #include "platform_android.cpp"
+#elif PLATFORM_MACOS
+#include "platform_macos.mm"
 #else
 #error "Unsupported platform"
 #endif
