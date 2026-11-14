@@ -1,19 +1,11 @@
-// macOS platform layer, included by platform.cpp (compiled as Objective-C++ on macOS).
-//
-// Port status: the window works (creation, resize, Retina, close, quit). Input, gamepad,
-// file watching and audio are not implemented yet.
-//
-// Threading: AppKit must be used from the main thread, which only pumps events here. The
-// engine updates and renders on the update thread (USE_UPDATE_THREAD), so window changes
-// reach it as platform events, and the functions the update thread calls (ShowPlatformWindow,
-// CleanupWindow) hand their AppKit work over to the main thread.
-//
-// Units: Window::width/height and all positions sent to the engine are in pixels, like on
-// Windows (1:1 pixels, no scaling). AppKit works in points, so they are converted with the
-// backing scale factor (2 on Retina displays).
+// macOS platform layer, included by platform.cpp (compiled as Objective-C++).
+// Status: window, Retina, full screen and quit work. Input, gamepad, file watching and audio are TODO.
+// Threading: AppKit runs on the main thread, the engine on the update thread (USE_UPDATE_THREAD).
+// Units: the engine gets pixels, AppKit uses points (pixels = points * backingScaleFactor).
 
 // AppKit is imported by ilu_core.h, see the comment there.
 #import <QuartzCore/CAMetalLayer.h>
+#include <IOKit/graphics/IOGraphicsTypes.h> // kDisplayModeNativeFlag
 
 #define USE_UPDATE_THREAD 1
 #define USE_AUDIO_THREAD 1
@@ -28,6 +20,14 @@ struct WindowImpl
 	NSWindow *window;
 	NSView *view;
 	CAMetalLayer *layer; // Backing layer of view, where Vulkan (MoltenVK) presents
+
+	// Full screen
+	bool fullscreen;                // Requested by the user (kept while another app is active)
+	NSRect windowedFrame;           // Restored when leaving full screen
+	NSWindowStyleMask windowedStyle;
+	CGDirectDisplayID display;      // Display covered while full screen
+	CGDisplayModeRef userMode;      // Mode to restore, non-null while ilu switched the display mode
+	bool reapplyWindowedFrame;      // After a mode restore, once AppKit has rearranged the windows
 };
 
 static WindowImpl windowImpl;
@@ -56,9 +56,7 @@ static void InitializeDirectories(Platform &platform)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Window and events
 
-// Asks the engine to release the window and the platform to quit. Called on the main thread
-// when the user closes the window or quits the app (Cmd+Q), instead of letting AppKit close
-// or terminate right away, so the engine shuts down in order.
+// Close button and Cmd+Q: the engine releases the window and shuts down in order
 static void RequestQuit()
 {
 	const PlatformEvent event = { .type = PlatformEventTypeWindowWillDestroy };
@@ -99,6 +97,214 @@ static void OnViewSizeChanged(NSView *view)
 	};
 	SendPlatformEvent(platform, event);
 }
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Full screen: borderless window in a native-sized display mode (no scaling), see docs/MACOS_PORT.md
+
+static bool SetDisplayMode(CGDirectDisplayID display, CGDisplayModeRef mode)
+{
+	CGDisplayConfigRef config;
+	if ( CGBeginDisplayConfiguration(&config) != kCGErrorSuccess ) {
+		return false;
+	}
+	if ( CGConfigureDisplayWithDisplayMode(config, display, mode, NULL) != kCGErrorSuccess ) {
+		CGCancelDisplayConfiguration(config);
+		return false;
+	}
+	// App only: macOS restores the user's mode itself when ilu exits, even if it crashes
+	return CGCompleteDisplayConfiguration(config, kCGConfigureForAppOnly) == kCGErrorSuccess;
+}
+
+// Retained mode with the panel's native pixel size, or NULL if currentMode already has it
+static CGDisplayModeRef CopyNativeDisplayMode(CGDirectDisplayID display, CGDisplayModeRef currentMode)
+{
+	// Without this option, 2x (HiDPI) modes with the same pixel size as a 1x mode are not listed
+	NSDictionary *options = @{ (NSString *)kCGDisplayShowDuplicateLowResolutionModes: @YES };
+	CFArrayRef modes = CGDisplayCopyAllDisplayModes(display, (CFDictionaryRef)options);
+	if ( !modes ) {
+		return NULL;
+	}
+	const CFIndex modeCount = CFArrayGetCount(modes);
+
+	// Native pixel size: from the mode flagged as native, or else the largest 1x mode
+	size_t nativeWidth = 0, nativeHeight = 0;
+	for ( u32 pass = 0; pass < 2 && nativeWidth == 0; ++pass ) {
+		for ( CFIndex i = 0; i < modeCount; ++i ) {
+			CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+			const size_t pixelWidth = CGDisplayModeGetPixelWidth(mode);
+			const bool candidate = pass == 0 ?
+				( CGDisplayModeGetIOFlags(mode) & kDisplayModeNativeFlag ) != 0 :
+				pixelWidth == CGDisplayModeGetWidth(mode);
+			if ( candidate && pixelWidth > nativeWidth ) {
+				nativeWidth = pixelWidth;
+				nativeHeight = CGDisplayModeGetPixelHeight(mode);
+			}
+		}
+	}
+
+	CGDisplayModeRef bestMode = NULL;
+	const bool currentIsNative =
+		CGDisplayModeGetPixelWidth(currentMode) == nativeWidth &&
+		CGDisplayModeGetPixelHeight(currentMode) == nativeHeight;
+
+	if ( nativeWidth > 0 && !currentIsNative )
+	{
+		// Prefer 2x (readable system UI), then the current refresh rate, then the highest
+		const double currentRefresh = CGDisplayModeGetRefreshRate(currentMode);
+		u32 bestScore = 0;
+		for ( CFIndex i = 0; i < modeCount; ++i ) {
+			CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+			if ( CGDisplayModeGetPixelWidth(mode) != nativeWidth ||
+			     CGDisplayModeGetPixelHeight(mode) != nativeHeight ||
+			     !CGDisplayModeIsUsableForDesktopGUI(mode) ) {
+				continue;
+			}
+			const double refresh = CGDisplayModeGetRefreshRate(mode);
+			const u32 score =
+				( CGDisplayModeGetWidth(mode) * 2 == nativeWidth ? 1u << 30 : 0 ) +
+				( refresh == currentRefresh ? 1u << 29 : 0 ) +
+				(u32)refresh + 1;
+			if ( score > bestScore ) {
+				bestScore = score;
+				bestMode = mode;
+			}
+		}
+		CGDisplayModeRetain(bestMode);
+	}
+
+	CFRelease(modes);
+	return bestMode;
+}
+
+// Switches the full-screen display to a native-sized mode, if it isn't already
+static void SwitchToNativeDisplayMode()
+{
+	if ( windowImpl.userMode ) {
+		return; // Already switched
+	}
+
+	CGDisplayModeRef currentMode = CGDisplayCopyDisplayMode(windowImpl.display);
+	CGDisplayModeRef nativeMode = currentMode ? CopyNativeDisplayMode(windowImpl.display, currentMode) : NULL;
+
+	if ( nativeMode && SetDisplayMode(windowImpl.display, nativeMode) ) {
+		LOG(Info, "Display mode switched to %zux%zu points, %zux%zu pixels\n",
+			CGDisplayModeGetWidth(nativeMode), CGDisplayModeGetHeight(nativeMode),
+			CGDisplayModeGetPixelWidth(nativeMode), CGDisplayModeGetPixelHeight(nativeMode));
+		windowImpl.userMode = currentMode;
+	} else {
+		if ( nativeMode ) {
+			LOG(Warning, "Display mode switch failed, keeping the current mode\n");
+		}
+		CGDisplayModeRelease(currentMode);
+	}
+	CGDisplayModeRelease(nativeMode);
+}
+
+// Returns whether the display mode changed
+static bool RestoreUserDisplayMode()
+{
+	bool restored = false;
+	if ( windowImpl.userMode ) {
+		restored = SetDisplayMode(windowImpl.display, windowImpl.userMode);
+		if ( !restored ) {
+			LOG(Warning, "Display mode restore failed\n");
+		}
+		CGDisplayModeRelease(windowImpl.userMode);
+		windowImpl.userMode = NULL;
+	}
+	return restored;
+}
+
+// Resizes the window to cover the full-screen display, in its current mode
+static void FitWindowToDisplay()
+{
+	// CGDisplayBounds is updated right after a mode switch (NSScreen later), with a top-left origin
+	const CGRect bounds = CGDisplayBounds(windowImpl.display);
+	if ( CGRectIsEmpty(bounds) ) {
+		return; // Display disconnected
+	}
+	const CGFloat mainHeight = CGDisplayBounds(CGMainDisplayID()).size.height;
+	const NSRect frame = NSMakeRect(bounds.origin.x, mainHeight - bounds.origin.y - bounds.size.height,
+	                                bounds.size.width, bounds.size.height);
+	[windowImpl.window setFrame:frame display:YES];
+}
+
+static void ApplyFullscreenLayout()
+{
+	SwitchToNativeDisplayMode();
+
+	NSWindow *nsWindow = windowImpl.window;
+	nsWindow.styleMask = NSWindowStyleMaskBorderless;
+	NSApp.presentationOptions = NSApplicationPresentationHideDock | NSApplicationPresentationHideMenuBar;
+	FitWindowToDisplay();
+	[nsWindow makeKeyAndOrderFront:nil];
+}
+
+static void RemoveFullscreenLayout()
+{
+	NSWindow *nsWindow = windowImpl.window;
+	NSApp.presentationOptions = NSApplicationPresentationDefault;
+	nsWindow.styleMask = windowImpl.windowedStyle;
+	[nsWindow setFrame:windowImpl.windowedFrame display:YES];
+
+	windowImpl.reapplyWindowedFrame = RestoreUserDisplayMode();
+}
+
+static void EnterFullscreen()
+{
+	NSWindow *nsWindow = windowImpl.window;
+	NSScreen *screen = nsWindow.screen ? nsWindow.screen : NSScreen.mainScreen;
+
+	windowImpl.fullscreen = true;
+	windowImpl.windowedFrame = nsWindow.frame;
+	windowImpl.windowedStyle = nsWindow.styleMask;
+	windowImpl.display = [screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue];
+
+	ApplyFullscreenLayout();
+}
+
+static bool HasFullscreenLayout()
+{
+	return windowImpl.window.styleMask == NSWindowStyleMaskBorderless;
+}
+
+static void ExitFullscreen()
+{
+	windowImpl.fullscreen = false;
+
+	if ( HasFullscreenLayout() ) {
+		RemoveFullscreenLayout();
+		[windowImpl.window makeKeyAndOrderFront:nil];
+	}
+}
+
+static void ToggleFullscreen()
+{
+	if ( windowImpl.fullscreen ) {
+		ExitFullscreen();
+	} else {
+		EnterFullscreen();
+	}
+}
+
+@interface IluWindow : NSWindow
+@end
+
+@implementation IluWindow
+
+// Borderless windows (full screen) can't become key by default, so they would get no input
+- (BOOL)canBecomeKeyWindow { return YES; }
+- (BOOL)canBecomeMainWindow { return YES; }
+
+// Every full-screen request (green button, View menu, Ctrl+Cmd+F, Fn+F) ends up here
+- (void)toggleFullScreen:(id)sender
+{
+	ToggleFullscreen();
+}
+
+@end
+
 
 @interface IluView : NSView
 @end
@@ -158,6 +364,33 @@ static void OnViewSizeChanged(NSView *view)
 	return NO;
 }
 
+// Another app active: give back the window and display mode, full screen again on return
+- (void)applicationDidResignActive:(NSNotification *)notification
+{
+	if ( HasFullscreenLayout() ) {
+		RemoveFullscreenLayout();
+	}
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)notification
+{
+	if ( windowImpl.fullscreen && !HasFullscreenLayout() ) {
+		ApplyFullscreenLayout();
+	}
+}
+
+// Display arrangement or mode changed (also by AppKit, after our own mode switches)
+- (void)applicationDidChangeScreenParameters:(NSNotification *)notification
+{
+	if ( HasFullscreenLayout() ) {
+		FitWindowToDisplay();
+	} else if ( windowImpl.reapplyWindowedFrame ) {
+		// AppKit moves windows when it learns about the restored mode, after RemoveFullscreenLayout
+		windowImpl.reapplyWindowedFrame = false;
+		[windowImpl.window setFrame:windowImpl.windowedFrame display:YES];
+	}
+}
+
 @end
 
 static IluAppDelegate *appDelegate;
@@ -175,8 +408,16 @@ static void CreateMenuBar(const char *title)
 	NSMenuItem *appMenuItem = [[NSMenuItem alloc] init];
 	appMenuItem.submenu = appMenu;
 
+	NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+	NSMenuItem *fullscreenItem = [viewMenu addItemWithTitle:@"Toggle Full Screen" action:@selector(toggleFullScreen:) keyEquivalent:@"f"];
+	fullscreenItem.keyEquivalentModifierMask = NSEventModifierFlagControl | NSEventModifierFlagCommand;
+
+	NSMenuItem *viewMenuItem = [[NSMenuItem alloc] init];
+	viewMenuItem.submenu = viewMenu;
+
 	NSMenu *menuBar = [[NSMenu alloc] init];
 	[menuBar addItem:appMenuItem];
+	[menuBar addItem:viewMenuItem];
 	NSApp.mainMenu = menuBar;
 }
 
@@ -192,6 +433,7 @@ static bool InitializeWindow(Window &window, u32 width, u32 height, const char *
 	@autoreleasepool
 	{
 		[NSApplication sharedApplication];
+
 		// Without a bundle the process would get no Dock icon and could not take focus
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		appDelegate = [[IluAppDelegate alloc] init];
@@ -209,7 +451,7 @@ static bool InitializeWindow(Window &window, u32 width, u32 height, const char *
 			NSWindowStyleMaskMiniaturizable |
 			NSWindowStyleMaskResizable;
 
-		NSWindow *nsWindow = [[NSWindow alloc] initWithContentRect:contentRect
+		NSWindow *nsWindow = [[IluWindow alloc] initWithContentRect:contentRect
 		                                                 styleMask:style
 		                                                   backing:NSBackingStoreBuffered
 		                                                     defer:NO];
@@ -224,6 +466,11 @@ static bool InitializeWindow(Window &window, u32 width, u32 height, const char *
 		nsWindow.delegate = appDelegate;
 		nsWindow.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary; // Green button
 		[nsWindow center];
+
+		// The green button would enter AppKit's full-screen Space, send it to our own full screen
+		NSButton *greenButton = [nsWindow standardWindowButton:NSWindowZoomButton];
+		greenButton.target = nsWindow;
+		greenButton.action = @selector(toggleFullScreen:);
 
 		IluView *view = [[IluView alloc] initWithFrame:contentRect];
 		view.wantsLayer = YES; // Creates the CAMetalLayer through makeBackingLayer
@@ -265,7 +512,12 @@ static void CleanupWindow(Window &window)
 	// Called on the update thread once the engine released the window
 	NSWindow *nsWindow = windowImpl.window;
 	if ( nsWindow ) {
-		RunOnMainThread(^{ [nsWindow close]; });
+		RunOnMainThread(^{
+			if ( windowImpl.fullscreen ) {
+				ExitFullscreen(); // Gives the user their display mode back before the window goes away
+			}
+			[nsWindow close];
+		});
 	}
 }
 
