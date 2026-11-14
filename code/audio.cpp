@@ -34,6 +34,10 @@ static AudioCmdQueue sAudioCmdQueue = {};
 
 static void AudioCmdQueue_Push(AudioCmd cmd)
 {
+	if ( !GetHost().audioOutput ) {
+		return; // No audio device: nothing would ever process the command
+	}
+
 	AudioCmdQueue &queue = sAudioCmdQueue;
 	ASSERT( queue.writePos - queue.readPos < AUDIO_CMD_QUEUE_CAPACITY );
 	queue.slots[queue.writePos % AUDIO_CMD_QUEUE_CAPACITY] = cmd;

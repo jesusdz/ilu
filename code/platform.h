@@ -278,6 +278,7 @@ struct Host
 	Gamepad *gamepad;
 
 	bool fileChangesDetected; // true for the one frame in which a watched directory changed
+	bool audioOutput;         // false without an audio device: nothing renders the engine's audio
 
 	Engine *engine;
 #if USE_EDITOR

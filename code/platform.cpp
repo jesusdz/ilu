@@ -1315,6 +1315,8 @@ static bool Run(Platform &platform)
 	}
 #endif // USE_AUDIO_THREAD
 
+	platform.host.audioOutput = platform.audio.state != AudioStateUninitialized;
+
 #if USE_UPDATE_THREAD
 	if ( !InitializeUpdateThread(platform) )
 	{
