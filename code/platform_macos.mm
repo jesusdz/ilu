@@ -1,11 +1,14 @@
 // macOS platform layer, included by platform.cpp (compiled as Objective-C++).
-// Status: window, Retina, full screen and quit work. Input, gamepad, file watching and audio are TODO.
+// Status: window, Retina, full screen, input and quit work. File watching and audio are TODO.
 // Threading: AppKit runs on the main thread, the engine on the update thread (USE_UPDATE_THREAD).
 // Units: the engine gets pixels, AppKit uses points (pixels = points * backingScaleFactor).
 
 // AppKit is imported by ilu_core.h, see the comment there.
 #import <QuartzCore/CAMetalLayer.h>
 #include <IOKit/graphics/IOGraphicsTypes.h> // kDisplayModeNativeFlag
+#define Key GCKey // GameController names a generic parameter 'Key', ambiguous with the engine's enum
+#import <GameController/GameController.h>
+#undef Key
 
 #define USE_UPDATE_THREAD 1
 #define USE_AUDIO_THREAD 1
@@ -306,6 +309,123 @@ static void ToggleFullscreen()
 @end
 
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Keyboard and mouse (main thread)
+
+static bool keysDown[K_COUNT];                   // To release them all when the window loses focus
+static bool mouseButtonsDown[MOUSE_BUTTON_COUNT];
+static f64 accumulatedWheel[2];                  // Trackpads scroll in fractions of a wheel step
+
+// Special keys by physical key code (kVK_* in HIToolbox/Events.h)
+static Key KeyFromKeyCode(u16 keyCode)
+{
+	switch ( keyCode )
+	{
+		case 0x7B: return K_LEFT;
+		case 0x7C: return K_RIGHT;
+		case 0x7E: return K_UP;
+		case 0x7D: return K_DOWN;
+		case 0x35: return K_ESCAPE;
+		case 0x31: return K_SPACE;
+		case 0x33: return K_BACKSPACE;
+		case 0x75: return K_DELETE;  // Forward delete
+		case 0x24: return K_RETURN;
+		case 0x4C: return K_RETURN;  // Keypad enter
+		case 0x30: return K_TAB;
+		case 0x7A: return K_F1;
+		case 0x78: return K_F2;
+		case 0x63: return K_F3;
+		case 0x76: return K_F4;
+		case 0x60: return K_F5;
+		case 0x61: return K_F6;
+		case 0x62: return K_F7;
+		case 0x64: return K_F8;
+		case 0x65: return K_F9;
+		case 0x6D: return K_F10;
+		case 0x67: return K_F11;
+		case 0x6F: return K_F12;
+		case 0x1D: return K_0;       // Digits by position too, for layouts that need Shift for them
+		case 0x12: return K_1;
+		case 0x13: return K_2;
+		case 0x14: return K_3;
+		case 0x15: return K_4;
+		case 0x17: return K_5;
+		case 0x16: return K_6;
+		case 0x1A: return K_7;
+		case 0x1C: return K_8;
+		case 0x19: return K_9;
+		default: return K_NULL;
+	}
+}
+
+// Letters, digits and period from the keyboard layout (like Windows virtual keys), others by position
+static Key KeyFromEvent(NSEvent *event)
+{
+	NSString *chars = [event charactersByApplyingModifiers:0];
+	if ( chars.length == 1 )
+	{
+		const unichar c = [chars characterAtIndex:0];
+		if ( c >= 'a' && c <= 'z' ) return (Key)(K_A + (c - 'a'));
+		if ( c >= '0' && c <= '9' ) return (Key)(K_0 + (c - '0'));
+		if ( c == '.' ) return K_PERIOD;
+	}
+	return KeyFromKeyCode(event.keyCode);
+}
+
+static void SendKey(Key key, bool down, bool repeat = false)
+{
+	if ( key == K_NULL || ( keysDown[key] == down && !repeat ) ) {
+		return;
+	}
+	keysDown[key] = down;
+	const PlatformEvent event = {
+		.type = PlatformEventTypeKeyPress,
+		.keyPress = { .code = key, .state = down ? KEY_STATE_PRESS : KEY_STATE_RELEASE },
+	};
+	SendPlatformEvent(platform, event);
+}
+
+static void SendMouseButton(MouseButton button, bool down)
+{
+	if ( mouseButtonsDown[button] == down ) {
+		return;
+	}
+	mouseButtonsDown[button] = down;
+	const PlatformEvent event = {
+		.type = PlatformEventTypeMouseClick,
+		.mouseClick = { .button = button, .state = down ? BUTTON_STATE_PRESS : BUTTON_STATE_RELEASE },
+	};
+	SendPlatformEvent(platform, event);
+}
+
+// Pixels from the top-left corner, clamped to the view like on Windows
+static void SendMouseMove(NSView *view, NSEvent *event)
+{
+	const NSPoint point = [view convertPoint:event.locationInWindow fromView:nil];
+	const NSSize size = view.bounds.size;
+	const CGFloat scale = view.window.backingScaleFactor;
+	const PlatformEvent platformEvent = {
+		.type = PlatformEventTypeMouseMove,
+		.mouseMove = { .pos = {
+			.x = Clamp((i32)(point.x * scale), 0, (i32)(size.width * scale)),
+			.y = Clamp((i32)((size.height - point.y) * scale), 0, (i32)(size.height * scale)),
+		} },
+	};
+	SendPlatformEvent(platform, platformEvent);
+}
+
+static void ReleaseAllKeysAndButtons()
+{
+	for ( u32 i = 0; i < K_COUNT; ++i ) {
+		SendKey((Key)i, false);
+	}
+	for ( u32 i = 0; i < MOUSE_BUTTON_COUNT; ++i ) {
+		SendMouseButton((MouseButton)i, false);
+	}
+}
+
+
 @interface IluView : NSView
 @end
 
@@ -339,9 +459,70 @@ static void ToggleFullscreen()
 	OnViewSizeChanged(self);
 }
 
-// TODO(macOS): Keyboard input. Handled here meanwhile so unhandled keys don't make AppKit beep.
-- (void)keyDown:(NSEvent *)event {}
-- (void)keyUp:(NSEvent *)event {}
+- (void)keyDown:(NSEvent *)event
+{
+	SendKey(KeyFromEvent(event), true, event.isARepeat);
+
+	const bool option = event.modifierFlags & NSEventModifierFlagOption;
+	if ( event.keyCode == 0x24 && option && !event.isARepeat ) {
+		ToggleFullscreen(); // Option+Return, like Alt+Enter on Windows
+	}
+}
+
+- (void)keyUp:(NSEvent *)event
+{
+	SendKey(KeyFromEvent(event), false);
+}
+
+// Modifiers don't send keyDown/keyUp. Cmd is K_CONTROL too, for Cmd+key shortcuts.
+- (void)flagsChanged:(NSEvent *)event
+{
+	const NSEventModifierFlags flags = event.modifierFlags;
+	SendKey(K_SHIFT, flags & NSEventModifierFlagShift);
+	SendKey(K_CONTROL, flags & ( NSEventModifierFlagControl | NSEventModifierFlagCommand ));
+	SendKey(K_ALT, flags & NSEventModifierFlagOption);
+}
+
+- (void)mouseDown:(NSEvent *)event { SendMouseMove(self, event); SendMouseButton(MOUSE_BUTTON_LEFT, true); }
+- (void)mouseUp:(NSEvent *)event { SendMouseMove(self, event); SendMouseButton(MOUSE_BUTTON_LEFT, false); }
+- (void)rightMouseDown:(NSEvent *)event { SendMouseMove(self, event); SendMouseButton(MOUSE_BUTTON_RIGHT, true); }
+- (void)rightMouseUp:(NSEvent *)event { SendMouseMove(self, event); SendMouseButton(MOUSE_BUTTON_RIGHT, false); }
+
+- (void)otherMouseDown:(NSEvent *)event
+{
+	SendMouseMove(self, event);
+	if ( event.buttonNumber == 2 ) SendMouseButton(MOUSE_BUTTON_MIDDLE, true);
+}
+
+- (void)otherMouseUp:(NSEvent *)event
+{
+	SendMouseMove(self, event);
+	if ( event.buttonNumber == 2 ) SendMouseButton(MOUSE_BUTTON_MIDDLE, false);
+}
+
+// Drags keep coming while the cursor is outside the window, like a mouse capture on Windows
+- (void)mouseMoved:(NSEvent *)event { SendMouseMove(self, event); }
+- (void)mouseDragged:(NSEvent *)event { SendMouseMove(self, event); }
+- (void)rightMouseDragged:(NSEvent *)event { SendMouseMove(self, event); }
+- (void)otherMouseDragged:(NSEvent *)event { SendMouseMove(self, event); }
+
+// Whole wheel steps, sign like Windows (forward is -1), following the user's scroll direction setting
+- (void)scrollWheel:(NSEvent *)event
+{
+	accumulatedWheel[0] += event.deltaX;
+	accumulatedWheel[1] += event.deltaY;
+	const i32 stepsX = (i32)accumulatedWheel[0];
+	const i32 stepsY = (i32)accumulatedWheel[1];
+	accumulatedWheel[0] -= stepsX;
+	accumulatedWheel[1] -= stepsY;
+	if ( stepsX != 0 || stepsY != 0 ) {
+		const PlatformEvent platformEvent = {
+			.type = PlatformEventTypeMouseWheel,
+			.mouseWheel = { .delta = { .x = -stepsX, .y = -stepsY } },
+		};
+		SendPlatformEvent(platform, platformEvent);
+	}
+}
 
 @end
 
@@ -367,6 +548,7 @@ static void ToggleFullscreen()
 // Another app active: give back the window and display mode, full screen again on return
 - (void)applicationDidResignActive:(NSNotification *)notification
 {
+	ReleaseAllKeysAndButtons(); // Released in another app (Cmd+Tab), they would stay held otherwise
 	if ( HasFullscreenLayout() ) {
 		RemoveFullscreenLayout();
 	}
@@ -465,6 +647,7 @@ static bool InitializeWindow(Window &window, u32 width, u32 height, const char *
 		nsWindow.title = [NSString stringWithUTF8String:title];
 		nsWindow.delegate = appDelegate;
 		nsWindow.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary; // Green button
+		nsWindow.acceptsMouseMovedEvents = YES; // Mouse moves without a button pressed
 		[nsWindow center];
 
 		// The green button would enter AppKit's full-screen Space, send it to our own full screen
@@ -548,7 +731,12 @@ static void PlatformUpdateEventLoop(Platform &platform)
 		while ( platform.keepRunning &&
 				(event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:until inMode:NSDefaultRunLoopMode dequeue:YES]) )
 		{
-			[NSApp sendEvent:event];
+			const bool commandKeyUp = event.type == NSEventTypeKeyUp && ( event.modifierFlags & NSEventModifierFlagCommand );
+			if ( commandKeyUp ) {
+				[NSApp.keyWindow sendEvent:event]; // NSApp drops keyUp while Cmd is held
+			} else {
+				[NSApp sendEvent:event];
+			}
 			until = [NSDate distantPast];
 		}
 	}
@@ -575,13 +763,58 @@ static void UpdateFileWatcher(Platform &platform)
 
 static bool InitializeGamepad(Platform &platform)
 {
-	// TODO(macOS): GameController.framework
-	return false;
+	LOG(Info, "Input system initialization:\n");
+	LOG(Info, "- GameController.framework, polled every frame\n");
+	return true;
 }
 
+static ButtonState UpdateButtonState(ButtonState prevState, bool pressed)
+{
+	const bool wasPressed = prevState == BUTTON_STATE_PRESS || prevState == BUTTON_STATE_PRESSED;
+	return pressed ?
+		( wasPressed ? BUTTON_STATE_PRESSED : BUTTON_STATE_PRESS ) :
+		( wasPressed ? BUTTON_STATE_RELEASE : BUTTON_STATE_IDLE );
+}
+
+// Dead zones of XInput (7849 and 8689 out of 32767), so sticks feel the same as on Windows
+#define GAMEPAD_LEFT_THUMB_DEADZONE  0.2395f
+#define GAMEPAD_RIGHT_THUMB_DEADZONE 0.2652f
+
+static f32 AxisFromValue(f32 value, f32 deadzone)
+{
+	if ( value > deadzone ) return ( value - deadzone ) / ( 1.0f - deadzone );
+	if ( value < -deadzone ) return ( value + deadzone ) / ( 1.0f - deadzone );
+	return 0.0f;
+}
+
+// Update thread. Without a controller, pad is nil and every read returns 0: all released, centered.
 static void UpdateGamepad(Platform &platform)
 {
-	// TODO(macOS)
+	Gamepad &gamepad = platform.gamepad;
+
+	@autoreleasepool
+	{
+		GCExtendedGamepad *pad = GCController.controllers.firstObject.extendedGamepad;
+
+		gamepad.start = UpdateButtonState(gamepad.start, pad.buttonMenu.isPressed);
+		gamepad.back = UpdateButtonState(gamepad.back, pad.buttonOptions.isPressed);
+		gamepad.up = UpdateButtonState(gamepad.up, pad.dpad.up.isPressed);
+		gamepad.down = UpdateButtonState(gamepad.down, pad.dpad.down.isPressed);
+		gamepad.left = UpdateButtonState(gamepad.left, pad.dpad.left.isPressed);
+		gamepad.right = UpdateButtonState(gamepad.right, pad.dpad.right.isPressed);
+		gamepad.a = UpdateButtonState(gamepad.a, pad.buttonA.isPressed);
+		gamepad.b = UpdateButtonState(gamepad.b, pad.buttonB.isPressed);
+		gamepad.x = UpdateButtonState(gamepad.x, pad.buttonX.isPressed);
+		gamepad.y = UpdateButtonState(gamepad.y, pad.buttonY.isPressed);
+		gamepad.leftShoulder = UpdateButtonState(gamepad.leftShoulder, pad.leftShoulder.isPressed);
+		gamepad.rightShoulder = UpdateButtonState(gamepad.rightShoulder, pad.rightShoulder.isPressed);
+		gamepad.leftTrigger = pad.leftTrigger.value;
+		gamepad.rightTrigger = pad.rightTrigger.value;
+		gamepad.leftAxis.x = AxisFromValue(pad.leftThumbstick.xAxis.value, GAMEPAD_LEFT_THUMB_DEADZONE);
+		gamepad.leftAxis.y = AxisFromValue(pad.leftThumbstick.yAxis.value, GAMEPAD_LEFT_THUMB_DEADZONE);
+		gamepad.rightAxis.x = AxisFromValue(pad.rightThumbstick.xAxis.value, GAMEPAD_RIGHT_THUMB_DEADZONE);
+		gamepad.rightAxis.y = AxisFromValue(pad.rightThumbstick.yAxis.value, GAMEPAD_RIGHT_THUMB_DEADZONE);
+	}
 }
 
 
