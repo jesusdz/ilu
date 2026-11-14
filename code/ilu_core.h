@@ -1572,6 +1572,7 @@ bool CopyFile(const char *srcPath, const char *dstPath)
 	if ( fd_rd == -1 ) {
 		LinuxReportError("CopyFile open O_RDONLY");
 	} else {
+		unlink(dstPath); // New file, not overwritten in place: macOS caches loaded libraries' code signatures
 		int fd_wr = open(dstPath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 		if ( fd_wr == -1 ) {
 			LinuxReportError("CopyFile open O_WRONLY | O_CREAT | O_TRUNC");
