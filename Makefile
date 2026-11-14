@@ -7,11 +7,14 @@ ifeq (${UNAME_S},Darwin)
   PLATFORM_LANG= -x objective-c++ # platform.cpp includes platform_macos.mm
   PLATFORM_LIBS= -framework Cocoa -framework QuartzCore -framework Metal
   SHARED_FLAGS= -dynamiclib
+  # dlopen doesn't search Homebrew's folders by default to find Vulkan validation layer
+  RUN_ENV= DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
 else
   CXX=g++
   PLATFORM_LANG=
   PLATFORM_LIBS= -lxcb -lpthread
   SHARED_FLAGS= -fPIC -shared
+  RUN_ENV=
 endif
 
 CXXFLAGS= -g -DDEVELOPMENT_BUILD
@@ -22,7 +25,7 @@ DATA_SHADERS_DIR=${DATA_DIR}/shaders
 default: build_and_run
 
 build_and_run: ilu
-	${BUILD_DIR}/ilu
+	${RUN_ENV} ${BUILD_DIR}/ilu
 
 build_and_debug: ilu
 	gf2 ${BUILD_DIR}/ilu

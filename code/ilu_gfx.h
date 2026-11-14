@@ -80,11 +80,6 @@
 
 #include "ilu_core.h"
 
-// This extension removes a VK_ERROR_INCOMPATIBLE_DRIVER when calling vkCreateInstance
-// on some platforms implementing Vulkan on top of another API.
-// An example of this could be Apple machines with MoltenVK on top of Metal.
-#define USE_VK_EXT_PORTABILITY_ENUMERATION 0
-
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan_core.h>
 
@@ -1025,7 +1020,7 @@ struct DebugGfxBlock
 #elif USE_WINAPI
 #	define VK_USE_PLATFORM_WIN32_KHR 1
 #elif USE_COCOA
-	// TODO(macOS): VK_USE_PLATFORM_METAL_EXT (VK_EXT_metal_surface), no surface type until then
+#	define VK_USE_PLATFORM_METAL_EXT 1
 #else
 #	error "Configure the proper platform for Vulkan"
 #endif
@@ -1036,6 +1031,12 @@ struct DebugGfxBlock
 #include <vulkan/vulkan_xcb.h>
 #elif VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan_android.h>
+#elif VK_USE_PLATFORM_METAL_EXT
+#include <vulkan/vulkan_metal.h>
+#endif
+
+#if PLATFORM_APPLE
+#define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset" // Provisional, in vulkan_beta.h
 #endif
 
 #define VULKAN_ALLOCATORS NULL
@@ -1092,9 +1093,9 @@ struct DebugGfxBlock
 #if defined(VK_KHR_android_surface)
 #define VK_INSTANCE_FUNCTION_LIST_KHR_SURFACE_PLATFORM(EXPAND_MACRO) EXPAND_MACRO(vkCreateAndroidSurfaceKHR)
 #endif /* defined(VK_KHR_android_surface) */
-#if !defined(VK_INSTANCE_FUNCTION_LIST_KHR_SURFACE_PLATFORM)
-#define VK_INSTANCE_FUNCTION_LIST_KHR_SURFACE_PLATFORM(EXPAND_MACRO) // No surface platform yet (macOS)
-#endif
+#if defined(VK_EXT_metal_surface)
+#define VK_INSTANCE_FUNCTION_LIST_KHR_SURFACE_PLATFORM(EXPAND_MACRO) EXPAND_MACRO(vkCreateMetalSurfaceEXT)
+#endif /* defined(VK_EXT_metal_surface) */
 
 // All instance functions
 #define EXPAND_API_VK_INSTANCE(EXPAND_MACRO) \
@@ -1201,9 +1202,10 @@ static bool VulkanLoadInitFunctions()
 #if defined(PLATFORM_WINDOWS)
 		"vulkan-1.dll",
 #elif defined(PLATFORM_APPLE)
-		"libvulkan.dylib",
 		"libvulkan.1.dylib",
-		"libMoltenVK.dylib",
+		"libvulkan.dylib",
+		"/usr/local/lib/libvulkan.1.dylib",
+		"/opt/homebrew/lib/libvulkan.1.dylib",
 #else
 		"libvulkan.so.1",
 		"libvulkan.so",
@@ -2482,9 +2484,6 @@ bool InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch)
 	VK_CALL( vkEnumerateInstanceExtensionProperties( NULL, &availableInstanceExtensionCount, availableInstanceExtensions ) );
 
 	const char *requiredInstanceExtensionNames[] = {
-#if USE_VK_EXT_PORTABILITY_ENUMERATION
-		VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
-#endif
 		VK_KHR_SURFACE_EXTENSION_NAME,
 #if VK_USE_PLATFORM_XCB_KHR
 		VK_KHR_XCB_SURFACE_EXTENSION_NAME,
@@ -2492,6 +2491,8 @@ bool InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch)
 		VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
 #elif VK_USE_PLATFORM_WIN32_KHR
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#elif VK_USE_PLATFORM_METAL_EXT
+		VK_EXT_METAL_SURFACE_EXTENSION_NAME,
 #endif
 	};
 
@@ -2526,6 +2527,16 @@ bool InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch)
 	}
 
 	// Enable optional extensions
+
+	VkInstanceCreateFlags instanceCreateFlags = 0;
+#if PLATFORM_APPLE
+	// Lists implementations that are not fully conformant, like MoltenVK on top of Metal.
+	// Without them, vkCreateInstance fails with VK_ERROR_INCOMPATIBLE_DRIVER on MacOS.
+	if ( EnableExtension( VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME ) ) {
+		instanceCreateFlags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+	}
+#endif
+
 #if DEVELOPMENT_BUILD
 	if ( EnableExtension( VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) ) {
 		device.support.debugUtils = true;
@@ -2559,17 +2570,27 @@ bool InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch)
 	const VkInstanceCreateInfo instanceCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 		.pNext = pNext,
+		.flags = instanceCreateFlags,
 		.pApplicationInfo = &applicationInfo,
-#if USE_VK_EXT_PORTABILITY_ENUMERATION
-		.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
-#endif
 		.enabledLayerCount = enabledInstanceLayerCount,
 		.ppEnabledLayerNames = enabledInstanceLayerNames,
 		.enabledExtensionCount = enabledInstanceExtensionCount,
 		.ppEnabledExtensionNames = enabledInstanceExtensionNames,
 	};
 
-	VK_CALL ( vkCreateInstance( &instanceCreateInfo, VULKAN_ALLOCATORS, &device.instance ) );
+	VkResult result = vkCreateInstance( &instanceCreateInfo, VULKAN_ALLOCATORS, &device.instance );
+#if DEVELOPMENT_BUILD
+	if ( result == VK_ERROR_LAYER_NOT_PRESENT && instanceCreateInfo.enabledLayerCount > 0 )
+	{
+		// A layer was listed but its library could not be loaded (a broken install, or on macOS
+		// a Homebrew layer whose library is not in the search path, see the Makefile)
+		LOG(Warning, "- Instance layers could not be loaded, continuing without them\n");
+		VkInstanceCreateInfo noLayersCreateInfo = instanceCreateInfo;
+		noLayersCreateInfo.enabledLayerCount = 0;
+		result = vkCreateInstance( &noLayersCreateInfo, VULKAN_ALLOCATORS, &device.instance );
+	}
+#endif
+	VK_CALL( result );
 
 
 	// Load the instance-related Vulkan function pointers
@@ -2607,9 +2628,12 @@ bool InitializeGraphicsSurface(GraphicsDevice &device, const Window &window)
 		.hwnd = window.impl->hWnd,
 	};
 	VK_CALL( vkCreateWin32SurfaceKHR( device.instance, &surfaceCreateInfo, VULKAN_ALLOCATORS, &device.surface ) );
-#else
-	LOG(Error, "InitializeGraphicsSurface: Not implemented on this platform yet\n");
-	return false;
+#elif VK_USE_PLATFORM_METAL_EXT
+	const VkMetalSurfaceCreateInfoEXT surfaceCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+		.pLayer = window.impl->layer,
+	};
+	VK_CALL( vkCreateMetalSurfaceEXT( device.instance, &surfaceCreateInfo, VULKAN_ALLOCATORS, &device.surface ) );
 #endif
 
 	return true;
@@ -2628,6 +2652,9 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 
 	const char *requiredDeviceExtensionNames[] = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+#if PLATFORM_APPLE
+		VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME, // Exposed by MoltenVK
+#endif
 	};
 
 
