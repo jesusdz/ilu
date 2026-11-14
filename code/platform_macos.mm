@@ -239,6 +239,7 @@ static void ApplyFullscreenLayout()
 
 	NSWindow *nsWindow = windowImpl.window;
 	nsWindow.styleMask = NSWindowStyleMaskBorderless;
+	[nsWindow makeFirstResponder:windowImpl.view]; // Changing the style makes the window first responder
 	NSApp.presentationOptions = NSApplicationPresentationHideDock | NSApplicationPresentationHideMenuBar;
 	FitWindowToDisplay();
 	[nsWindow makeKeyAndOrderFront:nil];
@@ -249,6 +250,7 @@ static void RemoveFullscreenLayout()
 	NSWindow *nsWindow = windowImpl.window;
 	NSApp.presentationOptions = NSApplicationPresentationDefault;
 	nsWindow.styleMask = windowImpl.windowedStyle;
+	[nsWindow makeFirstResponder:windowImpl.view]; // Changing the style makes the window first responder
 	[nsWindow setFrame:windowImpl.windowedFrame display:YES];
 
 	windowImpl.reapplyWindowedFrame = RestoreUserDisplayMode();
