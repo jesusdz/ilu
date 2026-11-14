@@ -159,7 +159,8 @@ struct Platform
 	Semaphore updateThreadFinishSemaphore;
 	Mutex renderLock;
 
-	volatile bool audioPaused;
+	bool audioThreadStarted;
+	volatile bool audioThreadPaused;
 	Semaphore audioThreadPauseSemaphore;
 	Semaphore audioThreadFinishSemaphore;
 
@@ -537,9 +538,9 @@ static THREAD_FUNCTION(AudioThread) // void *WorkQueueThread(void* arguments)
 
 		if ( platform.paused )
 		{
-			platform.audioPaused = true;
+			platform.audioThreadPaused = true;
 			WaitSemaphore( platform.audioThreadPauseSemaphore );
-			platform.audioPaused = false;
+			platform.audioThreadPaused = false;
 		}
 	}
 
@@ -565,7 +566,11 @@ static bool InitializeAudioThread(AudioDevice &audio)
 		static const ThreadInfo threadInfo = {
 			.globalIndex = THREAD_ID_AUDIO,
 		};
-		if ( !CreateDetachedThread(AudioThread, threadInfo) )
+		if ( CreateDetachedThread(AudioThread, threadInfo) )
+		{
+			platform.audioThreadStarted = true;
+		}
+		else
 		{
 			audio.state = AudioStateUninitialized;
 		}
@@ -1161,7 +1166,7 @@ static void PauseThreads(Platform &platform)
 {
 	// Make sure we start from a non-paused state
 #if USE_AUDIO_THREAD
-	platform.audioPaused = false;
+	platform.audioThreadPaused = false;
 #endif
 	for (u32 i = 0; i < WORK_QUEUE_WORKER_COUNT; ++i)
 	{
@@ -1172,7 +1177,7 @@ static void PauseThreads(Platform &platform)
 	platform.paused = true;
 
 #if USE_AUDIO_THREAD
-	while ( !platform.audioPaused && platform.keepRunning )
+	while ( platform.audioThreadStarted && !platform.audioThreadPaused && platform.keepRunning )
 	{
 		Nap();
 	}
@@ -1204,7 +1209,10 @@ static void ResumeThreads(Platform &platform)
 	}
 
 #if USE_AUDIO_THREAD
-	SignalSemaphore(platform.audioThreadPauseSemaphore);
+	if ( platform.audioThreadStarted )
+	{
+		SignalSemaphore(platform.audioThreadPauseSemaphore);
+	}
 #endif
 
 	// Don't wait for thread's paused flags to become false again
@@ -1343,7 +1351,10 @@ static bool Run(Platform &platform)
 	WaitSemaphore(platform.updateThreadFinishSemaphore);
 #endif
 #if USE_AUDIO_THREAD
-	WaitSemaphore(platform.audioThreadFinishSemaphore);
+	if ( platform.audioThreadStarted )
+	{
+		WaitSemaphore(platform.audioThreadFinishSemaphore);
+	}
 #endif
 
 	if ( platform.windowInitialized )
