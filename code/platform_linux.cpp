@@ -990,10 +990,9 @@ static bool InitializeAudioDevice(Platform &platform)
 			// as one period of space is free. So the buffer has to be sized to what we actually
 			// intend to keep queued, otherwise there is always free space and the wait spins
 			// instead of pacing us. The period sets the wake-up granularity, a few wake-ups
-			// per write-ahead window.
-			const u32 periodMillis = Max(1u, audio.writeAheadMillis / 3);
-			snd_pcm_uframes_t periodFrames = audio.framesPerSecond * periodMillis / 1000;
-			snd_pcm_uframes_t bufferFrames = audio.framesPerSecond * 2 * audio.writeAheadMillis / 1000;
+			// per latency.
+			snd_pcm_uframes_t periodFrames = Max(1u, audio.latencyFrames / 6);
+			snd_pcm_uframes_t bufferFrames = audio.latencyFrames;
 
 			// Allocate and configure hardware parameters
 			snd_pcm_hw_params_t *params;
@@ -1068,10 +1067,8 @@ static void UpdateAudioDevice(Platform &platform)
 
 		if ( res == 0 )
 		{
-			// Keep up to two write-ahead windows queued. Widening the window makes underruns
-			// less likely, at the cost of latency before a new sound is heard.
-			const float time = 2.0f * (float)audio.writeAheadMillis / 1000.0f;
-			const snd_pcm_uframes_t maxFramesToRender = (snd_pcm_uframes_t)(audio.framesPerSecond * time);
+			// Keep up to the latency queued
+			const snd_pcm_uframes_t maxFramesToRender = audio.latencyFrames;
 
 			snd_pcm_uframes_t framesToRender = maxFramesToRender - delayFrames;
 

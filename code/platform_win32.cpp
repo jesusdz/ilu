@@ -1275,9 +1275,9 @@ static void UpdateAudioDevice(Platform &platform)
 			return;
 		}
 
-		// Bytes of audio the device consumes during one write-ahead window.
+		// Half the latency: the target is two windows past the play cursor
 		const DWORD bytesPerSecond = audio.framesPerSecond * audio.channelCount * audio.bytesPerSample;
-		const DWORD expectedBytesPerWindow = (bytesPerSecond * audio.writeAheadMillis) / 1000;
+		const DWORD expectedBytesPerWindow = (bytesPerSecond * audio.latencyMillis) / 2000;
 		const DWORD expectedWindowBoundaryByte = playCursor + expectedBytesPerWindow;
 
 		DWORD safeWriteCursor = writeCursor;

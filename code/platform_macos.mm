@@ -923,16 +923,14 @@ static void UpdateAudioDevice(Platform &platform)
 	AudioDevice &audio = platform.audio;
 	MacAudio &ma = macAudio;
 
-	// Keep two write-ahead windows queued, like on Linux
-	const u32 targetFrames = audio.framesPerSecond * 2 * audio.writeAheadMillis / 1000;
 	const u32 queuedFrames = ma.writeFrame - ma.readFrame;
-	if ( queuedFrames >= targetFrames ) {
+	if ( queuedFrames >= audio.latencyFrames ) {
 		return;
 	}
 
 	SoundBuffer soundBuffer = {};
 	soundBuffer.framesPerSecond = audio.framesPerSecond;
-	soundBuffer.frameCount = targetFrames - queuedFrames;
+	soundBuffer.frameCount = audio.latencyFrames - queuedFrames;
 	soundBuffer.samples = audio.outputSamples;
 	platform.OnPlatformRenderAudio(platform.host, soundBuffer);
 

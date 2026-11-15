@@ -338,7 +338,7 @@ static bool InitializeAudioDevice(Platform &platform)
 		AAudioStreamBuilder_setSampleRate(builder, audio.framesPerSecond);
 		AAudioStreamBuilder_setChannelCount(builder, audio.channelCount);
 		AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
-		AAudioStreamBuilder_setBufferCapacityInFrames(builder, audio.framesPerSecond * audio.writeAheadMillis / 1000);
+		AAudioStreamBuilder_setBufferCapacityInFrames(builder, audio.latencyFrames);
 		AAudioStreamBuilder_setDataCallback(builder, AAudioFillAudioBuffer, &platform);
 
 		AAudioStream *stream;

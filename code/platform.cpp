@@ -23,11 +23,9 @@ struct AudioDevice
 	u32 bytesPerSample;
 	u32 framesPerSecond;
 
-	// How far ahead of the write cursor each update fills the ring buffer, plus the extra
-	// slack added when the device does not report a low latency write cursor. Both are in
-	// milliseconds, so audio latency no longer depends on an assumed game frame rate.
-	u32 writeAheadMillis;
-	u32 safetyMillis;
+	u32 latencyMillis;  // Audio kept queued ahead of playback (delay before a new sound is heard)
+	u32 latencyFrames;  // Same, in frames
+	u32 safetyMillis;   // Win32: extra slack when the device has no low latency write cursor
 
 	u32 safetyBytes;
 	u32 runningFrameIndex;
@@ -503,7 +501,8 @@ static bool InitializeAudio(Platform &platform)
 
 	// Tuning knobs for latency vs. underrun resistance: widening these makes dropouts less
 	// likely but delays how soon a newly triggered sound is heard.
-	audio.writeAheadMillis = 33;
+	audio.latencyMillis = 66;
+	audio.latencyFrames = audio.framesPerSecond * audio.latencyMillis / 1000;
 	audio.safetyMillis = 11;
 
 	const u32 bytesPerSecond = audio.framesPerSecond * audio.channelCount * audio.bytesPerSample;
