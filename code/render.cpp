@@ -563,6 +563,18 @@ static void DrawBloomPass(Graphics &gfx, CommandList &commandList, const Framebu
 	EndRenderPass(commandList);
 }
 
+// Where the blit draws the scene on the display: scaled to all of it (editor), or by an integer with black bars
+static rect GetSceneViewport(const RenderTargets &renderTargets, uint2 sceneSize, uint2 displaySize)
+{
+	if ( renderTargets.scaleSceneToDisplay ) {
+		return { {0, 0}, displaySize };
+	}
+	const u32 multiplier = Max(1u, Min(displaySize.x / sceneSize.x, displaySize.y / sceneSize.y));
+	const uint2 size = multiplier * sceneSize;
+	const int2 pos = { ((i32)displaySize.x - (i32)size.x) / 2, ((i32)displaySize.y - (i32)size.y) / 2 };
+	return { Max(pos, int2{0, 0}), size }; // Not negative when the scene is bigger than the display
+}
+
 bool RenderGraphics(Engine &engine)
 {
 	PROFILE_BLOCK(RenderGraphics);
@@ -797,6 +809,14 @@ bool RenderGraphics(Engine &engine)
 
 	MemCopy(GetBufferPtr(gfx.device, gfx.lightBuffer[frameIndex]), lightData, lightCount * sizeof(SLight));
 
+	// Mouse position in scene pixels, read by the editor's ID picking
+	const rect sceneViewport = GetSceneViewport(gfx.renderTargets, sceneSize, uint2{(u32)displayWidth, (u32)displayHeight});
+	const int2 mouseInViewport = window.mouse.pos - sceneViewport.pos;
+	const int2 sceneMousePosition = {
+		mouseInViewport.x * (i32)sceneSize.x / (i32)sceneViewport.size.x,
+		mouseInViewport.y * (i32)sceneSize.y / (i32)sceneViewport.size.y,
+	};
+
 	// Update globals struct
 	const Globals globals = {
 		.cameraView = viewMatrix,
@@ -814,7 +834,7 @@ bool RenderGraphics(Engine &engine)
 		.time = totalSeconds,
 		.lightGridSize = lightGridSize,
 		.sceneResolution = GetFramebufferSize(gfx.renderTargets.sceneFramebuffer),
-		.mousePosition = window.mouse.pos,
+		.mousePosition = sceneMousePosition,
 		.lightCount = lightCount,
 		.projectionType = (uint)camera.projectionType,
 #if USE_EDITOR
@@ -1500,14 +1520,7 @@ bool RenderGraphics(Engine &engine)
 
 			const bool isPortraitRotation = preRotationDegrees == 90.0f || preRotationDegrees == 270.0f;
 			const uint2 sceneSize = isPortraitRotation ? uint2{ gfx.renderTargets.sceneSize.y, gfx.renderTargets.sceneSize.x } : gfx.renderTargets.sceneSize;
-			const u32 multiplier = Max(1u, Min(displaySize.x / sceneSize.x, displaySize.y / sceneSize.y));
-			const uint2 scaledSceneSize = multiplier * sceneSize;
-			const rect viewport = {
-				displaySize.x > scaledSceneSize.x ? (i32)(displaySize.x - scaledSceneSize.x) / 2 : 0,
-				displaySize.y > scaledSceneSize.y ? (i32)(displaySize.y - scaledSceneSize.y) / 2 : 0,
-				scaledSceneSize.x,
-				scaledSceneSize.y,
-			};
+			const rect viewport = GetSceneViewport(gfx.renderTargets, sceneSize, displaySize);
 			const rect scissor = { viewport.pos, Min(viewport.size, displaySize) }; // In case the viewport is bigger than the display
 			SetViewport(commandList, viewport);
 			SetScissor(commandList, scissor);

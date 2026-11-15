@@ -873,8 +873,14 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Editor
 	if (sceneWidth == 0 || sceneHeight == 0)
 	{
-		sceneWidth = swapchainWidth;
-		sceneHeight = swapchainHeight;
+		renderTargets.scaleSceneToDisplay = true;
+
+		// Capped to the light grid's maximum, aspect kept
+		const u32 maxWidth = MAX_LIGHT_GRID_WIDTH * LIGHT_TILE_SIZE;
+		const u32 maxHeight = MAX_LIGHT_GRID_HEIGHT * LIGHT_TILE_SIZE;
+		const f32 scale = Min(1.0f, Min((f32)maxWidth / swapchainWidth, (f32)maxHeight / swapchainHeight));
+		sceneWidth = Min(maxWidth, (u32)(scale * swapchainWidth));
+		sceneHeight = Min(maxHeight, (u32)(scale * swapchainHeight));
 	}
 	// Game
 	else

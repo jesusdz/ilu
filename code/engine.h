@@ -510,6 +510,7 @@ struct RenderTargets
 {
 	uint2 sceneSize;
 	f32 scenePixelsPerMeter;
+	bool scaleSceneToDisplay;
 	ImageH depthImage;
 	ImageH sceneImage;
 	Framebuffer sceneFramebuffer;
