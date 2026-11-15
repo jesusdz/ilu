@@ -1,5 +1,5 @@
 // macOS platform layer, included by platform.cpp (compiled as Objective-C++).
-// Status: window, Retina, full screen, input, audio and quit work. File watching is TODO.
+// Status: window, Retina, full screen, input, audio, file watching and quit work.
 // Threading: AppKit runs on the main thread, the engine on the update thread (USE_UPDATE_THREAD).
 // Units: the engine gets pixels, AppKit uses points (pixels = points * backingScaleFactor).
 
@@ -9,6 +9,7 @@
 #define AudioBuffer CAAudioBuffer // Core Audio's AudioBuffer would clash with the engine's
 #import <AudioToolbox/AudioToolbox.h>
 #undef AudioBuffer
+#import <CoreServices/CoreServices.h> // FSEvents
 #define Key GCKey // GameController names a generic parameter 'Key', ambiguous with the engine's enum
 #import <GameController/GameController.h>
 #undef Key
@@ -751,15 +752,41 @@ static void PlatformUpdateEventLoop(Platform &platform)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // File watching
 
+// FSEvents, not kqueue: a kqueue on a directory misses files modified in place
+static volatile_u32 fileChanged; // Set by the FSEvents queue, cleared by UpdateFileWatcher
+
+static void FileWatchCallback(ConstFSEventStreamRef, void *, size_t, void *, const FSEventStreamEventFlags *, const FSEventStreamEventId *)
+{
+	fileChanged = 1;
+}
+
 static bool WatchDirectory(Platform &platform, const char *path, bool recursive)
 {
-	// TODO(macOS): kqueue (EVFILT_VNODE) on the directory
-	return false;
+	// FSEvents always includes subdirectories: when not recursive, their changes cause extra checks only
+	static dispatch_queue_t queue = dispatch_queue_create("ilu.filewatch", DISPATCH_QUEUE_SERIAL);
+
+	CFStringRef cfPath = CFStringCreateWithCString(NULL, path, kCFStringEncodingUTF8);
+	CFArrayRef paths = CFArrayCreate(NULL, (const void **)&cfPath, 1, &kCFTypeArrayCallBacks);
+	const CFTimeInterval latency = 0.1; // Seconds after the last change, so a file being saved is complete
+	FSEventStreamRef stream = FSEventStreamCreate(NULL, FileWatchCallback, NULL, paths, kFSEventStreamEventIdSinceNow, latency, kFSEventStreamCreateFlagNone);
+	CFRelease(paths);
+	CFRelease(cfPath);
+
+	FSEventStreamSetDispatchQueue(stream, queue);
+	if ( !FSEventStreamStart(stream) ) {
+		LOG(Warning, "WatchDirectory: FSEventStreamStart failed for %s\n", path);
+		FSEventStreamInvalidate(stream);
+		FSEventStreamRelease(stream);
+		return false;
+	}
+	return true; // Watched until the process exits
 }
 
 static void UpdateFileWatcher(Platform &platform)
 {
-	// TODO(macOS)
+	if ( AtomicSwap(&fileChanged, 1, 0) ) {
+		platform.host.fileChangesDetected = true;
+	}
 }
 
 
