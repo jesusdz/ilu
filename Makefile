@@ -5,7 +5,7 @@ UNAME_S := $(shell uname -s)
 ifeq (${UNAME_S},Darwin)
   CXX=clang++
   PLATFORM_LANG= -x objective-c++ # platform.cpp includes platform_macos.mm
-  PLATFORM_LIBS= -framework Cocoa -framework QuartzCore -framework Metal -framework GameController
+  PLATFORM_LIBS= -framework Cocoa -framework QuartzCore -framework Metal -framework GameController -framework AudioToolbox
   SHARED_FLAGS= -dynamiclib
   # dlopen doesn't search Homebrew's folders by default to find Vulkan validation layer
   RUN_ENV= DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib

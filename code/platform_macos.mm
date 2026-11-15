@@ -1,11 +1,12 @@
 // macOS platform layer, included by platform.cpp (compiled as Objective-C++).
-// Status: window, Retina, full screen, input and quit work. File watching and audio are TODO.
+// Status: window, Retina, full screen, input, audio and quit work. File watching is TODO.
 // Threading: AppKit runs on the main thread, the engine on the update thread (USE_UPDATE_THREAD).
 // Units: the engine gets pixels, AppKit uses points (pixels = points * backingScaleFactor).
 
 // AppKit is imported by ilu_core.h, see the comment there.
 #import <QuartzCore/CAMetalLayer.h>
 #include <IOKit/graphics/IOGraphicsTypes.h> // kDisplayModeNativeFlag
+#import <AudioToolbox/AudioToolbox.h>
 #define Key GCKey // GameController names a generic parameter 'Key', ambiguous with the engine's enum
 #import <GameController/GameController.h>
 #undef Key
@@ -823,21 +824,126 @@ static void UpdateGamepad(Platform &platform)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audio
 
-static bool InitializeAudioDevice(Platform &platform)
+// Core Audio pulls samples from a real-time callback, while the engine pushes them from the audio
+// thread: a ring buffer sits in between (one producer, one consumer, positions in frames).
+struct MacAudio
 {
-	// TODO(macOS): Core Audio output unit. Leaving the state uninitialized runs without audio.
-	LOG(Warning, "- Audio not implemented on macOS yet\n");
-	return platform.audio.state != AudioStateUninitialized;
+	AudioUnit unit;
+	i16 *ring;                 // Interleaved stereo frames
+	u32 ringFrames;
+	volatile_u32 readFrame;    // Advanced by the callback
+	volatile_u32 writeFrame;   // Advanced by the audio thread
+	dispatch_semaphore_t consumed; // Signaled by the callback, wakes WaitForAudioDevice
+};
+
+static MacAudio macAudio;
+
+// Core Audio's real-time thread: no locks, allocations or logging here
+static OSStatus AudioRenderCallback(void *, AudioUnitRenderActionFlags *, const AudioTimeStamp *, UInt32, UInt32 frameCount, AudioBufferList *buffers)
+{
+	MacAudio &ma = macAudio;
+	i16 *out = (i16 *)buffers->mBuffers[0].mData;
+
+	const u32 writeFrame = ma.writeFrame;
+	FullReadBarrier();
+	u32 readFrame = ma.readFrame;
+	const u32 available = writeFrame - readFrame;
+	const u32 copyFrames = Min(frameCount, available);
+
+	for ( u32 i = 0; i < copyFrames; ++i, ++readFrame ) {
+		const u32 index = ( readFrame % ma.ringFrames ) * 2;
+		out[i * 2 + 0] = ma.ring[index + 0];
+		out[i * 2 + 1] = ma.ring[index + 1];
+	}
+	MemSet(out + copyFrames * 2, ( frameCount - copyFrames ) * 2 * sizeof(i16), 0); // Underrun: silence
+
+	FullWriteBarrier();
+	ma.readFrame = readFrame;
+	dispatch_semaphore_signal(ma.consumed);
+	return noErr;
 }
 
+static bool InitializeAudioDevice(Platform &platform)
+{
+	AudioDevice &audio = platform.audio;
+	MacAudio &ma = macAudio;
+
+	// The default output follows the device chosen in System Settings (speakers, headphones...)
+	const AudioComponentDescription description = {
+		.componentType = kAudioUnitType_Output,
+		.componentSubType = kAudioUnitSubType_DefaultOutput,
+		.componentManufacturer = kAudioUnitManufacturer_Apple,
+	};
+	AudioComponent component = AudioComponentFindNext(NULL, &description);
+	if ( !component || AudioComponentInstanceNew(component, &ma.unit) != noErr ) {
+		LOG(Error, "- Could not create the default audio output unit\n");
+		return false;
+	}
+
+	// The engine's format: Core Audio converts it to the device's
+	const AudioStreamBasicDescription format = {
+		.mSampleRate = (Float64)audio.samplesPerSecond,
+		.mFormatID = kAudioFormatLinearPCM,
+		.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
+		.mBytesPerPacket = audio.channelCount * audio.bytesPerSample,
+		.mFramesPerPacket = 1,
+		.mBytesPerFrame = audio.channelCount * audio.bytesPerSample,
+		.mChannelsPerFrame = audio.channelCount,
+		.mBitsPerChannel = audio.bytesPerSample * 8,
+	};
+	const AURenderCallbackStruct callback = { .inputProc = AudioRenderCallback };
+
+	ma.ringFrames = audio.samplesPerSecond / 4; // 250 ms, well above what is kept queued
+	ma.ring = (i16 *)AllocateVirtualMemory(ma.ringFrames * audio.channelCount * audio.bytesPerSample);
+	ma.consumed = dispatch_semaphore_create(0);
+
+	if ( AudioUnitSetProperty(ma.unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, sizeof(format)) != noErr ||
+	     AudioUnitSetProperty(ma.unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, sizeof(callback)) != noErr ||
+	     AudioUnitInitialize(ma.unit) != noErr ||
+	     AudioOutputUnitStart(ma.unit) != noErr )
+	{
+		LOG(Error, "- Could not configure or start the audio output unit\n");
+		AudioComponentInstanceDispose(ma.unit);
+		return false;
+	}
+
+	LOG(Info, "- Core Audio output is playing...\n");
+	audio.state = AudioStatePlaying;
+	return true;
+}
+
+// Blocks until the callback consumed some audio (or timeout)
 static void WaitForAudioDevice(Platform &platform)
 {
-	// TODO(macOS)
+	dispatch_semaphore_wait(macAudio.consumed, dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC));
 }
 
 static void UpdateAudioDevice(Platform &platform)
 {
-	// TODO(macOS)
+	AudioDevice &audio = platform.audio;
+	MacAudio &ma = macAudio;
+
+	// Keep two write-ahead windows queued, like on Linux
+	const u32 targetFrames = audio.samplesPerSecond * 2 * audio.writeAheadMillis / 1000;
+	const u32 queuedFrames = ma.writeFrame - ma.readFrame;
+	if ( queuedFrames >= targetFrames ) {
+		return;
+	}
+
+	SoundBuffer soundBuffer = {};
+	soundBuffer.samplesPerSecond = audio.samplesPerSecond;
+	soundBuffer.sampleCount = targetFrames - queuedFrames;
+	soundBuffer.samples = audio.outputSamples;
+	platform.OnPlatformRenderAudio(platform.host, soundBuffer);
+
+	u32 writeFrame = ma.writeFrame;
+	for ( u32 i = 0; i < soundBuffer.sampleCount; ++i, ++writeFrame ) {
+		const u32 index = ( writeFrame % ma.ringFrames ) * 2;
+		ma.ring[index + 0] = soundBuffer.samples[i * 2 + 0];
+		ma.ring[index + 1] = soundBuffer.samples[i * 2 + 1];
+	}
+	FullWriteBarrier();
+	ma.writeFrame = writeFrame;
 }
 
 
