@@ -882,7 +882,7 @@ static bool InitializeAudioDevice(Platform &platform)
 
 	// The engine's format: Core Audio converts it to the device's
 	const AudioStreamBasicDescription format = {
-		.mSampleRate = (Float64)audio.samplesPerSecond,
+		.mSampleRate = (Float64)audio.framesPerSecond,
 		.mFormatID = kAudioFormatLinearPCM,
 		.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
 		.mBytesPerPacket = audio.channelCount * audio.bytesPerSample,
@@ -893,7 +893,7 @@ static bool InitializeAudioDevice(Platform &platform)
 	};
 	const AURenderCallbackStruct callback = { .inputProc = AudioRenderCallback };
 
-	ma.ringFrames = audio.samplesPerSecond / 4; // 250 ms, well above what is kept queued
+	ma.ringFrames = audio.framesPerSecond / 4; // 250 ms, well above what is kept queued
 	ma.ring = (i16 *)AllocateVirtualMemory(ma.ringFrames * audio.channelCount * audio.bytesPerSample);
 	ma.consumed = dispatch_semaphore_create(0);
 
@@ -924,20 +924,20 @@ static void UpdateAudioDevice(Platform &platform)
 	MacAudio &ma = macAudio;
 
 	// Keep two write-ahead windows queued, like on Linux
-	const u32 targetFrames = audio.samplesPerSecond * 2 * audio.writeAheadMillis / 1000;
+	const u32 targetFrames = audio.framesPerSecond * 2 * audio.writeAheadMillis / 1000;
 	const u32 queuedFrames = ma.writeFrame - ma.readFrame;
 	if ( queuedFrames >= targetFrames ) {
 		return;
 	}
 
 	SoundBuffer soundBuffer = {};
-	soundBuffer.samplesPerSecond = audio.samplesPerSecond;
-	soundBuffer.sampleCount = targetFrames - queuedFrames;
+	soundBuffer.framesPerSecond = audio.framesPerSecond;
+	soundBuffer.frameCount = targetFrames - queuedFrames;
 	soundBuffer.samples = audio.outputSamples;
 	platform.OnPlatformRenderAudio(platform.host, soundBuffer);
 
 	u32 writeFrame = ma.writeFrame;
-	for ( u32 i = 0; i < soundBuffer.sampleCount; ++i, ++writeFrame ) {
+	for ( u32 i = 0; i < soundBuffer.frameCount; ++i, ++writeFrame ) {
 		const u32 index = ( writeFrame % ma.ringFrames ) * 2;
 		ma.ring[index + 0] = soundBuffer.samples[i * 2 + 0];
 		ma.ring[index + 1] = soundBuffer.samples[i * 2 + 1];

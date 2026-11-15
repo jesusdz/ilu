@@ -663,7 +663,7 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 		return;
 	}
 
-	if ( soundBuffer.sampleCount == 0 ) {
+	if ( soundBuffer.frameCount == 0 ) {
 		return;
 	}
 
@@ -672,11 +672,11 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 
 	Scratch scratch;
 
-	f32 *realSamples = PushArray(scratch.arena, f32, soundBuffer.sampleCount * 2.0f );
+	f32 *realSamples = PushArray(scratch.arena, f32, soundBuffer.frameCount * 2.0f );
 
 	// Clear sound buffer
 	f32 *samplePtr = realSamples;
-	for (u32 i = 0; i < soundBuffer.sampleCount; ++i)
+	for (u32 i = 0; i < soundBuffer.frameCount; ++i)
 	{
 		*samplePtr++ = 0.0f;
 		*samplePtr++ = 0.0f;
@@ -686,7 +686,7 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 	if ( audio.musicState == AUDIO_STATE_PLAYING )
 	{
 		u32 availableMusicSampleCount = audio.musicBufferWriteSampleIndex - audio.musicBufferReadSampleIndex;
-		u32 musicSampleCount = Min((u32)soundBuffer.sampleCount * 2, availableMusicSampleCount);
+		u32 musicSampleCount = Min((u32)soundBuffer.frameCount * 2, availableMusicSampleCount);
 		//LOG(Info, "%u / %u (%u)\n", audio.musicBufferReadSampleIndex, audio.musicBufferWriteSampleIndex, availableMusicSampleCount);
 		i16 *srcSample = audio.musicBuffer + audio.musicBufferReadSampleIndex;
 		f32 *dstSample = realSamples;
@@ -717,8 +717,7 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 			const u32 prefetchChunkCount = nextChunkIndex - currChunkIndex + 1;
 			ASSERT(prefetchChunkCount <= 2);
 
-			// soundBuffer.sampleCount is for stereo samples (each stereo sample is 2 mono samples)
-			u32 requestedSampleCount = soundBuffer.sampleCount * 2;
+			u32 requestedSampleCount = soundBuffer.frameCount * 2;
 
 			f32 *dstSample = realSamples;
 
@@ -803,7 +802,7 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 	// Convert f32 samples back to i16 samples
 	f32 *srcSample = realSamples;
 	i16 *dstSample = soundBuffer.samples;
-	for (u32 i = 0; i < soundBuffer.sampleCount; ++i)
+	for (u32 i = 0; i < soundBuffer.frameCount; ++i)
 	{
 		*dstSample++ = (i16)*srcSample++;
 		*dstSample++ = (i16)*srcSample++;
@@ -812,13 +811,13 @@ void RenderAudio(Engine &engine, SoundBuffer &soundBuffer)
 	// Wave parameters
 	const u32 ToneHz = 256;
 	const i32 ToneVolume = 4000;
-	const u32 WavePeriod = soundBuffer.samplesPerSecond / ToneHz;
+	const u32 WavePeriod = soundBuffer.framesPerSecond / ToneHz;
 	static f32 tSine = 0.0f;
 
-	//LOG(Debug, "bitrate:%u, wavePeriod:%u\n", soundBuffer.samplesPerSecond, WavePeriod);
+	//LOG(Debug, "bitrate:%u, wavePeriod:%u\n", soundBuffer.framesPerSecond, WavePeriod);
 
 	samplePtr = soundBuffer.samples;
-	for (u32 i = 0; i < soundBuffer.sampleCount; ++i)
+	for (u32 i = 0; i < soundBuffer.frameCount; ++i)
 	{
 		// Sine wave
 		tSine += TwoPi/(f32)WavePeriod;

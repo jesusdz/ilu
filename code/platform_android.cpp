@@ -315,8 +315,8 @@ static aaudio_data_callback_result_t AAudioFillAudioBuffer(AAudioStream *stream,
 	AudioDevice &audio = platform.audio;
 
 	SoundBuffer soundBuffer = {};
-	soundBuffer.samplesPerSecond = audio.samplesPerSecond;
-	soundBuffer.sampleCount = numFrames;
+	soundBuffer.framesPerSecond = audio.framesPerSecond;
+	soundBuffer.frameCount = numFrames;
 	soundBuffer.samples = (i16*)audioData;
 	platform.OnPlatformRenderAudio(platform.host, soundBuffer);
 
@@ -335,10 +335,10 @@ static bool InitializeAudioDevice(Platform &platform)
 		AAudioStreamBuilder_setDeviceId(builder, deviceId);
 		AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
 		AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
-		AAudioStreamBuilder_setSampleRate(builder, audio.samplesPerSecond);
+		AAudioStreamBuilder_setSampleRate(builder, audio.framesPerSecond);
 		AAudioStreamBuilder_setChannelCount(builder, audio.channelCount);
 		AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
-		AAudioStreamBuilder_setBufferCapacityInFrames(builder, audio.samplesPerSecond * audio.writeAheadMillis / 1000);
+		AAudioStreamBuilder_setBufferCapacityInFrames(builder, audio.framesPerSecond * audio.writeAheadMillis / 1000);
 		AAudioStreamBuilder_setDataCallback(builder, AAudioFillAudioBuffer, &platform);
 
 		AAudioStream *stream;

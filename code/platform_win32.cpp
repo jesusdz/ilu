@@ -1106,21 +1106,21 @@ static bool Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD wr
 		const i16 *srcSample = audioSamples;
 
 		i16 *dstSample = (i16*)region1;
-		const u32 region1SampleCount = region1Size / (audio.bytesPerSample * audio.channelCount);
-		for (u32 i = 0; i < region1SampleCount; ++i)
+		const u32 region1FrameCount = region1Size / (audio.bytesPerSample * audio.channelCount);
+		for (u32 i = 0; i < region1FrameCount; ++i)
 		{
 			*dstSample++ = *srcSample++;
 			*dstSample++ = *srcSample++;
-			audio.runningSampleIndex++;
+			audio.runningFrameIndex++;
 		}
 
 		dstSample = (i16*)region2;
-		const u32 region2SampleCount = region2Size / (audio.bytesPerSample * audio.channelCount);
-		for (u32 i = 0; i < region2SampleCount; ++i)
+		const u32 region2FrameCount = region2Size / (audio.bytesPerSample * audio.channelCount);
+		for (u32 i = 0; i < region2FrameCount; ++i)
 		{
 			*dstSample++ = *srcSample++;
 			*dstSample++ = *srcSample++;
-			audio.runningSampleIndex++;
+			audio.runningFrameIndex++;
 		}
 
 		audioBuffer->Unlock(region1, region1Size, region2, region2Size);
@@ -1166,9 +1166,9 @@ static bool InitializeAudioDevice(Platform &platform)
 					WAVEFORMATEX waveFormat = {};
 					waveFormat.wFormatTag = WAVE_FORMAT_PCM;
 					waveFormat.nChannels = audio.channelCount;
-					waveFormat.nSamplesPerSec = audio.samplesPerSecond;
+					waveFormat.nSamplesPerSec = audio.framesPerSecond;
 					waveFormat.nBlockAlign = audio.channelCount * audio.bytesPerSample;
-					waveFormat.nAvgBytesPerSec = audio.samplesPerSecond * waveFormat.nBlockAlign;
+					waveFormat.nAvgBytesPerSec = audio.framesPerSecond * waveFormat.nBlockAlign;
 					waveFormat.wBitsPerSample = audio.bytesPerSample * 8;
 					waveFormat.cbSize = 0;
 					if (SUCCEEDED(primaryBuffer->SetFormat(&waveFormat)))
@@ -1258,13 +1258,13 @@ static void UpdateAudioDevice(Platform &platform)
 		// Audio just started playing, or we lost track of where the device is
 		if (audio.state == AudioStateResync) {
 			// Rounded up so the resynced index never lands before the write cursor.
-			audio.runningSampleIndex = (writeCursor + frameSize - 1) / frameSize;
+			audio.runningFrameIndex = (writeCursor + frameSize - 1) / frameSize;
 			audio.state = AudioStatePlaying;
 		}
 
-		// The multiply is done in 64 bits: runningSampleIndex * frameSize overflows a u32 after
+		// The multiply is done in 64 bits: runningFrameIndex * frameSize overflows a u32 after
 		// roughly six hours of playback, which would make the write position jump.
-		const DWORD byteToLock = (DWORD)(((u64)audio.runningSampleIndex * frameSize) % audio.bufferSize);
+		const DWORD byteToLock = (DWORD)(((u64)audio.runningFrameIndex * frameSize) % audio.bufferSize);
 
 		// If the byteToLock is more than half buffer size away from the write cursor, this means we
 		// fell behind (some kind of stall, long frame, etc) so we resync instead of rendering audio.
@@ -1276,7 +1276,7 @@ static void UpdateAudioDevice(Platform &platform)
 		}
 
 		// Bytes of audio the device consumes during one write-ahead window.
-		const DWORD bytesPerSecond = audio.samplesPerSecond * audio.channelCount * audio.bytesPerSample;
+		const DWORD bytesPerSecond = audio.framesPerSecond * audio.channelCount * audio.bytesPerSample;
 		const DWORD expectedBytesPerWindow = (bytesPerSecond * audio.writeAheadMillis) / 1000;
 		const DWORD expectedWindowBoundaryByte = playCursor + expectedBytesPerWindow;
 
@@ -1310,14 +1310,14 @@ static void UpdateAudioDevice(Platform &platform)
 			unwrappedWriteCursor += audio.bufferSize;
 		}
 		const DWORD latencySize = unwrappedWriteCursor - playCursor;
-		const DWORD latencySamples = latencySize / ( audio.bytesPerSample * audio.channelCount );
-		const f32 latencySeconds = (f32)latencySamples / (f32)audio.samplesPerSecond;
+		const DWORD latencyFrames = latencySize / ( audio.bytesPerSample * audio.channelCount );
+		const f32 latencySeconds = (f32)latencyFrames / (f32)audio.framesPerSecond;
 		LOG(Debug, "latency: %u bytes (%fs)\n", latencySize, latencySeconds);
 		#endif
 
 		SoundBuffer soundBuffer = {};
-		soundBuffer.samplesPerSecond = audio.samplesPerSecond;
-		soundBuffer.sampleCount = bytesToWrite / (audio.bytesPerSample * audio.channelCount);
+		soundBuffer.framesPerSecond = audio.framesPerSecond;
+		soundBuffer.frameCount = bytesToWrite / (audio.bytesPerSample * audio.channelCount);
 		soundBuffer.samples = audio.outputSamples;
 		platform.OnPlatformRenderAudio(platform.host, soundBuffer);
 

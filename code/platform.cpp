@@ -21,7 +21,7 @@ struct AudioDevice
 	// Config
 	u32 channelCount;
 	u32 bytesPerSample;
-	u32 samplesPerSecond;
+	u32 framesPerSecond;
 
 	// How far ahead of the write cursor each update fills the ring buffer, plus the extra
 	// slack added when the device does not report a low latency write cursor. Both are in
@@ -30,7 +30,7 @@ struct AudioDevice
 	u32 safetyMillis;
 
 	u32 safetyBytes;
-	u32 runningSampleIndex;
+	u32 runningFrameIndex;
 	u32 bufferSize;
 
 	volatile_u32 state;
@@ -496,17 +496,17 @@ static bool InitializeAudio(Platform &platform)
 	// Audio configuration
 	audio.channelCount = 2;
 	audio.bytesPerSample = 2; // 4 in HH
-	audio.samplesPerSecond = 48000; // per channel
+	audio.framesPerSecond = 48000; // A frame is one sample per channel
 
 	// One second of audio. The device plays from this ring buffer while we write ahead of it.
-	audio.bufferSize = audio.channelCount * audio.samplesPerSecond * audio.bytesPerSample;
+	audio.bufferSize = audio.channelCount * audio.framesPerSecond * audio.bytesPerSample;
 
 	// Tuning knobs for latency vs. underrun resistance: widening these makes dropouts less
 	// likely but delays how soon a newly triggered sound is heard.
 	audio.writeAheadMillis = 33;
 	audio.safetyMillis = 11;
 
-	const u32 bytesPerSecond = audio.samplesPerSecond * audio.channelCount * audio.bytesPerSample;
+	const u32 bytesPerSecond = audio.framesPerSecond * audio.channelCount * audio.bytesPerSample;
 	audio.safetyBytes = (bytesPerSecond * audio.safetyMillis) / 1000;
 
 	// Allocate buffer to output samples from the engine

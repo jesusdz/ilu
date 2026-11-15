@@ -983,7 +983,7 @@ static bool InitializeAudioDevice(Platform &platform)
 		if (res == 0)
 		{
 			int dir = 0; // direction of approximate values
-			unsigned int sampleRate = audio.samplesPerSecond; // frames/second (CD quality)
+			unsigned int sampleRate = audio.framesPerSecond;
 			unsigned int channelCount = audio.channelCount;
 			unsigned int bytesPerSample = audio.bytesPerSample;
 			// snd_pcm_wait only blocks once the ring buffer is nearly full: it returns as soon
@@ -992,8 +992,8 @@ static bool InitializeAudioDevice(Platform &platform)
 			// instead of pacing us. The period sets the wake-up granularity, a few wake-ups
 			// per write-ahead window.
 			const u32 periodMillis = Max(1u, audio.writeAheadMillis / 3);
-			snd_pcm_uframes_t periodFrames = audio.samplesPerSecond * periodMillis / 1000;
-			snd_pcm_uframes_t bufferFrames = audio.samplesPerSecond * 2 * audio.writeAheadMillis / 1000;
+			snd_pcm_uframes_t periodFrames = audio.framesPerSecond * periodMillis / 1000;
+			snd_pcm_uframes_t bufferFrames = audio.framesPerSecond * 2 * audio.writeAheadMillis / 1000;
 
 			// Allocate and configure hardware parameters
 			snd_pcm_hw_params_t *params;
@@ -1071,7 +1071,7 @@ static void UpdateAudioDevice(Platform &platform)
 			// Keep up to two write-ahead windows queued. Widening the window makes underruns
 			// less likely, at the cost of latency before a new sound is heard.
 			const float time = 2.0f * (float)audio.writeAheadMillis / 1000.0f;
-			const snd_pcm_uframes_t maxFramesToRender = (snd_pcm_uframes_t)(audio.samplesPerSecond * time);
+			const snd_pcm_uframes_t maxFramesToRender = (snd_pcm_uframes_t)(audio.framesPerSecond * time);
 
 			snd_pcm_uframes_t framesToRender = maxFramesToRender - delayFrames;
 
@@ -1080,8 +1080,8 @@ static void UpdateAudioDevice(Platform &platform)
 			if ( framesToRender > 0 )
 			{
 				SoundBuffer soundBuffer = {};
-				soundBuffer.samplesPerSecond = audio.samplesPerSecond;
-				soundBuffer.sampleCount = framesToRender;
+				soundBuffer.framesPerSecond = audio.framesPerSecond;
+				soundBuffer.frameCount = framesToRender;
 				soundBuffer.samples = audio.outputSamples;
 				platform.OnPlatformRenderAudio(platform.host, soundBuffer);
 

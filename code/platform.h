@@ -232,8 +232,8 @@ struct Gamepad
 
 struct SoundBuffer
 {
-	u16 samplesPerSecond;
-	u16 sampleCount;
+	u16 framesPerSecond;
+	u16 frameCount;
 	i16* samples;
 };
 
