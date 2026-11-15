@@ -290,7 +290,15 @@ static WindowImpl windowImpl;
 static DynamicLibrary gamepadLibrary;
 
 static DynamicLibrary audioLibrary;
-static LPDIRECTSOUNDBUFFER audioBuffer;
+// DirectSound: a looping buffer the engine writes ahead of the play cursor
+struct Win32Audio
+{
+	LPDIRECTSOUNDBUFFER buffer;
+	u32 bufferBytes;       // One second, like the engine's output buffer
+	u32 safetyBytes;       // Extra slack when the device has no low latency write cursor
+	u32 runningFrameIndex; // Next frame to write in the buffer, unwrapped
+};
+static Win32Audio win32Audio;
 
 typedef HRESULT FP_DirectSoundCreate( LPGUID lpGuid, LPDIRECTSOUND* ppDS, LPUNKNOWN  pUnkOuter );
 
@@ -672,13 +680,13 @@ static LRESULT CALLBACK Win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
 				{
 					if ( audio.state >= AudioStatePlaying ) {
 						audio.state = AudioStateStopped;
-						audioBuffer->Stop();
+						win32Audio.buffer->Stop();
 					}
 				}
 				else if (param == SC_RESTORE)
 				{
 					if ( audio.state == AudioStateStopped ) {
-						audioBuffer->Play(0, 0, DSBPLAY_LOOPING);
+						win32Audio.buffer->Play(0, 0, DSBPLAY_LOOPING);
 						audio.state = AudioStateResync;
 					}
 				}
@@ -1083,20 +1091,20 @@ static void UpdateGamepad(Platform &platform)
 
 static bool Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD writeSize, const i16 *audioSamples)
 {
-	ASSERT(writeSize <= audio.bufferSize);
+	ASSERT(writeSize <= win32Audio.bufferBytes);
 
 	void *region1;
 	DWORD region1Size;
 	void *region2;
 	DWORD region2Size;
 
-	const HRESULT lockRes = audioBuffer->Lock(writeOffset, writeSize, &region1, &region1Size, &region2, &region2Size, 0);
+	const HRESULT lockRes = win32Audio.buffer->Lock(writeOffset, writeSize, &region1, &region1Size, &region2, &region2Size, 0);
 
 	if (lockRes == DSERR_BUFFERLOST)
 	{
 		LOG(Warning, "Sound buffer lost. Restoring...\n");
-		if (SUCCEEDED(audioBuffer->Restore())) {
-			audioBuffer->Play(0, 0, DSBPLAY_LOOPING);
+		if (SUCCEEDED(win32Audio.buffer->Restore())) {
+			win32Audio.buffer->Play(0, 0, DSBPLAY_LOOPING);
 		}
 		return false;
 	}
@@ -1111,7 +1119,7 @@ static bool Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD wr
 		{
 			*dstSample++ = *srcSample++;
 			*dstSample++ = *srcSample++;
-			audio.runningFrameIndex++;
+			win32Audio.runningFrameIndex++;
 		}
 
 		dstSample = (i16*)region2;
@@ -1120,10 +1128,10 @@ static bool Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD wr
 		{
 			*dstSample++ = *srcSample++;
 			*dstSample++ = *srcSample++;
-			audio.runningFrameIndex++;
+			win32Audio.runningFrameIndex++;
 		}
 
-		audioBuffer->Unlock(region1, region1Size, region2, region2Size);
+		win32Audio.buffer->Unlock(region1, region1Size, region2, region2Size);
 	}
 	else
 	{
@@ -1175,6 +1183,9 @@ static bool InitializeAudioDevice(Platform &platform)
 					{
 						LOG(Info, "- Primary buffer format set successfully\n");
 
+						win32Audio.bufferBytes = audio.outputBufferBytes; // So the initial silence fits in outputSamples
+						win32Audio.safetyBytes = audio.framesPerSecond * audio.channelCount * audio.bytesPerSample * 11 / 1000; // 11 ms
+
 						// After setting the primary buffer format, we create the secondary buffer where we will be actually writing to
 						DSBUFFERDESC secondaryBufferDesc = {};
 						secondaryBufferDesc.dwSize = sizeof(secondaryBufferDesc);
@@ -1182,19 +1193,19 @@ static bool InitializeAudioDevice(Platform &platform)
 						// and the target cursor computed in UpdateAudioDevice is built on it.
 						// GLOBALFOCUS: keep playing, and stay less prone to invalidation, while the window does not have the focus.
 						secondaryBufferDesc.dwFlags = DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_GLOBALFOCUS;
-						secondaryBufferDesc.dwBufferBytes = audio.bufferSize;
+						secondaryBufferDesc.dwBufferBytes = win32Audio.bufferBytes;
 						secondaryBufferDesc.lpwfxFormat = &waveFormat;
 						LPDIRECTSOUNDBUFFER secondaryBuffer;
 						if (SUCCEEDED(directSound->CreateSoundBuffer(&secondaryBufferDesc, &secondaryBuffer, 0)))
 						{
 							LOG(Info, "- Secondary buffer created successfully\n");
 
-							audioBuffer = secondaryBuffer;
+							win32Audio.buffer = secondaryBuffer;
 
-							MemSet(audio.outputSamples, audio.bufferSize, 0);
-							Win32FillAudioBuffer(platform.audio, 0, platform.audio.bufferSize, audio.outputSamples);
+							MemSet(audio.outputSamples, win32Audio.bufferBytes, 0);
+							Win32FillAudioBuffer(platform.audio, 0, win32Audio.bufferBytes, audio.outputSamples);
 
-							if (SUCCEEDED(audioBuffer->Play(0, 0, DSBPLAY_LOOPING)))
+							if (SUCCEEDED(win32Audio.buffer->Play(0, 0, DSBPLAY_LOOPING)))
 							{
 								LOG(Info, "- Secondary buffer is playing...\n");
 								audio.state = AudioStateResync;
@@ -1251,25 +1262,25 @@ static void UpdateAudioDevice(Platform &platform)
 
 	DWORD playCursor;
 	DWORD writeCursor;
-	if (audioBuffer->GetCurrentPosition(&playCursor, &writeCursor) == DS_OK)
+	if (win32Audio.buffer->GetCurrentPosition(&playCursor, &writeCursor) == DS_OK)
 	{
 		const u32 frameSize = audio.bytesPerSample * audio.channelCount;
 
 		// Audio just started playing, or we lost track of where the device is
 		if (audio.state == AudioStateResync) {
 			// Rounded up so the resynced index never lands before the write cursor.
-			audio.runningFrameIndex = (writeCursor + frameSize - 1) / frameSize;
+			win32Audio.runningFrameIndex = (writeCursor + frameSize - 1) / frameSize;
 			audio.state = AudioStatePlaying;
 		}
 
 		// The multiply is done in 64 bits: runningFrameIndex * frameSize overflows a u32 after
 		// roughly six hours of playback, which would make the write position jump.
-		const DWORD byteToLock = (DWORD)(((u64)audio.runningFrameIndex * frameSize) % audio.bufferSize);
+		const DWORD byteToLock = (DWORD)(((u64)win32Audio.runningFrameIndex * frameSize) % win32Audio.bufferBytes);
 
 		// If the byteToLock is more than half buffer size away from the write cursor, this means we
 		// fell behind (some kind of stall, long frame, etc) so we resync instead of rendering audio.
-		const DWORD writeAheadBytes = (byteToLock + audio.bufferSize - writeCursor) % audio.bufferSize;
-		if (writeAheadBytes > audio.bufferSize / 2) {
+		const DWORD writeAheadBytes = (byteToLock + win32Audio.bufferBytes - writeCursor) % win32Audio.bufferBytes;
+		if (writeAheadBytes > win32Audio.bufferBytes / 2) {
 			LOG(Warning, "Audio write position fell behind the device. Resyncing.\n");
 			audio.state = AudioStateResync;
 			return;
@@ -1282,7 +1293,7 @@ static void UpdateAudioDevice(Platform &platform)
 
 		DWORD safeWriteCursor = writeCursor;
 		if (safeWriteCursor < playCursor) {
-			safeWriteCursor += audio.bufferSize;
+			safeWriteCursor += win32Audio.bufferBytes;
 		}
 		ASSERT(safeWriteCursor >= playCursor);
 
@@ -1292,13 +1303,13 @@ static void UpdateAudioDevice(Platform &platform)
 		if (audioCardIsLowLatency) {
 			targetCursor = expectedWindowBoundaryByte + expectedBytesPerWindow;
 		} else {
-			targetCursor = writeCursor + expectedBytesPerWindow + audio.safetyBytes;
+			targetCursor = writeCursor + expectedBytesPerWindow + win32Audio.safetyBytes;
 		}
-		targetCursor = targetCursor % audio.bufferSize;
+		targetCursor = targetCursor % win32Audio.bufferBytes;
 
 		DWORD bytesToWrite = 0;
 		if (byteToLock > targetCursor) {
-			bytesToWrite = targetCursor + (audio.bufferSize - byteToLock);
+			bytesToWrite = targetCursor + (win32Audio.bufferBytes - byteToLock);
 		} else {
 			bytesToWrite = targetCursor - byteToLock;
 		}
@@ -1307,7 +1318,7 @@ static void UpdateAudioDevice(Platform &platform)
 		// Latency calculation
 		DWORD unwrappedWriteCursor = writeCursor;
 		if (writeCursor < playCursor) {
-			unwrappedWriteCursor += audio.bufferSize;
+			unwrappedWriteCursor += win32Audio.bufferBytes;
 		}
 		const DWORD latencySize = unwrappedWriteCursor - playCursor;
 		const DWORD latencyFrames = latencySize / ( audio.bytesPerSample * audio.channelCount );

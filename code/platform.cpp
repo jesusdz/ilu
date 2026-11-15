@@ -25,11 +25,8 @@ struct AudioDevice
 
 	u32 latencyMillis;  // Audio kept queued ahead of playback (delay before a new sound is heard)
 	u32 latencyFrames;  // Same, in frames
-	u32 safetyMillis;   // Win32: extra slack when the device has no low latency write cursor
 
-	u32 safetyBytes;
-	u32 runningFrameIndex;
-	u32 bufferSize;
+	u32 outputBufferBytes; // Size of outputSamples: one second
 
 	volatile_u32 state;
 
@@ -496,20 +493,13 @@ static bool InitializeAudio(Platform &platform)
 	audio.bytesPerSample = 2; // 4 in HH
 	audio.framesPerSecond = 48000; // A frame is one sample per channel
 
-	// One second of audio. The device plays from this ring buffer while we write ahead of it.
-	audio.bufferSize = audio.channelCount * audio.framesPerSecond * audio.bytesPerSample;
-
-	// Tuning knobs for latency vs. underrun resistance: widening these makes dropouts less
-	// likely but delays how soon a newly triggered sound is heard.
+	// Latency vs. underrun resistance: higher makes dropouts less likely but delays new sounds
 	audio.latencyMillis = 66;
 	audio.latencyFrames = audio.framesPerSecond * audio.latencyMillis / 1000;
-	audio.safetyMillis = 11;
-
-	const u32 bytesPerSecond = audio.framesPerSecond * audio.channelCount * audio.bytesPerSample;
-	audio.safetyBytes = (bytesPerSecond * audio.safetyMillis) / 1000;
 
 	// Allocate buffer to output samples from the engine
-	audio.outputSamples = (i16*)AllocateVirtualMemory(audio.bufferSize);
+	audio.outputBufferBytes = audio.framesPerSecond * audio.channelCount * audio.bytesPerSample;
+	audio.outputSamples = (i16*)AllocateVirtualMemory(audio.outputBufferBytes);
 
 	InitializeAudioDevice(platform);
 
