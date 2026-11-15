@@ -492,7 +492,7 @@ ENGINE_API bool OnPlatformInit(Host &host)
 		return false;
 	}
 
-	// Initialize sound system
+	// Initialize audio system
 	if ( !InitializeAudio(engine.audio, GlobalArena) )
 	{
 		LOG(Error, "InitializeAudio failed!\n");
@@ -713,12 +713,12 @@ ENGINE_API void OnPlatformPreRenderAudio(Host &host)
 	PreRenderAudio(engine.audio);
 }
 
-ENGINE_API void OnPlatformRenderAudio(Host &host, SoundBuffer &soundBuffer)
+ENGINE_API void OnPlatformRenderAudio(Host &host, AudioBuffer &audioBuffer)
 {
 	PROFILE_FLUSH();
 	PROFILE_BLOCK(RenderAudio);
 	Engine &engine = GetEngine();
-	RenderAudio(engine, soundBuffer);
+	RenderAudio(engine, audioBuffer);
 }
 
 ENGINE_API void OnPlatformWindowCleanup(Host &host)

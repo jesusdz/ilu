@@ -312,20 +312,20 @@ static void UpdateFileWatcher(Platform &platform)
 static aaudio_data_callback_result_t AAudioFillAudioBuffer(AAudioStream *stream, void *userData, void *audioData, int32_t numFrames)
 {
 	Platform &platform = *(Platform*)userData;
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 
-	SoundBuffer soundBuffer = {};
-	soundBuffer.framesPerSecond = audio.framesPerSecond;
-	soundBuffer.frameCount = numFrames;
-	soundBuffer.samples = (i16*)audioData;
-	platform.OnPlatformRenderAudio(platform.host, soundBuffer);
+	AudioBuffer audioBuffer = {};
+	audioBuffer.framesPerSecond = audio.framesPerSecond;
+	audioBuffer.frameCount = numFrames;
+	audioBuffer.samples = (i16*)audioData;
+	platform.OnPlatformRenderAudio(platform.host, audioBuffer);
 
 	return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
 static bool InitializeAudioDevice(Platform &platform)
 {
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 
 	AAudioStreamBuilder *builder;
 	aaudio_result_t result = AAudio_createStreamBuilder(&builder);

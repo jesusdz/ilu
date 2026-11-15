@@ -230,10 +230,10 @@ struct Gamepad
 };
 
 
-struct SoundBuffer
+struct AudioBuffer
 {
-	u16 framesPerSecond;
-	u16 frameCount;
+	u32 framesPerSecond;
+	u32 frameCount;
 	i16* samples;
 };
 
@@ -278,7 +278,7 @@ struct Host
 	Gamepad *gamepad;
 
 	bool fileChangesDetected; // true for the one frame in which a watched directory changed
-	bool audioOutput;         // false without an audio device: nothing renders the engine's audio
+	bool hasAudioOutput;      // false without an audio device: nothing renders the engine's audio
 
 	Engine *engine;
 #if USE_EDITOR

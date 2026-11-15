@@ -668,7 +668,7 @@ static LRESULT CALLBACK Win32WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
 		case WM_SYSCOMMAND:
 			{
 				WPARAM param = ( wParam & 0xFFF0 );
-				AudioDevice &audio = platform.audio;
+				PlatformAudio &audio = platform.audio;
 
 				// A lone Alt would enter the window menu loop, which swallows keys until Alt is pressed again
 				if (param == SC_KEYMENU && lParam == 0)
@@ -1089,7 +1089,7 @@ static void UpdateGamepad(Platform &platform)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audio
 
-static bool Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD writeSize, const i16 *audioSamples)
+static bool Win32FillAudioBuffer(PlatformAudio &audio, DWORD writeOffset, DWORD writeSize, const i16 *audioSamples)
 {
 	ASSERT(writeSize <= win32Audio.bufferBytes);
 
@@ -1144,7 +1144,7 @@ static bool Win32FillAudioBuffer(AudioDevice &audio, DWORD writeOffset, DWORD wr
 
 static bool InitializeAudioDevice(Platform &platform)
 {
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 	const Window &window = platform.window;
 
 	audioLibrary = OpenLibrary("dsound.dll");
@@ -1258,7 +1258,7 @@ static void WaitForAudioDevice(Platform &platform)
 
 static void UpdateAudioDevice(Platform &platform)
 {
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 
 	DWORD playCursor;
 	DWORD writeCursor;
@@ -1326,13 +1326,13 @@ static void UpdateAudioDevice(Platform &platform)
 		LOG(Debug, "latency: %u bytes (%fs)\n", latencySize, latencySeconds);
 		#endif
 
-		SoundBuffer soundBuffer = {};
-		soundBuffer.framesPerSecond = audio.framesPerSecond;
-		soundBuffer.frameCount = bytesToWrite / (audio.bytesPerSample * audio.channelCount);
-		soundBuffer.samples = audio.outputSamples;
-		platform.OnPlatformRenderAudio(platform.host, soundBuffer);
+		AudioBuffer audioBuffer = {};
+		audioBuffer.framesPerSecond = audio.framesPerSecond;
+		audioBuffer.frameCount = bytesToWrite / (audio.bytesPerSample * audio.channelCount);
+		audioBuffer.samples = audio.outputSamples;
+		platform.OnPlatformRenderAudio(platform.host, audioBuffer);
 
-		if ( !Win32FillAudioBuffer(audio, byteToLock, bytesToWrite, soundBuffer.samples) ) {
+		if ( !Win32FillAudioBuffer(audio, byteToLock, bytesToWrite, audioBuffer.samples) ) {
 			audio.state = AudioStateResync;
 		}
 	}

@@ -6,7 +6,9 @@
 // AppKit is imported by ilu_core.h, see the comment there.
 #import <QuartzCore/CAMetalLayer.h>
 #include <IOKit/graphics/IOGraphicsTypes.h> // kDisplayModeNativeFlag
+#define AudioBuffer CAAudioBuffer // Core Audio's AudioBuffer would clash with the engine's
 #import <AudioToolbox/AudioToolbox.h>
+#undef AudioBuffer
 #define Key GCKey // GameController names a generic parameter 'Key', ambiguous with the engine's enum
 #import <GameController/GameController.h>
 #undef Key
@@ -865,7 +867,7 @@ static OSStatus AudioRenderCallback(void *, AudioUnitRenderActionFlags *, const 
 
 static bool InitializeAudioDevice(Platform &platform)
 {
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 	MacAudio &ma = macAudio;
 
 	// The default output follows the device chosen in System Settings (speakers, headphones...)
@@ -920,7 +922,7 @@ static void WaitForAudioDevice(Platform &platform)
 
 static void UpdateAudioDevice(Platform &platform)
 {
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 	MacAudio &ma = macAudio;
 
 	const u32 queuedFrames = ma.writeFrame - ma.readFrame;
@@ -928,17 +930,17 @@ static void UpdateAudioDevice(Platform &platform)
 		return;
 	}
 
-	SoundBuffer soundBuffer = {};
-	soundBuffer.framesPerSecond = audio.framesPerSecond;
-	soundBuffer.frameCount = audio.latencyFrames - queuedFrames;
-	soundBuffer.samples = audio.outputSamples;
-	platform.OnPlatformRenderAudio(platform.host, soundBuffer);
+	AudioBuffer audioBuffer = {};
+	audioBuffer.framesPerSecond = audio.framesPerSecond;
+	audioBuffer.frameCount = audio.latencyFrames - queuedFrames;
+	audioBuffer.samples = audio.outputSamples;
+	platform.OnPlatformRenderAudio(platform.host, audioBuffer);
 
 	u32 writeFrame = ma.writeFrame;
-	for ( u32 i = 0; i < soundBuffer.frameCount; ++i, ++writeFrame ) {
+	for ( u32 i = 0; i < audioBuffer.frameCount; ++i, ++writeFrame ) {
 		const u32 index = ( writeFrame % ma.ringFrames ) * 2;
-		ma.ring[index + 0] = soundBuffer.samples[i * 2 + 0];
-		ma.ring[index + 1] = soundBuffer.samples[i * 2 + 1];
+		ma.ring[index + 0] = audioBuffer.samples[i * 2 + 0];
+		ma.ring[index + 1] = audioBuffer.samples[i * 2 + 1];
 	}
 	FullWriteBarrier();
 	ma.writeFrame = writeFrame;

@@ -943,7 +943,7 @@ static SND_PCM_DRAIN* FP_snd_pcm_drain;
 
 static bool InitializeAudioDevice(Platform &platform)
 {
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 
 	audioLibrary = OpenLibrary("libasound.so");
 
@@ -1056,7 +1056,7 @@ static void WaitForAudioDevice(Platform &platform)
 
 static void UpdateAudioDevice(Platform &platform)
 {
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 
 	for (u32 i = 0; i < 2; ++i)
 	{
@@ -1076,13 +1076,13 @@ static void UpdateAudioDevice(Platform &platform)
 
 			if ( framesToRender > 0 )
 			{
-				SoundBuffer soundBuffer = {};
-				soundBuffer.framesPerSecond = audio.framesPerSecond;
-				soundBuffer.frameCount = framesToRender;
-				soundBuffer.samples = audio.outputSamples;
-				platform.OnPlatformRenderAudio(platform.host, soundBuffer);
+				AudioBuffer audioBuffer = {};
+				audioBuffer.framesPerSecond = audio.framesPerSecond;
+				audioBuffer.frameCount = framesToRender;
+				audioBuffer.samples = audio.outputSamples;
+				platform.OnPlatformRenderAudio(platform.host, audioBuffer);
 
-				res = FP_snd_pcm_writei(audioPcm, soundBuffer.samples, framesToRender);
+				res = FP_snd_pcm_writei(audioPcm, audioBuffer.samples, framesToRender);
 
 				if ( res < 0 )
 				{

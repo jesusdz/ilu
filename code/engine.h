@@ -1693,7 +1693,7 @@ void ResumeAudioSource(u32 audioSourceIndex);
 void StopAudioSource(u32 audioSourceIndex);
 
 void PreRenderAudio(Audio &audio);
-void RenderAudio(Engine &engine, SoundBuffer &soundBuffer); // Streams clips from engine.assets
+void RenderAudio(Engine &engine, AudioBuffer &audioBuffer); // Streams clips from engine.assets
 
 MusicFile &GetMusicFile(ID musicId);
 ID CreateMusicFile(Audio &audio, const MusicFile &musicFileDesc);

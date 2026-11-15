@@ -8,7 +8,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Platform types
 
-enum AudioState : u32
+enum PlatformAudioState : u32
 {
 	AudioStateUninitialized,
 	AudioStateStopped,
@@ -16,7 +16,7 @@ enum AudioState : u32
 	AudioStateResync,
 };
 
-struct AudioDevice
+struct PlatformAudio
 {
 	// Config
 	u32 channelCount;
@@ -110,7 +110,7 @@ struct Platform
 	void (*OnPlatformUpdate)(Host &);
 	void (*OnPlatformRenderGraphics)(Host &);
 	void (*OnPlatformPreRenderAudio)(Host &);
-	void (*OnPlatformRenderAudio)(Host &, SoundBuffer &soundBuffer);
+	void (*OnPlatformRenderAudio)(Host &, AudioBuffer &audioBuffer);
 	void (*OnPlatformCleanup)(Host &);
 	bool (*OnPlatformWindowInit)(Host &);
 	void (*OnPlatformWindowCleanup)(Host &);
@@ -136,7 +136,7 @@ struct Platform
 	StringInterning stringInterning;
 	Window window;
 	Gamepad gamepad;
-	AudioDevice audio;
+	PlatformAudio audio;
 
 	volatile_i64 eventTail;
 	volatile_i64 eventHead;
@@ -473,11 +473,11 @@ static void UpdateAudio(Platform &platform)
 
 static bool InitializeAudio(Platform &platform)
 {
-	LOG(Info, "Sound system initialization:\n");
+	LOG(Info, "Audio system initialization:\n");
 
 	if ( platform.OnPlatformRenderAudio == nullptr )
 	{
-		LOG(Info, "- OnPlatformRenderAudio not provided, sound system not required\n");
+		LOG(Info, "- OnPlatformRenderAudio not provided, audio system not required\n");
 		return true;
 	}
 
@@ -486,7 +486,7 @@ static bool InitializeAudio(Platform &platform)
 		LOG(Info, "- OnPlatformPreRenderAudio not provided (you might want it to pre-render costly stuff)\n");
 	}
 
-	AudioDevice &audio = platform.audio;
+	PlatformAudio &audio = platform.audio;
 
 	// Audio configuration
 	audio.channelCount = 2;
@@ -538,7 +538,7 @@ static THREAD_FUNCTION(AudioThread) // void *WorkQueueThread(void* arguments)
 	return 0;
 }
 
-static bool InitializeAudioThread(AudioDevice &audio)
+static bool InitializeAudioThread(PlatformAudio &audio)
 {
 	if ( audio.state != AudioStateUninitialized )
 	{
@@ -1125,7 +1125,7 @@ static bool LoadEngineDLL(Platform &platform)
 	}
 
 	// The engine is allowed to ship without audio
-	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformRenderAudio,    void (*)(Host &, SoundBuffer &));
+	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformRenderAudio,    void (*)(Host &, AudioBuffer &));
 	LOAD_ENGINE_SYMBOL_OPTIONAL(OnPlatformPreRenderAudio, void (*)(Host &));
 
 	// Platform interface exposed to engine
@@ -1304,7 +1304,7 @@ static bool Run(Platform &platform)
 	}
 #endif // USE_AUDIO_THREAD
 
-	platform.host.audioOutput = platform.audio.state != AudioStateUninitialized;
+	platform.host.hasAudioOutput = platform.audio.state != AudioStateUninitialized;
 
 #if USE_UPDATE_THREAD
 	if ( !InitializeUpdateThread(platform) )
