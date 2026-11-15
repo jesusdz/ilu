@@ -332,7 +332,7 @@ ParticleEffect fireflies_fx = {
  .id = 1048,
  .spriteID = 0,
  .color = {{1.000000, 0.693750, 0.000000, 1.000000}, {1.000000, 0.656250, 0.000000, 0.000000}},
- .intensity = {9.000000, 9.000000},
+ .intensity = {20.000000, 20.000000},
  .size = {0.500000, 0.500000},
  .distortion = {0.000000, 0.000000},
  .rate = 2.000000,
@@ -494,7 +494,7 @@ Entity moonlight = {
  .light = {
   .type = LightType_Point,
   .color = {1.000000, 1.000000, 1.000000},
-  .intensity = 8.000000,
+  .intensity = 20.000000,
   .radius = 2.800000,
   .zOffset = 1.000000,
  },

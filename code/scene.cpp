@@ -62,7 +62,7 @@ void InitializeScene(Engine &engine)
 			.name = InternString("fire_fx"),
 			// color and size read begin -> end over the particle's life, so this fades out
 			.color = { .min = { 1.0f, 0.3f, 0.0f, 0.7f }, .max = { 1.0f, 0.0f, 0.0f, 0.0f } },
-			.intensity = { .min = 5.0f, .max = 3.0f },
+			.intensity = { .min = 5.0f, .max = 10.0f },
 			.size = { .min = 1.0f, .max = 2.0f },
 			.rate = 50.0f,
 			.burstCount = 20,
