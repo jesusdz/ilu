@@ -149,7 +149,8 @@ struct ProfileGpuFrame
 // GPU is done with the frame that wrote into it.
 struct ProfileGpuSlot
 {
-	TimestampPool pool;
+	TimestampPoolH pool;
+	u32 queryCount; // Queries written since the pool was reset
 	ProfileGpuEvent events[MAX_PROFILE_GPU_EVENTS];
 	u32 eventCount;
 	u32 droppedEventCount;
@@ -175,8 +176,8 @@ struct ProfileGpu
 	bool enabled;
 };
 
-void ProfileGpuInit(const GraphicsDevice &device);
-void ProfileGpuCleanup(const GraphicsDevice &device);
+void ProfileGpuInit(GraphicsDevice &device);
+void ProfileGpuCleanup(GraphicsDevice &device);
 bool ProfileGpuResolveFrame(const GraphicsDevice &device); // True if a frame was resolved
 void ProfileGpuBeginFrame(const CommandList &commandList);
 void ProfileGpuEndFrame(const CommandList &commandList);
@@ -527,7 +528,7 @@ ProfileFrame ProfileGetFrame(u32 age)
 
 static ProfileGpu sProfileGpu = {};
 
-void ProfileGpuInit(const GraphicsDevice &device)
+void ProfileGpuInit(GraphicsDevice &device)
 {
 	ProfileGpu &p = sProfileGpu;
 
@@ -548,7 +549,7 @@ void ProfileGpuInit(const GraphicsDevice &device)
 	}
 }
 
-void ProfileGpuCleanup(const GraphicsDevice &device)
+void ProfileGpuCleanup(GraphicsDevice &device)
 {
 	ProfileGpu &p = sProfileGpu;
 
@@ -588,7 +589,7 @@ bool ProfileGpuResolveFrame(const GraphicsDevice &device)
 
 	Timestamp timestamps[MAX_PROFILE_GPU_QUERIES];
 	const u32 queryCount = slot.frameEndQuery + 1;
-	if ( !ReadTimestamps(slot.pool, 0, queryCount, timestamps) ) {
+	if ( !ReadTimestamps(device, slot.pool, 0, queryCount, timestamps) ) {
 		LOG(Warning, "ProfileGpu: timestamps of frame %llu were not available\n", slot.frameIndex);
 		return false;
 	}
@@ -657,7 +658,9 @@ void ProfileGpuBeginFrame(const CommandList &commandList)
 	slot.frameIndex = p.recordIndex;
 
 	ResetTimestampPool(commandList, slot.pool);
+	slot.queryCount = 0;
 	slot.frameBeginQuery = WriteTimestamp(commandList, slot.pool, PipelineStageTop);
+	slot.queryCount++;
 	slot.frameEndQuery = slot.frameBeginQuery;
 
 	p.recordSlot = slotIndex;
@@ -676,6 +679,7 @@ void ProfileGpuEndFrame(const CommandList &commandList)
 	}
 
 	slot.frameEndQuery = WriteTimestamp(commandList, slot.pool, PipelineStageBottom);
+	slot.queryCount++;
 	slot.pending = true;
 
 	p.recordSlot = PROFILE_GPU_SLOT_NONE;
@@ -692,12 +696,12 @@ void ProfileGpuBeginEvent(const CommandList &commandList, u16 nameId)
 
 	// Besides this begin, there must be room for the end of every open event and for the frame end.
 	// Events are dropped in whole subtrees so the tree stays balanced at resolve time.
-	const u32 requiredQueries = slot.pool.queryCount + slot.openCount + 3;
+	const u32 requiredQueries = slot.queryCount + slot.openCount + 3;
 
 	if (slot.dropDepth > 0 ||
 			slot.openCount >= MAX_PROFILE_GPU_STACKED_EVENTS ||
 			slot.eventCount >= MAX_PROFILE_GPU_EVENTS ||
-			requiredQueries > slot.pool.maxQueries)
+			requiredQueries > MAX_PROFILE_GPU_QUERIES)
 	{
 		slot.dropDepth++;
 		slot.droppedEventCount++;
@@ -705,6 +709,7 @@ void ProfileGpuBeginEvent(const CommandList &commandList, u16 nameId)
 	}
 
 	const u32 queryIndex = WriteTimestamp(commandList, slot.pool, PipelineStageBottom);
+	slot.queryCount++;
 	slot.events[slot.eventCount++] = {
 		.nameId = nameId,
 		.queryIndex = (u16)queryIndex,
@@ -732,6 +737,7 @@ void ProfileGpuEndEvent(const CommandList &commandList, u16 nameId)
 	}
 
 	const u32 queryIndex = WriteTimestamp(commandList, slot.pool, PipelineStageBottom);
+	slot.queryCount++;
 	slot.events[slot.eventCount++] = {
 		.nameId = nameId,
 		.queryIndex = (u16)queryIndex,

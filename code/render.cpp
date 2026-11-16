@@ -23,7 +23,7 @@ static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 	if ( gfx.debugDrawBatchCount > 0 )
 	{
 		DrawBatch &lastBatch = gfx.debugDrawBatches[gfx.debugDrawBatchCount - 1];
-		if ( lastBatch.imageH.index == imageH.index )
+		if ( lastBatch.imageH == imageH )
 		{
 			lastBatch.vertexCount += vertexCount;
 			return;
@@ -523,7 +523,7 @@ static void DrawScreenQuad(Graphics &gfx, CommandList &commandList, f32 rotation
 	DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
 }
 
-static void DrawTexturedBatch(Graphics &gfx, CommandList &commandList, const BindGroupLayout &bindGroupLayout, const DrawBatch &batch)
+static void DrawTexturedBatch(Graphics &gfx, CommandList &commandList, BindGroupLayoutH bindGroupLayout, const DrawBatch &batch)
 {
 	const BindGroupDesc bindGroupDesc = {
 		.layout = bindGroupLayout,
@@ -532,18 +532,18 @@ static void DrawTexturedBatch(Graphics &gfx, CommandList &commandList, const Bin
 			{ .index = 1, .image = batch.imageH },
 		},
 	};
-	const BindGroup bindGroup = GetOrCreateDynamicBindGroup(gfx, bindGroupDesc);
+	const BindGroupH bindGroup = GetOrCreateDynamicBindGroup(gfx, bindGroupDesc);
 	SetBindGroup(commandList, 3, bindGroup);
 
 	Draw(commandList, batch.vertexCount, batch.vertexIndex);
 }
 
-static void DrawBloomPass(Graphics &gfx, CommandList &commandList, const Framebuffer &framebuffer, PipelineIndex pipelineIndex, ImageH sourceImage)
+static void DrawBloomPass(Graphics &gfx, CommandList &commandList, FramebufferH framebuffer, PipelineIndex pipelineIndex, ImageH sourceImage)
 {
 	const u32 frameSlot = GetFrameSlot(gfx.device);
 
 	BeginRenderPass(commandList, framebuffer);
-	SetViewportAndScissor(commandList, GetFramebufferSize(framebuffer));
+	SetViewportAndScissor(commandList, GetFramebufferSize(gfx.device, framebuffer));
 
 	SetPipeline(commandList, gfx.pipelines[pipelineIndex]);
 	SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -555,7 +555,7 @@ static void DrawBloomPass(Graphics &gfx, CommandList &commandList, const Framebu
 			{ .index = 1, .image = sourceImage },
 		},
 	};
-	const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+	const BindGroupH bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 	SetBindGroup(commandList, 3, bindGroup);
 
 	DrawScreenQuad(gfx, commandList);
@@ -761,7 +761,7 @@ bool RenderGraphics(Engine &engine)
 	}
 
 	// Gather visible lights
-	const uint2 sceneSize = GetFramebufferSize(gfx.renderTargets.sceneFramebuffer);
+	const uint2 sceneSize = GetFramebufferSize(gfx.device, gfx.renderTargets.sceneFramebuffer);
 	const uint2 lightGridSize = {
 		(sceneSize.x + LIGHT_TILE_SIZE - 1) / LIGHT_TILE_SIZE,
 		(sceneSize.y + LIGHT_TILE_SIZE - 1) / LIGHT_TILE_SIZE,
@@ -834,7 +834,7 @@ bool RenderGraphics(Engine &engine)
 		.shadowmapDepthBias = 0.005,
 		.time = totalSeconds,
 		.lightGridSize = lightGridSize,
-		.sceneResolution = GetFramebufferSize(gfx.renderTargets.sceneFramebuffer),
+		.sceneResolution = GetFramebufferSize(gfx.device, gfx.renderTargets.sceneFramebuffer),
 		.mousePosition = sceneMousePosition,
 		.lightCount = lightCount,
 		.projectionType = (uint)camera.projectionType,
@@ -906,7 +906,7 @@ bool RenderGraphics(Engine &engine)
 
 	{
 	PROFILE_BLOCK(GenerateTiles);
-	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.renderTargets.sceneFramebuffer)) / gfx.renderTargets.scenePixelsPerMeter;
+	const float2 viewportSizeWorld = Float2(GetFramebufferSize(gfx.device, gfx.renderTargets.sceneFramebuffer)) / gfx.renderTargets.scenePixelsPerMeter;
 
 	const bool parallaxEnabled = is2D && engine.game.runState == GameStateRunning; // The editor shows all layers unshifted
 
@@ -1087,7 +1087,7 @@ bool RenderGraphics(Engine &engine)
 				{ .index = 0, .bufferView = gfx.computeBufferViewH },
 			},
 		};
-		const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+		const BindGroupH bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 		SetBindGroup(commandList, 0, bindGroup);
 
@@ -1107,10 +1107,10 @@ bool RenderGraphics(Engine &engine)
 
 		SetClearDepth(commandList, 0, 0.0f);
 
-		const Framebuffer shadowmapFramebuffer = GetShadowmapFramebuffer(gfx);
+		const FramebufferH shadowmapFramebuffer = GetShadowmapFramebuffer(gfx);
 		BeginRenderPass(commandList, shadowmapFramebuffer);
 
-		const uint2 shadowmapSize = GetFramebufferSize(shadowmapFramebuffer);
+		const uint2 shadowmapSize = GetFramebufferSize(gfx.device, shadowmapFramebuffer);
 		SetViewportAndScissor(commandList, shadowmapSize);
 
 		SetPipeline(commandList, gfx.pipelines[Pipeline_Shadowmap]);
@@ -1160,7 +1160,7 @@ bool RenderGraphics(Engine &engine)
 				{ .index = 0, .buffer = gfx.lightGridBuffer[frameSlot] },
 			},
 		};
-		const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+		const BindGroupH bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 		SetBindGroup(commandList, 3, bindGroup);
 
@@ -1176,10 +1176,10 @@ bool RenderGraphics(Engine &engine)
 		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 0.0f } );
 		SetClearDepth(commandList, 1, 0.0f);
 
-		const Framebuffer &sceneFramebuffer = gfx.renderTargets.sceneFramebuffer;
+		const FramebufferH sceneFramebuffer = gfx.renderTargets.sceneFramebuffer;
 		BeginRenderPass(commandList, sceneFramebuffer);
 
-		const uint2 displaySize = GetFramebufferSize(sceneFramebuffer);
+		const uint2 displaySize = GetFramebufferSize(gfx.device, sceneFramebuffer);
 		SetViewportAndScissor(commandList, displaySize);
 
 		// Entities
@@ -1247,7 +1247,7 @@ bool RenderGraphics(Engine &engine)
 						{ .index = 0, .image = data.image },
 					},
 				};
-				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
+				const BindGroupH textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
 
 				SetBindGroup(commandList, 2, textureBindGroup);
 				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, data.firstTile, data.tileCount);
@@ -1287,7 +1287,7 @@ bool RenderGraphics(Engine &engine)
 						{ .index = 0, .image = imageH },
 					},
 				};
-				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
+				const BindGroupH textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
 
 				BeginDebugGroup(commandList, entity.name ? entity.name : "sprite", ColorBlack);
 				SetBindGroup(commandList, 2, textureBindGroup);
@@ -1310,7 +1310,7 @@ bool RenderGraphics(Engine &engine)
 					{ .index = 1, .image = skyImage },
 				},
 			};
-			const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroupH bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Sky]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1353,10 +1353,10 @@ bool RenderGraphics(Engine &engine)
 
 		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 0.0f } );
 
-		const Framebuffer &distortionFramebuffer = gfx.renderTargets.distortionFramebuffer;
+		const FramebufferH distortionFramebuffer = gfx.renderTargets.distortionFramebuffer;
 		BeginRenderPass(commandList, distortionFramebuffer);
 
-		const uint2 distortionSize = GetFramebufferSize(distortionFramebuffer);
+		const uint2 distortionSize = GetFramebufferSize(gfx.device, distortionFramebuffer);
 		SetViewportAndScissor(commandList, distortionSize);
 
 		if ( gfx.distortionVertexCount > 0 )
@@ -1377,16 +1377,16 @@ bool RenderGraphics(Engine &engine)
 		TransitionImageLayout(commandList, gfx.renderTargets.sceneImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 		TransitionImageLayout(commandList, gfx.renderTargets.distortionImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
-		const Framebuffer &effectsFramebuffer = gfx.renderTargets.effectsFramebuffer;
+		const FramebufferH effectsFramebuffer = gfx.renderTargets.effectsFramebuffer;
 		BeginRenderPass(commandList, effectsFramebuffer);
 
-		const uint2 displaySize = GetFramebufferSize(effectsFramebuffer);
+		const uint2 displaySize = GetFramebufferSize(gfx.device, effectsFramebuffer);
 		SetViewportAndScissor(commandList, displaySize);
 
 		{ // Distortion
 			RENDER_BLOCK(Distortion);
 
-			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Distortion], 3);
+			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Distortion], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Distortion]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1399,7 +1399,7 @@ bool RenderGraphics(Engine &engine)
 					{ .index = 2, .image = gfx.renderTargets.distortionImage },
 				},
 			};
-			const BindGroup textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroupH textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 			SetBindGroup(commandList, 3, textureBindGroup);
 
 			DrawScreenQuad(gfx, commandList);
@@ -1408,7 +1408,7 @@ bool RenderGraphics(Engine &engine)
 		{ // Particles
 			RENDER_BLOCK(Particles);
 
-			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Particles], 3);
+			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Particles], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Particles]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1425,7 +1425,7 @@ bool RenderGraphics(Engine &engine)
 
 			MemCopy(gfx.debugDrawVertices[frameSlot], gfx.debugDrawVerticesCPU, gfx.debugDrawVertexCount * sizeof(DebugDrawVertex));
 
-			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_DebugDraw], 3);
+			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_DebugDraw], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_DebugDraw]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1499,13 +1499,13 @@ bool RenderGraphics(Engine &engine)
 		// Black bars where the integer-scaled scene does not cover the display
 		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 1.0f } );
 
-		const Framebuffer displayFramebuffer = GetDisplayFramebuffer(gfx);
+		const FramebufferH displayFramebuffer = GetDisplayFramebuffer(gfx);
 		{
 		PROFILE_GFX_BLOCK(BeginRenderPass);
 		BeginRenderPass(commandList, displayFramebuffer);
 		}
 
-		const uint2 displaySize = GetFramebufferSize(displayFramebuffer);
+		const uint2 displaySize = GetFramebufferSize(gfx.device, displayFramebuffer);
 		SetViewportAndScissor(commandList, displaySize);
 
 		{ // Scene blit
@@ -1518,7 +1518,7 @@ bool RenderGraphics(Engine &engine)
 			SetViewport(commandList, viewport);
 			SetScissor(commandList, scissor);
 
-			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Blit], 3);
+			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Blit], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Blit]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1530,7 +1530,7 @@ bool RenderGraphics(Engine &engine)
 					{ .index = 1, .image = gfx.renderTargets.effectsImage },
 				},
 			};
-			const BindGroup textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroupH textureBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 			SetBindGroup(commandList, 3, textureBindGroup);
 
 			DrawScreenQuad(gfx, commandList, preRotationDegrees);
@@ -1544,7 +1544,7 @@ bool RenderGraphics(Engine &engine)
 
 			const UI &ui = engine.ui;
 
-			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_UI], 3);
+			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_UI], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_UI]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1562,7 +1562,7 @@ bool RenderGraphics(Engine &engine)
 						{ .index = 1, .image = drawList.imageHandle },
 					},
 				};
-				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
+				const BindGroupH textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
 				SetBindGroup(commandList, 3, textureBindGroup);
 
 				for (u32 i = 0; i < drawList.vertexRangeCount; ++i)
@@ -1588,16 +1588,15 @@ bool RenderGraphics(Engine &engine)
 
 	EndCommandList(commandList);
 
-	SubmitResult submitRes;
 
 	{
 		PROFILE_BLOCK(Submit);
-		submitRes = Submit(gfx.device, commandList);
+		Submit(gfx.device, commandList);
 	}
 
 	{
 		PROFILE_BLOCK(Present);
-		if ( !Present(gfx.device, submitRes) ) {
+		if ( !Present(gfx.device) ) {
 			return false;
 		}
 	}

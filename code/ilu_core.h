@@ -83,7 +83,10 @@
 
 #if PLATFORM_MACOS && defined(__OBJC__)
 // Included here, before '#define internal', which breaks the Mach headers AppKit pulls in.
+// MacTypes.h declares a 'Handle' type that clashes with handle_pool.h
+#define Handle MacTypesHandle
 #import <AppKit/AppKit.h>
+#undef Handle
 #endif
 
 #if PLATFORM_POSIX

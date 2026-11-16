@@ -233,12 +233,12 @@ const u32 FindShaderSourceDescIndex(const char *name)
 RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name)
 {
 	const RenderPassH handle = FindRenderPass(gfx.device, name);
-	if ( handle.index != U32_MAX ) {
+	if ( IsValid(handle) ) {
 		return handle;
 	}
 	LOG(Warning, "Could not find render <%s> handle.\n", name);
 	INVALID_CODE_PATH();
-	return { .index = U32_MAX };
+	return {};
 }
 
 struct StagedData
@@ -799,9 +799,19 @@ static COMPACT_MOVE(MoveMaterial)
 	gfx.materialBindGroups[dstIndex] = gfx.materialBindGroups[srcIndex];
 }
 
+// Runs before survivors are moved over this index
+static COMPACT_REMOVE(RemoveMaterial)
+{
+	Graphics &gfx = *(Graphics*)data;
+
+	WaitDeviceIdle(gfx.device);
+	DestroyBindGroup(gfx.device, gfx.materialBindGroups[index]);
+	gfx.materialBindGroups[index] = {};
+}
+
 void CompactMaterials(Graphics &gfx)
 {
-	if ( COMPACT_ARRAY_BY_ID(Material, gfx.materials, gfx.materialCount, id, MoveMaterial, nullptr, &gfx) )
+	if ( COMPACT_ARRAY_BY_ID(Material, gfx.materials, gfx.materialCount, id, MoveMaterial, RemoveMaterial, &gfx) )
 	{
 		gfx.shouldUpdateMaterials = true;          // re-upload at the new offsets
 		gfx.shouldUpdateMaterialBindGroups = true; // re-point the bind groups at them
@@ -1739,7 +1749,7 @@ void ResetDynamicBindGroups( Graphics &gfx )
 	gfx.dynamicBindGroupCount = 0;
 }
 
-const BindGroup &GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindGroupDesc)
+BindGroupH GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindGroupDesc)
 {
 	for (u32 i = 0; i < gfx.dynamicBindGroupCount; ++i)
 	{
@@ -1750,7 +1760,7 @@ const BindGroup &GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc 
 	}
 
 	ASSERT( gfx.dynamicBindGroupCount < ARRAY_COUNT(gfx.dynamicBindGroups) );
-	const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[GetFrameSlot(gfx.device)]);
+	const BindGroupH bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[GetFrameSlot(gfx.device)]);
 	gfx.dynamicBindGroupDescs[gfx.dynamicBindGroupCount] = bindGroupDesc;
 	gfx.dynamicBindGroups[gfx.dynamicBindGroupCount] = bindGroup;
 	return gfx.dynamicBindGroups[gfx.dynamicBindGroupCount++];
@@ -2046,6 +2056,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.uniformBufferCount = MAX_MATERIALS,
 				.textureCount = MAX_MATERIALS,
 				.groupCount = MAX_MATERIALS,
+				.allowIndividualFrees = true,
 			},
 		};
 		gfx.materialBindGroupAllocator = CreateBindGroupAllocator(gfx.device, desc);
@@ -2246,7 +2257,7 @@ void UpdateGlobalBindGroup(Graphics &gfx, u32 frameSlot)
 
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)
 {
-	const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[material.pipelineIndex], BIND_GROUP_MATERIAL);
+	const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[material.pipelineIndex], BIND_GROUP_MATERIAL);
 	const ImageH &albedoImage = GetTextureImage(gfx, material.textureId, gfx.pinkImageH );
 
 	const BindGroupDesc bindGroupDesc = {
@@ -2330,12 +2341,6 @@ void CleanupGraphics(Graphics &gfx)
 }
 
 
-uint2 GetFramebufferSize(const Framebuffer &framebuffer)
-{
-	const uint2 size = { framebuffer.extent.width, framebuffer.extent.height };
-	return size;
-}
-
 const ImageH GetDisplayImageH(const Graphics &gfx)
 {
 	const u32 imageIndex = GetSwapchainImageIndex(gfx.device);
@@ -2343,15 +2348,13 @@ const ImageH GetDisplayImageH(const Graphics &gfx)
 	return displayImageH;
 }
 
-Framebuffer GetDisplayFramebuffer(const Graphics &gfx)
+FramebufferH GetDisplayFramebuffer(const Graphics &gfx)
 {
 	const u32 imageIndex = GetSwapchainImageIndex(gfx.device);
-	const Framebuffer framebuffer = gfx.renderTargets.displayFramebuffers[imageIndex];
-	return framebuffer;
+	return gfx.renderTargets.displayFramebuffers[imageIndex];
 }
 
-Framebuffer GetShadowmapFramebuffer(const Graphics &gfx)
+FramebufferH GetShadowmapFramebuffer(const Graphics &gfx)
 {
-	const Framebuffer &framebuffer = gfx.renderTargets.shadowmapFramebuffer;
-	return framebuffer;
+	return gfx.renderTargets.shadowmapFramebuffer;
 }

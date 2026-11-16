@@ -513,25 +513,25 @@ struct RenderTargets
 	bool scaleSceneToDisplay;
 	ImageH depthImage;
 	ImageH sceneImage;
-	Framebuffer sceneFramebuffer;
+	FramebufferH sceneFramebuffer;
 	ImageH distortionImage;
-	Framebuffer distortionFramebuffer;
+	FramebufferH distortionFramebuffer;
 	ImageH effectsImage;
-	Framebuffer effectsFramebuffer;
+	FramebufferH effectsFramebuffer;
 
 	bool hasBloom;
 	ImageH bloomImages[BLOOM_LEVEL_COUNT];
-	Framebuffer bloomDownsampleFramebuffers[BLOOM_LEVEL_COUNT];
-	Framebuffer bloomUpsampleFramebuffers[BLOOM_LEVEL_COUNT - 1];
-	Framebuffer bloomCompositeFramebuffer;
+	FramebufferH bloomDownsampleFramebuffers[BLOOM_LEVEL_COUNT];
+	FramebufferH bloomUpsampleFramebuffers[BLOOM_LEVEL_COUNT - 1];
+	FramebufferH bloomCompositeFramebuffer;
 
-	Framebuffer displayFramebuffers[MAX_SWAPCHAIN_IMAGE_COUNT];
+	FramebufferH displayFramebuffers[MAX_SWAPCHAIN_IMAGE_COUNT];
 
 	ImageH shadowmapImage;
-	Framebuffer shadowmapFramebuffer;
+	FramebufferH shadowmapFramebuffer;
 
 	ImageH idImage;
-	Framebuffer idFramebuffer;
+	FramebufferH idFramebuffer;
 
 	bool initialized;
 };
@@ -710,21 +710,21 @@ struct Graphics
 	Material materials[MAX_MATERIALS];
 	bool shouldUpdateMaterials;
 
-	BindGroupAllocator globalBindGroupAllocator;
-	BindGroupAllocator materialBindGroupAllocator;
-	BindGroupAllocator dynamicBindGroupAllocator[MAX_FRAMES_IN_FLIGHT];
+	BindGroupAllocatorH globalBindGroupAllocator;
+	BindGroupAllocatorH materialBindGroupAllocator;
+	BindGroupAllocatorH dynamicBindGroupAllocator[MAX_FRAMES_IN_FLIGHT];
 
-	BindGroupLayout globalBindGroupLayout;
+	BindGroupLayoutH globalBindGroupLayout;
 
 	// Updated each frame so we need MAX_FRAMES_IN_FLIGHT elements
-	BindGroup globalBindGroups[MAX_FRAMES_IN_FLIGHT];
+	BindGroupH globalBindGroups[MAX_FRAMES_IN_FLIGHT];
 	u32 globalBindGroupUpdateMask;
 
-	BindGroup materialBindGroups[MAX_MATERIALS]; // Parallel to materials
+	BindGroupH materialBindGroups[MAX_MATERIALS]; // Parallel to materials
 	bool shouldUpdateMaterialBindGroups;
 
 	BindGroupDesc dynamicBindGroupDescs[MAX_DYNAMIC_BIND_GROUPS];
-	BindGroup dynamicBindGroups[MAX_DYNAMIC_BIND_GROUPS];
+	BindGroupH dynamicBindGroups[MAX_DYNAMIC_BIND_GROUPS];
 	u32 dynamicBindGroupCount;
 
 	ImageH whiteImageH;
@@ -1798,7 +1798,7 @@ void RecompilePipelines(Engine &engine, Arena scratch);
 // Dynamic bind groups
 
 void ResetDynamicBindGroups(Graphics &gfx);
-const BindGroup &GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindGroupDesc);
+BindGroupH GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindGroupDesc);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -1826,10 +1826,9 @@ void CleanupGraphics(Graphics &gfx);
 ////////////////////////////////////////////////////////////////////////
 // Framebuffer and swapchain queries
 
-uint2 GetFramebufferSize(const Framebuffer &framebuffer);
 const ImageH GetDisplayImageH(const Graphics &gfx);
-Framebuffer GetDisplayFramebuffer(const Graphics &gfx);
-Framebuffer GetShadowmapFramebuffer(const Graphics &gfx);
+FramebufferH GetDisplayFramebuffer(const Graphics &gfx);
+FramebufferH GetShadowmapFramebuffer(const Graphics &gfx);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // FUNCTIONS: Scene

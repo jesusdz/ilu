@@ -3946,7 +3946,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 
 			BeginRenderPass(commandList, gfx.renderTargets.idFramebuffer );
 
-			const uint2 framebufferSize = GetFramebufferSize(gfx.renderTargets.idFramebuffer);
+			const uint2 framebufferSize = GetFramebufferSize(gfx.device, gfx.renderTargets.idFramebuffer);
 			SetViewportAndScissor(commandList, framebufferSize);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_ModelId]);
@@ -4002,7 +4002,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 					{ .index = 1, .image = gfx.renderTargets.idImage },
 				},
 			};
-			const BindGroup dynamicBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroupH dynamicBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 			SetBindGroup(commandList, 0, dynamicBindGroup);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
