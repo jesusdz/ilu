@@ -38,6 +38,26 @@
 
 
 ////////////////////////////////////////////////////////////////////////
+// Backend-internal functions (not part of the GraphicsAPI table)
+////////////////////////////////////////////////////////////////////////
+
+Buffer &GetBuffer(GraphicsDevice &device, BufferH bufferHandle);
+const Buffer &GetBufferConst(const GraphicsDevice &device, BufferH bufferHandle);
+void DestroyBuffer(const GraphicsDevice &device, const Buffer &buffer);
+const BufferView &GetBufferView(const GraphicsDevice &device, BufferViewH bufferViewH);
+void DestroyBufferView(const GraphicsDevice &device, const BufferView &bufferView);
+Image &GetImage(GraphicsDevice &device, ImageH imageH);
+const Image &GetImageConst(const GraphicsDevice &device, ImageH imageH);
+void DestroyImage(const GraphicsDevice &device, const Image &image);
+const Sampler &GetSampler(const GraphicsDevice &device, SamplerH handle);
+void DestroySampler(const GraphicsDevice &device, const Sampler &sampler);
+const Pipeline &GetPipeline(const GraphicsDevice &device, PipelineH handle);
+void DestroyPipeline(const GraphicsDevice &device, const Pipeline &pipeline);
+const RenderPass &GetRenderPass(const GraphicsDevice &device, RenderPassH handle);
+void DestroyRenderPass(const GraphicsDevice &device, const RenderPass &renderPass);
+
+
+////////////////////////////////////////////////////////////////////////
 // Vulkan function pointers
 ////////////////////////////////////////////////////////////////////////
 
@@ -2812,7 +2832,7 @@ Pipeline CreateGraphicsPipelineInternal(GraphicsDevice &device, Arena scratch, c
 		.pColorBlendState = &colorBlendingCreateInfo,
 		.pDynamicState = &dynamicStateCreateInfo,
 		.layout = pipelineLayout,
-		.renderPass = desc.renderPass.handle,
+		.renderPass = GetRenderPass(device, desc.renderPass).handle,
 		.subpass = 0,
 		.basePipelineHandle = VK_NULL_HANDLE, // Optional
 		.basePipelineIndex = -1, // Optional
@@ -3267,8 +3287,11 @@ void CopyBufferToImage(const CommandList &commandBuffer, BufferH bufferH, u32 bu
 			);
 }
 
-void Blit(const CommandList &commandBuffer, const Image &srcImage, const BlitRegion &srcRegion, const Image &dstImage, const BlitRegion &dstRegion)
+void Blit(const CommandList &commandBuffer, ImageH srcImageH, const BlitRegion &srcRegion, ImageH dstImageH, const BlitRegion &dstRegion)
 {
+	const GraphicsDevice &device = GetDevice(commandBuffer);
+	const Image &srcImage = GetImageConst(device, srcImageH);
+	const Image &dstImage = GetImageConst(device, dstImageH);
 	const VkImageAspectFlags aspectMask = FormatToVulkanAspect(srcImage.format);
 
 	const VkImageBlit blit = {
@@ -4168,6 +4191,38 @@ ImageH GetSwapchainImage(const GraphicsDevice &device, u32 index)
 {
 	ASSERT(index < device.swapchain.imageCount);
 	return device.swapchain.imageHandles[index];
+}
+
+
+//////////////////////////////
+// Resource accessors
+//////////////////////////////
+
+u32 GetBufferSize(const GraphicsDevice &device, BufferH handle)
+{
+	return GetBufferConst(device, handle).size;
+}
+
+uint2 GetImageSize(const GraphicsDevice &device, ImageH handle)
+{
+	const Image &image = GetImageConst(device, handle);
+	return { image.width, image.height };
+}
+
+Format GetImageFormat(const GraphicsDevice &device, ImageH handle)
+{
+	return GetImageConst(device, handle).format;
+}
+
+u32 GetImageMipLevels(const GraphicsDevice &device, ImageH handle)
+{
+	return GetImageConst(device, handle).mipLevels;
+}
+
+const BindGroupLayout &GetPipelineBindGroupLayout(const GraphicsDevice &device, PipelineH handle, u32 bindGroupIndex)
+{
+	ASSERT(bindGroupIndex < MAX_BIND_GROUPS);
+	return GetPipeline(device, handle).layout.bindGroupLayouts[bindGroupIndex];
 }
 
 //void FlushBufferMemory(GraphicsDevice &device, BufferH bufferHandle)

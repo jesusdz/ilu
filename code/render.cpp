@@ -541,7 +541,6 @@ static void DrawTexturedBatch(Graphics &gfx, CommandList &commandList, const Bin
 static void DrawBloomPass(Graphics &gfx, CommandList &commandList, const Framebuffer &framebuffer, PipelineIndex pipelineIndex, ImageH sourceImage)
 {
 	const u32 frameSlot = GetFrameSlot(gfx.device);
-	const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[pipelineIndex]);
 
 	BeginRenderPass(commandList, framebuffer);
 	SetViewportAndScissor(commandList, GetFramebufferSize(framebuffer));
@@ -550,7 +549,7 @@ static void DrawBloomPass(Graphics &gfx, CommandList &commandList, const Framebu
 	SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
 
 	const BindGroupDesc bindGroupDesc = {
-		.layout = pipeline.layout.bindGroupLayouts[3],
+		.layout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[pipelineIndex], 3),
 		.bindings = {
 			{ .index = 0, .sampler = gfx.bloomSamplerH },
 			{ .index = 1, .image = sourceImage },
@@ -1079,12 +1078,11 @@ bool RenderGraphics(Engine &engine)
 
 	#if USE_COMPUTE_TEST
 	{
-		const Pipeline &pipeline = GetPipeline(gfx.device, gfx.computeClearH);
 
 		SetPipeline(commandList, gfx.computeClearH);
 
 		const BindGroupDesc bindGroupDesc = {
-			.layout = pipeline.layout.bindGroupLayouts[0],
+			.layout = GetPipelineBindGroupLayout(gfx.device, gfx.computeClearH, 0),
 			.bindings = {
 				{ .index = 0, .bufferView = gfx.computeBufferViewH },
 			},
@@ -1152,13 +1150,12 @@ bool RenderGraphics(Engine &engine)
 	{
 		RENDER_BLOCK(LightBinning);
 
-		const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_LightBinning]);
 
 		SetPipeline(commandList, gfx.pipelines[Pipeline_LightBinning]);
 		SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
 
 		const BindGroupDesc bindGroupDesc = {
-			.layout = pipeline.layout.bindGroupLayouts[3],
+			.layout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_LightBinning], 3),
 			.bindings = {
 				{ .index = 0, .buffer = gfx.lightGridBuffer[frameSlot] },
 			},
@@ -1232,7 +1229,6 @@ bool RenderGraphics(Engine &engine)
 		{
 			RENDER_BLOCK(LayerTiles);
 
-			const Pipeline &tilePipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Shading2DTile]);
 			const uint32_t tileIndexCount = gfx.spriteIndices.size / sizeof(Index);
 			const uint32_t tileFirstIndex = gfx.spriteIndices.offset / sizeof(Index);
 			const int32_t tileFirstVertex = gfx.spriteVertices.offset / sizeof(Vertex);
@@ -1246,7 +1242,7 @@ bool RenderGraphics(Engine &engine)
 			{
 				const InstanceTileData &data = instanceTileData[i];
 				const BindGroupDesc textureBindGroupDesc = {
-					.layout = tilePipeline.layout.bindGroupLayouts[2],
+					.layout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Shading2DTile], 2),
 					.bindings = {
 						{ .index = 0, .image = data.image },
 					},
@@ -1262,7 +1258,6 @@ bool RenderGraphics(Engine &engine)
 			RENDER_BLOCK(Sprites);
 
 			// Sprite entities
-			const Pipeline &spritePipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Shading2D]);
 			const uint32_t spriteIndexCount = gfx.spriteIndices.size / sizeof(Index);
 			const uint32_t spriteFirstIndex = gfx.spriteIndices.offset / sizeof(Index);
 			const int32_t spriteFirstVertex = gfx.spriteVertices.offset / sizeof(Vertex);
@@ -1287,7 +1282,7 @@ bool RenderGraphics(Engine &engine)
 
 				const ImageH imageH = GetTextureImage(gfx, textureId, gfx.pinkImageH);
 				const BindGroupDesc textureBindGroupDesc = {
-					.layout = spritePipeline.layout.bindGroupLayouts[2],
+					.layout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Shading2D], 2),
 					.bindings = {
 						{ .index = 0, .image = imageH },
 					},
@@ -1307,10 +1302,9 @@ bool RenderGraphics(Engine &engine)
 			RENDER_BLOCK(Sky);
 
 			const ImageH &skyImage = GetTextureImage(gfx, gfx.skyTexture, gfx.grayImageH);
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Sky]);
 
 			const BindGroupDesc bindGroupDesc = {
-				.layout = pipeline.layout.bindGroupLayouts[3],
+				.layout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Sky], 3),
 				.bindings = {
 					{ .index = 0, .sampler = gfx.skySamplerH },
 					{ .index = 1, .image = skyImage },
@@ -1392,8 +1386,7 @@ bool RenderGraphics(Engine &engine)
 		{ // Distortion
 			RENDER_BLOCK(Distortion);
 
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Distortion]);
-			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];
+			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Distortion], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Distortion]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1415,8 +1408,7 @@ bool RenderGraphics(Engine &engine)
 		{ // Particles
 			RENDER_BLOCK(Particles);
 
-			const Pipeline &particlesPipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Particles]);
-			const BindGroupLayout &bindGroupLayout = particlesPipeline.layout.bindGroupLayouts[3];
+			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Particles], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Particles]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1433,8 +1425,7 @@ bool RenderGraphics(Engine &engine)
 
 			MemCopy(gfx.debugDrawVertices[frameSlot], gfx.debugDrawVerticesCPU, gfx.debugDrawVertexCount * sizeof(DebugDrawVertex));
 
-			const Pipeline &debugDrawPipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_DebugDraw]);
-			const BindGroupLayout &bindGroupLayout = debugDrawPipeline.layout.bindGroupLayouts[3];
+			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_DebugDraw], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_DebugDraw]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1527,8 +1518,7 @@ bool RenderGraphics(Engine &engine)
 			SetViewport(commandList, viewport);
 			SetScissor(commandList, scissor);
 
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_Blit]);
-			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];
+			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_Blit], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Blit]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1554,8 +1544,7 @@ bool RenderGraphics(Engine &engine)
 
 			const UI &ui = engine.ui;
 
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_UI]);
-			const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[3];
+			const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_UI], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_UI]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);

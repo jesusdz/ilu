@@ -270,12 +270,11 @@ static StagedData StageData(Graphics &gfx, const void *data, u32 size, u32 align
 {
 	ASSERT(gfx.inUploadContext && "StageData must be called between calls to Begin/EndUploadCommandList");
 
-	const Buffer &stagingBuffer = GetBuffer(gfx.device, gfx.stagingBuffer);
 
 	const u32 finalAlignment = Max(alignment, GetDeviceCaps(gfx.device).alignment.optimalBufferCopyOffset);
 	const u32 alignedOffset = AlignUp(gfx.stagingBufferOffset, finalAlignment);
 
-	ASSERT(alignedOffset + size <= stagingBuffer.size);
+	ASSERT(alignedOffset + size <= GetBufferSize(gfx.device, gfx.stagingBuffer));
 
 	StagedData staging = {};
 	staging.buffer = gfx.stagingBuffer;
@@ -358,30 +357,32 @@ BufferChunk PushData(Graphics &gfx, const CommandList &commandList, BufferArena 
 
 void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandList, ImageH imageH)
 {
-	const Image &image = GetImageConst(device, imageH);
+	const Format format = GetImageFormat(device, imageH);
+	const uint2 size = GetImageSize(device, imageH);
+	const u32 mipLevels = GetImageMipLevels(device, imageH);
 
-	if (!GetDeviceCaps(device).formatSupport[image.format].linearFilteredSampling) {
-		LOG(Error, "GenerateMipmaps() - Linear filtering not supported for format %s.\n", FormatName(image.format));
+	if (!GetDeviceCaps(device).formatSupport[format].linearFilteredSampling) {
+		LOG(Error, "GenerateMipmaps() - Linear filtering not supported for format %s.\n", FormatName(format));
 		QUIT_ABNORMALLY();
 	}
 
-	for (u32 i = 1; i < image.mipLevels; ++i)
+	for (u32 i = 1; i < mipLevels; ++i)
 	{
 		TransitionImageLayout(commandList, imageH, ImageStateTransferDst, ImageStateTransferSrc, i - 1, 1);
 
-		const i32 srcWidth = Max(image.width >> (i-1), 1u);
-		const i32 srcHeight = Max(image.height >> (i-1), 1u);
-		const i32 dstWidth = Max(image.width >> i, 1u);
-		const i32 dstHeight = Max(image.height >> i, 1u);
+		const i32 srcWidth = Max(size.x >> (i-1), 1u);
+		const i32 srcHeight = Max(size.y >> (i-1), 1u);
+		const i32 dstWidth = Max(size.x >> i, 1u);
+		const i32 dstHeight = Max(size.y >> i, 1u);
 		const BlitRegion srcRegion = { .x = 0, .y = 0, .width = srcWidth, .height = srcHeight, .mipLevel = i - 1 };
 		const BlitRegion dstRegion = { .x = 0, .y = 0, .width = dstWidth, .height = dstHeight, .mipLevel = i };
 
-		Blit(commandList, image, srcRegion, image, dstRegion);
+		Blit(commandList, imageH, srcRegion, imageH, dstRegion);
 
 		TransitionImageLayout(commandList, imageH, ImageStateTransferSrc, ImageStateShaderInput, i - 1, 1);
 	}
 
-	TransitionImageLayout(commandList, imageH, ImageStateTransferDst, ImageStateShaderInput, image.mipLevels - 1, 1);
+	TransitionImageLayout(commandList, imageH, ImageStateTransferDst, ImageStateShaderInput, mipLevels - 1, 1);
 }
 
 ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels)
@@ -487,8 +488,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc, ImageH imageH)
 	texture->ownsImage = false;
 	texture->ts = 0;
 
-	const Image &image = GetImageConst(gfx.device, imageH);
-	texture->size = { image.width, image.height };
+	texture->size = GetImageSize(gfx.device, imageH);
 
 	return texture->id;
 }
@@ -1668,7 +1668,7 @@ void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipel
 	const RenderPassH renderPassH = FindRenderPassHandle(gfx, shaderPipeDesc.renderPass);
 
 	PipelineDesc desc = shaderPipeDesc.desc;
-	desc.renderPass = GetRenderPass(gfx.device, renderPassH);
+	desc.renderPass = renderPassH;
 
 	if ( sLoadShadersFromText )
 	{
@@ -2246,8 +2246,7 @@ void UpdateGlobalBindGroup(Graphics &gfx, u32 frameSlot)
 
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)
 {
-	const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[material.pipelineIndex]);
-	const BindGroupLayout &bindGroupLayout = pipeline.layout.bindGroupLayouts[BIND_GROUP_MATERIAL];
+	const BindGroupLayout &bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[material.pipelineIndex], BIND_GROUP_MATERIAL);
 	const ImageH &albedoImage = GetTextureImage(gfx, material.textureId, gfx.pinkImageH );
 
 	const BindGroupDesc bindGroupDesc = {
@@ -2290,8 +2289,7 @@ void UploadMaterialData(Graphics &gfx)
 void CreateMaterialBindGroup(Graphics &gfx, ID materialId)
 {
 	const Material &material = GetMaterial(materialId);
-	const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[material.pipelineIndex]);
-	gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)] = CreateBindGroup(gfx.device, pipeline.layout.bindGroupLayouts[1], gfx.materialBindGroupAllocator);
+	gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)] = CreateBindGroup(gfx.device, GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[material.pipelineIndex], 1), gfx.materialBindGroupAllocator);
 	gfx.shouldUpdateMaterialBindGroups = true;
 }
 
@@ -2343,13 +2341,6 @@ const ImageH GetDisplayImageH(const Graphics &gfx)
 	const u32 imageIndex = GetSwapchainImageIndex(gfx.device);
 	const ImageH displayImageH = GetSwapchainImage(gfx.device, imageIndex);
 	return displayImageH;
-}
-
-const Image &GetDisplayImage(const Graphics &gfx)
-{
-	const ImageH displayImageH = GetDisplayImageH(gfx);
-	const Image &displayImage = GetImageConst(gfx.device, displayImageH);
-	return displayImage;
 }
 
 Framebuffer GetDisplayFramebuffer(const Graphics &gfx)

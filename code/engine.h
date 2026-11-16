@@ -1828,7 +1828,6 @@ void CleanupGraphics(Graphics &gfx);
 
 uint2 GetFramebufferSize(const Framebuffer &framebuffer);
 const ImageH GetDisplayImageH(const Graphics &gfx);
-const Image &GetDisplayImage(const Graphics &gfx);
 Framebuffer GetDisplayFramebuffer(const Graphics &gfx);
 Framebuffer GetShadowmapFramebuffer(const Graphics &gfx);
 

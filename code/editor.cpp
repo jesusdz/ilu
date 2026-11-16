@@ -3992,12 +3992,11 @@ void EditorRender(Engine &engine, CommandList &commandList)
 		}
 
 		{ // Write entity ID under mouse cursor into selection buffer
-			const Pipeline &pipeline = GetPipeline(gfx.device, gfx.pipelines[Pipeline_ComputeSelect]);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_ComputeSelect]);
 
 			const BindGroupDesc bindGroupDesc = {
-				.layout = pipeline.layout.bindGroupLayouts[3],
+				.layout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[Pipeline_ComputeSelect], 3),
 				.bindings = {
 					{ .index = 0, .bufferView = gfx.selectionBufferViewH },
 					{ .index = 1, .image = gfx.renderTargets.idImage },

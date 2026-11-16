@@ -561,7 +561,7 @@ struct PipelineDesc
 	CompareOp depthCompareOp;
 	bool blending;
 	bool additiveBlending;
-	RenderPass renderPass;
+	RenderPassH renderPass;
 };
 
 struct ComputeDesc
@@ -757,30 +757,16 @@ typedef void FN_UpdateBindGroup(const GraphicsDevice &device, const BindGroupDes
 typedef Alloc FN_Allocate(Heap &heap, u32 size, u32 alignment);
 typedef void FN_Deallocate(Alloc alloc);
 typedef BufferH FN_CreateBuffer(GraphicsDevice &device, u32 size, BufferUsageFlags bufferUsageFlags, HeapType heapType);
-typedef Buffer& FN_GetBuffer(GraphicsDevice &device, BufferH handle);
-typedef const Buffer& FN_GetBufferConst(const GraphicsDevice &device, BufferH handle);
-typedef void FN_DestroyBuffer(const GraphicsDevice &device, const Buffer &buffer);
 typedef BufferViewH FN_CreateBufferView(GraphicsDevice &device, BufferH bufferHandle, Format format, u32 offset, u32 size);
-typedef const BufferView& FN_GetBufferView(const GraphicsDevice &device, BufferViewH handle);
-typedef void FN_DestroyBufferView(const GraphicsDevice &device, const BufferView &bufferView);
 typedef ImageH FN_CreateImage(GraphicsDevice &device, u32 width, u32 height, u32 mipLevels, Format format, ImageUsageFlags usage, HeapType heapType);
-typedef Image& FN_GetImage(GraphicsDevice &device, ImageH imageH);
-typedef const Image& FN_GetImageConst(const GraphicsDevice &device, ImageH imageH);
 typedef bool FN_IsSwapchainImage(ImageH image);
-typedef void FN_DestroyImage(const GraphicsDevice &device, const Image &image);
 typedef void FN_DestroyImageH(GraphicsDevice &device, ImageH imageH);
 typedef SamplerH FN_CreateSampler(GraphicsDevice &device, const SamplerDesc &desc);
-typedef const Sampler& FN_GetSampler(const GraphicsDevice &device, SamplerH handle);
-typedef void FN_DestroySampler(const GraphicsDevice &device, const Sampler &sampler);
 typedef PipelineH FN_CreateGraphicsPipeline(GraphicsDevice &device, Arena scratch, const PipelineDesc &desc, const BindGroupLayout &globalBindGroupLayout);
 typedef PipelineH FN_CreateComputePipeline(GraphicsDevice &device, Arena scratch, const ComputeDesc &desc, const BindGroupLayout &globalBindGroupLayout);
-typedef const Pipeline& FN_GetPipeline(const GraphicsDevice &device, PipelineH handle);
 typedef bool FN_IsSamePipeline(PipelineH a, PipelineH b);
-typedef void FN_DestroyPipeline(const GraphicsDevice &device, const Pipeline &pipeline); // TODO(jesus): Remove?
 typedef void FN_DestroyPipelineH(GraphicsDevice &device, PipelineH handle);
 typedef RenderPassH FN_CreateRenderPass(GraphicsDevice &device, const RenderpassDesc &desc);
-typedef const RenderPass& FN_GetRenderPass(const GraphicsDevice &device, RenderPassH handle);
-typedef void FN_DestroyRenderPass(const GraphicsDevice &device, const RenderPass &renderPass);
 typedef Framebuffer FN_CreateFramebuffer(const GraphicsDevice &device, const FramebufferDesc &desc);
 typedef void FN_DestroyFramebuffer(const GraphicsDevice &device, const Framebuffer &framebuffer);
 typedef CommandList FN_BeginCommandList(const GraphicsDevice &device);
@@ -790,7 +776,7 @@ typedef void FN_EndTransientCommandList(GraphicsDevice &device, const CommandLis
 typedef void* FN_GetBufferPtr(const GraphicsDevice &device, BufferH bufferH);
 typedef void FN_CopyBufferToBuffer(const CommandList &commandBuffer, BufferH srcBufferH, u32 srcOffset, BufferH dstBufferH, u32 dstOffset, u64 size);
 typedef void FN_CopyBufferToImage(const CommandList &commandBuffer, BufferH bufferH, u32 bufferOffset, ImageH imageH);
-typedef void FN_Blit(const CommandList &commandBuffer, const Image &srcImage, const BlitRegion &srcRegion, const Image &dstImage, const BlitRegion &dstRegion);
+typedef void FN_Blit(const CommandList &commandBuffer, ImageH srcImage, const BlitRegion &srcRegion, ImageH dstImage, const BlitRegion &dstRegion);
 typedef void FN_TransitionImageLayout(const CommandList &commandBuffer, ImageH imageH, ImageState oldState, ImageState newState, u32 baseMipLevel, u32 levelCount);
 typedef void FN_TransitionBufferState(const CommandList &commandBuffer, BufferH bufferH, BufferState oldState, BufferState newState);
 typedef void FN_BeginRenderPass(const CommandList &commandList, const Framebuffer &framebuffer);
@@ -834,6 +820,11 @@ typedef float FN_GetSwapchainPreRotation(const GraphicsDevice &device);
 typedef u32 FN_GetSwapchainImageCount(const GraphicsDevice &device);
 typedef u32 FN_GetSwapchainImageIndex(const GraphicsDevice &device);
 typedef ImageH FN_GetSwapchainImage(const GraphicsDevice &device, u32 index);
+typedef u32 FN_GetBufferSize(const GraphicsDevice &device, BufferH handle);
+typedef uint2 FN_GetImageSize(const GraphicsDevice &device, ImageH handle);
+typedef Format FN_GetImageFormat(const GraphicsDevice &device, ImageH handle);
+typedef u32 FN_GetImageMipLevels(const GraphicsDevice &device, ImageH handle);
+typedef const BindGroupLayout& FN_GetPipelineBindGroupLayout(const GraphicsDevice &device, PipelineH handle, u32 bindGroupIndex);
 
 #define EXPAND_API_TOOLS_GFX(EXPAND_MACRO) \
 	EXPAND_MACRO(SetGraphicsStringInterning) \
@@ -863,30 +854,16 @@ typedef ImageH FN_GetSwapchainImage(const GraphicsDevice &device, u32 index);
 	EXPAND_MACRO(Allocate) \
 	EXPAND_MACRO(Deallocate) \
 	EXPAND_MACRO(CreateBuffer) \
-	EXPAND_MACRO(GetBuffer) \
-	EXPAND_MACRO(GetBufferConst) \
-	EXPAND_MACRO(DestroyBuffer) \
 	EXPAND_MACRO(CreateBufferView) \
-	EXPAND_MACRO(GetBufferView) \
-	EXPAND_MACRO(DestroyBufferView) \
 	EXPAND_MACRO(CreateImage) \
-	EXPAND_MACRO(GetImage) \
-	EXPAND_MACRO(GetImageConst) \
 	EXPAND_MACRO(IsSwapchainImage) \
-	EXPAND_MACRO(DestroyImage) \
 	EXPAND_MACRO(DestroyImageH) \
 	EXPAND_MACRO(CreateSampler) \
-	EXPAND_MACRO(GetSampler) \
-	EXPAND_MACRO(DestroySampler) \
 	EXPAND_MACRO(CreateGraphicsPipeline) \
 	EXPAND_MACRO(CreateComputePipeline) \
-	EXPAND_MACRO(GetPipeline) \
 	EXPAND_MACRO(IsSamePipeline) \
-	EXPAND_MACRO(DestroyPipeline) \
 	EXPAND_MACRO(DestroyPipelineH) \
 	EXPAND_MACRO(CreateRenderPass) \
-	EXPAND_MACRO(GetRenderPass) \
-	EXPAND_MACRO(DestroyRenderPass) \
 	EXPAND_MACRO(CreateFramebuffer) \
 	EXPAND_MACRO(DestroyFramebuffer) \
 	EXPAND_MACRO(BeginCommandList) \
@@ -939,7 +916,12 @@ typedef ImageH FN_GetSwapchainImage(const GraphicsDevice &device, u32 index);
 	EXPAND_MACRO(GetSwapchainPreRotation) \
 	EXPAND_MACRO(GetSwapchainImageCount) \
 	EXPAND_MACRO(GetSwapchainImageIndex) \
-	EXPAND_MACRO(GetSwapchainImage)
+	EXPAND_MACRO(GetSwapchainImage) \
+	EXPAND_MACRO(GetBufferSize) \
+	EXPAND_MACRO(GetImageSize) \
+	EXPAND_MACRO(GetImageFormat) \
+	EXPAND_MACRO(GetImageMipLevels) \
+	EXPAND_MACRO(GetPipelineBindGroupLayout)
 
 #define TOOLS_GFX_FUNCTION_POINTER(function_name) FN_ ## function_name * function_name;
 #define TOOLS_GFX_FUNCTION_PROTOTYPE(function_name) FN_ ## function_name function_name;
