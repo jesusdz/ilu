@@ -1389,6 +1389,5 @@ static void Main( int argc, char **argv )
 }
 
 
-#define TOOLS_GFX_IMPLEMENTATION
-#include "ilu_gfx.h"
+#include "ilu_gfx_vulkan.cpp"
 
