@@ -89,29 +89,12 @@
 // Definitions
 ////////////////////////////////////////////////////////////////////////
 
-#define MAX_BIND_GROUPS SPV_MAX_DESCRIPTOR_SETS
 #define MAX_SHADER_BINDINGS SPV_MAX_DESCRIPTORS_PER_SET
-#define MAX_BIND_GROUP_LAYOUTS 256
-#define MAX_FENCES 128
-#define MAX_RENDER_TARGETS 4
-#define MAX_BUFFERS 64
-#define MAX_IMAGES 128
-#define MAX_SAMPLERS 64
-#define MAX_PIPELINES 64
-#define MAX_RENDERPASSES 8
-#define MAX_FRAMEBUFFERS 64
-#define MAX_BIND_GROUP_ALLOCATORS 8
-#define MAX_ALLOCATED_BIND_GROUPS 8192 // Across all allocators
-#define MAX_TIMESTAMP_POOLS 4
-#define MAX_COMMAND_LISTS 8
-#define MAX_COLOR_ATTACHMENTS 3
-#define MAX_DEPTH_ATTACHMENTS 1
 #if PLATFORM_ANDROID
 #define MAX_SWAPCHAIN_IMAGE_COUNT 5
 #else
 #define MAX_SWAPCHAIN_IMAGE_COUNT 4
 #endif
-#define FIRST_SWAPCHAIN_IMAGE_INDEX MAX_IMAGES
 #define MAX_FRAMES_IN_FLIGHT 2
 
 
@@ -128,8 +111,6 @@ enum HeapType
 	HeapType_Readback,
 	HeapType_COUNT,
 };
-
-constexpr u32 HeapSize_General = MB(64);
 
 enum BorderColor
 {
