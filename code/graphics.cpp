@@ -372,10 +372,10 @@ void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandLis
 	{
 		TransitionImageLayout(commandList, imageH, ImageStateTransferDst, ImageStateTransferSrc, i - 1, 1);
 
-		const i32 srcWidth = image.width > 1 ? image.width >> (i-1): 1;
-		const i32 srcHeight = image.height > 1 ? image.height >> (i-1) : 1;
-		const i32 dstWidth = image.width > 1 ? image.width >> i : 1;
-		const i32 dstHeight = image.height > 1 ? image.height >> i : 1;
+		const i32 srcWidth = Max(image.width >> (i-1), 1u);
+		const i32 srcHeight = Max(image.height >> (i-1), 1u);
+		const i32 dstWidth = Max(image.width >> i, 1u);
+		const i32 dstHeight = Max(image.height >> i, 1u);
 		const BlitRegion srcRegion = { .x = 0, .y = 0, .width = srcWidth, .height = srcHeight, .mipLevel = i - 1 };
 		const BlitRegion dstRegion = { .x = 0, .y = 0, .width = dstWidth, .height = dstHeight, .mipLevel = i };
 
