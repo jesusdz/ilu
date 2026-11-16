@@ -78,18 +78,14 @@
 // Includes
 ////////////////////////////////////////////////////////////////////////
 
-#include "ilu_core.h"
 #include "handle_pool.h"
-
-//#define SPV_PRINT_FUNCTIONS
-#include "ilu_spirv.h"
 
 
 ////////////////////////////////////////////////////////////////////////
 // Definitions
 ////////////////////////////////////////////////////////////////////////
 
-#define MAX_SHADER_BINDINGS SPV_MAX_DESCRIPTORS_PER_SET
+#define MAX_SHADER_BINDINGS 16 // Per bind group
 #if PLATFORM_ANDROID
 #define MAX_SWAPCHAIN_IMAGE_COUNT 5
 #else
@@ -282,12 +278,33 @@ struct BlitRegion
 	u32 mipLevel;
 };
 
+enum ShaderBindingType
+{
+	ShaderBindingTypeNone,
+	ShaderBindingTypeImage,
+	ShaderBindingTypeSampler,
+	ShaderBindingTypeSampledImage,
+	ShaderBindingTypeUniformBuffer,
+	ShaderBindingTypeStorageBuffer,
+	ShaderBindingTypeStorageTexelBuffer,
+	ShaderBindingTypeCount,
+};
+
+enum ShaderStageFlagBits
+{
+	ShaderStageVertex = 1<<0,
+	ShaderStageFragment = 1<<1,
+	ShaderStageCompute = 1<<2,
+};
+
+typedef u8 ShaderStageFlags;
+
 struct ShaderBinding
 {
 	u8 set;
 	u8 binding;
-	SpvType type;
-	SpvStageFlags stageFlags;
+	ShaderBindingType type;
+	ShaderStageFlags stageFlags;
 	const char *name;
 };
 

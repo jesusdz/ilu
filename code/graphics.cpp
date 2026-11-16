@@ -2082,17 +2082,17 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	// Create global BindGroup layout
 
 	const ShaderBinding globalShaderBindings[] = {
-		{ .set = 0, .binding = BINDING_GLOBALS, .type = SpvTypeUniformBuffer, .stageFlags = SpvStageFlagsVertexBit | SpvStageFlagsFragmentBit | SpvStageFlagsComputeBit },
-		{ .set = 0, .binding = BINDING_SAMPLER_POINT, .type = SpvTypeSampler, .stageFlags = SpvStageFlagsFragmentBit },
-		{ .set = 0, .binding = BINDING_SAMPLER_LINEAR, .type = SpvTypeSampler, .stageFlags = SpvStageFlagsFragmentBit },
-		{ .set = 0, .binding = BINDING_ENTITIES, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsVertexBit },
-		{ .set = 0, .binding = BINDING_SHADOWMAP, .type = SpvTypeImage, .stageFlags = SpvStageFlagsFragmentBit },
-		{ .set = 0, .binding = BINDING_SHADOWMAP_SAMPLER, .type = SpvTypeSampler, .stageFlags = SpvStageFlagsFragmentBit },
-		{ .set = 0, .binding = BINDING_SPRITE_DATA, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsVertexBit },
-		{ .set = 0, .binding = BINDING_TILE_DATA, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsVertexBit },
-		{ .set = 0, .binding = BINDING_NOISE2D, .type = SpvTypeImage, .stageFlags = SpvStageFlagsFragmentBit },
-		{ .set = 0, .binding = BINDING_LIGHTS, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsFragmentBit | SpvStageFlagsComputeBit },
-		{ .set = 0, .binding = BINDING_LIGHT_GRID, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsFragmentBit },
+		{ .set = 0, .binding = BINDING_GLOBALS, .type = ShaderBindingTypeUniformBuffer, .stageFlags = ShaderStageVertex | ShaderStageFragment | ShaderStageCompute },
+		{ .set = 0, .binding = BINDING_SAMPLER_POINT, .type = ShaderBindingTypeSampler, .stageFlags = ShaderStageFragment },
+		{ .set = 0, .binding = BINDING_SAMPLER_LINEAR, .type = ShaderBindingTypeSampler, .stageFlags = ShaderStageFragment },
+		{ .set = 0, .binding = BINDING_ENTITIES, .type = ShaderBindingTypeStorageBuffer, .stageFlags = ShaderStageVertex },
+		{ .set = 0, .binding = BINDING_SHADOWMAP, .type = ShaderBindingTypeImage, .stageFlags = ShaderStageFragment },
+		{ .set = 0, .binding = BINDING_SHADOWMAP_SAMPLER, .type = ShaderBindingTypeSampler, .stageFlags = ShaderStageFragment },
+		{ .set = 0, .binding = BINDING_SPRITE_DATA, .type = ShaderBindingTypeStorageBuffer, .stageFlags = ShaderStageVertex },
+		{ .set = 0, .binding = BINDING_TILE_DATA, .type = ShaderBindingTypeStorageBuffer, .stageFlags = ShaderStageVertex },
+		{ .set = 0, .binding = BINDING_NOISE2D, .type = ShaderBindingTypeImage, .stageFlags = ShaderStageFragment },
+		{ .set = 0, .binding = BINDING_LIGHTS, .type = ShaderBindingTypeStorageBuffer, .stageFlags = ShaderStageFragment | ShaderStageCompute },
+		{ .set = 0, .binding = BINDING_LIGHT_GRID, .type = ShaderBindingTypeStorageBuffer, .stageFlags = ShaderStageFragment },
 	};
 	gfx.globalBindGroupLayout = CreateBindGroupLayout(gpu, globalShaderBindings, ARRAY_COUNT(globalShaderBindings));
 

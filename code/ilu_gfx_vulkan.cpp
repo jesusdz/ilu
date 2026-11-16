@@ -11,6 +11,8 @@
 
 #include "libs/offset_allocator/offsetAllocator.hpp"
 
+#include "ilu_spirv.h"
+
 #if USE_XCB
 #	define VK_USE_PLATFORM_XCB_KHR 1
 #elif USE_ANDROID
@@ -678,7 +680,20 @@ static VkMemoryPropertyFlags HeapTypeToVkMemoryPropertyFlags( HeapType heapType 
 	return flags[heapType];
 };
 
-static VkDescriptorType SpvDescriptorTypeToVulkan(SpvType type)
+// Reflected SPIR-V bindings are copied as they are into ShaderBinding
+CT_ASSERT(MAX_SHADER_BINDINGS == SPV_MAX_DESCRIPTORS_PER_SET);
+CT_ASSERT((int)ShaderBindingTypeImage == (int)SpvTypeImage);
+CT_ASSERT((int)ShaderBindingTypeSampler == (int)SpvTypeSampler);
+CT_ASSERT((int)ShaderBindingTypeSampledImage == (int)SpvTypeSampledImage);
+CT_ASSERT((int)ShaderBindingTypeUniformBuffer == (int)SpvTypeUniformBuffer);
+CT_ASSERT((int)ShaderBindingTypeStorageBuffer == (int)SpvTypeStorageBuffer);
+CT_ASSERT((int)ShaderBindingTypeStorageTexelBuffer == (int)SpvTypeStorageTexelBuffer);
+CT_ASSERT((int)ShaderBindingTypeCount == (int)SpvTypeCount);
+CT_ASSERT((int)ShaderStageVertex == (int)SpvStageFlagsVertexBit);
+CT_ASSERT((int)ShaderStageFragment == (int)SpvStageFlagsFragmentBit);
+CT_ASSERT((int)ShaderStageCompute == (int)SpvStageFlagsComputeBit);
+
+static VkDescriptorType ShaderBindingTypeToVulkan(ShaderBindingType type)
 {
 	static const VkDescriptorType vkDescriptorTypes[] = {
 		VK_DESCRIPTOR_TYPE_MAX_ENUM,
@@ -689,19 +704,19 @@ static VkDescriptorType SpvDescriptorTypeToVulkan(SpvType type)
 		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // Should be DYNAMIC if we use dynamic offsets
 		VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
 	};
-	CT_ASSERT(ARRAY_COUNT(vkDescriptorTypes) == SpvTypeCount);
-	ASSERT(type != SpvTypeNone);
-	ASSERT(type < SpvTypeCount);
+	CT_ASSERT(ARRAY_COUNT(vkDescriptorTypes) == ShaderBindingTypeCount);
+	ASSERT(type != ShaderBindingTypeNone);
+	ASSERT(type < ShaderBindingTypeCount);
 	const VkDescriptorType vkDescriptorType = vkDescriptorTypes[type];
 	return vkDescriptorType;
 }
 
-static VkShaderStageFlags SpvStageFlagsToVulkan(u8 stageFlags)
+static VkShaderStageFlags ShaderStageFlagsToVulkan(ShaderStageFlags stageFlags)
 {
 	VkShaderStageFlags vkStageFlags = 0;
-	vkStageFlags |= ( stageFlags & SpvStageFlagsVertexBit ) ? VK_SHADER_STAGE_VERTEX_BIT : 0;
-	vkStageFlags |= ( stageFlags & SpvStageFlagsFragmentBit ) ? VK_SHADER_STAGE_FRAGMENT_BIT : 0;
-	vkStageFlags |= ( stageFlags & SpvStageFlagsComputeBit ) ? VK_SHADER_STAGE_COMPUTE_BIT : 0;
+	vkStageFlags |= ( stageFlags & ShaderStageVertex ) ? VK_SHADER_STAGE_VERTEX_BIT : 0;
+	vkStageFlags |= ( stageFlags & ShaderStageFragment ) ? VK_SHADER_STAGE_FRAGMENT_BIT : 0;
+	vkStageFlags |= ( stageFlags & ShaderStageCompute ) ? VK_SHADER_STAGE_COMPUTE_BIT : 0;
 	return vkStageFlags;
 }
 
@@ -1124,7 +1139,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 	VkDescriptorBufferInfo *bufferInfo = 0;
 	VkBufferView *bufferViewPtr = 0;
 
-	if ( binding.type == SpvTypeSampler )
+	if ( binding.type == ShaderBindingTypeSampler )
 	{
 		const Sampler &sampler = GetSampler(device, resourceBinding.sampler);
 
@@ -1133,7 +1148,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 		imageInfo->imageView = VK_NULL_HANDLE;
 		imageInfo->sampler = sampler.handle;
 	}
-	else if ( binding.type == SpvTypeImage )
+	else if ( binding.type == ShaderBindingTypeImage )
 	{
 		const Image &image = GetImageConst(device, resourceBinding.image);
 
@@ -1142,7 +1157,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 		imageInfo->imageView = image.imageViewHandle;
 		imageInfo->sampler = VK_NULL_HANDLE;
 	}
-	else if ( binding.type == SpvTypeUniformBuffer || binding.type == SpvTypeStorageBuffer )
+	else if ( binding.type == ShaderBindingTypeUniformBuffer || binding.type == ShaderBindingTypeStorageBuffer )
 	{
 		const Buffer &buffer = GetBufferConst(device, resourceBinding.buffer);
 		const u32 offset = resourceBinding.offset;
@@ -1153,7 +1168,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 		bufferInfo->offset = offset;
 		bufferInfo->range = range > 0 ? range : buffer.size;
 	}
-	else if ( binding.type == SpvTypeStorageTexelBuffer )
+	else if ( binding.type == ShaderBindingTypeStorageTexelBuffer )
 	{
 		const BufferView &bufferView = GetBufferView(device, resourceBinding.bufferView);
 
@@ -1171,7 +1186,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 	descriptorWrite->dstSet = descriptorSet;
 	descriptorWrite->dstBinding = binding.binding;
 	descriptorWrite->dstArrayElement = 0;
-	descriptorWrite->descriptorType = SpvDescriptorTypeToVulkan( binding.type );
+	descriptorWrite->descriptorType = ShaderBindingTypeToVulkan( binding.type );
 	descriptorWrite->descriptorCount = 1;
 	descriptorWrite->pBufferInfo = bufferInfo;
 	descriptorWrite->pImageInfo = imageInfo;
@@ -1237,7 +1252,7 @@ static ShaderBindings ReflectShaderBindings( Arena scratch, byte* microcodeData[
 				ShaderBinding &shaderBinding = shaderBindings.bindings[baseBindingCount + setBindingCount++];
 				shaderBinding.binding = descriptor.binding;
 				shaderBinding.set = setIndex;
-				shaderBinding.type = (SpvType)descriptor.type;
+				shaderBinding.type = (ShaderBindingType)descriptor.type;
 				shaderBinding.stageFlags = descriptor.stageFlags;
 				shaderBinding.name = InternStringGfx( descriptor.name );
 				//LOG(Info, "Descriptor name: %s\n", descriptor.name);
@@ -2490,12 +2505,12 @@ static void CountBindGroupDescriptors(BindGroupAllocatorCounts &counts, const Bi
 	{
 		const ShaderBinding &binding = layout.bindings[i];
 		switch (binding.type) {
-			case SpvTypeImage: counts.textureCount += sign; break;
-			case SpvTypeSampler: counts.samplerCount += sign; break;
-			case SpvTypeSampledImage: counts.combinedImageSamplerCount += sign; break;
-			case SpvTypeUniformBuffer: counts.uniformBufferCount += sign; break;
-			case SpvTypeStorageBuffer: counts.storageBufferCount += sign; break;
-			case SpvTypeStorageTexelBuffer: counts.storageTexelBufferCount += sign; break;
+			case ShaderBindingTypeImage: counts.textureCount += sign; break;
+			case ShaderBindingTypeSampler: counts.samplerCount += sign; break;
+			case ShaderBindingTypeSampledImage: counts.combinedImageSamplerCount += sign; break;
+			case ShaderBindingTypeUniformBuffer: counts.uniformBufferCount += sign; break;
+			case ShaderBindingTypeStorageBuffer: counts.storageBufferCount += sign; break;
+			case ShaderBindingTypeStorageTexelBuffer: counts.storageTexelBufferCount += sign; break;
 			default: INVALID_CODE_PATH();
 		}
 	}
@@ -2618,9 +2633,9 @@ BindGroupLayoutH CreateBindGroupLayout(GraphicsDevice &device, const ShaderBindi
 
 		VkDescriptorSetLayoutBinding &binding = vkBindings[bindingIndex];
 		binding.binding = shaderBinding.binding;
-		binding.descriptorType = SpvDescriptorTypeToVulkan((SpvType)shaderBinding.type);
+		binding.descriptorType = ShaderBindingTypeToVulkan(shaderBinding.type);
 		binding.descriptorCount = 1;
-		binding.stageFlags = SpvStageFlagsToVulkan(shaderBinding.stageFlags);
+		binding.stageFlags = ShaderStageFlagsToVulkan(shaderBinding.stageFlags);
 		binding.pImmutableSamplers = NULL;
 	}
 
