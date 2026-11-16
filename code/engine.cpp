@@ -456,19 +456,17 @@ ENGINE_API void OnPlatformLoadEngine(Host &host)
 		UI_ResetStyle(engine.ui);
 #endif
 
-		PROFILE_GPU_INIT(*engine.gfx.device);
+		PROFILE_GPU_INIT(gpu);
 	}
 
 }
 
 ENGINE_API void OnPlatformUnloadEngine(Host &host)
 {
-	Graphics &gfx = host.engine->gfx;
-
-	if ( IsValidGraphicsDevice(*gfx.device) )
+	if ( IsValidGraphicsDevice(gpu) )
 	{
-		WaitDeviceIdle(*gfx.device);
-		PROFILE_GPU_CLEANUP(*gfx.device);
+		WaitDeviceIdle(gpu);
+		PROFILE_GPU_CLEANUP(gpu);
 	}
 }
 
@@ -476,7 +474,6 @@ ENGINE_API bool OnPlatformInit(Host &host)
 {
 	Engine &engine = GetEngine();
 
-	Graphics &gfx = engine.gfx;
 	Game &game = engine.game;
 
 #if USE_EDITOR
@@ -485,8 +482,7 @@ ENGINE_API bool OnPlatformInit(Host &host)
 #endif
 
 	// Initialize graphics
-	gfx.device = CreateGraphicsDevice();
-	if ( !InitializeGraphicsDriver(*gfx.device, GlobalArena) )
+	if ( !InitializeGraphicsDriver(gpu, GlobalArena) )
 	{
 		// TODO: Actually we could throw a system error and exit...
 		LOG(Error, "InitializeGraphicsDriver failed!\n");
@@ -508,7 +504,7 @@ ENGINE_API bool OnPlatformWindowInit(Host &host)
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
 
-	if ( !InitializeGraphicsSurface(*gfx.device, *host.window) )
+	if ( !InitializeGraphicsSurface(gpu, *host.window) )
 	{
 		// TODO: Actually we could throw a system error and exit...
 		LOG(Error, "InitializeGraphicsSurface failed!\n");
@@ -632,7 +628,7 @@ ENGINE_API void OnPlatformUpdate(Host &host)
 		if ( CompileModifiedShaders() )
 		{
 			// NOTE(jesus): Recompiling all pipelines here even if likely only a shader was recompiled :-S
-			WaitDeviceIdle(*gfx.device);
+			WaitDeviceIdle(gpu);
 			Scratch scratch;
 			RecompilePipelines(engine, scratch.arena);
 		}
@@ -671,18 +667,18 @@ ENGINE_API void OnPlatformRenderGraphics(Host &host)
 		return;
 	}
 
-	if ( !IsValidSwapchain(*gfx.device) )
+	if ( !IsValidSwapchain(gpu) )
 	{
 		GfxWaitDeviceIdle(gfx);
 		DestroyRenderTargets(gfx, gfx.renderTargets);
 		if ( host.window->width != 0 && host.window->height != 0 )
 		{
-			RecreateSwapchain(*gfx.device, *host.window);
+			RecreateSwapchain(gpu, *host.window);
 
 			char debugName[16];
-			for (u32 i = 0; i < GetSwapchainImageCount(*gfx.device); ++i) {
+			for (u32 i = 0; i < GetSwapchainImageCount(gpu); ++i) {
 				SPrintf(debugName, "swapchain_%u", i);
-				SetObjectNameImage(*gfx.device, GetSwapchainImage(*gfx.device, i), debugName);
+				SetObjectNameImage(gpu, GetSwapchainImage(gpu, i), debugName);
 			}
 
 			u32 sceneWidth = 0;
@@ -695,7 +691,7 @@ ENGINE_API void OnPlatformRenderGraphics(Host &host)
 		}
 	}
 
-	if ( IsValidSwapchain(*gfx.device) )
+	if ( IsValidSwapchain(gpu) )
 	{
 		RenderGraphics(engine);
 
@@ -729,8 +725,8 @@ ENGINE_API void OnPlatformWindowCleanup(Host &host)
 
 	GfxWaitDeviceIdle(gfx);
 	DestroyRenderTargets(gfx, gfx.renderTargets);
-	DestroySwapchain(*gfx.device);
-	CleanupGraphicsSurface(*gfx.device);
+	DestroySwapchain(gpu);
+	CleanupGraphicsSurface(gpu);
 }
 
 ENGINE_API void OnPlatformCleanup(Host &host)

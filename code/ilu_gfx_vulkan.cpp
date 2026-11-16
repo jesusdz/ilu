@@ -1744,15 +1744,17 @@ static void InvalidateSwapchain()
 
 
 // Lives in the platform binary, so it survives engine hot reloads
-GraphicsDevice *CreateGraphicsDevice()
+static GraphicsDevice sDevice;
+
+GraphicsDevice &GetGraphicsDevice()
 {
-	static GraphicsDevice sDevice;
-	MemSet(&sDevice, sizeof(sDevice), 0);
-	return &sDevice;
+	return sDevice;
 }
 
 bool InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch)
 {
+	MemSet(&device, sizeof(device), 0);
+
 	// Load basic Vulkan function pointers
 	if ( !VulkanLoadInitFunctions() )
 	{
@@ -4752,6 +4754,8 @@ void CleanupGraphicsDriver(GraphicsDevice &device)
 #endif
 
 	vkDestroyInstance(device.instance, VULKAN_ALLOCATORS);
+
+	MemSet(&device, sizeof(device), 0); // IsValidGraphicsDevice is false from now on
 }
 
 //////////////////////////////

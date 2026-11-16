@@ -648,7 +648,7 @@ static void EditorUpdateInspectedAsset()
 
 	// All three share a union, only the one `selected` names is live
 	if (inspector.selected.type == EditorSelectedType_FileImage) {
-		WaitDeviceIdle(*engine.gfx.device);
+		WaitDeviceIdle(gpu);
 		RemoveTexture(engine.gfx, inspector.tmpTextureId);
 	}
 	if (inspector.selected.type == EditorSelectedType_FileAudio) {
@@ -3304,10 +3304,10 @@ static void EditorBeginSceneEditing(const EditorActions &actions)
 	{
 		editor.selectEntity = false;
 
-		WaitDeviceIdle(*engine.gfx.device);
+		WaitDeviceIdle(gpu);
 		// What the id pass wrote is a draw id, not an ID: its low half is the entity's
 		// ID slot, the high half its position in the array at the time it was drawn
-		const u32 drawId = *(u32*)GetBufferPtr(*engine.gfx.device, engine.gfx.selectionBufferH);
+		const u32 drawId = *(u32*)GetBufferPtr(gpu, engine.gfx.selectionBufferH);
 		const ID entityId = EntityFromDrawId(drawId);
 
 		if (entityId)
@@ -3514,7 +3514,7 @@ static void EditorProcessCommands(Arena scratch)
 
 	if ( editor.commandCount > 0 )
 	{
-		WaitDeviceIdle(*gfx.device);
+		WaitDeviceIdle(gpu);
 
 		for (u32 i = 0; i < editor.commandCount; ++i)
 		{
@@ -3932,7 +3932,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 	Editor &editor = GetEditor();
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
-	const u32 frameSlot = GetFrameSlot(*gfx.device);
+	const u32 frameSlot = GetFrameSlot(gpu);
 	const BufferH vertexBuffer = gfx.globalVertexArena.buffer;
 	const BufferH indexBuffer = gfx.globalIndexArena.buffer;
 
@@ -3946,7 +3946,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 
 			BeginRenderPass(commandList, gfx.renderTargets.idFramebuffer );
 
-			const uint2 framebufferSize = GetFramebufferSize(*gfx.device, gfx.renderTargets.idFramebuffer);
+			const uint2 framebufferSize = GetFramebufferSize(gpu, gfx.renderTargets.idFramebuffer);
 			SetViewportAndScissor(commandList, framebufferSize);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_ModelId]);
@@ -3996,13 +3996,13 @@ void EditorRender(Engine &engine, CommandList &commandList)
 			SetPipeline(commandList, gfx.pipelines[Pipeline_ComputeSelect]);
 
 			const BindGroupDesc bindGroupDesc = {
-				.layout = GetPipelineBindGroupLayout(*gfx.device, gfx.pipelines[Pipeline_ComputeSelect], 3),
+				.layout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_ComputeSelect], 3),
 				.bindings = {
 					{ .index = 0, .bufferView = gfx.selectionBufferViewH },
 					{ .index = 1, .image = gfx.renderTargets.idImage },
 				},
 			};
-			const BindGroupH dynamicBindGroup = CreateFullBindGroup(*gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroupH dynamicBindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 			SetBindGroup(commandList, 0, dynamicBindGroup);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);

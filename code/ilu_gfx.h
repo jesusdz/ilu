@@ -507,7 +507,7 @@ typedef void FN_SetObjectNameImage(const GraphicsDevice &device, ImageH handle, 
 typedef void FN_RecreateSwapchain(GraphicsDevice &device, Window &window);
 typedef void FN_DestroySwapchain(GraphicsDevice &device);
 typedef bool FN_IsValidSwapchain(const GraphicsDevice &device);
-typedef GraphicsDevice *FN_CreateGraphicsDevice();
+typedef GraphicsDevice &FN_GetGraphicsDevice();
 typedef bool FN_InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch);
 typedef bool FN_InitializeGraphicsSurface(GraphicsDevice &device, const Window &window);
 typedef bool FN_InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch);
@@ -607,7 +607,7 @@ typedef BindGroupLayoutH FN_GetPipelineBindGroupLayout(const GraphicsDevice &dev
 	EXPAND_MACRO(RecreateSwapchain) \
 	EXPAND_MACRO(DestroySwapchain) \
 	EXPAND_MACRO(IsValidSwapchain) \
-	EXPAND_MACRO(CreateGraphicsDevice) \
+	EXPAND_MACRO(GetGraphicsDevice) \
 	EXPAND_MACRO(InitializeGraphicsDriver) \
 	EXPAND_MACRO(InitializeGraphicsSurface) \
 	EXPAND_MACRO(InitializeGraphicsDevice) \
@@ -753,6 +753,9 @@ struct DebugGfxBlock
 };
 
 #define DEBUG_GFX_BLOCK(cmd, name) DebugGfxBlock debugGfxBlock_##name(cmd, #name)
+
+// The graphics device
+#define gpu GetGraphicsDevice()
 
 #endif // ILU_GFX_H
 
