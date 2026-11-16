@@ -536,7 +536,7 @@ void ProfileGpuInit(const GraphicsDevice &device)
 	p.recordSlot = PROFILE_GPU_SLOT_NONE;
 	p.recordIndex = 0;
 	p.frameIndex = 0;
-	p.enabled = device.support.timestampQueries;
+	p.enabled = GetDeviceCaps(device).timestampQueries;
 
 	if (!p.enabled) {
 		LOG(Warning, "GPU profiling disabled: the device does not support timestamp queries\n");
@@ -582,7 +582,7 @@ bool ProfileGpuResolveFrame(const GraphicsDevice &device)
 	// The slot to be recorded this frame is the one recorded MAX_FRAMES_IN_FLIGHT frames ago. Its
 	// fence was just waited at BeginFrame, so its queries are readable now, and only now: the pool
 	// is reset again as soon as this frame starts recording.
-	ProfileGpuSlot &slot = p.slots[device.frameIndex];
+	ProfileGpuSlot &slot = p.slots[GetFrameSlot(device)];
 	if (!slot.pending) { return false; }
 	slot.pending = false;
 
@@ -647,7 +647,7 @@ void ProfileGpuBeginFrame(const CommandList &commandList)
 
 	if (!p.enabled) { return; }
 
-	const u32 slotIndex = commandList.device->frameIndex;
+	const u32 slotIndex = GetFrameSlot(*commandList.device);
 	ProfileGpuSlot &slot = p.slots[slotIndex];
 
 	slot.eventCount = 0;

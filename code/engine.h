@@ -1812,8 +1812,8 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets);
 // Device lifetime and bind groups
 
 bool InitializeGraphics(Engine &engine, Arena &globalArena);
-BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameIndex);
-void UpdateGlobalBindGroup(Graphics &gfx, u32 frameIndex);
+BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameSlot);
+void UpdateGlobalBindGroup(Graphics &gfx, u32 frameSlot);
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material);
 void UpdateMaterialBindGroups(Graphics &gfx);
 void UploadMaterialData(Graphics &gfx);

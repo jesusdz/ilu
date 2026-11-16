@@ -3932,7 +3932,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 	Editor &editor = GetEditor();
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
-	const u32 frameIndex = gfx.device.frameIndex;
+	const u32 frameSlot = GetFrameSlot(gfx.device);
 	const BufferH vertexBuffer = gfx.globalVertexArena.buffer;
 	const BufferH indexBuffer = gfx.globalIndexArena.buffer;
 
@@ -3950,7 +3950,7 @@ void EditorRender(Engine &engine, CommandList &commandList)
 			SetViewportAndScissor(commandList, framebufferSize);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_ModelId]);
-			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
 
 			SetVertexBuffer(commandList, vertexBuffer);
 			SetIndexBuffer(commandList, indexBuffer);
@@ -4003,10 +4003,10 @@ void EditorRender(Engine &engine, CommandList &commandList)
 					{ .index = 1, .image = gfx.renderTargets.idImage },
 				},
 			};
-			const BindGroup dynamicBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameIndex]);
+			const BindGroup dynamicBindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 			SetBindGroup(commandList, 0, dynamicBindGroup);
-			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameIndex]);
+			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
 			SetBindGroup(commandList, 3, dynamicBindGroup);
 
 			TransitionImageLayout(commandList, gfx.renderTargets.idImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);

@@ -581,6 +581,21 @@ struct Alignment
 	// VkExtent3D minImageTransferGranularity;
 };
 
+struct FormatSupport
+{
+	bool linearFilteredSampling;
+	bool colorAttachmentBlend;
+};
+
+// Device capabilities, fixed after InitializeGraphicsDevice
+struct DeviceCaps
+{
+	Format defaultDepthFormat;
+	Alignment alignment;
+	bool timestampQueries;
+	FormatSupport formatSupport[FormatCount];
+};
+
 struct GraphicsDevice;
 
 struct CommandList
@@ -618,9 +633,7 @@ struct GraphicsDevice
 	VkPhysicalDevice physicalDevice;
 	VkDevice handle;
 
-	Format defaultDepthFormat;
-
-	Alignment alignment;
+	DeviceCaps caps;
 
 	u32 graphicsQueueFamilyIndex;
 	u32 presentQueueFamilyIndex;
@@ -656,22 +669,16 @@ struct GraphicsDevice
 
 	Heap heaps[HeapType_COUNT];
 
-	u32 frameIndex;
+	u32 frameSlot;
 
 	struct
 	{
 		bool debugUtils;
-		bool timestampQueries;
 	} support;
 	struct
 	{
 		float timestampPeriod;
 	} limits;
-	struct
-	{
-		bool linearFilteredSampling;
-		bool colorAttachmentBlend;
-	} formatSupport[FormatCount];
 
 	VkDebugUtilsMessengerEXT debugUtilsMessenger;
 
@@ -816,6 +823,17 @@ typedef void FN_CleanupGraphicsDevice(const GraphicsDevice &device, Arena scratc
 typedef void FN_CleanupGraphicsSurface(const GraphicsDevice &device);
 typedef void FN_CleanupGraphicsDriver(GraphicsDevice &device);
 typedef const char* FN_FormatName(Format format);
+typedef const DeviceCaps& FN_GetDeviceCaps(const GraphicsDevice &device);
+typedef u32 FN_GetFrameSlot(const GraphicsDevice &device);
+typedef u32 FN_GetHeapSize(const GraphicsDevice &device, HeapType heapType);
+typedef void FN_ResetHeap(GraphicsDevice &device, HeapType heapType);
+typedef RenderPassH FN_FindRenderPass(const GraphicsDevice &device, const char *name);
+typedef uint2 FN_GetSwapchainSize(const GraphicsDevice &device);
+typedef Format FN_GetSwapchainFormat(const GraphicsDevice &device);
+typedef float FN_GetSwapchainPreRotation(const GraphicsDevice &device);
+typedef u32 FN_GetSwapchainImageCount(const GraphicsDevice &device);
+typedef u32 FN_GetSwapchainImageIndex(const GraphicsDevice &device);
+typedef ImageH FN_GetSwapchainImage(const GraphicsDevice &device, u32 index);
 
 #define EXPAND_API_TOOLS_GFX(EXPAND_MACRO) \
 	EXPAND_MACRO(SetGraphicsStringInterning) \
@@ -910,7 +928,18 @@ typedef const char* FN_FormatName(Format format);
 	EXPAND_MACRO(CleanupGraphicsDevice) \
 	EXPAND_MACRO(CleanupGraphicsSurface) \
 	EXPAND_MACRO(CleanupGraphicsDriver) \
-	EXPAND_MACRO(FormatName)
+	EXPAND_MACRO(FormatName) \
+	EXPAND_MACRO(GetDeviceCaps) \
+	EXPAND_MACRO(GetFrameSlot) \
+	EXPAND_MACRO(GetHeapSize) \
+	EXPAND_MACRO(ResetHeap) \
+	EXPAND_MACRO(FindRenderPass) \
+	EXPAND_MACRO(GetSwapchainSize) \
+	EXPAND_MACRO(GetSwapchainFormat) \
+	EXPAND_MACRO(GetSwapchainPreRotation) \
+	EXPAND_MACRO(GetSwapchainImageCount) \
+	EXPAND_MACRO(GetSwapchainImageIndex) \
+	EXPAND_MACRO(GetSwapchainImage)
 
 #define TOOLS_GFX_FUNCTION_POINTER(function_name) FN_ ## function_name * function_name;
 #define TOOLS_GFX_FUNCTION_PROTOTYPE(function_name) FN_ ## function_name function_name;

@@ -232,10 +232,9 @@ const u32 FindShaderSourceDescIndex(const char *name)
 
 RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name)
 {
-	for (u32 i = 0; i < gfx.device.renderPassCount; ++i) {
-		if ( StrEq(gfx.device.renderPasses[i].name, name) ) {
-			return { .index = i };
-		}
+	const RenderPassH handle = FindRenderPass(gfx.device, name);
+	if ( handle.index != U32_MAX ) {
+		return handle;
 	}
 	LOG(Warning, "Could not find render <%s> handle.\n", name);
 	INVALID_CODE_PATH();
@@ -273,9 +272,8 @@ static StagedData StageData(Graphics &gfx, const void *data, u32 size, u32 align
 
 	const Buffer &stagingBuffer = GetBuffer(gfx.device, gfx.stagingBuffer);
 
-	const u32 finalAlignment = Max(alignment, gfx.device.alignment.optimalBufferCopyOffset);
-	const u32 unalignedOffset = stagingBuffer.alloc.offset + gfx.stagingBufferOffset;
-	const u32 alignedOffset = AlignUp(unalignedOffset, finalAlignment);
+	const u32 finalAlignment = Max(alignment, GetDeviceCaps(gfx.device).alignment.optimalBufferCopyOffset);
+	const u32 alignedOffset = AlignUp(gfx.stagingBufferOffset, finalAlignment);
 
 	ASSERT(alignedOffset + size <= stagingBuffer.size);
 
@@ -283,8 +281,7 @@ static StagedData StageData(Graphics &gfx, const void *data, u32 size, u32 align
 	staging.buffer = gfx.stagingBuffer;
 	staging.offset = alignedOffset;
 
-	Heap &stagingHeap = gfx.device.heaps[HeapType_Staging];
-	void* stagingData = stagingHeap.data + staging.offset;
+	byte *stagingData = (byte*)GetBufferPtr(gfx.device, gfx.stagingBuffer) + staging.offset;
 	MemCopy(stagingData, data, size);
 
 	gfx.stagingBufferOffset = staging.offset + size;
@@ -294,8 +291,8 @@ static StagedData StageData(Graphics &gfx, const void *data, u32 size, u32 align
 
 BufferH CreateStagingBuffer(Graphics &gfx)
 {
-	const Heap &stagingHeap = gfx.device.heaps[HeapType_Staging];
-	BufferH stagingBufferHandle = CreateBuffer(gfx.device, stagingHeap.size, BufferUsageTransferSrc, HeapType_Staging);
+	const u32 stagingHeapSize = GetHeapSize(gfx.device, HeapType_Staging);
+	BufferH stagingBufferHandle = CreateBuffer(gfx.device, stagingHeapSize, BufferUsageTransferSrc, HeapType_Staging);
 	return stagingBufferHandle;
 }
 
@@ -363,7 +360,7 @@ void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandLis
 {
 	const Image &image = GetImageConst(device, imageH);
 
-	if (!device.formatSupport[image.format].linearFilteredSampling) {
+	if (!GetDeviceCaps(device).formatSupport[image.format].linearFilteredSampling) {
 		LOG(Error, "GenerateMipmaps() - Linear filtering not supported for format %s.\n", FormatName(image.format));
 		QUIT_ABNORMALLY();
 	}
@@ -692,7 +689,7 @@ u16 GetMaterialIndex(const Graphics &gfx, ID id)
 
 static u32 MaterialBufferOffset(const Graphics &gfx, u16 index)
 {
-	const u32 offset = index * AlignUp(sizeof(SMaterial), gfx.device.alignment.uniformBufferOffset);
+	const u32 offset = index * AlignUp(sizeof(SMaterial), GetDeviceCaps(gfx.device).alignment.uniformBufferOffset);
 	return offset;
 }
 
@@ -851,9 +848,8 @@ BufferChunk GetIndicesForGeometryType(Graphics &gfx, GeometryType geometryType)
 
 static Format HdrColorFormat(const GraphicsDevice &device)
 {
-	const bool supported =
-		device.formatSupport[FormatRG11B10F].colorAttachmentBlend &&
-		device.formatSupport[FormatRG11B10F].linearFilteredSampling;
+	const FormatSupport &support = GetDeviceCaps(device).formatSupport[FormatRG11B10F];
+	const bool supported = support.colorAttachmentBlend && support.linearFilteredSampling;
 	return supported ? FormatRG11B10F : FormatRGBA16F;
 }
 
@@ -863,11 +859,12 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 
 	CommandList commandList = BeginTransientCommandList(gfx.device);
 
-	const Format depthFormat = gfx.device.defaultDepthFormat;
-	const Swapchain &swapchain = gfx.device.swapchain;
-	const bool isPortraitRotation = swapchain.preRotationDegrees == 90.0f || swapchain.preRotationDegrees == 270.0f;
-	const u32 swapchainWidth = isPortraitRotation ? swapchain.extent.height : swapchain.extent.width;
-	const u32 swapchainHeight = isPortraitRotation ? swapchain.extent.width : swapchain.extent.height;
+	const Format depthFormat = GetDeviceCaps(gfx.device).defaultDepthFormat;
+	const float preRotationDegrees = GetSwapchainPreRotation(gfx.device);
+	const uint2 swapchainSize = GetSwapchainSize(gfx.device);
+	const bool isPortraitRotation = preRotationDegrees == 90.0f || preRotationDegrees == 270.0f;
+	const u32 swapchainWidth = isPortraitRotation ? swapchainSize.y : swapchainSize.x;
+	const u32 swapchainHeight = isPortraitRotation ? swapchainSize.x : swapchainSize.y;
 	f32 scenePixelsPerMeter = ART_PIXELS_PER_METER;
 
 	// Editor
@@ -1030,12 +1027,12 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	}
 
 	// Display framebuffer
-	for ( u32 i = 0; i < gfx.device.swapchain.imageCount; ++i )
+	for ( u32 i = 0; i < GetSwapchainImageCount(gfx.device); ++i )
 	{
 		const FramebufferDesc desc = {
 			.renderPass = gfx.displayRenderPassH,
 			.attachments = {
-				gfx.device.swapchain.imageHandles[i],
+				GetSwapchainImage(gfx.device, i),
 			},
 			.attachmentCount = 1,
 		};
@@ -1118,14 +1115,13 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 	}
 
 	// Reset the heap used for render targets
-	Heap &rtHeap = gfx.device.heaps[HeapType_RTs];
-	rtHeap.used = 0;
+	ResetHeap(gfx.device, HeapType_RTs);
 
 	DestroyFramebuffer( gfx.device, renderTargets.sceneFramebuffer );
 	DestroyFramebuffer( gfx.device, renderTargets.distortionFramebuffer );
 	DestroyFramebuffer( gfx.device, renderTargets.effectsFramebuffer );
 
-	for ( u32 i = 0; i < gfx.device.swapchain.imageCount; ++i )
+	for ( u32 i = 0; i < GetSwapchainImageCount(gfx.device); ++i )
 	{
 		DestroyFramebuffer( gfx.device, renderTargets.displayFramebuffers[i] );
 	}
@@ -1738,7 +1734,7 @@ void RecompilePipelines(Engine &engine, Arena scratch)
 
 void ResetDynamicBindGroups( Graphics &gfx )
 {
-	ResetBindGroupAllocator( gfx.device, gfx.dynamicBindGroupAllocator[gfx.device.frameIndex] );
+	ResetBindGroupAllocator( gfx.device, gfx.dynamicBindGroupAllocator[GetFrameSlot(gfx.device)] );
 	MemSet(gfx.dynamicBindGroupDescs, gfx.dynamicBindGroupCount * sizeof(BindGroupDesc), 0);
 	gfx.dynamicBindGroupCount = 0;
 }
@@ -1754,7 +1750,7 @@ const BindGroup &GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc 
 	}
 
 	ASSERT( gfx.dynamicBindGroupCount < ARRAY_COUNT(gfx.dynamicBindGroups) );
-	const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[gfx.device.frameIndex]);
+	const BindGroup bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[GetFrameSlot(gfx.device)]);
 	gfx.dynamicBindGroupDescs[gfx.dynamicBindGroupCount] = bindGroupDesc;
 	gfx.dynamicBindGroups[gfx.dynamicBindGroupCount] = bindGroup;
 	return gfx.dynamicBindGroups[gfx.dynamicBindGroupCount++];
@@ -1846,7 +1842,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 	// Display render pass
 	{
-		const Format format = gfx.device.swapchainInfo.format;
+		const Format format = GetSwapchainFormat(gfx.device);
 
 		const RenderpassDesc renderpassDesc = {
 			.name = "display_renderpass",
@@ -1958,7 +1954,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	// Create entities buffer
 	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
 	{
-		const u32 entityBufferSize = MAX_ENTITIES * AlignUp( sizeof(SEntity), gfx.device.alignment.uniformBufferOffset );
+		const u32 entityBufferSize = MAX_ENTITIES * AlignUp( sizeof(SEntity), GetDeviceCaps(gfx.device).alignment.uniformBufferOffset );
 		gfx.entityBuffer[i] = CreateBuffer(
 			gfx.device,
 			entityBufferSize,
@@ -2012,7 +2008,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 
 	// Create material buffer
-	const u32 materialBufferSize = MAX_MATERIALS * AlignUp( sizeof(SMaterial), gfx.device.alignment.uniformBufferOffset );
+	const u32 materialBufferSize = MAX_MATERIALS * AlignUp( sizeof(SMaterial), GetDeviceCaps(gfx.device).alignment.uniformBufferOffset );
 	gfx.materialBuffer = CreateBuffer(gfx.device, materialBufferSize, BufferUsageUniformBuffer | BufferUsageTransferDst, HeapType_General);
 
 	// Create buffer for computes
@@ -2021,7 +2017,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	gfx.computeBufferViewH = CreateBufferView(gfx.device, gfx.computeBufferH, FormatFloat, 0, 0);
 
 #if USE_EDITOR
-	const u32 selectionBufferSize = AlignUp( sizeof(u32), gfx.device.alignment.storageBufferOffset );
+	const u32 selectionBufferSize = AlignUp( sizeof(u32), GetDeviceCaps(gfx.device).alignment.storageBufferOffset );
 	gfx.selectionBufferH = CreateBuffer(gfx.device, selectionBufferSize, BufferUsageStorageTexelBuffer, HeapType_Readback);
 	gfx.selectionBufferViewH = CreateBufferView(gfx.device, gfx.selectionBufferH, FormatUInt, 0, 0);
 #endif // USE_EDITOR
@@ -2221,31 +2217,31 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	return true;
 }
 
-BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameIndex)
+BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameSlot)
 {
 	const BindGroupDesc bindGroupDesc = {
 		.layout = gfx.globalBindGroupLayout,
 		.bindings = {
-			{ .index = BINDING_GLOBALS, .buffer = gfx.globalsBuffer[frameIndex] },
+			{ .index = BINDING_GLOBALS, .buffer = gfx.globalsBuffer[frameSlot] },
 			{ .index = BINDING_SAMPLER_POINT, .sampler = gfx.pointSamplerH },
 			{ .index = BINDING_SAMPLER_LINEAR, .sampler = gfx.linearSamplerH },
-			{ .index = BINDING_ENTITIES, .buffer = gfx.entityBuffer[frameIndex] },
+			{ .index = BINDING_ENTITIES, .buffer = gfx.entityBuffer[frameSlot] },
 			{ .index = BINDING_SHADOWMAP, .image = gfx.renderTargets.shadowmapImage },
 			{ .index = BINDING_SHADOWMAP_SAMPLER, .sampler = gfx.shadowmapSamplerH },
-			{ .index = BINDING_SPRITE_DATA, .buffer = gfx.spriteDataBuffer[frameIndex] },
-			{ .index = BINDING_TILE_DATA, .buffer = gfx.tileDataBuffer[frameIndex] },
+			{ .index = BINDING_SPRITE_DATA, .buffer = gfx.spriteDataBuffer[frameSlot] },
+			{ .index = BINDING_TILE_DATA, .buffer = gfx.tileDataBuffer[frameSlot] },
 			{ .index = BINDING_NOISE2D, .image = gfx.noiseImageH },
-			{ .index = BINDING_LIGHTS, .buffer = gfx.lightBuffer[frameIndex] },
-			{ .index = BINDING_LIGHT_GRID, .buffer = gfx.lightGridBuffer[frameIndex] },
+			{ .index = BINDING_LIGHTS, .buffer = gfx.lightBuffer[frameSlot] },
+			{ .index = BINDING_LIGHT_GRID, .buffer = gfx.lightGridBuffer[frameSlot] },
 		},
 	};
 	return bindGroupDesc;
 }
 
-void UpdateGlobalBindGroup(Graphics &gfx, u32 frameIndex)
+void UpdateGlobalBindGroup(Graphics &gfx, u32 frameSlot)
 {
-	const BindGroupDesc globalBindGroupDesc = GlobalBindGroupDesc(gfx, frameIndex);
-	UpdateBindGroup(gfx.device, globalBindGroupDesc, gfx.globalBindGroups[frameIndex]);
+	const BindGroupDesc globalBindGroupDesc = GlobalBindGroupDesc(gfx, frameSlot);
+	UpdateBindGroup(gfx.device, globalBindGroupDesc, gfx.globalBindGroups[frameSlot]);
 }
 
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)
@@ -2344,8 +2340,8 @@ uint2 GetFramebufferSize(const Framebuffer &framebuffer)
 
 const ImageH GetDisplayImageH(const Graphics &gfx)
 {
-	const u32 imageIndex = gfx.device.swapchain.currentImageIndex;
-	const ImageH displayImageH = gfx.device.swapchain.imageHandles[imageIndex];
+	const u32 imageIndex = GetSwapchainImageIndex(gfx.device);
+	const ImageH displayImageH = GetSwapchainImage(gfx.device, imageIndex);
 	return displayImageH;
 }
 
@@ -2358,7 +2354,7 @@ const Image &GetDisplayImage(const Graphics &gfx)
 
 Framebuffer GetDisplayFramebuffer(const Graphics &gfx)
 {
-	const u32 imageIndex = gfx.device.swapchain.currentImageIndex;
+	const u32 imageIndex = GetSwapchainImageIndex(gfx.device);
 	const Framebuffer framebuffer = gfx.renderTargets.displayFramebuffers[imageIndex];
 	return framebuffer;
 }

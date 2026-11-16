@@ -1963,19 +1963,19 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 			depthFormatCandidates, ARRAY_COUNT(depthFormatCandidates),
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-	device.defaultDepthFormat = FormatFromVulkan(defaultVkDepthFormat);
+	device.caps.defaultDepthFormat = FormatFromVulkan(defaultVkDepthFormat);
 
 
 	// Get alignments
-	device.alignment.uniformBufferOffset = properties.limits.minUniformBufferOffsetAlignment;
-	device.alignment.storageBufferOffset = properties.limits.minStorageBufferOffsetAlignment;
-	device.alignment.optimalBufferCopyOffset = properties.limits.optimalBufferCopyOffsetAlignment;
-	device.alignment.optimalBufferCopyRowPitch = properties.limits.optimalBufferCopyRowPitchAlignment;
+	device.caps.alignment.uniformBufferOffset = properties.limits.minUniformBufferOffsetAlignment;
+	device.caps.alignment.storageBufferOffset = properties.limits.minStorageBufferOffsetAlignment;
+	device.caps.alignment.optimalBufferCopyOffset = properties.limits.optimalBufferCopyOffsetAlignment;
+	device.caps.alignment.optimalBufferCopyRowPitch = properties.limits.optimalBufferCopyRowPitchAlignment;
 	// TODO: We should get `bufferImageGranularity` to avoid aliasing between adjacent resources with linear vs. tiled layouts
 
 
 	// Timestamp queries support
-	device.support.timestampQueries = properties.limits.timestampComputeAndGraphics;
+	device.caps.timestampQueries = properties.limits.timestampComputeAndGraphics;
 	device.limits.timestampPeriod = properties.limits.timestampPeriod;
 
 
@@ -1985,8 +1985,8 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 		const VkFormat vkFormat = FormatToVulkan((Format)format);
 		VkFormatProperties formatProperties;
 		vkGetPhysicalDeviceFormatProperties(device.physicalDevice, vkFormat, &formatProperties);
-		device.formatSupport[format].linearFilteredSampling = formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
-		device.formatSupport[format].colorAttachmentBlend = formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
+		device.caps.formatSupport[format].linearFilteredSampling = formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+		device.caps.formatSupport[format].colorAttachmentBlend = formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
 	}
 
 
@@ -3002,7 +3002,7 @@ RenderPass CreateRenderPassInternal( const GraphicsDevice &device, const Renderp
 	{
 		const u8 depthAttachmentIndex = desc.colorAttachmentCount;
 		VkAttachmentDescription &depthAttachmentDesc = attachmentDescs[depthAttachmentIndex];
-		depthAttachmentDesc.format = FormatToVulkan(device.defaultDepthFormat);
+		depthAttachmentDesc.format = FormatToVulkan(device.caps.defaultDepthFormat);
 		depthAttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
 		depthAttachmentDesc.loadOp = LoadOpToVulkan(desc.depthAttachment.loadOp);
 		depthAttachmentDesc.storeOp = StoreOpToVulkan(desc.depthAttachment.storeOp);
@@ -3137,7 +3137,7 @@ void DestroyFramebuffer( const GraphicsDevice &device, const Framebuffer &frameb
 
 CommandList BeginCommandList(const GraphicsDevice &device)
 {
-	VkCommandBuffer commandBuffer = device.commandBuffers[device.frameIndex];
+	VkCommandBuffer commandBuffer = device.commandBuffers[device.frameSlot];
 
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -3846,7 +3846,7 @@ SubmitResult Submit(GraphicsDevice &device, const CommandList &commandList)
 	ASSERT(device.usedFenceCount < MAX_FENCES);
 	device.usedFenceCount++;
 
-	GraphicsDevice::FrameData &frameData = device.frameData[device.frameIndex];
+	GraphicsDevice::FrameData &frameData = device.frameData[device.frameSlot];
 	const u32 fenceIndex = ( frameData.firstFenceIndex + frameData.usedFenceCount ) % MAX_FENCES;
 	frameData.usedFenceCount++;
 
@@ -3898,7 +3898,7 @@ void WaitFrameFences(GraphicsDevice &device)
 {
 	// Catch-up frame fences
 	VkFence fences[MAX_FENCES] = {};
-	GraphicsDevice::FrameData &frameData = device.frameData[device.frameIndex];
+	GraphicsDevice::FrameData &frameData = device.frameData[device.frameSlot];
 
 	if ( frameData.usedFenceCount > 0 )
 	{
@@ -3982,7 +3982,7 @@ bool BeginFrame(GraphicsDevice &device)
 	}
 
 	// Reset commands for this frame
-	VkCommandPool commandPool = device.commandPools[device.frameIndex];
+	VkCommandPool commandPool = device.commandPools[device.frameSlot];
 	VK_CALL( vkResetCommandPool(device.handle, commandPool, 0) );
 
 	return true;
@@ -3993,7 +3993,7 @@ void EndFrame(GraphicsDevice &device)
 	// The image acquired for this frame was handed over to Present
 	device.swapchain.imageAcquired = false;
 
-	device.frameIndex = ( device.frameIndex + 1 ) % MAX_FRAMES_IN_FLIGHT;
+	device.frameSlot = ( device.frameSlot + 1 ) % MAX_FRAMES_IN_FLIGHT;
 	device.presentationIndex = ( device.presentationIndex + 1 ) % MAX_SWAPCHAIN_IMAGE_COUNT;
 
 	// Throttle here, after present, instead of at BeginFrame. This way the CPU
@@ -4102,6 +4102,72 @@ void CleanupGraphicsDriver(GraphicsDevice &device)
 #endif
 
 	vkDestroyInstance(device.instance, VULKAN_ALLOCATORS);
+}
+
+//////////////////////////////
+// Device accessors
+//////////////////////////////
+
+const DeviceCaps &GetDeviceCaps(const GraphicsDevice &device)
+{
+	return device.caps;
+}
+
+u32 GetFrameSlot(const GraphicsDevice &device)
+{
+	return device.frameSlot;
+}
+
+u32 GetHeapSize(const GraphicsDevice &device, HeapType heapType)
+{
+	return device.heaps[heapType].size;
+}
+
+void ResetHeap(GraphicsDevice &device, HeapType heapType)
+{
+	ASSERT(heapType != HeapType_General && "The general heap is managed by its offset allocator");
+	device.heaps[heapType].used = 0;
+}
+
+RenderPassH FindRenderPass(const GraphicsDevice &device, const char *name)
+{
+	for (u32 i = 0; i < device.renderPassCount; ++i) {
+		if ( StrEq(device.renderPasses[i].name, name) ) {
+			return { .index = i };
+		}
+	}
+	return { .index = U32_MAX };
+}
+
+uint2 GetSwapchainSize(const GraphicsDevice &device)
+{
+	return { device.swapchain.extent.width, device.swapchain.extent.height };
+}
+
+Format GetSwapchainFormat(const GraphicsDevice &device)
+{
+	return device.swapchainInfo.format;
+}
+
+float GetSwapchainPreRotation(const GraphicsDevice &device)
+{
+	return device.swapchain.preRotationDegrees;
+}
+
+u32 GetSwapchainImageCount(const GraphicsDevice &device)
+{
+	return device.swapchain.imageCount;
+}
+
+u32 GetSwapchainImageIndex(const GraphicsDevice &device)
+{
+	return device.swapchain.currentImageIndex;
+}
+
+ImageH GetSwapchainImage(const GraphicsDevice &device, u32 index)
+{
+	ASSERT(index < device.swapchain.imageCount);
+	return device.swapchain.imageHandles[index];
 }
 
 //void FlushBufferMemory(GraphicsDevice &device, BufferH bufferHandle)

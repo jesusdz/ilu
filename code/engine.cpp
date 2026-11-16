@@ -679,9 +679,9 @@ ENGINE_API void OnPlatformRenderGraphics(Host &host)
 			RecreateSwapchain(gfx.device, *host.window);
 
 			char debugName[16];
-			for (u32 i = 0; i < ARRAY_COUNT(gfx.device.swapchain.imageHandles); ++i) {
+			for (u32 i = 0; i < GetSwapchainImageCount(gfx.device); ++i) {
 				SPrintf(debugName, "swapchain_%u", i);
-				SetObjectNameImage(gfx.device, gfx.device.swapchain.imageHandles[i], debugName);
+				SetObjectNameImage(gfx.device, GetSwapchainImage(gfx.device, i), debugName);
 			}
 
 			u32 sceneWidth = 0;
