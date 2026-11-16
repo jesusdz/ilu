@@ -6,6 +6,11 @@
 // Vulkan headers and definitions
 ////////////////////////////////////////////////////////////////////////
 
+#define VK_NO_PROTOTYPES
+#include <vulkan/vulkan_core.h>
+
+#include "libs/offset_allocator/offsetAllocator.hpp"
+
 #if USE_XCB
 #	define VK_USE_PLATFORM_XCB_KHR 1
 #elif USE_ANDROID
@@ -35,6 +40,288 @@
 #define VULKAN_ALLOCATORS NULL
 
 #define VK_CALL( call ) CheckVulkanResult( call, #call )
+
+
+////////////////////////////////////////////////////////////////////////
+// Types
+////////////////////////////////////////////////////////////////////////
+
+constexpr const char *sCountTypeName[] = {
+	"uniformBufferCount",
+	"storageBufferCount",
+	"storageTexelBufferCount",
+	"textureCount",
+	"samplerCount",
+	"combinedImageSamplerCount",
+	"groupCount",
+};
+
+struct Heap
+{
+	HeapType type;
+	u32 size;
+	u32 memoryTypeIndex;
+	VkDeviceMemory memory;
+	u8* data;
+	u32 used;
+};
+
+struct Alloc
+{
+	HeapType heap;
+	u64 offset;
+	u64 size;
+	OffsetAllocator::Allocation allocation;
+};
+
+struct BindGroupAllocator
+{
+	const char *name;
+	BindGroupAllocatorCounts maxCounts;
+	BindGroupAllocatorCounts usedCounts;
+	VkDescriptorPool handle;
+};
+
+struct BindGroupLayout
+{
+	VkDescriptorSetLayout handle;
+	u32 crc;
+	ShaderBinding bindings[MAX_SHADER_BINDINGS];
+	u8 bindingCount;
+};
+
+struct BindGroup
+{
+	VkDescriptorSet handle; // Null if released with its pool
+	VkDescriptorPool descriptorPool;
+	BindGroupLayoutH layout;
+	BindGroupAllocatorH allocator;
+};
+
+struct PipelineLayout
+{
+	VkPipelineLayout handle;
+	BindGroupLayoutH bindGroupLayouts[MAX_BIND_GROUPS];
+};
+
+struct Pipeline
+{
+	const char *name;
+	VkPipeline handle;
+	PipelineLayout layout;
+	VkPipelineBindPoint bindPoint;
+};
+
+struct Buffer
+{
+	VkBuffer handle;
+	Alloc alloc;
+	u32 size;
+};
+
+struct BufferView
+{
+	VkBufferView handle;
+};
+
+struct Image
+{
+	VkImage handle;
+	VkImageView imageViewHandle;
+	Format format;
+	u32 width;
+	u32 height;
+	u32 mipLevels;
+	Alloc alloc;
+};
+
+struct RenderPass
+{
+	const char *name;
+	VkRenderPass handle;
+};
+
+struct Framebuffer
+{
+	VkFramebuffer handle;
+	VkRenderPass renderPassHandle;
+	VkExtent2D extent;
+	u32 attachmentCount;
+};
+
+struct Sampler
+{
+	VkSampler handle;
+};
+
+struct SwapchainInfo
+{
+	Format format;
+	VkFormat vkFormat;
+	VkColorSpaceKHR colorSpace;
+	VkPresentModeKHR presentMode;
+};
+
+struct Swapchain
+{
+	VkSwapchainKHR handle;
+	VkExtent2D extent;
+	u32 imageCount;
+	ImageH imageHandles[MAX_SWAPCHAIN_IMAGE_COUNT];
+	Image images[MAX_SWAPCHAIN_IMAGE_COUNT];
+	float preRotationDegrees;
+	u32 currentImageIndex;
+	bool imageAcquired; // Image at currentImageIndex was acquired and not presented yet
+	bool valid;
+};
+
+struct ShaderModule
+{
+	VkShaderModule handle;
+};
+
+struct TimestampPool
+{
+	VkQueryPool handle;
+	u32 queryCount;
+	u32 maxQueries;
+};
+
+struct CommandListState
+{
+	bool inUse;
+	VkCommandBuffer handle;
+	bool transient;
+
+	VkDescriptorSet descriptorSetHandles[MAX_BIND_GROUPS];
+	u8 descriptorSetDirtyMask;
+
+	PipelineH pipeline;
+	VkPipelineBindPoint bindPoint;
+
+	// State
+	union
+	{
+		struct // For gfx pipelines
+		{
+			VkClearValue clearValues[MAX_RENDER_TARGETS];
+			VkBuffer vertexBufferHandle;
+			VkBuffer indexBufferHandle;
+		};
+	};
+};
+
+struct GraphicsDevice
+{
+	VkInstance instance;
+
+	VkPhysicalDevice physicalDevice;
+	VkDevice handle;
+
+	DeviceCaps caps;
+
+	u32 graphicsQueueFamilyIndex;
+	u32 presentQueueFamilyIndex;
+	VkQueue graphicsQueue;
+	VkQueue presentQueue;
+
+	VkCommandPool commandPools[MAX_FRAMES_IN_FLIGHT];
+	VkCommandBuffer commandBuffers[MAX_FRAMES_IN_FLIGHT];
+	VkCommandPool transientCommandPool;
+
+	VkSurfaceKHR surface;
+	SwapchainInfo swapchainInfo;
+	Swapchain swapchain;
+
+	VkFence imageAcquiredFences[MAX_SWAPCHAIN_IMAGE_COUNT];
+	VkSemaphore imageAcquiredSemaphores[MAX_SWAPCHAIN_IMAGE_COUNT];
+	VkSemaphore renderFinishedSemaphores[MAX_SWAPCHAIN_IMAGE_COUNT];
+	u32 presentationIndex;
+
+	VkSemaphore submitSignalSemaphore; // Waited by Present
+
+	VkFence fences[MAX_FENCES];
+	u32 firstFenceIndex;
+	u32 usedFenceCount;
+
+	struct FrameData
+	{
+		u32 firstFenceIndex;
+		u32 usedFenceCount;
+	};
+
+	FrameData frameData[MAX_FRAMES_IN_FLIGHT];
+
+	VkPipelineCache pipelineCache;
+
+	Heap heaps[HeapType_COUNT];
+
+	u32 frameSlot;
+
+	struct
+	{
+		bool debugUtils;
+	} support;
+	struct
+	{
+		float timestampPeriod;
+	} limits;
+
+	VkDebugUtilsMessengerEXT debugUtilsMessenger;
+
+	// Resources, indexed through their handle pools
+
+	BindGroupLayout bindGroupLayouts[MAX_BIND_GROUP_LAYOUTS];
+	HandlePool bindGroupLayoutPool;
+
+	BindGroupAllocator bindGroupAllocators[MAX_BIND_GROUP_ALLOCATORS];
+	HandlePool bindGroupAllocatorPool;
+
+	BindGroup bindGroups[MAX_ALLOCATED_BIND_GROUPS];
+	HandlePool bindGroupPool;
+
+	Buffer buffers[MAX_BUFFERS];
+	HandlePool bufferPool;
+
+	BufferView bufferViews[MAX_BUFFERS];
+	HandlePool bufferViewPool;
+
+	Image images[MAX_IMAGES];
+	HandlePool imagePool;
+
+	Sampler samplers[MAX_SAMPLERS];
+	HandlePool samplerPool;
+
+	Pipeline pipelines[MAX_PIPELINES];
+	HandlePool pipelinePool;
+
+	RenderPass renderPasses[MAX_RENDERPASSES];
+	HandlePool renderPassPool;
+
+	Framebuffer framebuffers[MAX_FRAMEBUFFERS];
+	HandlePool framebufferPool;
+
+	TimestampPool timestampPools[MAX_TIMESTAMP_POOLS];
+	HandlePool timestampPoolPool;
+
+	byte poolMemory[KB(128)]; // For the pools above
+
+	CommandListState commandLists[MAX_COMMAND_LISTS]; // Index 0 unused
+};
+
+inline bool IsValid(const Pipeline &pipeline)
+{
+	bool res = pipeline.handle != 0;
+	return res;
+}
+
+inline bool IsValid(const Image &image)
+{
+	bool res = image.handle != 0;
+	return res;
+}
+
+
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -1455,6 +1742,14 @@ static void InvalidateSwapchain()
 	sExternalSwapchainValid = false;
 }
 
+
+// Lives in the platform binary, so it survives engine hot reloads
+GraphicsDevice *CreateGraphicsDevice()
+{
+	static GraphicsDevice sDevice;
+	MemSet(&sDevice, sizeof(sDevice), 0);
+	return &sDevice;
+}
 
 bool InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch)
 {

@@ -232,7 +232,7 @@ const u32 FindShaderSourceDescIndex(const char *name)
 
 RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name)
 {
-	const RenderPassH handle = FindRenderPass(gfx.device, name);
+	const RenderPassH handle = FindRenderPass(*gfx.device, name);
 	if ( IsValid(handle) ) {
 		return handle;
 	}
@@ -254,13 +254,13 @@ static CommandList BeginUploadCommandList(Graphics &gfx)
 
 	gfx.stagingBufferOffset = 0;
 
-	CommandList commandList = BeginTransientCommandList(gfx.device);
+	CommandList commandList = BeginTransientCommandList(*gfx.device);
 	return commandList;
 }
 
 static void EndUploadCommandList(Graphics &gfx, CommandList commandList)
 {
-	EndTransientCommandList(gfx.device, commandList);
+	EndTransientCommandList(*gfx.device, commandList);
 
 	ASSERT(gfx.inUploadContext && "BeginUploadCommandList must have been called first");
 	gfx.inUploadContext = false;
@@ -271,16 +271,16 @@ static StagedData StageData(Graphics &gfx, const void *data, u32 size, u32 align
 	ASSERT(gfx.inUploadContext && "StageData must be called between calls to Begin/EndUploadCommandList");
 
 
-	const u32 finalAlignment = Max(alignment, GetDeviceCaps(gfx.device).alignment.optimalBufferCopyOffset);
+	const u32 finalAlignment = Max(alignment, GetDeviceCaps(*gfx.device).alignment.optimalBufferCopyOffset);
 	const u32 alignedOffset = AlignUp(gfx.stagingBufferOffset, finalAlignment);
 
-	ASSERT(alignedOffset + size <= GetBufferSize(gfx.device, gfx.stagingBuffer));
+	ASSERT(alignedOffset + size <= GetBufferSize(*gfx.device, gfx.stagingBuffer));
 
 	StagedData staging = {};
 	staging.buffer = gfx.stagingBuffer;
 	staging.offset = alignedOffset;
 
-	byte *stagingData = (byte*)GetBufferPtr(gfx.device, gfx.stagingBuffer) + staging.offset;
+	byte *stagingData = (byte*)GetBufferPtr(*gfx.device, gfx.stagingBuffer) + staging.offset;
 	MemCopy(stagingData, data, size);
 
 	gfx.stagingBufferOffset = staging.offset + size;
@@ -290,15 +290,15 @@ static StagedData StageData(Graphics &gfx, const void *data, u32 size, u32 align
 
 BufferH CreateStagingBuffer(Graphics &gfx)
 {
-	const u32 stagingHeapSize = GetHeapSize(gfx.device, HeapType_Staging);
-	BufferH stagingBufferHandle = CreateBuffer(gfx.device, stagingHeapSize, BufferUsageTransferSrc, HeapType_Staging);
+	const u32 stagingHeapSize = GetHeapSize(*gfx.device, HeapType_Staging);
+	BufferH stagingBufferHandle = CreateBuffer(*gfx.device, stagingHeapSize, BufferUsageTransferSrc, HeapType_Staging);
 	return stagingBufferHandle;
 }
 
 BufferH CreateVertexBuffer(Graphics &gfx, u32 size)
 {
 	BufferH vertexBufferHandle = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			size,
 			BufferUsageVertexBuffer | BufferUsageTransferDst,
 			HeapType_General);
@@ -309,7 +309,7 @@ BufferH CreateVertexBuffer(Graphics &gfx, u32 size)
 BufferH CreateIndexBuffer(Graphics &gfx, u32 size)
 {
 	BufferH indexBufferHandle = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			size,
 			BufferUsageIndexBuffer | BufferUsageTransferDst,
 			HeapType_General);
@@ -402,7 +402,7 @@ ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, in
 		channels == 2 ? FormatRG8_SRGB :
 		FormatR8;
 
-	ImageH image = CreateImage(gfx.device,
+	ImageH image = CreateImage(*gfx.device,
 			width, height, mipLevels,
 			texFormat,
 			ImageUsageTransferSrc | // for mipmap blits
@@ -421,7 +421,7 @@ ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, in
 	if ( mipLevels > 1 )
 	{
 		// GenerateMipmaps takes care of transitions after creating the image
-		GenerateMipmaps(gfx.device, commandList, image);
+		GenerateMipmaps(*gfx.device, commandList, image);
 	}
 	else
 	{
@@ -430,7 +430,7 @@ ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, in
 
 	EndUploadCommandList(gfx, commandList);
 
-	SetObjectNameImage(gfx.device, image, name);
+	SetObjectNameImage(*gfx.device, image, name);
 
 	return image;
 }
@@ -488,7 +488,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc, ImageH imageH)
 	texture->ownsImage = false;
 	texture->ts = 0;
 
-	texture->size = GetImageSize(gfx.device, imageH);
+	texture->size = GetImageSize(*gfx.device, imageH);
 
 	return texture->id;
 }
@@ -512,7 +512,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 		if ( id ) {
 			GetTexture(id).ownsImage = true;
 		} else {
-			DestroyImageH(gfx.device, imageHandle);
+			DestroyImageH(*gfx.device, imageHandle);
 		}
 
 	}
@@ -534,7 +534,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 			}
 			else
 			{
-				DestroyImageH(gfx.device, imageHandle);
+				DestroyImageH(*gfx.device, imageHandle);
 			}
 		}
 	}
@@ -602,8 +602,8 @@ static COMPACT_REMOVE(RemoveTextureImage)
 
 	if ( texture.ownsImage && IsValid(texture.image) )
 	{
-		WaitDeviceIdle(gfx.device);
-		DestroyImageH(gfx.device, texture.image);
+		WaitDeviceIdle(*gfx.device);
+		DestroyImageH(*gfx.device, texture.image);
 	}
 }
 
@@ -636,12 +636,12 @@ static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
 
 		if ( ReadImagePixels(scratch.arena, imagePath.str, img) )
 		{
-			WaitDeviceIdle(gfx.device);
+			WaitDeviceIdle(*gfx.device);
 
 			texture.ts = ts;
 
 			if ( texture.ownsImage ) {
-				DestroyImageH(gfx.device, texture.image);
+				DestroyImageH(*gfx.device, texture.image);
 			}
 
 			texture.image = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
@@ -689,7 +689,7 @@ u16 GetMaterialIndex(const Graphics &gfx, ID id)
 
 static u32 MaterialBufferOffset(const Graphics &gfx, u16 index)
 {
-	const u32 offset = index * AlignUp(sizeof(SMaterial), GetDeviceCaps(gfx.device).alignment.uniformBufferOffset);
+	const u32 offset = index * AlignUp(sizeof(SMaterial), GetDeviceCaps(*gfx.device).alignment.uniformBufferOffset);
 	return offset;
 }
 
@@ -795,7 +795,7 @@ static COMPACT_MOVE(MoveMaterial)
 	// The bind group about to be overwritten may still be bound by the in-flight frames,
 	// and removing a material is rare enough that stalling here costs nothing. The
 	// device is already idle by the time a second move gets here.
-	WaitDeviceIdle(gfx.device);
+	WaitDeviceIdle(*gfx.device);
 	gfx.materialBindGroups[dstIndex] = gfx.materialBindGroups[srcIndex];
 }
 
@@ -804,8 +804,8 @@ static COMPACT_REMOVE(RemoveMaterial)
 {
 	Graphics &gfx = *(Graphics*)data;
 
-	WaitDeviceIdle(gfx.device);
-	DestroyBindGroup(gfx.device, gfx.materialBindGroups[index]);
+	WaitDeviceIdle(*gfx.device);
+	DestroyBindGroup(*gfx.device, gfx.materialBindGroups[index]);
 	gfx.materialBindGroups[index] = {};
 }
 
@@ -867,11 +867,11 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 {
 	RenderTargets renderTargets = {};
 
-	CommandList commandList = BeginTransientCommandList(gfx.device);
+	CommandList commandList = BeginTransientCommandList(*gfx.device);
 
-	const Format depthFormat = GetDeviceCaps(gfx.device).defaultDepthFormat;
-	const float preRotationDegrees = GetSwapchainPreRotation(gfx.device);
-	const uint2 swapchainSize = GetSwapchainSize(gfx.device);
+	const Format depthFormat = GetDeviceCaps(*gfx.device).defaultDepthFormat;
+	const float preRotationDegrees = GetSwapchainPreRotation(*gfx.device);
+	const uint2 swapchainSize = GetSwapchainSize(*gfx.device);
 	const bool isPortraitRotation = preRotationDegrees == 90.0f || preRotationDegrees == 270.0f;
 	const u32 swapchainWidth = isPortraitRotation ? swapchainSize.y : swapchainSize.x;
 	const u32 swapchainHeight = isPortraitRotation ? swapchainSize.x : swapchainSize.y;
@@ -916,22 +916,22 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	renderTargets.scenePixelsPerMeter = scenePixelsPerMeter;
 
 	// Depth buffer
-	renderTargets.depthImage = CreateImage(gfx.device,
+	renderTargets.depthImage = CreateImage(*gfx.device,
 			sceneWidth, sceneHeight, 1,
 			depthFormat,
 			ImageUsageDepthStencilAttachment,
 			HeapType_RTs);
 	TransitionImageLayout(commandList, renderTargets.depthImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
-	SetObjectNameImage(gfx.device, renderTargets.depthImage, "scene_depth");
+	SetObjectNameImage(*gfx.device, renderTargets.depthImage, "scene_depth");
 
 	// Scene color buffer
-	renderTargets.sceneImage = CreateImage(gfx.device,
+	renderTargets.sceneImage = CreateImage(*gfx.device,
 		sceneWidth, sceneHeight, 1,
-		HdrColorFormat(gfx.device),
+		HdrColorFormat(*gfx.device),
 		ImageUsageColorAttachment | ImageUsageSampled,
 		HeapType_RTs);
 	TransitionImageLayout(commandList, renderTargets.sceneImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
-	SetObjectNameImage(gfx.device, renderTargets.sceneImage, "scene_image");
+	SetObjectNameImage(*gfx.device, renderTargets.sceneImage, "scene_image");
 
 	// Scene framebuffer
 	{
@@ -944,17 +944,17 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			.attachmentCount = 2,
 		};
 
-		renderTargets.sceneFramebuffer = CreateFramebuffer(gfx.device, desc);
+		renderTargets.sceneFramebuffer = CreateFramebuffer(*gfx.device, desc);
 	}
 
 	// Distortion map
-	renderTargets.distortionImage = CreateImage(gfx.device,
+	renderTargets.distortionImage = CreateImage(*gfx.device,
 		sceneWidth, sceneHeight, 1,
 		FormatRG16F,
 		ImageUsageColorAttachment | ImageUsageSampled,
 		HeapType_RTs);
 	TransitionImageLayout(commandList, renderTargets.distortionImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
-	SetObjectNameImage(gfx.device, renderTargets.distortionImage, "distortion_image");
+	SetObjectNameImage(*gfx.device, renderTargets.distortionImage, "distortion_image");
 
 	// Distortion framebuffer
 	{
@@ -967,17 +967,17 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			.attachmentCount = 2,
 		};
 
-		renderTargets.distortionFramebuffer = CreateFramebuffer(gfx.device, desc);
+		renderTargets.distortionFramebuffer = CreateFramebuffer(*gfx.device, desc);
 	}
 
 	// Effects color buffer
-	renderTargets.effectsImage = CreateImage(gfx.device,
+	renderTargets.effectsImage = CreateImage(*gfx.device,
 		sceneWidth, sceneHeight, 1,
-		HdrColorFormat(gfx.device),
+		HdrColorFormat(*gfx.device),
 		ImageUsageColorAttachment | ImageUsageSampled,
 		HeapType_RTs);
 	TransitionImageLayout(commandList, renderTargets.effectsImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
-	SetObjectNameImage(gfx.device, renderTargets.effectsImage, "effects_image");
+	SetObjectNameImage(*gfx.device, renderTargets.effectsImage, "effects_image");
 
 	// Effects framebuffer
 	{
@@ -990,7 +990,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			.attachmentCount = 2,
 		};
 
-		renderTargets.effectsFramebuffer = CreateFramebuffer(gfx.device, desc);
+		renderTargets.effectsFramebuffer = CreateFramebuffer(*gfx.device, desc);
 	}
 
 	// Bloom pyramid
@@ -1001,13 +1001,13 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			char debugName[16];
 			SPrintf(debugName, "bloom_%u", i);
 
-			const ImageH image = CreateImage(gfx.device,
+			const ImageH image = CreateImage(*gfx.device,
 				Max(sceneWidth >> (i + 1), 1u), Max(sceneHeight >> (i + 1), 1u), 1,
-				HdrColorFormat(gfx.device),
+				HdrColorFormat(*gfx.device),
 				ImageUsageColorAttachment | ImageUsageSampled,
 				HeapType_RTs);
 			TransitionImageLayout(commandList, image, ImageStateInitial, ImageStateRenderTarget, 0, 1);
-			SetObjectNameImage(gfx.device, image, debugName);
+			SetObjectNameImage(*gfx.device, image, debugName);
 			renderTargets.bloomImages[i] = image;
 
 			const FramebufferDesc downsampleDesc = {
@@ -1015,7 +1015,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 				.attachments = { image },
 				.attachmentCount = 1,
 			};
-			renderTargets.bloomDownsampleFramebuffers[i] = CreateFramebuffer(gfx.device, downsampleDesc);
+			renderTargets.bloomDownsampleFramebuffers[i] = CreateFramebuffer(*gfx.device, downsampleDesc);
 
 			if ( i < BLOOM_LEVEL_COUNT - 1 )
 			{
@@ -1024,7 +1024,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 					.attachments = { image },
 					.attachmentCount = 1,
 				};
-				renderTargets.bloomUpsampleFramebuffers[i] = CreateFramebuffer(gfx.device, upsampleDesc);
+				renderTargets.bloomUpsampleFramebuffers[i] = CreateFramebuffer(*gfx.device, upsampleDesc);
 			}
 		}
 
@@ -1033,32 +1033,32 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			.attachments = { renderTargets.effectsImage },
 			.attachmentCount = 1,
 		};
-		renderTargets.bloomCompositeFramebuffer = CreateFramebuffer(gfx.device, compositeDesc);
+		renderTargets.bloomCompositeFramebuffer = CreateFramebuffer(*gfx.device, compositeDesc);
 	}
 
 	// Display framebuffer
-	for ( u32 i = 0; i < GetSwapchainImageCount(gfx.device); ++i )
+	for ( u32 i = 0; i < GetSwapchainImageCount(*gfx.device); ++i )
 	{
 		const FramebufferDesc desc = {
 			.renderPass = gfx.displayRenderPassH,
 			.attachments = {
-				GetSwapchainImage(gfx.device, i),
+				GetSwapchainImage(*gfx.device, i),
 			},
 			.attachmentCount = 1,
 		};
 
-		renderTargets.displayFramebuffers[i] = CreateFramebuffer(gfx.device, desc);
+		renderTargets.displayFramebuffers[i] = CreateFramebuffer(*gfx.device, desc);
 	}
 
 	// Shadowmap
 	{
-		renderTargets.shadowmapImage = CreateImage(gfx.device,
+		renderTargets.shadowmapImage = CreateImage(*gfx.device,
 				1024, 1024, 1,
 				depthFormat,
 				ImageUsageDepthStencilAttachment | ImageUsageSampled,
 				HeapType_RTs);
 		TransitionImageLayout(commandList, renderTargets.shadowmapImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
-		SetObjectNameImage(gfx.device, renderTargets.shadowmapImage, "scene_shadowmap");
+		SetObjectNameImage(*gfx.device, renderTargets.shadowmapImage, "scene_shadowmap");
 
 		const FramebufferDesc desc = {
 			.renderPass = gfx.shadowmapRenderPassH,
@@ -1066,19 +1066,19 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			.attachmentCount = 1,
 		};
 
-		renderTargets.shadowmapFramebuffer = CreateFramebuffer( gfx.device, desc );
+		renderTargets.shadowmapFramebuffer = CreateFramebuffer( *gfx.device, desc );
 	}
 
 #if USE_EDITOR
 	// ID buffer
 	{
-		renderTargets.idImage = CreateImage(gfx.device,
+		renderTargets.idImage = CreateImage(*gfx.device,
 			 sceneWidth, sceneHeight, 1,
 			 FormatUInt,
 			 ImageUsageColorAttachment | ImageUsageSampled,
 			 HeapType_RTs);
 		TransitionImageLayout(commandList, renderTargets.idImage, ImageStateInitial, ImageStateRenderTarget, 0, 1);
-		SetObjectNameImage(gfx.device, renderTargets.idImage, "scene_id");
+		SetObjectNameImage(*gfx.device, renderTargets.idImage, "scene_id");
 
 		const FramebufferDesc desc = {
 			.renderPass = gfx.idRenderPassH,
@@ -1086,11 +1086,11 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			.attachmentCount = 2,
 		};
 
-		renderTargets.idFramebuffer = CreateFramebuffer( gfx.device, desc );
+		renderTargets.idFramebuffer = CreateFramebuffer( *gfx.device, desc );
 	}
 #endif
 
-	EndTransientCommandList(gfx.device, commandList);
+	EndTransientCommandList(*gfx.device, commandList);
 
 	renderTargets.initialized = true;
 
@@ -1105,43 +1105,43 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 		return;
 	}
 
-	DestroyImageH(gfx.device, renderTargets.depthImage);
-	DestroyImageH(gfx.device, renderTargets.sceneImage);
-	DestroyImageH(gfx.device, renderTargets.distortionImage);
-	DestroyImageH(gfx.device, renderTargets.effectsImage);
+	DestroyImageH(*gfx.device, renderTargets.depthImage);
+	DestroyImageH(*gfx.device, renderTargets.sceneImage);
+	DestroyImageH(*gfx.device, renderTargets.distortionImage);
+	DestroyImageH(*gfx.device, renderTargets.effectsImage);
 
 	if ( renderTargets.hasBloom )
 	{
 		for ( u32 i = 0; i < BLOOM_LEVEL_COUNT; ++i )
 		{
-			DestroyImageH(gfx.device, renderTargets.bloomImages[i]);
-			DestroyFramebuffer( gfx.device, renderTargets.bloomDownsampleFramebuffers[i] );
+			DestroyImageH(*gfx.device, renderTargets.bloomImages[i]);
+			DestroyFramebuffer( *gfx.device, renderTargets.bloomDownsampleFramebuffers[i] );
 			if ( i < BLOOM_LEVEL_COUNT - 1 )
 			{
-				DestroyFramebuffer( gfx.device, renderTargets.bloomUpsampleFramebuffers[i] );
+				DestroyFramebuffer( *gfx.device, renderTargets.bloomUpsampleFramebuffers[i] );
 			}
 		}
-		DestroyFramebuffer( gfx.device, renderTargets.bloomCompositeFramebuffer );
+		DestroyFramebuffer( *gfx.device, renderTargets.bloomCompositeFramebuffer );
 	}
 
 	// Reset the heap used for render targets
-	ResetHeap(gfx.device, HeapType_RTs);
+	ResetHeap(*gfx.device, HeapType_RTs);
 
-	DestroyFramebuffer( gfx.device, renderTargets.sceneFramebuffer );
-	DestroyFramebuffer( gfx.device, renderTargets.distortionFramebuffer );
-	DestroyFramebuffer( gfx.device, renderTargets.effectsFramebuffer );
+	DestroyFramebuffer( *gfx.device, renderTargets.sceneFramebuffer );
+	DestroyFramebuffer( *gfx.device, renderTargets.distortionFramebuffer );
+	DestroyFramebuffer( *gfx.device, renderTargets.effectsFramebuffer );
 
-	for ( u32 i = 0; i < GetSwapchainImageCount(gfx.device); ++i )
+	for ( u32 i = 0; i < GetSwapchainImageCount(*gfx.device); ++i )
 	{
-		DestroyFramebuffer( gfx.device, renderTargets.displayFramebuffers[i] );
+		DestroyFramebuffer( *gfx.device, renderTargets.displayFramebuffers[i] );
 	}
 
-	DestroyImageH(gfx.device, renderTargets.shadowmapImage);
-	DestroyFramebuffer( gfx.device, renderTargets.shadowmapFramebuffer );
+	DestroyImageH(*gfx.device, renderTargets.shadowmapImage);
+	DestroyFramebuffer( *gfx.device, renderTargets.shadowmapFramebuffer );
 
 #if USE_EDITOR
-	DestroyImageH(gfx.device, renderTargets.idImage);
-	DestroyFramebuffer( gfx.device, renderTargets.idFramebuffer );
+	DestroyImageH(*gfx.device, renderTargets.idImage);
+	DestroyFramebuffer( *gfx.device, renderTargets.idFramebuffer );
 #endif
 
 	renderTargets = {};
@@ -1695,10 +1695,10 @@ void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipel
 	// Written in place, so everything reading through gfx.pipelines picks up the new one
 	PipelineH &pipelineH = gfx.pipelines[shaderPipeDesc.index];
 	if ( IsValid(pipelineH) ) {
-		DestroyPipelineH( gfx.device, pipelineH );
+		DestroyPipelineH( *gfx.device, pipelineH );
 	}
-	pipelineH = CreateGraphicsPipeline(gfx.device, scratch, desc, gfx.globalBindGroupLayout);
-	SetObjectNamePipeline(gfx.device, pipelineH, desc.name);
+	pipelineH = CreateGraphicsPipeline(*gfx.device, scratch, desc, gfx.globalBindGroupLayout);
+	SetObjectNamePipeline(*gfx.device, pipelineH, desc.name);
 }
 
 void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComputeDesc &shaderComputeDesc)
@@ -1719,10 +1719,10 @@ void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComput
 	LOG(Info, "Creating Compute Pipeline: %s\n", desc.name);
 	PipelineH &pipelineH = gfx.pipelines[shaderComputeDesc.index];
 	if ( IsValid(pipelineH) ) {
-		DestroyPipelineH( gfx.device, pipelineH );
+		DestroyPipelineH( *gfx.device, pipelineH );
 	}
-	pipelineH = CreateComputePipeline(gfx.device, scratch, desc, gfx.globalBindGroupLayout);
-	SetObjectNamePipeline(gfx.device, pipelineH, desc.name);
+	pipelineH = CreateComputePipeline(*gfx.device, scratch, desc, gfx.globalBindGroupLayout);
+	SetObjectNamePipeline(*gfx.device, pipelineH, desc.name);
 }
 
 
@@ -1744,7 +1744,7 @@ void RecompilePipelines(Engine &engine, Arena scratch)
 
 void ResetDynamicBindGroups( Graphics &gfx )
 {
-	ResetBindGroupAllocator( gfx.device, gfx.dynamicBindGroupAllocator[GetFrameSlot(gfx.device)] );
+	ResetBindGroupAllocator( *gfx.device, gfx.dynamicBindGroupAllocator[GetFrameSlot(*gfx.device)] );
 	MemSet(gfx.dynamicBindGroupDescs, gfx.dynamicBindGroupCount * sizeof(BindGroupDesc), 0);
 	gfx.dynamicBindGroupCount = 0;
 }
@@ -1760,7 +1760,7 @@ BindGroupH GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindG
 	}
 
 	ASSERT( gfx.dynamicBindGroupCount < ARRAY_COUNT(gfx.dynamicBindGroups) );
-	const BindGroupH bindGroup = CreateFullBindGroup(gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[GetFrameSlot(gfx.device)]);
+	const BindGroupH bindGroup = CreateFullBindGroup(*gfx.device, bindGroupDesc, gfx.dynamicBindGroupAllocator[GetFrameSlot(*gfx.device)]);
 	gfx.dynamicBindGroupDescs[gfx.dynamicBindGroupCount] = bindGroupDesc;
 	gfx.dynamicBindGroups[gfx.dynamicBindGroupCount] = bindGroup;
 	return gfx.dynamicBindGroups[gfx.dynamicBindGroupCount++];
@@ -1773,11 +1773,11 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	Scratch scratch(MB(8));
 	Graphics &gfx = engine.gfx;
 
-	if ( !InitializeGraphicsDevice( gfx.device, scratch.arena ) ) {
+	if ( !InitializeGraphicsDevice( *gfx.device, scratch.arena ) ) {
 		return false;
 	}
 
-	LOG(Info, "HDR color format: %s\n", FormatName(HdrColorFormat(gfx.device)));
+	LOG(Info, "HDR color format: %s\n", FormatName(HdrColorFormat(*gfx.device)));
 
 	// Scene render pass
 	{
@@ -1785,14 +1785,14 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			.name = "scene_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = HdrColorFormat(gfx.device), .loadOp = LoadOpClear, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = HdrColorFormat(*gfx.device), .loadOp = LoadOpClear, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 			.hasDepthAttachment = true,
 			.depthAttachment = {
 				.loadOp = LoadOpClear, .storeOp = StoreOpStore,
 			}
 		};
-		gfx.litRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+		gfx.litRenderPassH = CreateRenderPass( *gfx.device, renderpassDesc );
 	}
 
 	// Distortion render pass
@@ -1809,7 +1809,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.loadOp = LoadOpLoad, .storeOp = StoreOpStore,
 			}
 		};
-		gfx.distortionRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+		gfx.distortionRenderPassH = CreateRenderPass( *gfx.device, renderpassDesc );
 	}
 
 	// Effects render pass (continue after scene render pass)
@@ -1819,14 +1819,14 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			.name = "effects_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = HdrColorFormat(gfx.device), .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = HdrColorFormat(*gfx.device), .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 			.hasDepthAttachment = true,
 			.depthAttachment = {
 				.loadOp = LoadOpLoad, .storeOp = StoreOpStore,
 			}
 		};
-		gfx.effectsRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+		gfx.effectsRenderPassH = CreateRenderPass( *gfx.device, renderpassDesc );
 	}
 
 	// Bloom render passes
@@ -1835,24 +1835,24 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			.name = "bloom_downsample_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = HdrColorFormat(gfx.device), .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = HdrColorFormat(*gfx.device), .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 		};
-		gfx.bloomDownsampleRenderPassH = CreateRenderPass( gfx.device, downsampleDesc );
+		gfx.bloomDownsampleRenderPassH = CreateRenderPass( *gfx.device, downsampleDesc );
 
 		const RenderpassDesc upsampleDesc = {
 			.name = "bloom_upsample_renderpass",
 			.colorAttachmentCount = 1,
 			.colorAttachments = {
-				{ .format = HdrColorFormat(gfx.device), .loadOp = LoadOpLoad, .storeOp = StoreOpStore, .isSwapchain = false },
+				{ .format = HdrColorFormat(*gfx.device), .loadOp = LoadOpLoad, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 		};
-		gfx.bloomUpsampleRenderPassH = CreateRenderPass( gfx.device, upsampleDesc );
+		gfx.bloomUpsampleRenderPassH = CreateRenderPass( *gfx.device, upsampleDesc );
 	}
 
 	// Display render pass
 	{
-		const Format format = GetSwapchainFormat(gfx.device);
+		const Format format = GetSwapchainFormat(*gfx.device);
 
 		const RenderpassDesc renderpassDesc = {
 			.name = "display_renderpass",
@@ -1862,7 +1862,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			},
 			.hasDepthAttachment = false,
 		};
-		gfx.displayRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+		gfx.displayRenderPassH = CreateRenderPass( *gfx.device, renderpassDesc );
 	}
 
 	// Shadowmap render pass
@@ -1875,7 +1875,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.loadOp = LoadOpClear, .storeOp = StoreOpStore
 			}
 		};
-		gfx.shadowmapRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+		gfx.shadowmapRenderPassH = CreateRenderPass( *gfx.device, renderpassDesc );
 	}
 
 	// ID render pass
@@ -1891,7 +1891,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.loadOp = LoadOpLoad, .storeOp = StoreOpStore
 			}
 		};
-		gfx.idRenderPassH = CreateRenderPass( gfx.device, renderpassDesc );
+		gfx.idRenderPassH = CreateRenderPass( *gfx.device, renderpassDesc );
 	}
 
 	// Create staging buffer
@@ -1907,25 +1907,25 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
 	{
 		gfx.debugDrawVertexBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			sizeof(DebugDrawVertex) * MAX_DEBUG_DRAW_VERTICES,
 			BufferUsageVertexBuffer,
 			HeapType_Dynamic);
 
-		gfx.debugDrawVertices[i] = (DebugDrawVertex*)GetBufferPtr(gfx.device, gfx.debugDrawVertexBuffer[i]);
+		gfx.debugDrawVertices[i] = (DebugDrawVertex*)GetBufferPtr(*gfx.device, gfx.debugDrawVertexBuffer[i]);
 	}
 	gfx.debugDrawVerticesCPU = PushArray(globalArena, DebugDrawVertex, MAX_DEBUG_DRAW_VERTICES);
 
 	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
 	{
 		gfx.particleVertexBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			sizeof(ParticleVertex) * MAX_PARTICLES * 6,
 			BufferUsageVertexBuffer,
 			HeapType_Dynamic);
 
 		gfx.distortionVertexBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			sizeof(DistortionVertex) * MAX_PARTICLES * 6,
 			BufferUsageVertexBuffer,
 			HeapType_Dynamic);
@@ -1955,7 +1955,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	{
 		const u32 globalsBufferSize = sizeof(Globals);
 		gfx.globalsBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			globalsBufferSize,
 			BufferUsageUniformBuffer,
 			HeapType_Dynamic);
@@ -1964,9 +1964,9 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	// Create entities buffer
 	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
 	{
-		const u32 entityBufferSize = MAX_ENTITIES * AlignUp( sizeof(SEntity), GetDeviceCaps(gfx.device).alignment.uniformBufferOffset );
+		const u32 entityBufferSize = MAX_ENTITIES * AlignUp( sizeof(SEntity), GetDeviceCaps(*gfx.device).alignment.uniformBufferOffset );
 		gfx.entityBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			entityBufferSize,
 			BufferUsageStorageBuffer,
 			HeapType_Dynamic);
@@ -1977,7 +1977,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	{
 		const u32 spriteDataBufferSize = (MAX_SPRITES) * sizeof(SSpriteData);
 		gfx.spriteDataBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			spriteDataBufferSize,
 			BufferUsageStorageBuffer,
 			HeapType_Dynamic);
@@ -1988,7 +1988,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	{
 		const u32 tileDataBufferSize = (MAX_TILES) * sizeof(STileData);
 		gfx.tileDataBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			tileDataBufferSize,
 			BufferUsageStorageBuffer,
 			HeapType_Dynamic);
@@ -1999,7 +1999,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	{
 		const u32 lightBufferSize = MAX_VISIBLE_LIGHTS * sizeof(SLight);
 		gfx.lightBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			lightBufferSize,
 			BufferUsageStorageBuffer,
 			HeapType_Dynamic);
@@ -2010,7 +2010,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	{
 		const u32 lightGridBufferSize = MAX_LIGHT_GRID_CELLS * LIGHT_CELL_STRIDE;
 		gfx.lightGridBuffer[i] = CreateBuffer(
-			gfx.device,
+			*gfx.device,
 			lightGridBufferSize,
 			BufferUsageStorageBuffer,
 			HeapType_General);
@@ -2018,18 +2018,18 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 
 	// Create material buffer
-	const u32 materialBufferSize = MAX_MATERIALS * AlignUp( sizeof(SMaterial), GetDeviceCaps(gfx.device).alignment.uniformBufferOffset );
-	gfx.materialBuffer = CreateBuffer(gfx.device, materialBufferSize, BufferUsageUniformBuffer | BufferUsageTransferDst, HeapType_General);
+	const u32 materialBufferSize = MAX_MATERIALS * AlignUp( sizeof(SMaterial), GetDeviceCaps(*gfx.device).alignment.uniformBufferOffset );
+	gfx.materialBuffer = CreateBuffer(*gfx.device, materialBufferSize, BufferUsageUniformBuffer | BufferUsageTransferDst, HeapType_General);
 
 	// Create buffer for computes
 	const u32 computeBufferSize = sizeof(float);
-	gfx.computeBufferH = CreateBuffer(gfx.device, computeBufferSize, BufferUsageStorageTexelBuffer, HeapType_General);
-	gfx.computeBufferViewH = CreateBufferView(gfx.device, gfx.computeBufferH, FormatFloat, 0, 0);
+	gfx.computeBufferH = CreateBuffer(*gfx.device, computeBufferSize, BufferUsageStorageTexelBuffer, HeapType_General);
+	gfx.computeBufferViewH = CreateBufferView(*gfx.device, gfx.computeBufferH, FormatFloat, 0, 0);
 
 #if USE_EDITOR
-	const u32 selectionBufferSize = AlignUp( sizeof(u32), GetDeviceCaps(gfx.device).alignment.storageBufferOffset );
-	gfx.selectionBufferH = CreateBuffer(gfx.device, selectionBufferSize, BufferUsageStorageTexelBuffer, HeapType_Readback);
-	gfx.selectionBufferViewH = CreateBufferView(gfx.device, gfx.selectionBufferH, FormatUInt, 0, 0);
+	const u32 selectionBufferSize = AlignUp( sizeof(u32), GetDeviceCaps(*gfx.device).alignment.storageBufferOffset );
+	gfx.selectionBufferH = CreateBuffer(*gfx.device, selectionBufferSize, BufferUsageStorageTexelBuffer, HeapType_Readback);
+	gfx.selectionBufferViewH = CreateBufferView(*gfx.device, gfx.selectionBufferH, FormatUInt, 0, 0);
 #endif // USE_EDITOR
 
 
@@ -2045,7 +2045,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.groupCount = MAX_FRAMES_IN_FLIGHT,
 			},
 		};
-		gfx.globalBindGroupAllocator = CreateBindGroupAllocator(gfx.device, desc);
+		gfx.globalBindGroupAllocator = CreateBindGroupAllocator(*gfx.device, desc);
 	}
 
 	// Create Material BindGroup allocator
@@ -2059,7 +2059,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.allowIndividualFrees = true,
 			},
 		};
-		gfx.materialBindGroupAllocator = CreateBindGroupAllocator(gfx.device, desc);
+		gfx.materialBindGroupAllocator = CreateBindGroupAllocator(*gfx.device, desc);
 	}
 
 	// Create dynamic per-frame BindGroup allocator
@@ -2076,7 +2076,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.groupCount = 100,
 			},
 		};
-		gfx.dynamicBindGroupAllocator[i] = CreateBindGroupAllocator(gfx.device, desc);
+		gfx.dynamicBindGroupAllocator[i] = CreateBindGroupAllocator(*gfx.device, desc);
 	}
 
 	// Create global BindGroup layout
@@ -2094,7 +2094,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		{ .set = 0, .binding = BINDING_LIGHTS, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsFragmentBit | SpvStageFlagsComputeBit },
 		{ .set = 0, .binding = BINDING_LIGHT_GRID, .type = SpvTypeStorageBuffer, .stageFlags = SpvStageFlagsFragmentBit },
 	};
-	gfx.globalBindGroupLayout = CreateBindGroupLayout(gfx.device, globalShaderBindings, ARRAY_COUNT(globalShaderBindings));
+	gfx.globalBindGroupLayout = CreateBindGroupLayout(*gfx.device, globalShaderBindings, ARRAY_COUNT(globalShaderBindings));
 
 	// Graphics pipelines
 	ResetArena(scratch.arena);
@@ -2160,45 +2160,45 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.addressMode = AddressModeRepeat,
 		.filter = FilterNearest,
 	};
-	gfx.pointSamplerH = CreateSampler(gfx.device, pointSamplerDesc);
+	gfx.pointSamplerH = CreateSampler(*gfx.device, pointSamplerDesc);
 	const SamplerDesc materialSamplerDesc = {
 		.addressMode = AddressModeRepeat,
 		.filter = FilterLinear,
 	};
-	gfx.linearSamplerH = CreateSampler(gfx.device, materialSamplerDesc);
+	gfx.linearSamplerH = CreateSampler(*gfx.device, materialSamplerDesc);
 	const SamplerDesc screenSamplerDesc = {
 		.addressMode = AddressModeClampToEdge,
 		.filter = FilterNearest,
 	};
-	gfx.screenSamplerH = CreateSampler(gfx.device, screenSamplerDesc);
+	gfx.screenSamplerH = CreateSampler(*gfx.device, screenSamplerDesc);
 	const SamplerDesc bloomSamplerDesc = {
 		.addressMode = AddressModeClampToEdge,
 		.filter = FilterLinear,
 	};
-	gfx.bloomSamplerH = CreateSampler(gfx.device, bloomSamplerDesc);
+	gfx.bloomSamplerH = CreateSampler(*gfx.device, bloomSamplerDesc);
 	const SamplerDesc shadowmapSamplerDesc = {
 		.addressMode = AddressModeClampToBorder,
 		.filter = FilterNearest,
 		.borderColor = BorderColorBlackFloat,
 		.compareOp = CompareOpGreater,
 	};
-	gfx.shadowmapSamplerH = CreateSampler(gfx.device, shadowmapSamplerDesc);
+	gfx.shadowmapSamplerH = CreateSampler(*gfx.device, shadowmapSamplerDesc);
 	const SamplerDesc skySamplerDesc = {
 		.addressMode = AddressModeClampToEdge,
 		.filter = FilterLinear,
 	};
-	gfx.skySamplerH = CreateSampler(gfx.device, skySamplerDesc);
+	gfx.skySamplerH = CreateSampler(*gfx.device, skySamplerDesc);
 
 	// BindGroups for globals
 	for (u32 i = 0; i < ARRAY_COUNT(gfx.globalBindGroups); ++i)
 	{
-		gfx.globalBindGroups[i] = CreateBindGroup(gfx.device, gfx.globalBindGroupLayout, gfx.globalBindGroupAllocator);
+		gfx.globalBindGroups[i] = CreateBindGroup(*gfx.device, gfx.globalBindGroupLayout, gfx.globalBindGroupAllocator);
 	}
 
 	gfx.globalBindGroupUpdateMask = (1u << MAX_FRAMES_IN_FLIGHT) - 1;
 
 	// Timestamp queries
-	PROFILE_GPU_INIT(gfx.device);
+	PROFILE_GPU_INIT(*gfx.device);
 
 #if USE_UI
 	UIIcon *icons = nullptr;
@@ -2212,7 +2212,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		ReadImagePixels(scratch.arena, filepath.str, icons[i].image);
 	}
 #endif
-	UI_Initialize(engine.ui, gfx, gfx.device, globalArena, icons, iconCount);
+	UI_Initialize(engine.ui, gfx, *gfx.device, globalArena, icons, iconCount);
 #endif
 
 	gfx.camera = {
@@ -2252,12 +2252,12 @@ BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameSlot)
 void UpdateGlobalBindGroup(Graphics &gfx, u32 frameSlot)
 {
 	const BindGroupDesc globalBindGroupDesc = GlobalBindGroupDesc(gfx, frameSlot);
-	UpdateBindGroup(gfx.device, globalBindGroupDesc, gfx.globalBindGroups[frameSlot]);
+	UpdateBindGroup(*gfx.device, globalBindGroupDesc, gfx.globalBindGroups[frameSlot]);
 }
 
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)
 {
-	const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[material.pipelineIndex], BIND_GROUP_MATERIAL);
+	const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(*gfx.device, gfx.pipelines[material.pipelineIndex], BIND_GROUP_MATERIAL);
 	const ImageH &albedoImage = GetTextureImage(gfx, material.textureId, gfx.pinkImageH );
 
 	const BindGroupDesc bindGroupDesc = {
@@ -2276,7 +2276,7 @@ void UpdateMaterialBindGroups(Graphics &gfx)
 	{
 		const Material &material = gfx.materials[i];
 		const BindGroupDesc materialBindGroupDesc = MaterialBindGroupDesc(gfx, material);
-		UpdateBindGroup(gfx.device, materialBindGroupDesc, gfx.materialBindGroups[i]);
+		UpdateBindGroup(*gfx.device, materialBindGroupDesc, gfx.materialBindGroups[i]);
 	}
 }
 
@@ -2300,7 +2300,7 @@ void UploadMaterialData(Graphics &gfx)
 void CreateMaterialBindGroup(Graphics &gfx, ID materialId)
 {
 	const Material &material = GetMaterial(materialId);
-	gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)] = CreateBindGroup(gfx.device, GetPipelineBindGroupLayout(gfx.device, gfx.pipelines[material.pipelineIndex], 1), gfx.materialBindGroupAllocator);
+	gfx.materialBindGroups[GetMaterialIndex(gfx, materialId)] = CreateBindGroup(*gfx.device, GetPipelineBindGroupLayout(*gfx.device, gfx.pipelines[material.pipelineIndex], 1), gfx.materialBindGroupAllocator);
 	gfx.shouldUpdateMaterialBindGroups = true;
 }
 
@@ -2315,7 +2315,7 @@ void CreateMaterialBindGroups(Graphics &gfx)
 
 void GfxWaitDeviceIdle(Graphics &gfx)
 {
-	WaitDeviceIdle(gfx.device);
+	WaitDeviceIdle(*gfx.device);
 
 	gfx.stagingBufferOffset = 0;
 }
@@ -2324,18 +2324,18 @@ void CleanupGraphics(Graphics &gfx)
 {
 	GfxWaitDeviceIdle( gfx );
 
-	PROFILE_GPU_CLEANUP(gfx.device);
+	PROFILE_GPU_CLEANUP(*gfx.device);
 
-	DestroyBindGroupAllocator( gfx.device, gfx.globalBindGroupAllocator );
-	DestroyBindGroupAllocator( gfx.device, gfx.materialBindGroupAllocator );
+	DestroyBindGroupAllocator( *gfx.device, gfx.globalBindGroupAllocator );
+	DestroyBindGroupAllocator( *gfx.device, gfx.materialBindGroupAllocator );
 	for (u32 i = 0; i < ARRAY_COUNT(gfx.dynamicBindGroupAllocator); ++i)
 	{
-		DestroyBindGroupAllocator( gfx.device, gfx.dynamicBindGroupAllocator[i] );
+		DestroyBindGroupAllocator( *gfx.device, gfx.dynamicBindGroupAllocator[i] );
 	}
 
-	CleanupGraphicsDevice( gfx.device, FrameArena );
+	CleanupGraphicsDevice( *gfx.device, FrameArena );
 
-	CleanupGraphicsDriver( gfx.device );
+	CleanupGraphicsDriver( *gfx.device );
 
 	ZeroStruct( &gfx ); // deviceInitialized = false;
 }
@@ -2343,14 +2343,14 @@ void CleanupGraphics(Graphics &gfx)
 
 const ImageH GetDisplayImageH(const Graphics &gfx)
 {
-	const u32 imageIndex = GetSwapchainImageIndex(gfx.device);
-	const ImageH displayImageH = GetSwapchainImage(gfx.device, imageIndex);
+	const u32 imageIndex = GetSwapchainImageIndex(*gfx.device);
+	const ImageH displayImageH = GetSwapchainImage(*gfx.device, imageIndex);
 	return displayImageH;
 }
 
 FramebufferH GetDisplayFramebuffer(const Graphics &gfx)
 {
-	const u32 imageIndex = GetSwapchainImageIndex(gfx.device);
+	const u32 imageIndex = GetSwapchainImageIndex(*gfx.device);
 	return gfx.renderTargets.displayFramebuffers[imageIndex];
 }
 

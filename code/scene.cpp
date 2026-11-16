@@ -2091,7 +2091,7 @@ void CleanScene(Engine &engine)
 {
 	GameStop(engine);
 
-	WaitDeviceIdle(engine.gfx.device);
+	WaitDeviceIdle(*engine.gfx.device);
 
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;

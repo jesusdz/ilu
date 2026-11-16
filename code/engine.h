@@ -631,7 +631,7 @@ struct ShaderSourceDesc
 
 struct Graphics
 {
-	GraphicsDevice device;
+	GraphicsDevice *device;
 
 	RenderTargets renderTargets;
 
