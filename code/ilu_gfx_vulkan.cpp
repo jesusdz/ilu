@@ -336,17 +336,6 @@ struct GraphicsDevice
 	CommandListState commandLists[MAX_COMMAND_LISTS]; // Index 0 unused
 };
 
-inline bool IsValid(const Pipeline &pipeline)
-{
-	bool res = pipeline.handle != 0;
-	return res;
-}
-
-inline bool IsValid(const Image &image)
-{
-	bool res = image.handle != 0;
-	return res;
-}
 
 
 
@@ -377,7 +366,7 @@ static ImageH SwapchainImageHandle(u32 swapchainImageIndex);
 static i32 GetElementIndex(const HandlePool &pool, Handle handle)
 {
 	if ( handle.gen == 0 ) { return -1; }
-	const bool valid = IsValidHandle(pool, handle);
+	const bool valid = IsAlive(pool, handle);
 	ASSERT( valid && "Handle of a destroyed graphics resource" );
 	return valid ? GetHandleIndex(pool, handle) : -1;
 }
@@ -2579,12 +2568,13 @@ BindGroupAllocatorH CreateBindGroupAllocator(GraphicsDevice &device, const BindG
 	return handle;
 }
 
-void DestroyBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH allocatorH)
+void DestroyBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH &allocatorH)
 {
-	if ( !IsValid(allocatorH) ) { return; }
+	if ( !allocatorH ) { return; }
 
 	FreeAllocatorBindGroups(device, allocatorH);
 	FreeHandle(device.bindGroupAllocatorPool, allocatorH);
+	allocatorH = {};
 }
 
 // The GPU must be done with this allocator's bind groups
@@ -2698,9 +2688,9 @@ BindGroupH CreateBindGroup(GraphicsDevice &device, BindGroupLayoutH layoutH, Bin
 }
 
 // Requires allowIndividualFrees. The GPU must be done with it.
-void DestroyBindGroup(GraphicsDevice &device, BindGroupH bindGroupH)
+void DestroyBindGroup(GraphicsDevice &device, BindGroupH &bindGroupH)
 {
-	if ( !IsValid(bindGroupH) ) { return; }
+	if ( !bindGroupH ) { return; }
 
 	const BindGroup &bindGroup = GetBindGroup(device, bindGroupH);
 	BindGroupAllocator &allocator = GetBindGroupAllocator(device, bindGroup.allocator);
@@ -2709,6 +2699,7 @@ void DestroyBindGroup(GraphicsDevice &device, BindGroupH bindGroupH)
 	CountBindGroupDescriptors(allocator.usedCounts, GetBindGroupLayout(device, bindGroup.layout), -1);
 
 	FreeHandle(device.bindGroupPool, bindGroupH);
+	bindGroupH = {};
 }
 
 void UpdateBindGroup(const GraphicsDevice &device, const BindGroupDesc &bindGroupDesc, BindGroupH bindGroupH)
@@ -2868,11 +2859,12 @@ void DestroyBuffer(const GraphicsDevice &device, const Buffer &buffer)
 	Deallocate(buffer.alloc);
 }
 
-void DestroyBufferH(GraphicsDevice &device, BufferH bufferH)
+void DestroyBufferH(GraphicsDevice &device, BufferH &bufferH)
 {
-	if ( IsValid(bufferH) ) {
+	if ( bufferH ) {
 		FreeHandle(device.bufferPool, bufferH);
 	}
+	bufferH = {};
 }
 
 
@@ -2921,11 +2913,12 @@ void DestroyBufferView(const GraphicsDevice &device, const BufferView &bufferVie
 	vkDestroyBufferView( device.handle, bufferView.handle, VULKAN_ALLOCATORS );
 }
 
-void DestroyBufferViewH(GraphicsDevice &device, BufferViewH bufferViewH)
+void DestroyBufferViewH(GraphicsDevice &device, BufferViewH &bufferViewH)
 {
-	if ( IsValid(bufferViewH) ) {
+	if ( bufferViewH ) {
 		FreeHandle(device.bufferViewPool, bufferViewH);
 	}
+	bufferViewH = {};
 }
 
 
@@ -3040,7 +3033,7 @@ void DestroyImage(const GraphicsDevice &device, const Image &image)
 	}
 }
 
-void DestroyImageH(GraphicsDevice &device, ImageH imageH)
+void DestroyImageH(GraphicsDevice &device, ImageH &imageH)
 {
 	if ( IsSwapchainImage(imageH) )
 	{
@@ -3049,10 +3042,11 @@ void DestroyImageH(GraphicsDevice &device, ImageH imageH)
 		image.handle = VK_NULL_HANDLE;
 		image.imageViewHandle = VK_NULL_HANDLE;
 	}
-	else if ( IsValid(imageH) )
+	else if ( imageH )
 	{
 		FreeHandle(device.imagePool, imageH);
 	}
+	imageH = {};
 }
 
 
@@ -3115,11 +3109,12 @@ void DestroySampler(const GraphicsDevice &device, const Sampler &sampler)
 	vkDestroySampler( device.handle, sampler.handle, VULKAN_ALLOCATORS );
 }
 
-void DestroySamplerH(GraphicsDevice &device, SamplerH samplerH)
+void DestroySamplerH(GraphicsDevice &device, SamplerH &samplerH)
 {
-	if ( IsValid(samplerH) ) {
+	if ( samplerH ) {
 		FreeHandle(device.samplerPool, samplerH);
 	}
+	samplerH = {};
 }
 
 
@@ -3440,11 +3435,12 @@ void DestroyPipeline(const GraphicsDevice &device, const Pipeline &pipeline)
 	vkDestroyPipelineLayout( device.handle, pipeline.layout.handle, VULKAN_ALLOCATORS );
 }
 
-void DestroyPipelineH(GraphicsDevice &device, PipelineH handle)
+void DestroyPipelineH(GraphicsDevice &device, PipelineH &handle)
 {
-	if ( IsValid(handle) ) {
+	if ( handle ) {
 		FreeHandle(device.pipelinePool, handle);
 	}
+	handle = {};
 }
 
 
@@ -3551,11 +3547,12 @@ void DestroyRenderPass(const GraphicsDevice &device, const RenderPass &renderPas
 	vkDestroyRenderPass( device.handle, renderPass.handle, VULKAN_ALLOCATORS );
 }
 
-void DestroyRenderPassH(GraphicsDevice &device, RenderPassH renderPassH)
+void DestroyRenderPassH(GraphicsDevice &device, RenderPassH &renderPassH)
 {
-	if ( IsValid(renderPassH) ) {
+	if ( renderPassH ) {
 		FreeHandle(device.renderPassPool, renderPassH);
 	}
+	renderPassH = {};
 }
 
 
@@ -3619,11 +3616,12 @@ FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &de
 	return framebufferH;
 }
 
-void DestroyFramebuffer(GraphicsDevice &device, FramebufferH framebufferH)
+void DestroyFramebuffer(GraphicsDevice &device, FramebufferH &framebufferH)
 {
-	if ( IsValid(framebufferH) ) {
+	if ( framebufferH ) {
 		FreeHandle(device.framebufferPool, framebufferH);
 	}
+	framebufferH = {};
 }
 
 uint2 GetFramebufferSize(const GraphicsDevice &device, FramebufferH framebufferH)
@@ -4248,11 +4246,12 @@ TimestampPoolH CreateTimestampPool(GraphicsDevice &device, u32 maxQueries)
 #endif
 }
 
-void DestroyTimestampPool(GraphicsDevice &device, TimestampPoolH poolH)
+void DestroyTimestampPool(GraphicsDevice &device, TimestampPoolH &poolH)
 {
-	if ( IsValid(poolH) ) {
+	if ( poolH ) {
 		FreeHandle(device.timestampPoolPool, poolH);
 	}
+	poolH = {};
 }
 
 //void ResetTimestampPool(const GraphicsDevice &device, TimestampPool &pool)
@@ -4265,7 +4264,7 @@ void DestroyTimestampPool(GraphicsDevice &device, TimestampPoolH poolH)
 void ResetTimestampPool(const CommandList &commandBuffer, TimestampPoolH poolH)
 {
 #if DEVELOPMENT_BUILD
-	if ( !IsValid(poolH) ) { return; }
+	if ( !poolH ) { return; }
 
 	TimestampPool &pool = GetTimestampPool(GetDevice(commandBuffer), poolH);
 	vkCmdResetQueryPool(GetState(commandBuffer).handle, pool.handle, 0, pool.maxQueries);
@@ -4276,7 +4275,7 @@ void ResetTimestampPool(const CommandList &commandBuffer, TimestampPoolH poolH)
 u32 WriteTimestamp(const CommandList &commandBuffer, TimestampPoolH poolH, PipelineStage stage)
 {
 #if DEVELOPMENT_BUILD
-	if ( !IsValid(poolH) ) { return 0; }
+	if ( !poolH ) { return 0; }
 
 	TimestampPool &pool = GetTimestampPool(GetDevice(commandBuffer), poolH);
 	ASSERT(pool.queryCount < pool.maxQueries);
@@ -4294,7 +4293,7 @@ Timestamp ReadTimestamp(const GraphicsDevice &device, TimestampPoolH poolH, u32 
 #if DEVELOPMENT_BUILD
 	double millis = 0.0f;
 
-	if ( IsValid(poolH) && queryIndex < GetTimestampPoolConst(device, poolH).queryCount )
+	if ( poolH && queryIndex < GetTimestampPoolConst(device, poolH).queryCount )
 	{
 		const TimestampPool &pool = GetTimestampPoolConst(device, poolH);
 		u64 data[2];
@@ -4333,7 +4332,7 @@ Timestamp ReadTimestamp(const GraphicsDevice &device, TimestampPoolH poolH, u32 
 bool ReadTimestamps(const GraphicsDevice &device, TimestampPoolH poolH, u32 firstQuery, u32 queryCount, Timestamp *outTimestamps)
 {
 #if DEVELOPMENT_BUILD
-	if ( !IsValid(poolH) ) {
+	if ( !poolH ) {
 		return false;
 	}
 

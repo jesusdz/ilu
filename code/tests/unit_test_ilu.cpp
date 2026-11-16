@@ -1621,7 +1621,7 @@ void TestHandlePool()
         TEST("Initialize count == 0", pool.count == 0);
         TEST("Initialize HandleCount == 0", HandleCount(pool) == 0);
         TEST("Initialize is not full", !IsFull(pool));
-        TEST("InvalidHandle is not valid", !IsValidHandle(pool, InvalidHandle));
+        TEST("InvalidHandle is not valid", !IsAlive(pool, InvalidHandle));
     }
 
     // NewHandle hands out consecutive element indices
@@ -1634,7 +1634,7 @@ void TestHandlePool()
         const Handle b = NewHandle(pool);
         const Handle c = NewHandle(pool);
 
-        TEST("NewHandle returns a valid handle", IsValidHandle(pool, a));
+        TEST("NewHandle returns a valid handle", IsAlive(pool, a));
         TEST("NewHandle indices are consecutive",
              GetHandleIndex(pool, a) == 0 && GetHandleIndex(pool, b) == 1 && GetHandleIndex(pool, c) == 2);
         TEST("NewHandle handles are distinct", a != b && b != c);
@@ -1652,7 +1652,7 @@ void TestHandlePool()
         const Handle b = NewHandle(pool);
         FreeHandle(pool, b);
 
-        TEST("FreeHandle keeps the handle valid", IsValidHandle(pool, b));
+        TEST("FreeHandle keeps the handle valid", IsAlive(pool, b));
         TEST("FreeHandle marks the handle", IsPendingRemoval(pool, b));
         TEST("FreeHandle leaves other handles unmarked", !IsPendingRemoval(pool, a));
         TEST("FreeHandle keeps the element addressable", GetHandleIndex(pool, b) == 1);
@@ -1672,7 +1672,7 @@ void TestHandlePool()
         FreeHandle(pool, a);
 
         TEST("Double free removes one element", CompactPool(pool, nullptr, nullptr, nullptr) == 1);
-        TEST("Double free leaves the rest alone", HandleCount(pool) == 1 && IsValidHandle(pool, b));
+        TEST("Double free leaves the rest alone", HandleCount(pool) == 1 && IsAlive(pool, b));
     }
 
     // CompactPool closes the holes and reports the moves
@@ -1693,7 +1693,7 @@ void TestHandlePool()
 
         TEST("CompactPool returns the removed count", removed == 1);
         TEST("CompactPool shrinks the array", HandleCount(pool) == 3);
-        TEST("CompactPool invalidates the removed handle", !IsValidHandle(pool, handles[1]));
+        TEST("CompactPool invalidates the removed handle", !IsAlive(pool, handles[1]));
         TEST("CompactPool moves every element after the hole", payload.moveCount == 2);
         TEST("CompactPool moves towards the front",
              payload.moveDst[0] == 1 && payload.moveSrc[0] == 2 &&
@@ -1724,8 +1724,8 @@ void TestHandlePool()
         const Handle b = NewHandle(pool);
         TEST("Freed slot is recycled", b.slot == a.slot);
         TEST("Recycled slot bumps the generation", b.gen != a.gen);
-        TEST("Recycled slot rejects the stale handle", !IsValidHandle(pool, a));
-        TEST("Recycled slot accepts the new handle", IsValidHandle(pool, b));
+        TEST("Recycled slot rejects the stale handle", !IsAlive(pool, a));
+        TEST("Recycled slot accepts the new handle", IsAlive(pool, b));
     }
 
     // A slot freed this frame is not reusable until the compaction
@@ -1758,7 +1758,7 @@ void TestHandlePool()
         bool allResolve = true;
         for (u16 i = 0; i < HandleCount(pool); ++i) {
             const Handle handle = GetHandleAt(pool, i);
-            allResolve = allResolve && IsValidHandle(pool, handle) && GetHandleIndex(pool, handle) == i;
+            allResolve = allResolve && IsAlive(pool, handle) && GetHandleIndex(pool, handle) == i;
             if (i == 0) {
                 FreeHandle(pool, handles[0]);
             }
@@ -1769,7 +1769,7 @@ void TestHandlePool()
 
         CompactPool(pool, nullptr, nullptr, nullptr);
         TEST("The removal lands on the next compaction",
-             HandleCount(pool) == 2 && !IsValidHandle(pool, handles[0]));
+             HandleCount(pool) == 2 && !IsAlive(pool, handles[0]));
         TEST("Compaction moves the survivors up",
              GetHandleAt(pool, 0) == handles[1] && GetHandleAt(pool, 1) == handles[2]);
     }

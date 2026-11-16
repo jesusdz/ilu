@@ -55,10 +55,8 @@ inline bool operator!=(Handle a, Handle b)
 // a sequence, so MusicH -> Handle -> AudioClipH is still rejected and passing a handle
 // to the wrong accessor will not compile.
 //
-// `operator bool` is only declared here. Each type defines it next to the pool that
-// issued it, since that is what holds the generation to check against: unlike a raw
-// pointer, `if (handle)` asks whether the element is still alive, not just whether the
-// handle was ever filled in.
+// `if (handle)` only asks whether the handle was filled in. Whether its element is still
+// alive is IsAlive(pool, handle).
 #define DECLARE_HANDLE_TYPE(Name)                                                  \
 struct Name                                                                        \
 {                                                                                  \
@@ -67,9 +65,9 @@ struct Name                                                                     
                                                                                    \
 	Name() = default;                                                              \
 	Name(Handle handle) : gen(handle.gen), slot(handle.slot) {}                    \
-	operator Handle() const { Handle h = {}; h.gen = gen; h.slot = slot; return h; } \
+	operator Handle() const { Handle h = { .gen = gen, .slot = slot }; return h; } \
                                                                                    \
-	explicit operator bool() const;                                                \
+	explicit operator bool() const { return gen != 0; }                            \
 }
 
 struct HandleSlot
@@ -142,7 +140,7 @@ bool IsFull(const HandlePool &pool)
 	return full;
 }
 
-bool IsValidHandle(const HandlePool &pool, Handle handle)
+bool IsAlive(const HandlePool &pool, Handle handle)
 {
 	if ( handle.slot >= pool.limit ) {
 		return false;
@@ -155,7 +153,7 @@ bool IsValidHandle(const HandlePool &pool, Handle handle)
 // Index of the element the handle refers to. Only valid until the next compaction.
 u16 GetHandleIndex(const HandlePool &pool, Handle handle)
 {
-	ASSERT(IsValidHandle(pool, handle));
+	ASSERT(IsAlive(pool, handle));
 	const u16 index = pool.slots[handle.slot].index;
 	return index;
 }
@@ -193,9 +191,9 @@ Handle NewHandle(HandlePool &pool)
 
 void FreeHandle(HandlePool &pool, Handle handle)
 {
-	ASSERT(IsValidHandle(pool, handle));
+	ASSERT(IsAlive(pool, handle));
 
-	if ( IsValidHandle(pool, handle) )
+	if ( IsAlive(pool, handle) )
 	{
 		HandleSlot &slot = pool.slots[handle.slot];
 		if ( !slot.pendingRemoval ) // freeing twice in the same frame removes one element
@@ -208,7 +206,7 @@ void FreeHandle(HandlePool &pool, Handle handle)
 
 bool IsPendingRemoval(const HandlePool &pool, Handle handle)
 {
-	ASSERT(IsValidHandle(pool, handle));
+	ASSERT(IsAlive(pool, handle));
 	const bool pending = pool.slots[handle.slot].pendingRemoval;
 	return pending;
 }

@@ -233,7 +233,7 @@ const u32 FindShaderSourceDescIndex(const char *name)
 RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name)
 {
 	const RenderPassH handle = FindRenderPass(gpu, name);
-	if ( IsValid(handle) ) {
+	if ( handle ) {
 		return handle;
 	}
 	LOG(Warning, "Could not find render <%s> handle.\n", name);
@@ -463,7 +463,7 @@ static Texture *PushTexture(Graphics &gfx, const Texture &desc)
 		return nullptr;
 	}
 
-	if ( IsValid(desc.image) )
+	if ( desc.image )
 	{
 		LOG(Warning, "Could not create texture <%s>, duplicating an existing texture is not supported.\n", desc.name);
 		return nullptr;
@@ -505,7 +505,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 	{
 		const byte *pixels = PushDataFromFile(scratch.arena, gfx.assetsFile, desc.location.offset, desc.location.size);
 
-		const ImageH imageHandle = GfxCreateImage(gfx, desc.name, desc.width, desc.height, desc.channels, desc.mipmap, pixels);
+		ImageH imageHandle = GfxCreateImage(gfx, desc.name, desc.width, desc.height, desc.channels, desc.mipmap, pixels);
 
 		id = CreateTexture(gfx, desc, imageHandle);
 
@@ -522,7 +522,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 		ImagePixels img;
 		if ( ReadImagePixels(scratch.arena, imagePath.str, img) )
 		{
-			const ImageH imageHandle = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
+			ImageH imageHandle = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
 
 			id = CreateTexture(gfx, desc, imageHandle);
 
@@ -600,7 +600,7 @@ static COMPACT_REMOVE(RemoveTextureImage)
 	Graphics &gfx = *(Graphics*)data;
 	Texture &texture = gfx.textures[index];
 
-	if ( texture.ownsImage && IsValid(texture.image) )
+	if ( texture.ownsImage && texture.image )
 	{
 		WaitDeviceIdle(gpu);
 		DestroyImageH(gpu, texture.image);
@@ -806,7 +806,6 @@ static COMPACT_REMOVE(RemoveMaterial)
 
 	WaitDeviceIdle(gpu);
 	DestroyBindGroup(gpu, gfx.materialBindGroups[index]);
-	gfx.materialBindGroups[index] = {};
 }
 
 void CompactMaterials(Graphics &gfx)
@@ -1694,7 +1693,7 @@ void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipel
 	LOG(Info, "Creating Graphics Pipeline: %s\n", desc.name);
 	// Written in place, so everything reading through gfx.pipelines picks up the new one
 	PipelineH &pipelineH = gfx.pipelines[shaderPipeDesc.index];
-	if ( IsValid(pipelineH) ) {
+	if ( pipelineH ) {
 		DestroyPipelineH( gpu, pipelineH );
 	}
 	pipelineH = CreateGraphicsPipeline(gpu, scratch, desc, gfx.globalBindGroupLayout);
@@ -1718,7 +1717,7 @@ void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComput
 
 	LOG(Info, "Creating Compute Pipeline: %s\n", desc.name);
 	PipelineH &pipelineH = gfx.pipelines[shaderComputeDesc.index];
-	if ( IsValid(pipelineH) ) {
+	if ( pipelineH ) {
 		DestroyPipelineH( gpu, pipelineH );
 	}
 	pipelineH = CreateComputePipeline(gpu, scratch, desc, gfx.globalBindGroupLayout);
