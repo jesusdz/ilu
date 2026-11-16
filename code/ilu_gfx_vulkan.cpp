@@ -238,6 +238,20 @@ struct CommandListState
 	};
 };
 
+// Resource types, in destruction order (users before what they use)
+#define EXPAND_GFX_RESOURCES(X) \
+	X(BindGroup,          bindGroups,          MAX_ALLOCATED_BIND_GROUPS) \
+	X(BindGroupAllocator, bindGroupAllocators, MAX_BIND_GROUP_ALLOCATORS) \
+	X(Pipeline,           pipelines,           MAX_PIPELINES) \
+	X(BindGroupLayout,    bindGroupLayouts,    MAX_BIND_GROUP_LAYOUTS) \
+	X(Framebuffer,        framebuffers,        MAX_FRAMEBUFFERS) \
+	X(RenderPass,         renderPasses,        MAX_RENDERPASSES) \
+	X(BufferView,         bufferViews,         MAX_BUFFERS) \
+	X(Buffer,             buffers,             MAX_BUFFERS) \
+	X(Image,              images,              MAX_IMAGES) \
+	X(Sampler,            samplers,            MAX_SAMPLERS) \
+	X(TimestampPool,      timestampPools,      MAX_TIMESTAMP_POOLS)
+
 struct GraphicsDevice
 {
 	VkInstance instance;
@@ -296,47 +310,17 @@ struct GraphicsDevice
 
 	VkDebugUtilsMessengerEXT debugUtilsMessenger;
 
-	// Resources, indexed through their handle pools
+	// Resources: a pool of handles and the elements they index, per type
+#define DECLARE_RESOURCE_POOL(Type, name, count) struct { HandlePool handles; Type items[count]; } name;
+	EXPAND_GFX_RESOURCES(DECLARE_RESOURCE_POOL)
+#undef DECLARE_RESOURCE_POOL
 
-	BindGroupLayout bindGroupLayouts[MAX_BIND_GROUP_LAYOUTS];
-	HandlePool bindGroupLayoutPool;
-
-	BindGroupAllocator bindGroupAllocators[MAX_BIND_GROUP_ALLOCATORS];
-	HandlePool bindGroupAllocatorPool;
-
-	BindGroup bindGroups[MAX_ALLOCATED_BIND_GROUPS];
-	HandlePool bindGroupPool;
-
-	Buffer buffers[MAX_BUFFERS];
-	HandlePool bufferPool;
-
-	BufferView bufferViews[MAX_BUFFERS];
-	HandlePool bufferViewPool;
-
-	Image images[MAX_IMAGES];
-	HandlePool imagePool;
-
-	Sampler samplers[MAX_SAMPLERS];
-	HandlePool samplerPool;
-
-	Pipeline pipelines[MAX_PIPELINES];
-	HandlePool pipelinePool;
-
-	RenderPass renderPasses[MAX_RENDERPASSES];
-	HandlePool renderPassPool;
-
-	Framebuffer framebuffers[MAX_FRAMEBUFFERS];
-	HandlePool framebufferPool;
-
-	TimestampPool timestampPools[MAX_TIMESTAMP_POOLS];
-	HandlePool timestampPoolPool;
-
-	byte poolMemory[KB(128)]; // For the pools above
+#define RESOURCE_POOL_MEMORY(Type, name, count) + count * (sizeof(HandleSlot) + sizeof(Handle))
+	byte poolMemory[0 EXPAND_GFX_RESOURCES(RESOURCE_POOL_MEMORY)];
+#undef RESOURCE_POOL_MEMORY
 
 	CommandListState commandLists[MAX_COMMAND_LISTS]; // Index 0 unused
 };
-
-
 
 
 
@@ -344,21 +328,14 @@ struct GraphicsDevice
 // Internal functions
 ////////////////////////////////////////////////////////////////////////
 
-Buffer &GetBuffer(GraphicsDevice &device, BufferH bufferHandle);
-const Buffer &GetBufferConst(const GraphicsDevice &device, BufferH bufferHandle);
 void DestroyBuffer(const GraphicsDevice &device, const Buffer &buffer);
-const BufferView &GetBufferView(const GraphicsDevice &device, BufferViewH bufferViewH);
 void DestroyBufferView(const GraphicsDevice &device, const BufferView &bufferView);
-Image &GetImage(GraphicsDevice &device, ImageH imageH);
-const Image &GetImageConst(const GraphicsDevice &device, ImageH imageH);
+Image &GetMutableImage(GraphicsDevice &device, ImageH imageH);
+const Image &GetImage(const GraphicsDevice &device, ImageH imageH);
 void DestroyImage(const GraphicsDevice &device, const Image &image);
-const Sampler &GetSampler(const GraphicsDevice &device, SamplerH handle);
 void DestroySampler(const GraphicsDevice &device, const Sampler &sampler);
-const Pipeline &GetPipeline(const GraphicsDevice &device, PipelineH handle);
 void DestroyPipeline(const GraphicsDevice &device, const Pipeline &pipeline);
-const RenderPass &GetRenderPass(const GraphicsDevice &device, RenderPassH handle);
 void DestroyRenderPass(const GraphicsDevice &device, const RenderPass &renderPass);
-static const BindGroupLayout &GetBindGroupLayout(const GraphicsDevice &device, BindGroupLayoutH handle);
 bool IsSwapchainImage(ImageH image);
 static ImageH SwapchainImageHandle(u32 swapchainImageIndex);
 
@@ -370,6 +347,41 @@ static i32 GetElementIndex(const HandlePool &pool, Handle handle)
 	ASSERT( valid && "Handle of a destroyed graphics resource" );
 	return valid ? GetHandleIndex(pool, handle) : -1;
 }
+
+// Get<Type> reads an element (a zero handle reads as a zeroed one), GetMutable<Type> writes
+// it, and New<Type> creates one
+#define DEFINE_RESOURCE_ACCESSORS(Type, name) \
+static inline const Type &Get##Type(const GraphicsDevice &device, Type##H handle) \
+{ \
+	static const Type sNull = {}; \
+	const i32 index = GetElementIndex(device.name.handles, handle); \
+	return index >= 0 ? device.name.items[index] : sNull; \
+} \
+static inline Type &GetMutable##Type(GraphicsDevice &device, Type##H handle) \
+{ \
+	const i32 index = GetElementIndex(device.name.handles, handle); \
+	ASSERT(index >= 0); \
+	return device.name.items[index]; \
+} \
+static inline Type &New##Type(GraphicsDevice &device, Type##H &outHandle) \
+{ \
+	outHandle = NewHandle(device.name.handles); \
+	Type &element = device.name.items[GetHandleIndex(device.name.handles, outHandle)]; \
+	element = {}; \
+	return element; \
+}
+
+// Images are written by hand: swapchain images are not in the pool
+DEFINE_RESOURCE_ACCESSORS(BindGroup, bindGroups)
+DEFINE_RESOURCE_ACCESSORS(BindGroupAllocator, bindGroupAllocators)
+DEFINE_RESOURCE_ACCESSORS(Pipeline, pipelines)
+DEFINE_RESOURCE_ACCESSORS(BindGroupLayout, bindGroupLayouts)
+DEFINE_RESOURCE_ACCESSORS(Framebuffer, framebuffers)
+DEFINE_RESOURCE_ACCESSORS(RenderPass, renderPasses)
+DEFINE_RESOURCE_ACCESSORS(BufferView, bufferViews)
+DEFINE_RESOURCE_ACCESSORS(Buffer, buffers)
+DEFINE_RESOURCE_ACCESSORS(Sampler, samplers)
+DEFINE_RESOURCE_ACCESSORS(TimestampPool, timestampPools)
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -1139,7 +1151,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 	}
 	else if ( binding.type == ShaderBindingTypeImage )
 	{
-		const Image &image = GetImageConst(device, resourceBinding.image);
+		const Image &image = GetImage(device, resourceBinding.image);
 
 		imageInfo = &descriptorInfos[descriptorWriteCount].imageInfo;
 		imageInfo->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1148,7 +1160,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 	}
 	else if ( binding.type == ShaderBindingTypeUniformBuffer || binding.type == ShaderBindingTypeStorageBuffer )
 	{
-		const Buffer &buffer = GetBufferConst(device, resourceBinding.buffer);
+		const Buffer &buffer = GetBuffer(device, resourceBinding.buffer);
 		const u32 offset = resourceBinding.offset;
 		const u32 range = resourceBinding.range;
 
@@ -1431,10 +1443,6 @@ static void *LoadPipelineCacheData(const GraphicsDevice &device, Arena &arena, u
 
 
 
-
-
-
-
 ////////////////////////////////////////////////////////////////////////
 // Public API
 ////////////////////////////////////////////////////////////////////////
@@ -1528,7 +1536,7 @@ void SetObjectNameImage(const GraphicsDevice &device, ImageH handle, const char 
 {
 #if DEVELOPMENT_BUILD
 	if ( !device.support.debugUtils ) { return; }
-	const Image &image = GetImageConst(device, handle);
+	const Image &image = GetImage(device, handle);
 
 	const VkDebugUtilsObjectNameInfoEXT objectName = {
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
@@ -2405,17 +2413,9 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 
 	// Resource pools
 	Arena poolArena = MakeArena(device.poolMemory, sizeof(device.poolMemory), "GraphicsPools");
-	Initialize(device.bindGroupLayoutPool, poolArena, MAX_BIND_GROUP_LAYOUTS);
-	Initialize(device.bindGroupAllocatorPool, poolArena, MAX_BIND_GROUP_ALLOCATORS);
-	Initialize(device.bindGroupPool, poolArena, MAX_ALLOCATED_BIND_GROUPS);
-	Initialize(device.bufferPool, poolArena, MAX_BUFFERS);
-	Initialize(device.bufferViewPool, poolArena, MAX_BUFFERS);
-	Initialize(device.imagePool, poolArena, MAX_IMAGES);
-	Initialize(device.samplerPool, poolArena, MAX_SAMPLERS);
-	Initialize(device.pipelinePool, poolArena, MAX_PIPELINES);
-	Initialize(device.renderPassPool, poolArena, MAX_RENDERPASSES);
-	Initialize(device.framebufferPool, poolArena, MAX_FRAMEBUFFERS);
-	Initialize(device.timestampPoolPool, poolArena, MAX_TIMESTAMP_POOLS);
+#define INITIALIZE_RESOURCE_POOL(Type, name, count) Initialize(device.name.handles, poolArena, count);
+	EXPAND_GFX_RESOURCES(INITIALIZE_RESOURCE_POOL)
+#undef INITIALIZE_RESOURCE_POOL
 
 
 	// Synchronization objects
@@ -2465,27 +2465,6 @@ bool IsValidGraphicsDevice(const GraphicsDevice &device)
 // BindGroupAllocator
 //////////////////////////////
 
-static BindGroupAllocator &GetBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH handle)
-{
-	const i32 index = GetElementIndex(device.bindGroupAllocatorPool, handle);
-	ASSERT(index >= 0);
-	return device.bindGroupAllocators[index];
-}
-
-// A zero handle reads as an empty layout
-static const BindGroupLayout &GetBindGroupLayout(const GraphicsDevice &device, BindGroupLayoutH handle)
-{
-	static const BindGroupLayout sNullLayout = {};
-	const i32 index = GetElementIndex(device.bindGroupLayoutPool, handle);
-	return index >= 0 ? device.bindGroupLayouts[index] : sNullLayout;
-}
-
-static BindGroup &GetBindGroup(GraphicsDevice &device, BindGroupH handle)
-{
-	const i32 index = GetElementIndex(device.bindGroupPool, handle);
-	ASSERT(index >= 0);
-	return device.bindGroups[index];
-}
 
 // sign: 1 adds, -1 removes
 static void CountBindGroupDescriptors(BindGroupAllocatorCounts &counts, const BindGroupLayout &layout, i32 sign)
@@ -2509,13 +2488,13 @@ static void CountBindGroupDescriptors(BindGroupAllocatorCounts &counts, const Bi
 // The caller releases the descriptor sets, resetting or destroying the pool
 static void FreeAllocatorBindGroups(GraphicsDevice &device, BindGroupAllocatorH allocatorH)
 {
-	for (u16 i = 0; i < HandleCount(device.bindGroupPool); ++i)
+	for (u16 i = 0; i < HandleCount(device.bindGroups.handles); ++i)
 	{
-		BindGroup &bindGroup = device.bindGroups[i];
+		BindGroup &bindGroup = device.bindGroups.items[i];
 		if ( bindGroup.allocator == allocatorH && bindGroup.handle )
 		{
 			bindGroup.handle = VK_NULL_HANDLE; // Released with the pool
-			FreeHandle(device.bindGroupPool, GetHandleAt(device.bindGroupPool, i));
+			FreeHandle(device.bindGroups.handles, GetHandleAt(device.bindGroups.handles, i));
 		}
 	}
 }
@@ -2559,8 +2538,8 @@ BindGroupAllocatorH CreateBindGroupAllocator(GraphicsDevice &device, const BindG
 	VkDescriptorPool descriptorPool;
 	VK_CALL( vkCreateDescriptorPool( device.handle, &createInfo, VULKAN_ALLOCATORS, &descriptorPool) );
 
-	const BindGroupAllocatorH handle = NewHandle(device.bindGroupAllocatorPool);
-	device.bindGroupAllocators[GetHandleIndex(device.bindGroupAllocatorPool, handle)] = {
+	BindGroupAllocatorH handle;
+	NewBindGroupAllocator(device, handle) = {
 		.name = InternStringGfx(desc.name),
 		.maxCounts = counts,
 		.handle = descriptorPool,
@@ -2573,14 +2552,14 @@ void DestroyBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH &allo
 	if ( !allocatorH ) { return; }
 
 	FreeAllocatorBindGroups(device, allocatorH);
-	FreeHandle(device.bindGroupAllocatorPool, allocatorH);
+	FreeHandle(device.bindGroupAllocators.handles, allocatorH);
 	allocatorH = {};
 }
 
 // The GPU must be done with this allocator's bind groups
 void ResetBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH allocatorH)
 {
-	BindGroupAllocator &allocator = GetBindGroupAllocator(device, allocatorH);
+	BindGroupAllocator &allocator = GetMutableBindGroupAllocator(device, allocatorH);
 	VK_CALL( vkResetDescriptorPool(device.handle, allocator.handle, 0) );
 	FreeAllocatorBindGroups(device, allocatorH);
 	allocator.usedCounts = {};
@@ -2601,15 +2580,15 @@ BindGroupLayoutH CreateBindGroupLayout(GraphicsDevice &device, const ShaderBindi
 	// Try finding if an equal layout was already created
 	const u32 crc = HashFNV(bindings, bindingCount * sizeof(ShaderBinding));
 
-	for (u16 i = 0; i < HandleCount(device.bindGroupLayoutPool); ++i)
+	for (u16 i = 0; i < HandleCount(device.bindGroupLayouts.handles); ++i)
 	{
-		const BindGroupLayout &layout = device.bindGroupLayouts[i];
+		const BindGroupLayout &layout = device.bindGroupLayouts.items[i];
 		if ( layout.crc == crc && layout.bindingCount == bindingCount )
 		{
 			const int res = MemCompare(layout.bindings, bindings, layout.bindingCount * sizeof(ShaderBinding));
 			if ( res == 0 )
 			{
-				return GetHandleAt(device.bindGroupLayoutPool, i);
+				return GetHandleAt(device.bindGroupLayouts.handles, i);
 			}
 		}
 	}
@@ -2638,8 +2617,8 @@ BindGroupLayoutH CreateBindGroupLayout(GraphicsDevice &device, const ShaderBindi
 	VkDescriptorSetLayout layoutHandle;
 	VK_CALL( vkCreateDescriptorSetLayout(device.handle, &descriptorSetLayoutCreateInfo, VULKAN_ALLOCATORS, &layoutHandle) );
 
-	const BindGroupLayoutH handle = NewHandle(device.bindGroupLayoutPool);
-	BindGroupLayout &layout = device.bindGroupLayouts[GetHandleIndex(device.bindGroupLayoutPool, handle)];
+	BindGroupLayoutH handle;
+	BindGroupLayout &layout = NewBindGroupLayout(device, handle);
 	layout = {
 		.handle = layoutHandle,
 		.crc = crc,
@@ -2655,7 +2634,7 @@ BindGroupH CreateBindGroup(GraphicsDevice &device, BindGroupLayoutH layoutH, Bin
 	const BindGroupLayout &layout = GetBindGroupLayout(device, layoutH);
 	if ( !layout.handle ) { return {}; }
 
-	BindGroupAllocator &allocator = GetBindGroupAllocator(device, allocatorH);
+	BindGroupAllocator &allocator = GetMutableBindGroupAllocator(device, allocatorH);
 
 	// Update the used descriptor counters in the allocator
 	CountBindGroupDescriptors(allocator.usedCounts, layout, 1);
@@ -2677,8 +2656,8 @@ BindGroupH CreateBindGroup(GraphicsDevice &device, BindGroupLayoutH layoutH, Bin
 	VkDescriptorSet descriptorSet;
 	VK_CALL( vkAllocateDescriptorSets(device.handle, &allocateInfo, &descriptorSet) );
 
-	const BindGroupH handle = NewHandle(device.bindGroupPool);
-	GetBindGroup(device, handle) = {
+	BindGroupH handle;
+	NewBindGroup(device, handle) = {
 		.handle = descriptorSet,
 		.descriptorPool = allocator.handle,
 		.layout = layoutH,
@@ -2693,22 +2672,22 @@ void DestroyBindGroup(GraphicsDevice &device, BindGroupH &bindGroupH)
 	if ( !bindGroupH ) { return; }
 
 	const BindGroup &bindGroup = GetBindGroup(device, bindGroupH);
-	BindGroupAllocator &allocator = GetBindGroupAllocator(device, bindGroup.allocator);
+	BindGroupAllocator &allocator = GetMutableBindGroupAllocator(device, bindGroup.allocator);
 	ASSERT(allocator.maxCounts.allowIndividualFrees && "BindGroupAllocator not created with allowIndividualFrees");
 
 	CountBindGroupDescriptors(allocator.usedCounts, GetBindGroupLayout(device, bindGroup.layout), -1);
 
-	FreeHandle(device.bindGroupPool, bindGroupH);
+	FreeHandle(device.bindGroups.handles, bindGroupH);
 	bindGroupH = {};
 }
 
 void UpdateBindGroup(const GraphicsDevice &device, const BindGroupDesc &bindGroupDesc, BindGroupH bindGroupH)
 {
-	const i32 bindGroupIndex = GetElementIndex(device.bindGroupPool, bindGroupH);
+	const i32 bindGroupIndex = GetElementIndex(device.bindGroups.handles, bindGroupH);
 	if ( bindGroupIndex < 0 ) { return; }
 
 	const BindGroupLayout &layout = GetBindGroupLayout(device, bindGroupDesc.layout);
-	const VkDescriptorSet descriptorSet = device.bindGroups[bindGroupIndex].handle;
+	const VkDescriptorSet descriptorSet = device.bindGroups.items[bindGroupIndex].handle;
 
 	VkDescriptorGenericInfo descriptorInfos[MAX_SHADER_BINDINGS] = {};
 	VkWriteDescriptorSet descriptorWrites[MAX_SHADER_BINDINGS] = {};
@@ -2833,24 +2812,11 @@ Buffer CreateBufferInternal(GraphicsDevice &device, u32 size, BufferUsageFlags b
 BufferH CreateBuffer(GraphicsDevice &device, u32 size, BufferUsageFlags bufferUsageFlags, HeapType heapType)
 {
 	const Buffer buffer = CreateBufferInternal(device, size, bufferUsageFlags, heapType);
-	const BufferH bufferHandle = NewHandle(device.bufferPool);
-	device.buffers[GetHandleIndex(device.bufferPool, bufferHandle)] = buffer;
+	BufferH bufferHandle;
+	NewBuffer(device, bufferHandle) = buffer;
 	return bufferHandle;
 }
 
-Buffer &GetBuffer(GraphicsDevice &device, BufferH bufferHandle)
-{
-	const i32 index = GetElementIndex(device.bufferPool, bufferHandle);
-	ASSERT(index >= 0);
-	return device.buffers[index];
-}
-
-const Buffer &GetBufferConst(const GraphicsDevice &device, BufferH bufferHandle)
-{
-	static const Buffer sNullBuffer = {};
-	const i32 index = GetElementIndex(device.bufferPool, bufferHandle);
-	return index >= 0 ? device.buffers[index] : sNullBuffer;
-}
 
 void DestroyBuffer(const GraphicsDevice &device, const Buffer &buffer)
 {
@@ -2862,7 +2828,7 @@ void DestroyBuffer(const GraphicsDevice &device, const Buffer &buffer)
 void DestroyBufferH(GraphicsDevice &device, BufferH &bufferH)
 {
 	if ( bufferH ) {
-		FreeHandle(device.bufferPool, bufferH);
+		FreeHandle(device.buffers.handles, bufferH);
 	}
 	bufferH = {};
 }
@@ -2893,20 +2859,14 @@ BufferView CreateBufferViewInternal(const GraphicsDevice &device, const Buffer &
 
 BufferViewH CreateBufferView(GraphicsDevice &device, BufferH bufferHandle, Format format, u32 offset, u32 size)
 {
-	const Buffer &buffer = GetBufferConst(device, bufferHandle);
+	const Buffer &buffer = GetBuffer(device, bufferHandle);
 	const BufferView bufferView = CreateBufferViewInternal(device, buffer, format, offset, size);
 
-	const BufferViewH bufferViewH = NewHandle(device.bufferViewPool);
-	device.bufferViews[GetHandleIndex(device.bufferViewPool, bufferViewH)] = bufferView;
+	BufferViewH bufferViewH;
+	NewBufferView(device, bufferViewH) = bufferView;
 	return bufferViewH;
 }
 
-const BufferView &GetBufferView(const GraphicsDevice &device, BufferViewH bufferViewH)
-{
-	static const BufferView sNullBufferView = {};
-	const i32 index = GetElementIndex(device.bufferViewPool, bufferViewH);
-	return index >= 0 ? device.bufferViews[index] : sNullBufferView;
-}
 
 void DestroyBufferView(const GraphicsDevice &device, const BufferView &bufferView)
 {
@@ -2916,7 +2876,7 @@ void DestroyBufferView(const GraphicsDevice &device, const BufferView &bufferVie
 void DestroyBufferViewH(GraphicsDevice &device, BufferViewH &bufferViewH)
 {
 	if ( bufferViewH ) {
-		FreeHandle(device.bufferViewPool, bufferViewH);
+		FreeHandle(device.bufferViews.handles, bufferViewH);
 	}
 	bufferViewH = {};
 }
@@ -2975,24 +2935,24 @@ Image CreateImageInternal(GraphicsDevice &device, u32 width, u32 height, u32 mip
 ImageH CreateImage(GraphicsDevice &device, u32 width, u32 height, u32 mipLevels, Format format, ImageUsageFlags usage, HeapType heapType)
 {
 	const Image image = CreateImageInternal(device, width, height, mipLevels, format, usage, heapType);
-	const ImageH imageH = NewHandle(device.imagePool);
-	device.images[GetHandleIndex(device.imagePool, imageH)] = image;
+	const ImageH imageH = NewHandle(device.images.handles);
+	device.images.items[GetHandleIndex(device.images.handles, imageH)] = image;
 	return imageH;
 }
 
-Image &GetImage(GraphicsDevice &device, ImageH imageH)
+Image &GetMutableImage(GraphicsDevice &device, ImageH imageH)
 {
 	if ( IsSwapchainImage(imageH) )
 	{
 		ASSERT(imageH.slot - FIRST_SWAPCHAIN_IMAGE_INDEX < MAX_SWAPCHAIN_IMAGE_COUNT);
 		return device.swapchain.images[imageH.slot - FIRST_SWAPCHAIN_IMAGE_INDEX];
 	}
-	const i32 index = GetElementIndex(device.imagePool, imageH);
+	const i32 index = GetElementIndex(device.images.handles, imageH);
 	ASSERT(index >= 0);
-	return device.images[index];
+	return device.images.items[index];
 }
 
-const Image &GetImageConst(const GraphicsDevice &device, ImageH imageH)
+const Image &GetImage(const GraphicsDevice &device, ImageH imageH)
 {
 	if ( IsSwapchainImage(imageH) )
 	{
@@ -3000,8 +2960,8 @@ const Image &GetImageConst(const GraphicsDevice &device, ImageH imageH)
 		return device.swapchain.images[imageH.slot - FIRST_SWAPCHAIN_IMAGE_INDEX];
 	}
 	static const Image sNullImage = {};
-	const i32 index = GetElementIndex(device.imagePool, imageH);
-	return index >= 0 ? device.images[index] : sNullImage;
+	const i32 index = GetElementIndex(device.images.handles, imageH);
+	return index >= 0 ? device.images.items[index] : sNullImage;
 }
 
 // Swapchain images use the slots after the image pool
@@ -3037,14 +2997,14 @@ void DestroyImageH(GraphicsDevice &device, ImageH &imageH)
 {
 	if ( IsSwapchainImage(imageH) )
 	{
-		Image &image = GetImage(device, imageH);
+		Image &image = GetMutableImage(device, imageH);
 		DestroyImage(device, image);
 		image.handle = VK_NULL_HANDLE;
 		image.imageViewHandle = VK_NULL_HANDLE;
 	}
 	else if ( imageH )
 	{
-		FreeHandle(device.imagePool, imageH);
+		FreeHandle(device.images.handles, imageH);
 	}
 	imageH = {};
 }
@@ -3092,17 +3052,11 @@ Sampler CreateSamplerInternal(const GraphicsDevice &device, const SamplerDesc &d
 SamplerH CreateSampler(GraphicsDevice &device, const SamplerDesc &desc)
 {
 	const Sampler sampler = CreateSamplerInternal(device, desc);
-	const SamplerH samplerHandle = NewHandle(device.samplerPool);
-	device.samplers[GetHandleIndex(device.samplerPool, samplerHandle)] = sampler;
+	SamplerH samplerHandle;
+	NewSampler(device, samplerHandle) = sampler;
 	return samplerHandle;
 }
 
-const Sampler &GetSampler(const GraphicsDevice &device, SamplerH handle)
-{
-	static const Sampler sNullSampler = {};
-	const i32 index = GetElementIndex(device.samplerPool, handle);
-	return index >= 0 ? device.samplers[index] : sNullSampler;
-}
 
 void DestroySampler(const GraphicsDevice &device, const Sampler &sampler)
 {
@@ -3112,7 +3066,7 @@ void DestroySampler(const GraphicsDevice &device, const Sampler &sampler)
 void DestroySamplerH(GraphicsDevice &device, SamplerH &samplerH)
 {
 	if ( samplerH ) {
-		FreeHandle(device.samplerPool, samplerH);
+		FreeHandle(device.samplers.handles, samplerH);
 	}
 	samplerH = {};
 }
@@ -3392,11 +3346,6 @@ Pipeline CreateComputePipelineInternal(GraphicsDevice &device, Arena scratch, co
 	return pipeline;
 }
 
-static Pipeline &NewPipeline(GraphicsDevice &device, PipelineH &outHandle)
-{
-	outHandle = NewHandle(device.pipelinePool);
-	return device.pipelines[GetHandleIndex(device.pipelinePool, outHandle)];
-}
 
 PipelineH CreateGraphicsPipeline(GraphicsDevice &device, Arena scratch, const PipelineDesc &desc, BindGroupLayoutH globalBindGroupLayout)
 {
@@ -3414,12 +3363,6 @@ PipelineH CreateComputePipeline(GraphicsDevice &device, Arena scratch, const Com
 	return pipelineHandle;
 }
 
-const Pipeline &GetPipeline(const GraphicsDevice &device, PipelineH handle)
-{
-	static const Pipeline sNullPipeline = {};
-	const i32 index = GetElementIndex(device.pipelinePool, handle);
-	return index >= 0 ? device.pipelines[index] : sNullPipeline;
-}
 
 bool IsSamePipeline(PipelineH a, PipelineH b)
 {
@@ -3438,7 +3381,7 @@ void DestroyPipeline(const GraphicsDevice &device, const Pipeline &pipeline)
 void DestroyPipelineH(GraphicsDevice &device, PipelineH &handle)
 {
 	if ( handle ) {
-		FreeHandle(device.pipelinePool, handle);
+		FreeHandle(device.pipelines.handles, handle);
 	}
 	handle = {};
 }
@@ -3530,17 +3473,11 @@ RenderPass CreateRenderPassInternal( const GraphicsDevice &device, const Renderp
 RenderPassH CreateRenderPass( GraphicsDevice &device, const RenderpassDesc &desc )
 {
 	const RenderPass renderPass = CreateRenderPassInternal(device, desc);
-	const RenderPassH renderPassH = NewHandle(device.renderPassPool);
-	device.renderPasses[GetHandleIndex(device.renderPassPool, renderPassH)] = renderPass;
+	RenderPassH renderPassH;
+	NewRenderPass(device, renderPassH) = renderPass;
 	return renderPassH;
 }
 
-const RenderPass &GetRenderPass(const GraphicsDevice &device, RenderPassH handle)
-{
-	static const RenderPass sNullRenderPass = {};
-	const i32 index = GetElementIndex(device.renderPassPool, handle);
-	return index >= 0 ? device.renderPasses[index] : sNullRenderPass;
-}
 
 void DestroyRenderPass(const GraphicsDevice &device, const RenderPass &renderPass)
 {
@@ -3550,7 +3487,7 @@ void DestroyRenderPass(const GraphicsDevice &device, const RenderPass &renderPas
 void DestroyRenderPassH(GraphicsDevice &device, RenderPassH &renderPassH)
 {
 	if ( renderPassH ) {
-		FreeHandle(device.renderPassPool, renderPassH);
+		FreeHandle(device.renderPasses.handles, renderPassH);
 	}
 	renderPassH = {};
 }
@@ -3560,12 +3497,6 @@ void DestroyRenderPassH(GraphicsDevice &device, RenderPassH &renderPassH)
 // Framebuffer
 //////////////////////////////
 
-static const Framebuffer &GetFramebuffer(const GraphicsDevice &device, FramebufferH handle)
-{
-	static const Framebuffer sNullFramebuffer = {};
-	const i32 index = GetElementIndex(device.framebufferPool, handle);
-	return index >= 0 ? device.framebuffers[index] : sNullFramebuffer;
-}
 
 FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &desc)
 {
@@ -3577,7 +3508,7 @@ FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &de
 	VkImageView attachments[MAX_COLOR_ATTACHMENTS + MAX_DEPTH_ATTACHMENTS] = {};
 	for (u32 i = 0; i < desc.attachmentCount; ++i)
 	{
-		const Image &image = GetImageConst(device, desc.attachments[i]);
+		const Image &image = GetImage(device, desc.attachments[i]);
 		attachments[i] = image.imageViewHandle;
 
 		if ( i == 0 )
@@ -3606,8 +3537,8 @@ FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &de
 	VkFramebuffer handle;
 	VK_CALL( vkCreateFramebuffer( device.handle, &framebufferCreateInfo, VULKAN_ALLOCATORS, &handle) );
 
-	const FramebufferH framebufferH = NewHandle(device.framebufferPool);
-	device.framebuffers[GetHandleIndex(device.framebufferPool, framebufferH)] = {
+	FramebufferH framebufferH;
+	NewFramebuffer(device, framebufferH) = {
 		.handle = handle,
 		.renderPassHandle = renderPass.handle,
 		.extent = { width, height },
@@ -3619,7 +3550,7 @@ FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &de
 void DestroyFramebuffer(GraphicsDevice &device, FramebufferH &framebufferH)
 {
 	if ( framebufferH ) {
-		FreeHandle(device.framebufferPool, framebufferH);
+		FreeHandle(device.framebuffers.handles, framebufferH);
 	}
 	framebufferH = {};
 }
@@ -3728,7 +3659,7 @@ void EndTransientCommandList(GraphicsDevice &device, const CommandList &commandL
 
 void *GetBufferPtr(const GraphicsDevice &device, BufferH bufferH)
 {
-	const Buffer &buffer = GetBufferConst(device, bufferH);
+	const Buffer &buffer = GetBuffer(device, bufferH);
 	const Heap &heap = device.heaps[buffer.alloc.heap];
 
 	if (heap.data) // Check if the heap memory is mapped
@@ -3745,8 +3676,8 @@ void *GetBufferPtr(const GraphicsDevice &device, BufferH bufferH)
 void CopyBufferToBuffer(const CommandList &commandBuffer, BufferH srcBufferH, u32 srcOffset, BufferH dstBufferH, u32 dstOffset, u64 size)
 {
 	const GraphicsDevice &device = GetDevice(commandBuffer);
-	const Buffer &srcBuffer = GetBufferConst(device, srcBufferH);
-	const Buffer &dstBuffer = GetBufferConst(device, dstBufferH);
+	const Buffer &srcBuffer = GetBuffer(device, srcBufferH);
+	const Buffer &dstBuffer = GetBuffer(device, dstBufferH);
 
 	ASSERT(srcOffset + size <= srcBuffer.size);
 	ASSERT(dstOffset + size <= dstBuffer.size);
@@ -3762,8 +3693,8 @@ void CopyBufferToBuffer(const CommandList &commandBuffer, BufferH srcBufferH, u3
 void CopyBufferToImage(const CommandList &commandBuffer, BufferH bufferH, u32 bufferOffset, ImageH imageH)
 {
 	const GraphicsDevice &device = GetDevice(commandBuffer);
-	const Buffer &buffer = GetBufferConst(device, bufferH);
-	const Image &image = GetImageConst(device, imageH);
+	const Buffer &buffer = GetBuffer(device, bufferH);
+	const Image &image = GetImage(device, imageH);
 
 	const VkBufferImageCopy region = {
 		.bufferOffset = bufferOffset,
@@ -3792,8 +3723,8 @@ void CopyBufferToImage(const CommandList &commandBuffer, BufferH bufferH, u32 bu
 void Blit(const CommandList &commandBuffer, ImageH srcImageH, const BlitRegion &srcRegion, ImageH dstImageH, const BlitRegion &dstRegion)
 {
 	const GraphicsDevice &device = GetDevice(commandBuffer);
-	const Image &srcImage = GetImageConst(device, srcImageH);
-	const Image &dstImage = GetImageConst(device, dstImageH);
+	const Image &srcImage = GetImage(device, srcImageH);
+	const Image &dstImage = GetImage(device, dstImageH);
 	const VkImageAspectFlags aspectMask = FormatToVulkanAspect(srcImage.format);
 
 	const VkImageBlit blit = {
@@ -3828,7 +3759,7 @@ void Blit(const CommandList &commandBuffer, ImageH srcImageH, const BlitRegion &
 
 void TransitionImageLayout(const CommandList &commandBuffer, ImageH imageH, ImageState oldState, ImageState newState, u32 baseMipLevel, u32 levelCount)
 {
-	const Image &image = GetImageConst(GetDevice(commandBuffer), imageH);
+	const Image &image = GetImage(GetDevice(commandBuffer), imageH);
 
 	const bool isDepth = IsDepthFormat(image.format);
 
@@ -4003,7 +3934,7 @@ void TransitionBufferState(const CommandList &commandBuffer, BufferH bufferH, Bu
 {
 	ASSERT(newState != BufferStateInitial);
 
-	const Buffer &buffer = GetBufferConst(GetDevice(commandBuffer), bufferH);
+	const Buffer &buffer = GetBuffer(GetDevice(commandBuffer), bufferH);
 
 	VkAccessFlags srcAccess = 0;
 	VkAccessFlags dstAccess = 0;
@@ -4141,8 +4072,8 @@ void SetPipeline(const CommandList &commandList, PipelineH pipelineH)
 void SetBindGroup(const CommandList &commandList, u32 bindGroupIndex, BindGroupH bindGroupH)
 {
 	CommandListState &state = GetState(commandList);
-	const i32 index = GetElementIndex(GetDevice(commandList).bindGroupPool, bindGroupH);
-	const VkDescriptorSet descriptorSet = index >= 0 ? GetDevice(commandList).bindGroups[index].handle : VK_NULL_HANDLE;
+	const i32 index = GetElementIndex(GetDevice(commandList).bindGroups.handles, bindGroupH);
+	const VkDescriptorSet descriptorSet = index >= 0 ? GetDevice(commandList).bindGroups.items[index].handle : VK_NULL_HANDLE;
 
 	if ( state.descriptorSetHandles[bindGroupIndex] != descriptorSet )
 	{
@@ -4153,7 +4084,7 @@ void SetBindGroup(const CommandList &commandList, u32 bindGroupIndex, BindGroupH
 
 void SetVertexBuffer(const CommandList &commandList, BufferH bufferH)
 {
-	const Buffer &buffer = GetBufferConst(GetDevice(commandList), bufferH);
+	const Buffer &buffer = GetBuffer(GetDevice(commandList), bufferH);
 
 	if ( buffer.handle && buffer.handle != GetState(commandList).vertexBufferHandle )
 	{
@@ -4166,7 +4097,7 @@ void SetVertexBuffer(const CommandList &commandList, BufferH bufferH)
 
 void SetIndexBuffer(const CommandList &commandList, BufferH bufferH)
 {
-	const Buffer &buffer = GetBufferConst(GetDevice(commandList), bufferH);
+	const Buffer &buffer = GetBuffer(GetDevice(commandList), bufferH);
 
 	if ( buffer.handle && buffer.handle != GetState(commandList).indexBufferHandle )
 	{
@@ -4208,19 +4139,6 @@ void EndRenderPass(const CommandList &commandList)
 // Timestamp queries
 //////////////////////////////
 
-static TimestampPool &GetTimestampPool(GraphicsDevice &device, TimestampPoolH handle)
-{
-	const i32 index = GetElementIndex(device.timestampPoolPool, handle);
-	ASSERT(index >= 0);
-	return device.timestampPools[index];
-}
-
-static const TimestampPool &GetTimestampPoolConst(const GraphicsDevice &device, TimestampPoolH handle)
-{
-	const i32 index = GetElementIndex(device.timestampPoolPool, handle);
-	ASSERT(index >= 0);
-	return device.timestampPools[index];
-}
 
 TimestampPoolH CreateTimestampPool(GraphicsDevice &device, u32 maxQueries)
 {
@@ -4234,8 +4152,8 @@ TimestampPoolH CreateTimestampPool(GraphicsDevice &device, u32 maxQueries)
 	VkQueryPool poolHandle;
 	VK_CALL( vkCreateQueryPool(device.handle, &createInfo, VULKAN_ALLOCATORS, &poolHandle) );
 
-	const TimestampPoolH poolH = NewHandle(device.timestampPoolPool);
-	GetTimestampPool(device, poolH) = {
+	TimestampPoolH poolH;
+	NewTimestampPool(device, poolH) = {
 		.handle = poolHandle,
 		.queryCount = 0,
 		.maxQueries = maxQueries,
@@ -4249,7 +4167,7 @@ TimestampPoolH CreateTimestampPool(GraphicsDevice &device, u32 maxQueries)
 void DestroyTimestampPool(GraphicsDevice &device, TimestampPoolH &poolH)
 {
 	if ( poolH ) {
-		FreeHandle(device.timestampPoolPool, poolH);
+		FreeHandle(device.timestampPools.handles, poolH);
 	}
 	poolH = {};
 }
@@ -4266,7 +4184,7 @@ void ResetTimestampPool(const CommandList &commandBuffer, TimestampPoolH poolH)
 #if DEVELOPMENT_BUILD
 	if ( !poolH ) { return; }
 
-	TimestampPool &pool = GetTimestampPool(GetDevice(commandBuffer), poolH);
+	TimestampPool &pool = GetMutableTimestampPool(GetDevice(commandBuffer), poolH);
 	vkCmdResetQueryPool(GetState(commandBuffer).handle, pool.handle, 0, pool.maxQueries);
 	pool.queryCount = 0;
 #endif
@@ -4277,7 +4195,7 @@ u32 WriteTimestamp(const CommandList &commandBuffer, TimestampPoolH poolH, Pipel
 #if DEVELOPMENT_BUILD
 	if ( !poolH ) { return 0; }
 
-	TimestampPool &pool = GetTimestampPool(GetDevice(commandBuffer), poolH);
+	TimestampPool &pool = GetMutableTimestampPool(GetDevice(commandBuffer), poolH);
 	ASSERT(pool.queryCount < pool.maxQueries);
 	const VkPipelineStageFlagBits vkState = PipelineStageToVulkan(stage);
 	const u32 queryIndex = pool.queryCount++;
@@ -4293,9 +4211,9 @@ Timestamp ReadTimestamp(const GraphicsDevice &device, TimestampPoolH poolH, u32 
 #if DEVELOPMENT_BUILD
 	double millis = 0.0f;
 
-	if ( poolH && queryIndex < GetTimestampPoolConst(device, poolH).queryCount )
+	if ( poolH && queryIndex < GetTimestampPool(device, poolH).queryCount )
 	{
-		const TimestampPool &pool = GetTimestampPoolConst(device, poolH);
+		const TimestampPool &pool = GetTimestampPool(device, poolH);
 		u64 data[2];
 		const VkQueryResultFlags flags = VK_QUERY_RESULT_WITH_AVAILABILITY_BIT | VK_QUERY_RESULT_64_BIT;
 		const VkDeviceSize stride = sizeof(data);
@@ -4336,7 +4254,7 @@ bool ReadTimestamps(const GraphicsDevice &device, TimestampPoolH poolH, u32 firs
 		return false;
 	}
 
-	const TimestampPool &pool = GetTimestampPoolConst(device, poolH);
+	const TimestampPool &pool = GetTimestampPool(device, poolH);
 	if ( firstQuery + queryCount > pool.queryCount ) {
 		return false;
 	}
@@ -4476,6 +4394,12 @@ static void RetirePipeline(GraphicsDevice &device, const void *element)
 	DestroyPipeline(device, *(const Pipeline*)element);
 }
 
+static void RetireBindGroupLayout(GraphicsDevice &device, const void *element)
+{
+	const BindGroupLayout &e = *(const BindGroupLayout*)element;
+	vkDestroyDescriptorSetLayout(device.handle, e.handle, VULKAN_ALLOCATORS);
+}
+
 static void RetireFramebuffer(GraphicsDevice &device, const void *element)
 {
 	const Framebuffer &e = *(const Framebuffer*)element;
@@ -4545,22 +4469,12 @@ static void CompactResourcePool(GraphicsDevice &device, HandlePool &pool, void *
 	MemSet(compaction.elements + newCount * elementSize, (oldCount - newCount) * elementSize, 0);
 }
 
-#define COMPACT_RESOURCE_POOL(device, pool, array, retire) \
-	CompactResourcePool(device, device.pool, device.array, sizeof(device.array[0]), retire)
-
-// Users before what they use
 static void CompactResourcePools(GraphicsDevice &device)
 {
-	COMPACT_RESOURCE_POOL(device, bindGroupPool, bindGroups, RetireBindGroup);
-	COMPACT_RESOURCE_POOL(device, bindGroupAllocatorPool, bindGroupAllocators, RetireBindGroupAllocator);
-	COMPACT_RESOURCE_POOL(device, pipelinePool, pipelines, RetirePipeline);
-	COMPACT_RESOURCE_POOL(device, framebufferPool, framebuffers, RetireFramebuffer);
-	COMPACT_RESOURCE_POOL(device, renderPassPool, renderPasses, RetireRenderPass);
-	COMPACT_RESOURCE_POOL(device, bufferViewPool, bufferViews, RetireBufferView);
-	COMPACT_RESOURCE_POOL(device, bufferPool, buffers, RetireBuffer);
-	COMPACT_RESOURCE_POOL(device, imagePool, images, RetireImage);
-	COMPACT_RESOURCE_POOL(device, samplerPool, samplers, RetireSampler);
-	COMPACT_RESOURCE_POOL(device, timestampPoolPool, timestampPools, RetireTimestampPool);
+#define COMPACT_RESOURCE_POOL(Type, name, count) \
+	CompactResourcePool(device, device.name.handles, device.name.items, sizeof(Type), Retire##Type);
+	EXPAND_GFX_RESOURCES(COMPACT_RESOURCE_POOL)
+#undef COMPACT_RESOURCE_POOL
 }
 
 
@@ -4697,57 +4611,17 @@ void CleanupGraphicsDevice(GraphicsDevice &device, Arena scratch)
 	CompactResourcePools(device);
 
 
-	for (u16 i = 0; i < HandleCount(device.framebufferPool); ++i)
-	{
-		vkDestroyFramebuffer( device.handle, device.framebuffers[i].handle, VULKAN_ALLOCATORS );
+	// Descriptor sets are released with their pools
+	for (u16 i = 0; i < HandleCount(device.bindGroups.handles); ++i) {
+		device.bindGroups.items[i].handle = VK_NULL_HANDLE;
 	}
 
-	for (u16 i = 0; i < HandleCount(device.renderPassPool); ++i)
-	{
-		DestroyRenderPass( device, device.renderPasses[i] );
+#define DESTROY_RESOURCES(Type, name, count) \
+	for (u16 i = 0; i < HandleCount(device.name.handles); ++i) { \
+		Retire##Type(device, &device.name.items[i]); \
 	}
-
-	for (u16 i = 0; i < HandleCount(device.pipelinePool); ++i)
-	{
-		DestroyPipeline( device, device.pipelines[i] );
-	}
-
-	for (u16 i = 0; i < HandleCount(device.bufferViewPool); ++i)
-	{
-		DestroyBufferView( device, device.bufferViews[i] );
-	}
-
-	for (u16 i = 0; i < HandleCount(device.bufferPool); ++i)
-	{
-		DestroyBuffer( device, device.buffers[i] );
-	}
-
-	for (u16 i = 0; i < HandleCount(device.imagePool); ++i)
-	{
-		DestroyImage( device, device.images[i] );
-	}
-
-	for (u16 i = 0; i < HandleCount(device.samplerPool); ++i)
-	{
-		DestroySampler( device, device.samplers[i] );
-	}
-
-	for (u16 i = 0; i < HandleCount(device.bindGroupAllocatorPool); ++i)
-	{
-		vkDestroyDescriptorPool( device.handle, device.bindGroupAllocators[i].handle, VULKAN_ALLOCATORS );
-	}
-
-	for (u16 i = 0; i < HandleCount(device.bindGroupLayoutPool); ++i)
-	{
-		vkDestroyDescriptorSetLayout( device.handle, device.bindGroupLayouts[i].handle, VULKAN_ALLOCATORS );
-	}
-
-#if DEVELOPMENT_BUILD
-	for (u16 i = 0; i < HandleCount(device.timestampPoolPool); ++i)
-	{
-		vkDestroyQueryPool( device.handle, device.timestampPools[i].handle, VULKAN_ALLOCATORS );
-	}
-#endif
+	EXPAND_GFX_RESOURCES(DESTROY_RESOURCES)
+#undef DESTROY_RESOURCES
 
 	vkDestroyPipelineCache( device.handle, device.pipelineCache, VULKAN_ALLOCATORS );
 
@@ -4824,9 +4698,9 @@ void ResetHeap(GraphicsDevice &device, HeapType heapType)
 
 RenderPassH FindRenderPass(const GraphicsDevice &device, const char *name)
 {
-	for (u16 i = 0; i < HandleCount(device.renderPassPool); ++i) {
-		const Handle handle = GetHandleAt(device.renderPassPool, i);
-		if ( !IsPendingRemoval(device.renderPassPool, handle) && StrEq(device.renderPasses[i].name, name) ) {
+	for (u16 i = 0; i < HandleCount(device.renderPasses.handles); ++i) {
+		const Handle handle = GetHandleAt(device.renderPasses.handles, i);
+		if ( !IsPendingRemoval(device.renderPasses.handles, handle) && StrEq(device.renderPasses.items[i].name, name) ) {
 			return handle;
 		}
 	}
@@ -4871,23 +4745,23 @@ ImageH GetSwapchainImage(const GraphicsDevice &device, u32 index)
 
 u32 GetBufferSize(const GraphicsDevice &device, BufferH handle)
 {
-	return GetBufferConst(device, handle).size;
+	return GetBuffer(device, handle).size;
 }
 
 uint2 GetImageSize(const GraphicsDevice &device, ImageH handle)
 {
-	const Image &image = GetImageConst(device, handle);
+	const Image &image = GetImage(device, handle);
 	return { image.width, image.height };
 }
 
 Format GetImageFormat(const GraphicsDevice &device, ImageH handle)
 {
-	return GetImageConst(device, handle).format;
+	return GetImage(device, handle).format;
 }
 
 u32 GetImageMipLevels(const GraphicsDevice &device, ImageH handle)
 {
-	return GetImageConst(device, handle).mipLevels;
+	return GetImage(device, handle).mipLevels;
 }
 
 BindGroupLayoutH GetPipelineBindGroupLayout(const GraphicsDevice &device, PipelineH handle, u32 bindGroupIndex)
