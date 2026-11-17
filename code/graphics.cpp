@@ -512,7 +512,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 		if ( id ) {
 			GetTexture(id).ownsImage = true;
 		} else {
-			DestroyImageH(gpu, imageHandle);
+			DestroyImage(gpu, imageHandle);
 		}
 
 	}
@@ -534,7 +534,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 			}
 			else
 			{
-				DestroyImageH(gpu, imageHandle);
+				DestroyImage(gpu, imageHandle);
 			}
 		}
 	}
@@ -603,7 +603,7 @@ static COMPACT_REMOVE(RemoveTextureImage)
 	if ( texture.ownsImage && texture.image )
 	{
 		WaitDeviceIdle(gpu);
-		DestroyImageH(gpu, texture.image);
+		DestroyImage(gpu, texture.image);
 	}
 }
 
@@ -641,7 +641,7 @@ static void RecreateTextureIfModifed(Graphics &gfx, Texture &texture)
 			texture.ts = ts;
 
 			if ( texture.ownsImage ) {
-				DestroyImageH(gpu, texture.image);
+				DestroyImage(gpu, texture.image);
 			}
 
 			texture.image = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
@@ -1104,16 +1104,16 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 		return;
 	}
 
-	DestroyImageH(gpu, renderTargets.depthImage);
-	DestroyImageH(gpu, renderTargets.sceneImage);
-	DestroyImageH(gpu, renderTargets.distortionImage);
-	DestroyImageH(gpu, renderTargets.effectsImage);
+	DestroyImage(gpu, renderTargets.depthImage);
+	DestroyImage(gpu, renderTargets.sceneImage);
+	DestroyImage(gpu, renderTargets.distortionImage);
+	DestroyImage(gpu, renderTargets.effectsImage);
 
 	if ( renderTargets.hasBloom )
 	{
 		for ( u32 i = 0; i < BLOOM_LEVEL_COUNT; ++i )
 		{
-			DestroyImageH(gpu, renderTargets.bloomImages[i]);
+			DestroyImage(gpu, renderTargets.bloomImages[i]);
 			DestroyFramebuffer( gpu, renderTargets.bloomDownsampleFramebuffers[i] );
 			if ( i < BLOOM_LEVEL_COUNT - 1 )
 			{
@@ -1135,11 +1135,11 @@ void DestroyRenderTargets(Graphics &gfx, RenderTargets &renderTargets)
 		DestroyFramebuffer( gpu, renderTargets.displayFramebuffers[i] );
 	}
 
-	DestroyImageH(gpu, renderTargets.shadowmapImage);
+	DestroyImage(gpu, renderTargets.shadowmapImage);
 	DestroyFramebuffer( gpu, renderTargets.shadowmapFramebuffer );
 
 #if USE_EDITOR
-	DestroyImageH(gpu, renderTargets.idImage);
+	DestroyImage(gpu, renderTargets.idImage);
 	DestroyFramebuffer( gpu, renderTargets.idFramebuffer );
 #endif
 
@@ -1694,7 +1694,7 @@ void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipel
 	// Written in place, so everything reading through gfx.pipelines picks up the new one
 	Pipeline &pipeline = gfx.pipelines[shaderPipeDesc.index];
 	if ( pipeline ) {
-		DestroyPipelineH( gpu, pipeline );
+		DestroyPipeline( gpu, pipeline );
 	}
 	pipeline = CreateGraphicsPipeline(gpu, scratch, desc, gfx.globalBindGroupLayout);
 	SetObjectNamePipeline(gpu, pipeline, desc.name);
@@ -1718,7 +1718,7 @@ void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComput
 	LOG(Info, "Creating Compute Pipeline: %s\n", desc.name);
 	Pipeline &pipeline = gfx.pipelines[shaderComputeDesc.index];
 	if ( pipeline ) {
-		DestroyPipelineH( gpu, pipeline );
+		DestroyPipeline( gpu, pipeline );
 	}
 	pipeline = CreateComputePipeline(gpu, scratch, desc, gfx.globalBindGroupLayout);
 	SetObjectNamePipeline(gpu, pipeline, desc.name);
@@ -2340,7 +2340,7 @@ void CleanupGraphics(Graphics &gfx)
 }
 
 
-const Image GetDisplayImageH(const Graphics &gfx)
+const Image GetDisplayImage(const Graphics &gfx)
 {
 	const u32 imageIndex = GetSwapchainImageIndex(gpu);
 	const Image displayImage = GetSwapchainImage(gpu, imageIndex);

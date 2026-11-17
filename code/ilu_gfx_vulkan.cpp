@@ -83,7 +83,7 @@ constexpr const char *sCountTypeName[] = {
 	"groupCount",
 };
 
-struct Heap
+struct VulkanHeap
 {
 	HeapType type;
 	u32 size;
@@ -93,7 +93,7 @@ struct Heap
 	u32 used;
 };
 
-struct Alloc
+struct VulkanAlloc
 {
 	HeapType heap;
 	u64 offset;
@@ -101,7 +101,7 @@ struct Alloc
 	OffsetAllocator::Allocation allocation;
 };
 
-struct BindGroupAllocator
+struct VulkanBindGroupAllocator
 {
 	const char *name;
 	BindGroupAllocatorCounts maxCounts;
@@ -109,7 +109,7 @@ struct BindGroupAllocator
 	VkDescriptorPool handle;
 };
 
-struct BindGroupLayout
+struct VulkanBindGroupLayout
 {
 	VkDescriptorSetLayout handle;
 	u32 crc;
@@ -117,41 +117,41 @@ struct BindGroupLayout
 	u8 bindingCount;
 };
 
-struct BindGroup
+struct VulkanBindGroup
 {
 	VkDescriptorSet handle; // Null if released with its pool
 	VkDescriptorPool descriptorPool;
-	BindGroupLayoutH layout;
-	BindGroupAllocatorH allocator;
+	BindGroupLayout layout;
+	BindGroupAllocator allocator;
 };
 
-struct PipelineLayout
+struct VulkanPipelineLayout
 {
 	VkPipelineLayout handle;
-	BindGroupLayoutH bindGroupLayouts[MAX_BIND_GROUPS];
+	BindGroupLayout bindGroupLayouts[MAX_BIND_GROUPS];
 };
 
-struct Pipeline
+struct VulkanPipeline
 {
 	const char *name;
 	VkPipeline handle;
-	PipelineLayout layout;
+	VulkanPipelineLayout layout;
 	VkPipelineBindPoint bindPoint;
 };
 
-struct Buffer
+struct VulkanBuffer
 {
 	VkBuffer handle;
-	Alloc alloc;
+	VulkanAlloc alloc;
 	u32 size;
 };
 
-struct BufferView
+struct VulkanBufferView
 {
 	VkBufferView handle;
 };
 
-struct Image
+struct VulkanImage
 {
 	VkImage handle;
 	VkImageView imageViewHandle;
@@ -159,16 +159,16 @@ struct Image
 	u32 width;
 	u32 height;
 	u32 mipLevels;
-	Alloc alloc;
+	VulkanAlloc alloc;
 };
 
-struct RenderPass
+struct VulkanRenderPass
 {
 	const char *name;
 	VkRenderPass handle;
 };
 
-struct Framebuffer
+struct VulkanFramebuffer
 {
 	VkFramebuffer handle;
 	VkRenderPass renderPassHandle;
@@ -176,12 +176,12 @@ struct Framebuffer
 	u32 attachmentCount;
 };
 
-struct Sampler
+struct VulkanSampler
 {
 	VkSampler handle;
 };
 
-struct SwapchainInfo
+struct VulkanSwapchainInfo
 {
 	Format format;
 	VkFormat vkFormat;
@@ -189,32 +189,32 @@ struct SwapchainInfo
 	VkPresentModeKHR presentMode;
 };
 
-struct Swapchain
+struct VulkanSwapchain
 {
 	VkSwapchainKHR handle;
 	VkExtent2D extent;
 	u32 imageCount;
-	ImageH imageHandles[MAX_SWAPCHAIN_IMAGE_COUNT];
-	Image images[MAX_SWAPCHAIN_IMAGE_COUNT];
+	Image imageHandles[MAX_SWAPCHAIN_IMAGE_COUNT];
+	VulkanImage images[MAX_SWAPCHAIN_IMAGE_COUNT];
 	float preRotationDegrees;
 	u32 currentImageIndex;
 	bool imageAcquired; // Image at currentImageIndex was acquired and not presented yet
 	bool valid;
 };
 
-struct ShaderModule
+struct VulkanShaderModule
 {
 	VkShaderModule handle;
 };
 
-struct TimestampPool
+struct VulkanTimestampPool
 {
 	VkQueryPool handle;
 	u32 queryCount;
 	u32 maxQueries;
 };
 
-struct CommandListState
+struct VulkanCommandListState
 {
 	bool inUse;
 	VkCommandBuffer handle;
@@ -223,7 +223,7 @@ struct CommandListState
 	VkDescriptorSet descriptorSetHandles[MAX_BIND_GROUPS];
 	u8 descriptorSetDirtyMask;
 
-	PipelineH pipeline;
+	Pipeline pipeline;
 	VkPipelineBindPoint bindPoint;
 
 	// State
@@ -271,8 +271,8 @@ struct GraphicsDevice
 	VkCommandPool transientCommandPool;
 
 	VkSurfaceKHR surface;
-	SwapchainInfo swapchainInfo;
-	Swapchain swapchain;
+	VulkanSwapchainInfo swapchainInfo;
+	VulkanSwapchain swapchain;
 
 	VkFence imageAcquiredFences[MAX_SWAPCHAIN_IMAGE_COUNT];
 	VkSemaphore imageAcquiredSemaphores[MAX_SWAPCHAIN_IMAGE_COUNT];
@@ -295,7 +295,7 @@ struct GraphicsDevice
 
 	VkPipelineCache pipelineCache;
 
-	Heap heaps[HeapType_COUNT];
+	VulkanHeap heaps[HeapType_COUNT];
 
 	u32 frameSlot;
 
@@ -311,7 +311,7 @@ struct GraphicsDevice
 	VkDebugUtilsMessengerEXT debugUtilsMessenger;
 
 	// Resources: a pool of handles and the elements they index, per type
-#define DECLARE_RESOURCE_POOL(Type, name, count) struct { HandlePool handles; Type items[count]; } name;
+#define DECLARE_RESOURCE_POOL(Type, name, count) struct { HandlePool handles; Vulkan##Type items[count]; } name;
 	ILU_GFX_EXPAND_RESOURCES(DECLARE_RESOURCE_POOL)
 #undef DECLARE_RESOURCE_POOL
 
@@ -319,7 +319,7 @@ struct GraphicsDevice
 	byte poolMemory[0 ILU_GFX_EXPAND_RESOURCES(RESOURCE_POOL_MEMORY)];
 #undef RESOURCE_POOL_MEMORY
 
-	CommandListState commandLists[MAX_COMMAND_LISTS]; // Index 0 unused
+	VulkanCommandListState commandLists[MAX_COMMAND_LISTS]; // Index 0 unused
 };
 
 
@@ -328,16 +328,16 @@ struct GraphicsDevice
 // Internal functions
 ////////////////////////////////////////////////////////////////////////
 
-void DestroyBuffer(const GraphicsDevice &device, const Buffer &buffer);
-void DestroyBufferView(const GraphicsDevice &device, const BufferView &bufferView);
-Image &GetMutableImage(GraphicsDevice &device, ImageH imageH);
-const Image &GetImage(const GraphicsDevice &device, ImageH imageH);
-void DestroyImage(const GraphicsDevice &device, const Image &image);
-void DestroySampler(const GraphicsDevice &device, const Sampler &sampler);
-void DestroyPipeline(const GraphicsDevice &device, const Pipeline &pipeline);
-void DestroyRenderPass(const GraphicsDevice &device, const RenderPass &renderPass);
-bool IsSwapchainImage(ImageH image);
-static ImageH SwapchainImageHandle(u32 swapchainImageIndex);
+void DestroyBuffer(const GraphicsDevice &device, const VulkanBuffer &buffer);
+void DestroyBufferView(const GraphicsDevice &device, const VulkanBufferView &bufferView);
+VulkanImage &GetMutableImage(GraphicsDevice &device, Image image);
+const VulkanImage &GetImage(const GraphicsDevice &device, Image image);
+void DestroyImage(const GraphicsDevice &device, const VulkanImage &image);
+void DestroySampler(const GraphicsDevice &device, const VulkanSampler &sampler);
+void DestroyPipeline(const GraphicsDevice &device, const VulkanPipeline &pipeline);
+void DestroyRenderPass(const GraphicsDevice &device, const VulkanRenderPass &renderPass);
+bool IsSwapchainImage(Image image);
+static Image SwapchainImageHandle(u32 swapchainImageIndex);
 
 // Element index of a handle, -1 for a zero handle. Asserts on stale handles.
 static i32 GetElementIndex(const HandlePool &pool, Handle handle)
@@ -351,22 +351,22 @@ static i32 GetElementIndex(const HandlePool &pool, Handle handle)
 // Get<Type> reads an element (a zero handle reads as a zeroed one), GetMutable<Type> writes
 // it, and New<Type> creates one
 #define DEFINE_RESOURCE_ACCESSORS(Type, name) \
-static inline const Type &Get##Type(const GraphicsDevice &device, Type##H handle) \
+static inline const Vulkan##Type &Get##Type(const GraphicsDevice &device, Type handle) \
 { \
-	static const Type sNull = {}; \
+	static const Vulkan##Type sNull = {}; \
 	const i32 index = GetElementIndex(device.name.handles, handle); \
 	return index >= 0 ? device.name.items[index] : sNull; \
 } \
-static inline Type &GetMutable##Type(GraphicsDevice &device, Type##H handle) \
+static inline Vulkan##Type &GetMutable##Type(GraphicsDevice &device, Type handle) \
 { \
 	const i32 index = GetElementIndex(device.name.handles, handle); \
 	ASSERT(index >= 0); \
 	return device.name.items[index]; \
 } \
-static inline Type &New##Type(GraphicsDevice &device, Type##H &outHandle) \
+static inline Vulkan##Type &New##Type(GraphicsDevice &device, Type &outHandle) \
 { \
 	outHandle = NewHandle(device.name.handles); \
-	Type &element = device.name.items[GetHandleIndex(device.name.handles, outHandle)]; \
+	Vulkan##Type &element = device.name.items[GetHandleIndex(device.name.handles, outHandle)]; \
 	element = {}; \
 	return element; \
 }
@@ -1033,7 +1033,7 @@ static void CheckVulkanResult(VkResult result, const char *callString)
 		QUIT_ABNORMALLY();
 }
 
-static Heap CreateHeap(const GraphicsDevice &device, HeapType heapType, u32 size, bool mapMemory)
+static VulkanHeap CreateHeap(const GraphicsDevice &device, HeapType heapType, u32 size, bool mapMemory)
 {
 	u32 memoryTypeIndex = -1;
 
@@ -1067,7 +1067,7 @@ static Heap CreateHeap(const GraphicsDevice &device, HeapType heapType, u32 size
 		VK_CALL( vkMapMemory(device.handle, memory, 0, size, 0, (void**)&data) );
 	}
 
-	Heap heap = {};
+	VulkanHeap heap = {};
 	heap.type = heapType;
 	heap.size = size;
 	heap.memoryTypeIndex = memoryTypeIndex;
@@ -1076,12 +1076,12 @@ static Heap CreateHeap(const GraphicsDevice &device, HeapType heapType, u32 size
 	return heap;
 }
 
-static void DestroyHeap(const GraphicsDevice &device, const Heap &heap)
+static void DestroyHeap(const GraphicsDevice &device, const VulkanHeap &heap)
 {
 	vkFreeMemory(device.handle, heap.memory, VULKAN_ALLOCATORS);
 }
 
-static ShaderModule CreateShaderModule(const GraphicsDevice &device, const ShaderSource &source)
+static VulkanShaderModule CreateShaderModule(const GraphicsDevice &device, const ShaderSource &source)
 {
 	const VkShaderModuleCreateInfo createInfo = {
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -1096,13 +1096,13 @@ static ShaderModule CreateShaderModule(const GraphicsDevice &device, const Shade
 		shaderModuleHandle = VK_NULL_HANDLE;
 	}
 
-	const ShaderModule shaderModule = {
+	const VulkanShaderModule shaderModule = {
 		.handle = shaderModuleHandle,
 	};
 	return shaderModule;
 }
 
-static void DestroyShaderModule(const GraphicsDevice &device, const ShaderModule &shaderModule)
+static void DestroyShaderModule(const GraphicsDevice &device, const VulkanShaderModule &shaderModule)
 {
 	vkDestroyShaderModule(device.handle, shaderModule.handle, VULKAN_ALLOCATORS);
 }
@@ -1142,7 +1142,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 
 	if ( binding.type == ShaderBindingTypeSampler )
 	{
-		const Sampler &sampler = GetSampler(device, resourceBinding.sampler);
+		const VulkanSampler &sampler = GetSampler(device, resourceBinding.sampler);
 
 		imageInfo = &descriptorInfos[descriptorWriteCount].imageInfo;
 		imageInfo->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1151,7 +1151,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 	}
 	else if ( binding.type == ShaderBindingTypeImage )
 	{
-		const Image &image = GetImage(device, resourceBinding.image);
+		const VulkanImage &image = GetImage(device, resourceBinding.image);
 
 		imageInfo = &descriptorInfos[descriptorWriteCount].imageInfo;
 		imageInfo->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1160,7 +1160,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 	}
 	else if ( binding.type == ShaderBindingTypeUniformBuffer || binding.type == ShaderBindingTypeStorageBuffer )
 	{
-		const Buffer &buffer = GetBuffer(device, resourceBinding.buffer);
+		const VulkanBuffer &buffer = GetBuffer(device, resourceBinding.buffer);
 		const u32 offset = resourceBinding.offset;
 		const u32 range = resourceBinding.range;
 
@@ -1171,7 +1171,7 @@ static bool AddDescriptorWrite(const GraphicsDevice &device, const ResourceBindi
 	}
 	else if ( binding.type == ShaderBindingTypeStorageTexelBuffer )
 	{
-		const BufferView &bufferView = GetBufferView(device, resourceBinding.bufferView);
+		const VulkanBufferView &bufferView = GetBufferView(device, resourceBinding.bufferView);
 
 		bufferViewPtr = &descriptorInfos[descriptorWriteCount].bufferView;
 		*bufferViewPtr = bufferView.handle;
@@ -1217,14 +1217,14 @@ static VkFormat FindSupportedFormat(const GraphicsDevice &device, const VkFormat
 	return VK_FORMAT_MAX_ENUM;
 }
 
-struct ShaderBindings
+struct VulkanShaderBindings
 {
 	ShaderBinding bindings[MAX_SHADER_BINDINGS];
 	u32 bindGroupBindingBase[MAX_BIND_GROUPS];
 	u32 bindGroupBindingCount[MAX_BIND_GROUPS];
 };
 
-static ShaderBindings ReflectShaderBindings( Arena scratch, byte* microcodeData[], const u64 microcodeSize[], u32 microcodeCount )
+static VulkanShaderBindings ReflectShaderBindings( Arena scratch, byte* microcodeData[], const u64 microcodeSize[], u32 microcodeCount )
 {
 	void *tempMem = scratch.base + scratch.used;
 	const u32 tempMemSize = scratch.size - scratch.used;
@@ -1236,7 +1236,7 @@ static ShaderBindings ReflectShaderBindings( Arena scratch, byte* microcodeData[
 		SpvParseDescriptors( &parser, &spvDescriptorList, tempMem, tempMemSize );
 	}
 
-	ShaderBindings shaderBindings = {};
+	VulkanShaderBindings shaderBindings = {};
 	u32 baseBindingCount = 0;
 
 	for (u32 setIndex = 0; setIndex < SPV_MAX_DESCRIPTOR_SETS; ++setIndex)
@@ -1268,19 +1268,19 @@ static ShaderBindings ReflectShaderBindings( Arena scratch, byte* microcodeData[
 	return shaderBindings;
 }
 
-static ShaderBindings ReflectShaderBindings( Arena scratch, const ShaderSource &source )
+static VulkanShaderBindings ReflectShaderBindings( Arena scratch, const ShaderSource &source )
 {
 	byte* microcodeData[] = { source.data };
 	const u64 microcodeSize[] = { source.dataSize };
-	const ShaderBindings shaderBindings = ReflectShaderBindings(scratch, microcodeData, microcodeSize, ARRAY_COUNT(microcodeData));
+	const VulkanShaderBindings shaderBindings = ReflectShaderBindings(scratch, microcodeData, microcodeSize, ARRAY_COUNT(microcodeData));
 	return shaderBindings;
 }
 
-static ShaderBindings ReflectShaderBindings( Arena scratch, const ShaderSource &vertexSource, const ShaderSource &fragmentSource )
+static VulkanShaderBindings ReflectShaderBindings( Arena scratch, const ShaderSource &vertexSource, const ShaderSource &fragmentSource )
 {
 	byte* microcodeData[] = { vertexSource.data, fragmentSource.data };
 	const u64 microcodeSize[] = { vertexSource.dataSize, fragmentSource.dataSize };
-	ShaderBindings shaderBindings = ReflectShaderBindings(scratch, microcodeData, microcodeSize, ARRAY_COUNT(microcodeData));
+	VulkanShaderBindings shaderBindings = ReflectShaderBindings(scratch, microcodeData, microcodeSize, ARRAY_COUNT(microcodeData));
 	return shaderBindings;
 }
 
@@ -1290,18 +1290,18 @@ static GraphicsDevice &GetDevice(const CommandList &commandList)
 	return *commandList.device;
 }
 
-static CommandListState &GetState(const CommandList &commandList)
+static VulkanCommandListState &GetState(const CommandList &commandList)
 {
 	ASSERT(commandList.device);
 	ASSERT(commandList.index != 0 && commandList.index < MAX_COMMAND_LISTS);
-	CommandListState &state = commandList.device->commandLists[commandList.index];
+	VulkanCommandListState &state = commandList.device->commandLists[commandList.index];
 	ASSERT(state.inUse);
 	return state;
 }
 
 static void BindDescriptorSets(const CommandList &commandList)
 {
-	CommandListState &state = GetState(commandList);
+	VulkanCommandListState &state = GetState(commandList);
 
 	while ( state.descriptorSetDirtyMask )
 	{
@@ -1331,7 +1331,7 @@ static void BindDescriptorSets(const CommandList &commandList)
 
 		if ( descriptorSetCount > 0 )
 		{
-			const Pipeline &pipeline = GetPipeline(GetDevice(commandList), state.pipeline);
+			const VulkanPipeline &pipeline = GetPipeline(GetDevice(commandList), state.pipeline);
 			vkCmdBindDescriptorSets(state.handle, pipeline.bindPoint, pipeline.layout.handle, descriptorSetFirst, descriptorSetCount, descriptorSets, 0, NULL);
 		}
 	}
@@ -1502,11 +1502,11 @@ void InsertDebugLabel(const CommandList &cmd, const char *labelName, float4 labe
 #endif
 }
 
-void SetObjectNamePipeline(const GraphicsDevice &device, PipelineH handle, const char *name)
+void SetObjectNamePipeline(const GraphicsDevice &device, Pipeline handle, const char *name)
 {
 #if DEVELOPMENT_BUILD
 	if ( !device.support.debugUtils ) { return; }
-	const Pipeline &pipeline = GetPipeline(device, handle);
+	const VulkanPipeline &pipeline = GetPipeline(device, handle);
 
 	const VkDebugUtilsObjectNameInfoEXT objectName = {
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
@@ -1518,7 +1518,7 @@ void SetObjectNamePipeline(const GraphicsDevice &device, PipelineH handle, const
 #endif
 }
 
-void SetObjectNameShader(const GraphicsDevice &device, const ShaderModule &shader, const char *name)
+void SetObjectNameShader(const GraphicsDevice &device, const VulkanShaderModule &shader, const char *name)
 {
 #if DEVELOPMENT_BUILD
 	if ( !device.support.debugUtils ) { return; }
@@ -1532,11 +1532,11 @@ void SetObjectNameShader(const GraphicsDevice &device, const ShaderModule &shade
 #endif
 }
 
-void SetObjectNameImage(const GraphicsDevice &device, ImageH handle, const char *name)
+void SetObjectNameImage(const GraphicsDevice &device, Image handle, const char *name)
 {
 #if DEVELOPMENT_BUILD
 	if ( !device.support.debugUtils ) { return; }
-	const Image &image = GetImage(device, handle);
+	const VulkanImage &image = GetImage(device, handle);
 
 	const VkDebugUtilsObjectNameInfoEXT objectName = {
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
@@ -1571,8 +1571,8 @@ void RecreateSwapchain(GraphicsDevice &device, Window &window)
 		VK_CALL( vkCreateSemaphore( device.handle, &semaphoreCreateInfo, VULKAN_ALLOCATORS, &semaphore ) );
 	}
 
-	Swapchain swapchain = {};
-	const SwapchainInfo &swapchainInfo = device.swapchainInfo;
+	VulkanSwapchain swapchain = {};
+	const VulkanSwapchainInfo &swapchainInfo = device.swapchainInfo;
 
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.physicalDevice, device.surface, &surfaceCapabilities);
@@ -1728,7 +1728,7 @@ void RecreateSwapchain(GraphicsDevice &device, Window &window)
 		const VkImage imageHandle = swapchainImages[i];
 		const u32 mipLevels = 1;
 		const VkImageView imageViewHandle = CreateImageView(device, imageHandle, swapchainInfo.vkFormat, FormatToVulkanAspect(format), mipLevels);
-		const Image image = {
+		const VulkanImage image = {
 			.handle = imageHandle,
 			.imageViewHandle = imageViewHandle,
 			.format = format,
@@ -1750,7 +1750,7 @@ void RecreateSwapchain(GraphicsDevice &device, Window &window)
 
 void DestroySwapchain(GraphicsDevice &device)
 {
-	Swapchain &swapchain = device.swapchain;
+	VulkanSwapchain &swapchain = device.swapchain;
 
 	if ( swapchain.handle != VK_NULL_HANDLE )
 	{
@@ -2467,7 +2467,7 @@ bool IsValidGraphicsDevice(const GraphicsDevice &device)
 
 
 // sign: 1 adds, -1 removes
-static void CountBindGroupDescriptors(BindGroupAllocatorCounts &counts, const BindGroupLayout &layout, i32 sign)
+static void CountBindGroupDescriptors(BindGroupAllocatorCounts &counts, const VulkanBindGroupLayout &layout, i32 sign)
 {
 	for (u32 i = 0; i < layout.bindingCount; ++i)
 	{
@@ -2486,12 +2486,12 @@ static void CountBindGroupDescriptors(BindGroupAllocatorCounts &counts, const Bi
 }
 
 // The caller releases the descriptor sets, resetting or destroying the pool
-static void FreeAllocatorBindGroups(GraphicsDevice &device, BindGroupAllocatorH allocatorH)
+static void FreeAllocatorBindGroups(GraphicsDevice &device, BindGroupAllocator allocator)
 {
 	for (u16 i = 0; i < HandleCount(device.bindGroups.handles); ++i)
 	{
-		BindGroup &bindGroup = device.bindGroups.items[i];
-		if ( bindGroup.allocator == allocatorH && bindGroup.handle )
+		VulkanBindGroup &bindGroup = device.bindGroups.items[i];
+		if ( bindGroup.allocator == allocator && bindGroup.handle )
 		{
 			bindGroup.handle = VK_NULL_HANDLE; // Released with the pool
 			FreeHandle(device.bindGroups.handles, GetHandleAt(device.bindGroups.handles, i));
@@ -2499,7 +2499,7 @@ static void FreeAllocatorBindGroups(GraphicsDevice &device, BindGroupAllocatorH 
 	}
 }
 
-BindGroupAllocatorH CreateBindGroupAllocator(GraphicsDevice &device, const BindGroupAllocatorDesc &desc)
+BindGroupAllocator CreateBindGroupAllocator(GraphicsDevice &device, const BindGroupAllocatorDesc &desc)
 {
 	const BindGroupAllocatorCounts &counts = desc.counts;
 
@@ -2538,7 +2538,7 @@ BindGroupAllocatorH CreateBindGroupAllocator(GraphicsDevice &device, const BindG
 	VkDescriptorPool descriptorPool;
 	VK_CALL( vkCreateDescriptorPool( device.handle, &createInfo, VULKAN_ALLOCATORS, &descriptorPool) );
 
-	BindGroupAllocatorH handle;
+	BindGroupAllocator handle;
 	NewBindGroupAllocator(device, handle) = {
 		.name = InternStringGfx(desc.name),
 		.maxCounts = counts,
@@ -2547,22 +2547,22 @@ BindGroupAllocatorH CreateBindGroupAllocator(GraphicsDevice &device, const BindG
 	return handle;
 }
 
-void DestroyBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH &allocatorH)
+void DestroyBindGroupAllocator(GraphicsDevice &device, BindGroupAllocator &allocator)
 {
-	if ( !allocatorH ) { return; }
+	if ( !allocator ) { return; }
 
-	FreeAllocatorBindGroups(device, allocatorH);
-	FreeHandle(device.bindGroupAllocators.handles, allocatorH);
-	allocatorH = {};
+	FreeAllocatorBindGroups(device, allocator);
+	FreeHandle(device.bindGroupAllocators.handles, allocator);
+	allocator = {};
 }
 
 // The GPU must be done with this allocator's bind groups
-void ResetBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH allocatorH)
+void ResetBindGroupAllocator(GraphicsDevice &device, BindGroupAllocator allocator)
 {
-	BindGroupAllocator &allocator = GetMutableBindGroupAllocator(device, allocatorH);
-	VK_CALL( vkResetDescriptorPool(device.handle, allocator.handle, 0) );
-	FreeAllocatorBindGroups(device, allocatorH);
-	allocator.usedCounts = {};
+	VulkanBindGroupAllocator &vulkanAllocator = GetMutableBindGroupAllocator(device, allocator);
+	VK_CALL( vkResetDescriptorPool(device.handle, vulkanAllocator.handle, 0) );
+	FreeAllocatorBindGroups(device, allocator);
+	vulkanAllocator.usedCounts = {};
 }
 
 
@@ -2573,7 +2573,7 @@ void ResetBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH allocat
 
 
 // Owned by the device until it is destroyed. Equal layouts are shared.
-BindGroupLayoutH CreateBindGroupLayout(GraphicsDevice &device, const ShaderBinding bindings[], u8 bindingCount)
+BindGroupLayout CreateBindGroupLayout(GraphicsDevice &device, const ShaderBinding bindings[], u8 bindingCount)
 {
 	ASSERT(bindingCount <= MAX_SHADER_BINDINGS);
 
@@ -2582,7 +2582,7 @@ BindGroupLayoutH CreateBindGroupLayout(GraphicsDevice &device, const ShaderBindi
 
 	for (u16 i = 0; i < HandleCount(device.bindGroupLayouts.handles); ++i)
 	{
-		const BindGroupLayout &layout = device.bindGroupLayouts.items[i];
+		const VulkanBindGroupLayout &layout = device.bindGroupLayouts.items[i];
 		if ( layout.crc == crc && layout.bindingCount == bindingCount )
 		{
 			const int res = MemCompare(layout.bindings, bindings, layout.bindingCount * sizeof(ShaderBinding));
@@ -2617,8 +2617,8 @@ BindGroupLayoutH CreateBindGroupLayout(GraphicsDevice &device, const ShaderBindi
 	VkDescriptorSetLayout layoutHandle;
 	VK_CALL( vkCreateDescriptorSetLayout(device.handle, &descriptorSetLayoutCreateInfo, VULKAN_ALLOCATORS, &layoutHandle) );
 
-	BindGroupLayoutH handle;
-	BindGroupLayout &layout = NewBindGroupLayout(device, handle);
+	BindGroupLayout handle;
+	VulkanBindGroupLayout &layout = NewBindGroupLayout(device, handle);
 	layout = {
 		.handle = layoutHandle,
 		.crc = crc,
@@ -2629,64 +2629,64 @@ BindGroupLayoutH CreateBindGroupLayout(GraphicsDevice &device, const ShaderBindi
 	return handle;
 }
 
-BindGroupH CreateBindGroup(GraphicsDevice &device, BindGroupLayoutH layoutH, BindGroupAllocatorH allocatorH)
+BindGroup CreateBindGroup(GraphicsDevice &device, BindGroupLayout layout, BindGroupAllocator allocator)
 {
-	const BindGroupLayout &layout = GetBindGroupLayout(device, layoutH);
-	if ( !layout.handle ) { return {}; }
+	const VulkanBindGroupLayout &vulkanLayout = GetBindGroupLayout(device, layout);
+	if ( !vulkanLayout.handle ) { return {}; }
 
-	BindGroupAllocator &allocator = GetMutableBindGroupAllocator(device, allocatorH);
+	VulkanBindGroupAllocator &vulkanAllocator = GetMutableBindGroupAllocator(device, allocator);
 
 	// Update the used descriptor counters in the allocator
-	CountBindGroupDescriptors(allocator.usedCounts, layout, 1);
+	CountBindGroupDescriptors(vulkanAllocator.usedCounts, vulkanLayout, 1);
 
-	for (u32 i = 0; i < ARRAY_COUNT(allocator.usedCounts.type); ++i)
+	for (u32 i = 0; i < ARRAY_COUNT(vulkanAllocator.usedCounts.type); ++i)
 	{
-		if (allocator.usedCounts.type[i] > allocator.maxCounts.type[i]) {
+		if (vulkanAllocator.usedCounts.type[i] > vulkanAllocator.maxCounts.type[i]) {
 			const char *typeName = sCountTypeName[i];
-			LOG(Warning, "BindGroupAllocator %s: Type %s exceeded allocation (%u > %u)\n", allocator.name, typeName, allocator.usedCounts.type[i], allocator.maxCounts.type[i]);
+			LOG(Warning, "BindGroupAllocator %s: Type %s exceeded allocation (%u > %u)\n", vulkanAllocator.name, typeName, vulkanAllocator.usedCounts.type[i], vulkanAllocator.maxCounts.type[i]);
 		}
 	}
 
 	const VkDescriptorSetAllocateInfo allocateInfo = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-		.descriptorPool = allocator.handle,
+		.descriptorPool = vulkanAllocator.handle,
 		.descriptorSetCount = 1,
-		.pSetLayouts = &layout.handle,
+		.pSetLayouts = &vulkanLayout.handle,
 	};
 	VkDescriptorSet descriptorSet;
 	VK_CALL( vkAllocateDescriptorSets(device.handle, &allocateInfo, &descriptorSet) );
 
-	BindGroupH handle;
+	BindGroup handle;
 	NewBindGroup(device, handle) = {
 		.handle = descriptorSet,
-		.descriptorPool = allocator.handle,
-		.layout = layoutH,
-		.allocator = allocatorH,
+		.descriptorPool = vulkanAllocator.handle,
+		.layout = layout,
+		.allocator = allocator,
 	};
 	return handle;
 }
 
 // Requires allowIndividualFrees. The GPU must be done with it.
-void DestroyBindGroup(GraphicsDevice &device, BindGroupH &bindGroupH)
+void DestroyBindGroup(GraphicsDevice &device, BindGroup &bindGroup)
 {
-	if ( !bindGroupH ) { return; }
+	if ( !bindGroup ) { return; }
 
-	const BindGroup &bindGroup = GetBindGroup(device, bindGroupH);
-	BindGroupAllocator &allocator = GetMutableBindGroupAllocator(device, bindGroup.allocator);
+	const VulkanBindGroup &vulkanBindGroup = GetBindGroup(device, bindGroup);
+	VulkanBindGroupAllocator &allocator = GetMutableBindGroupAllocator(device, vulkanBindGroup.allocator);
 	ASSERT(allocator.maxCounts.allowIndividualFrees && "BindGroupAllocator not created with allowIndividualFrees");
 
-	CountBindGroupDescriptors(allocator.usedCounts, GetBindGroupLayout(device, bindGroup.layout), -1);
+	CountBindGroupDescriptors(allocator.usedCounts, GetBindGroupLayout(device, vulkanBindGroup.layout), -1);
 
-	FreeHandle(device.bindGroups.handles, bindGroupH);
-	bindGroupH = {};
+	FreeHandle(device.bindGroups.handles, bindGroup);
+	bindGroup = {};
 }
 
-void UpdateBindGroup(const GraphicsDevice &device, const BindGroupDesc &bindGroupDesc, BindGroupH bindGroupH)
+void UpdateBindGroup(const GraphicsDevice &device, const BindGroupDesc &bindGroupDesc, BindGroup bindGroup)
 {
-	const i32 bindGroupIndex = GetElementIndex(device.bindGroups.handles, bindGroupH);
+	const i32 bindGroupIndex = GetElementIndex(device.bindGroups.handles, bindGroup);
 	if ( bindGroupIndex < 0 ) { return; }
 
-	const BindGroupLayout &layout = GetBindGroupLayout(device, bindGroupDesc.layout);
+	const VulkanBindGroupLayout &layout = GetBindGroupLayout(device, bindGroupDesc.layout);
 	const VkDescriptorSet descriptorSet = device.bindGroups.items[bindGroupIndex].handle;
 
 	VkDescriptorGenericInfo descriptorInfos[MAX_SHADER_BINDINGS] = {};
@@ -2707,13 +2707,13 @@ void UpdateBindGroup(const GraphicsDevice &device, const BindGroupDesc &bindGrou
 	UpdateDescriptorSets(device, descriptorWrites, descriptorWriteCount);
 }
 
-BindGroupH CreateFullBindGroup(GraphicsDevice &device, const BindGroupDesc &desc, BindGroupAllocatorH allocatorH)
+BindGroup CreateFullBindGroup(GraphicsDevice &device, const BindGroupDesc &desc, BindGroupAllocator allocator)
 {
-	const BindGroupH bindGroupH = CreateBindGroup(device, desc.layout, allocatorH);
+	const BindGroup bindGroup = CreateBindGroup(device, desc.layout, allocator);
 
-	UpdateBindGroup(device, desc, bindGroupH);
+	UpdateBindGroup(device, desc, bindGroup);
 
-	return bindGroupH;
+	return bindGroup;
 }
 
 
@@ -2722,7 +2722,7 @@ BindGroupH CreateFullBindGroup(GraphicsDevice &device, const BindGroupDesc &desc
 // Heap allocation
 //////////////////////////////
 
-Alloc Allocate(Heap &heap, u32 size, u32 alignment)
+VulkanAlloc Allocate(VulkanHeap &heap, u32 size, u32 alignment)
 {
 	if ( heap.type == HeapType_General )
 	{
@@ -2736,7 +2736,7 @@ Alloc Allocate(Heap &heap, u32 size, u32 alignment)
 
 		const VkDeviceSize offset = AlignUp( allocation.offset, alignment );
 
-		const Alloc alloc = {
+		const VulkanAlloc alloc = {
 			.heap = heap.type,
 			.offset = offset,
 			.size = size,
@@ -2752,7 +2752,7 @@ Alloc Allocate(Heap &heap, u32 size, u32 alignment)
 		ASSERTMSG( offset + size <= heap.size, "Allocate - Heap: %s (%luMB) - Could not allocate size (%uB) with alignment (%uB)\n", HeapTypeToString(heap.type), heap.size / MB(1), size, alignment);
 		heap.used = offset + size;
 
-		const Alloc alloc = {
+		const VulkanAlloc alloc = {
 			.heap = heap.type,
 			.offset = offset,
 			.size = size,
@@ -2762,7 +2762,7 @@ Alloc Allocate(Heap &heap, u32 size, u32 alignment)
 	}
 }
 
-void Deallocate(Alloc alloc)
+void Deallocate(VulkanAlloc alloc)
 {
 	// TODO: Missing implementation
 	// Ideally we would want to have to possibility to associate a different allocator
@@ -2779,7 +2779,7 @@ void Deallocate(Alloc alloc)
 // Buffer
 //////////////////////////////
 
-Buffer CreateBufferInternal(GraphicsDevice &device, u32 size, BufferUsageFlags bufferUsageFlags, HeapType heapType)
+VulkanBuffer CreateBufferInternal(GraphicsDevice &device, u32 size, BufferUsageFlags bufferUsageFlags, HeapType heapType)
 {
 	// Buffer
 	const VkBufferCreateInfo bufferCreateInfo = {
@@ -2796,12 +2796,12 @@ Buffer CreateBufferInternal(GraphicsDevice &device, u32 size, BufferUsageFlags b
 	VkMemoryRequirements memoryRequirements = {};
 	vkGetBufferMemoryRequirements(device.handle, bufferHandle, &memoryRequirements);
 
-	Heap &heap = device.heaps[heapType];
-	const Alloc alloc = Allocate(heap, memoryRequirements.size, memoryRequirements.alignment);
+	VulkanHeap &heap = device.heaps[heapType];
+	const VulkanAlloc alloc = Allocate(heap, memoryRequirements.size, memoryRequirements.alignment);
 
 	VK_CALL( vkBindBufferMemory(device.handle, bufferHandle, heap.memory, alloc.offset) );
 
-	const Buffer buffer = {
+	const VulkanBuffer buffer = {
 		.handle = bufferHandle,
 		.alloc = alloc,
 		.size = size,
@@ -2809,28 +2809,28 @@ Buffer CreateBufferInternal(GraphicsDevice &device, u32 size, BufferUsageFlags b
 	return buffer;
 }
 
-BufferH CreateBuffer(GraphicsDevice &device, u32 size, BufferUsageFlags bufferUsageFlags, HeapType heapType)
+Buffer CreateBuffer(GraphicsDevice &device, u32 size, BufferUsageFlags bufferUsageFlags, HeapType heapType)
 {
-	const Buffer buffer = CreateBufferInternal(device, size, bufferUsageFlags, heapType);
-	BufferH bufferHandle;
+	const VulkanBuffer buffer = CreateBufferInternal(device, size, bufferUsageFlags, heapType);
+	Buffer bufferHandle;
 	NewBuffer(device, bufferHandle) = buffer;
 	return bufferHandle;
 }
 
 
-void DestroyBuffer(const GraphicsDevice &device, const Buffer &buffer)
+void DestroyBuffer(const GraphicsDevice &device, const VulkanBuffer &buffer)
 {
 	vkDestroyBuffer( device.handle, buffer.handle, VULKAN_ALLOCATORS );
 
 	Deallocate(buffer.alloc);
 }
 
-void DestroyBufferH(GraphicsDevice &device, BufferH &bufferH)
+void DestroyBuffer(GraphicsDevice &device, Buffer &buffer)
 {
-	if ( bufferH ) {
-		FreeHandle(device.buffers.handles, bufferH);
+	if ( buffer ) {
+		FreeHandle(device.buffers.handles, buffer);
 	}
-	bufferH = {};
+	buffer = {};
 }
 
 
@@ -2838,7 +2838,7 @@ void DestroyBufferH(GraphicsDevice &device, BufferH &bufferH)
 // BufferView
 //////////////////////////////
 
-BufferView CreateBufferViewInternal(const GraphicsDevice &device, const Buffer &buffer, Format format, u32 offset, u32 size)
+VulkanBufferView CreateBufferViewInternal(const GraphicsDevice &device, const VulkanBuffer &buffer, Format format, u32 offset, u32 size)
 {
 	const VkBufferViewCreateInfo bufferViewCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
@@ -2851,34 +2851,34 @@ BufferView CreateBufferViewInternal(const GraphicsDevice &device, const Buffer &
 	VkBufferView bufferViewHandle;
 	VK_CALL( vkCreateBufferView(device.handle, &bufferViewCreateInfo, VULKAN_ALLOCATORS, &bufferViewHandle) );
 
-	const BufferView bufferView = {
+	const VulkanBufferView bufferView = {
 		.handle = bufferViewHandle
 	};
 	return bufferView;
 }
 
-BufferViewH CreateBufferView(GraphicsDevice &device, BufferH bufferHandle, Format format, u32 offset, u32 size)
+BufferView CreateBufferView(GraphicsDevice &device, Buffer bufferHandle, Format format, u32 offset, u32 size)
 {
-	const Buffer &buffer = GetBuffer(device, bufferHandle);
-	const BufferView bufferView = CreateBufferViewInternal(device, buffer, format, offset, size);
+	const VulkanBuffer &buffer = GetBuffer(device, bufferHandle);
+	const VulkanBufferView vulkanBufferView = CreateBufferViewInternal(device, buffer, format, offset, size);
 
-	BufferViewH bufferViewH;
-	NewBufferView(device, bufferViewH) = bufferView;
-	return bufferViewH;
+	BufferView bufferView;
+	NewBufferView(device, bufferView) = vulkanBufferView;
+	return bufferView;
 }
 
 
-void DestroyBufferView(const GraphicsDevice &device, const BufferView &bufferView)
+void DestroyBufferView(const GraphicsDevice &device, const VulkanBufferView &bufferView)
 {
 	vkDestroyBufferView( device.handle, bufferView.handle, VULKAN_ALLOCATORS );
 }
 
-void DestroyBufferViewH(GraphicsDevice &device, BufferViewH &bufferViewH)
+void DestroyBufferView(GraphicsDevice &device, BufferView &bufferView)
 {
-	if ( bufferViewH ) {
-		FreeHandle(device.bufferViews.handles, bufferViewH);
+	if ( bufferView ) {
+		FreeHandle(device.bufferViews.handles, bufferView);
 	}
-	bufferViewH = {};
+	bufferView = {};
 }
 
 
@@ -2887,7 +2887,7 @@ void DestroyBufferViewH(GraphicsDevice &device, BufferViewH &bufferViewH)
 // Image
 //////////////////////////////
 
-Image CreateImageInternal(GraphicsDevice &device, u32 width, u32 height, u32 mipLevels, Format format, ImageUsageFlags usage, HeapType heapType)
+VulkanImage CreateImageInternal(GraphicsDevice &device, u32 width, u32 height, u32 mipLevels, Format format, ImageUsageFlags usage, HeapType heapType)
 {
 	const VkFormat vkFormat = FormatToVulkan(format);
 	// Image
@@ -2913,14 +2913,14 @@ Image CreateImageInternal(GraphicsDevice &device, u32 width, u32 height, u32 mip
 	VkMemoryRequirements memoryRequirements = {};
 	vkGetImageMemoryRequirements(device.handle, imageHandle, &memoryRequirements);
 
-	Heap &heap = device.heaps[heapType];
-	const Alloc alloc = Allocate(heap, memoryRequirements.size, memoryRequirements.alignment);
+	VulkanHeap &heap = device.heaps[heapType];
+	const VulkanAlloc alloc = Allocate(heap, memoryRequirements.size, memoryRequirements.alignment);
 
 	VK_CALL( vkBindImageMemory(device.handle, imageHandle, heap.memory, alloc.offset) );
 
 	const VkImageView imageViewHandle = CreateImageView(device, imageHandle, FormatToVulkan(format), FormatToVulkanAspect(format), mipLevels);
 
-	const Image image = {
+	const VulkanImage image = {
 		.handle = imageHandle,
 		.imageViewHandle = imageViewHandle,
 		.format = format,
@@ -2932,54 +2932,54 @@ Image CreateImageInternal(GraphicsDevice &device, u32 width, u32 height, u32 mip
 	return image;
 }
 
-ImageH CreateImage(GraphicsDevice &device, u32 width, u32 height, u32 mipLevels, Format format, ImageUsageFlags usage, HeapType heapType)
+Image CreateImage(GraphicsDevice &device, u32 width, u32 height, u32 mipLevels, Format format, ImageUsageFlags usage, HeapType heapType)
 {
-	const Image image = CreateImageInternal(device, width, height, mipLevels, format, usage, heapType);
-	const ImageH imageH = NewHandle(device.images.handles);
-	device.images.items[GetHandleIndex(device.images.handles, imageH)] = image;
-	return imageH;
+	const VulkanImage vulkanImage = CreateImageInternal(device, width, height, mipLevels, format, usage, heapType);
+	const Image image = NewHandle(device.images.handles);
+	device.images.items[GetHandleIndex(device.images.handles, image)] = vulkanImage;
+	return image;
 }
 
-Image &GetMutableImage(GraphicsDevice &device, ImageH imageH)
+VulkanImage &GetMutableImage(GraphicsDevice &device, Image image)
 {
-	if ( IsSwapchainImage(imageH) )
+	if ( IsSwapchainImage(image) )
 	{
-		ASSERT(imageH.slot - FIRST_SWAPCHAIN_IMAGE_INDEX < MAX_SWAPCHAIN_IMAGE_COUNT);
-		return device.swapchain.images[imageH.slot - FIRST_SWAPCHAIN_IMAGE_INDEX];
+		ASSERT(image.slot - FIRST_SWAPCHAIN_IMAGE_INDEX < MAX_SWAPCHAIN_IMAGE_COUNT);
+		return device.swapchain.images[image.slot - FIRST_SWAPCHAIN_IMAGE_INDEX];
 	}
-	const i32 index = GetElementIndex(device.images.handles, imageH);
+	const i32 index = GetElementIndex(device.images.handles, image);
 	ASSERT(index >= 0);
 	return device.images.items[index];
 }
 
-const Image &GetImage(const GraphicsDevice &device, ImageH imageH)
+const VulkanImage &GetImage(const GraphicsDevice &device, Image image)
 {
-	if ( IsSwapchainImage(imageH) )
+	if ( IsSwapchainImage(image) )
 	{
-		ASSERT(imageH.slot - FIRST_SWAPCHAIN_IMAGE_INDEX < MAX_SWAPCHAIN_IMAGE_COUNT);
-		return device.swapchain.images[imageH.slot - FIRST_SWAPCHAIN_IMAGE_INDEX];
+		ASSERT(image.slot - FIRST_SWAPCHAIN_IMAGE_INDEX < MAX_SWAPCHAIN_IMAGE_COUNT);
+		return device.swapchain.images[image.slot - FIRST_SWAPCHAIN_IMAGE_INDEX];
 	}
-	static const Image sNullImage = {};
-	const i32 index = GetElementIndex(device.images.handles, imageH);
+	static const VulkanImage sNullImage = {};
+	const i32 index = GetElementIndex(device.images.handles, image);
 	return index >= 0 ? device.images.items[index] : sNullImage;
 }
 
 // Swapchain images use the slots after the image pool
-bool IsSwapchainImage(ImageH image)
+bool IsSwapchainImage(Image image)
 {
 	const bool isSwapchainImage = image.gen != 0 && image.slot >= FIRST_SWAPCHAIN_IMAGE_INDEX;
 	return isSwapchainImage;
 }
 
-static ImageH SwapchainImageHandle(u32 swapchainImageIndex)
+static Image SwapchainImageHandle(u32 swapchainImageIndex)
 {
-	ImageH imageH = {};
-	imageH.gen = 1;
-	imageH.slot = (u16)(FIRST_SWAPCHAIN_IMAGE_INDEX + swapchainImageIndex);
-	return imageH;
+	Image image = {};
+	image.gen = 1;
+	image.slot = (u16)(FIRST_SWAPCHAIN_IMAGE_INDEX + swapchainImageIndex);
+	return image;
 }
 
-void DestroyImage(const GraphicsDevice &device, const Image &image)
+void DestroyImage(const GraphicsDevice &device, const VulkanImage &image)
 {
 	if ( image.imageViewHandle != VK_NULL_HANDLE )
 	{
@@ -2993,20 +2993,20 @@ void DestroyImage(const GraphicsDevice &device, const Image &image)
 	}
 }
 
-void DestroyImageH(GraphicsDevice &device, ImageH &imageH)
+void DestroyImage(GraphicsDevice &device, Image &image)
 {
-	if ( IsSwapchainImage(imageH) )
+	if ( IsSwapchainImage(image) )
 	{
-		Image &image = GetMutableImage(device, imageH);
-		DestroyImage(device, image);
-		image.handle = VK_NULL_HANDLE;
-		image.imageViewHandle = VK_NULL_HANDLE;
+		VulkanImage &vulkanImage = GetMutableImage(device, image);
+		DestroyImage(device, vulkanImage);
+		vulkanImage.handle = VK_NULL_HANDLE;
+		vulkanImage.imageViewHandle = VK_NULL_HANDLE;
 	}
-	else if ( imageH )
+	else if ( image )
 	{
-		FreeHandle(device.images.handles, imageH);
+		FreeHandle(device.images.handles, image);
 	}
-	imageH = {};
+	image = {};
 }
 
 
@@ -3015,7 +3015,7 @@ void DestroyImageH(GraphicsDevice &device, ImageH &imageH)
 // Sampler
 //////////////////////////////
 
-Sampler CreateSamplerInternal(const GraphicsDevice &device, const SamplerDesc &desc)
+VulkanSampler CreateSamplerInternal(const GraphicsDevice &device, const SamplerDesc &desc)
 {
 	VkPhysicalDeviceProperties properties;
 	vkGetPhysicalDeviceProperties(device.physicalDevice, &properties);
@@ -3043,32 +3043,32 @@ Sampler CreateSamplerInternal(const GraphicsDevice &device, const SamplerDesc &d
 	VkSampler vkSampler;
 	VK_CALL( vkCreateSampler(device.handle, &samplerCreateInfo, VULKAN_ALLOCATORS, &vkSampler) );
 
-	const Sampler sampler = {
+	const VulkanSampler sampler = {
 		.handle = vkSampler
 	};
 	return sampler;
 }
 
-SamplerH CreateSampler(GraphicsDevice &device, const SamplerDesc &desc)
+Sampler CreateSampler(GraphicsDevice &device, const SamplerDesc &desc)
 {
-	const Sampler sampler = CreateSamplerInternal(device, desc);
-	SamplerH samplerHandle;
+	const VulkanSampler sampler = CreateSamplerInternal(device, desc);
+	Sampler samplerHandle;
 	NewSampler(device, samplerHandle) = sampler;
 	return samplerHandle;
 }
 
 
-void DestroySampler(const GraphicsDevice &device, const Sampler &sampler)
+void DestroySampler(const GraphicsDevice &device, const VulkanSampler &sampler)
 {
 	vkDestroySampler( device.handle, sampler.handle, VULKAN_ALLOCATORS );
 }
 
-void DestroySamplerH(GraphicsDevice &device, SamplerH &samplerH)
+void DestroySampler(GraphicsDevice &device, Sampler &sampler)
 {
-	if ( samplerH ) {
-		FreeHandle(device.samplers.handles, samplerH);
+	if ( sampler ) {
+		FreeHandle(device.samplers.handles, sampler);
 	}
-	samplerH = {};
+	sampler = {};
 }
 
 
@@ -3078,14 +3078,14 @@ void DestroySamplerH(GraphicsDevice &device, SamplerH &samplerH)
 //////////////////////////////
 
 // TODO: Avoid having to pass renderPass as a parameter instead of within the PipelineDesc
-Pipeline CreateGraphicsPipelineInternal(GraphicsDevice &device, Arena scratch, const PipelineDesc &desc, BindGroupLayoutH globalBindGroupLayout)
+VulkanPipeline CreateGraphicsPipelineInternal(GraphicsDevice &device, Arena scratch, const PipelineDesc &desc, BindGroupLayout globalBindGroupLayout)
 {
 	// Create pipeline
 	const ShaderSource vertexShaderSource = desc.vertexShaderSource;
 	const ShaderSource fragmentShaderSource = desc.fragmentShaderSource;
-	const ShaderModule vertexShaderModule = CreateShaderModule(device, vertexShaderSource);
-	const ShaderModule fragmentShaderModule = CreateShaderModule(device, fragmentShaderSource);
-	const ShaderBindings shaderBindings = ReflectShaderBindings(scratch, vertexShaderSource, fragmentShaderSource);
+	const VulkanShaderModule vertexShaderModule = CreateShaderModule(device, vertexShaderSource);
+	const VulkanShaderModule fragmentShaderModule = CreateShaderModule(device, fragmentShaderSource);
+	const VulkanShaderBindings shaderBindings = ReflectShaderBindings(scratch, vertexShaderSource, fragmentShaderSource);
 
 	const VkPipelineShaderStageCreateInfo vertexShaderStageCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -3210,7 +3210,7 @@ Pipeline CreateGraphicsPipelineInternal(GraphicsDevice &device, Arena scratch, c
 	};
 
 	// BindGroup layouts
-	const BindGroupLayoutH bindGroupLayouts[MAX_BIND_GROUPS] = {
+	const BindGroupLayout bindGroupLayouts[MAX_BIND_GROUPS] = {
 		globalBindGroupLayout,
 		CreateBindGroupLayout(device, shaderBindings.bindings + shaderBindings.bindGroupBindingBase[1], shaderBindings.bindGroupBindingCount[1]),
 		CreateBindGroupLayout(device, shaderBindings.bindings + shaderBindings.bindGroupBindingBase[2], shaderBindings.bindGroupBindingCount[2]),
@@ -3260,7 +3260,7 @@ Pipeline CreateGraphicsPipelineInternal(GraphicsDevice &device, Arena scratch, c
 	DestroyShaderModule(device, vertexShaderModule);
 	DestroyShaderModule(device, fragmentShaderModule);
 
-	const Pipeline pipeline = {
+	const VulkanPipeline pipeline = {
 		.name = InternStringGfx(desc.name),
 		.handle = vkPipelineHandle,
 		.layout = {
@@ -3278,11 +3278,11 @@ Pipeline CreateGraphicsPipelineInternal(GraphicsDevice &device, Arena scratch, c
 	return pipeline;
 }
 
-Pipeline CreateComputePipelineInternal(GraphicsDevice &device, Arena scratch, const ComputeDesc &desc, BindGroupLayoutH globalBindGroupLayout)
+VulkanPipeline CreateComputePipelineInternal(GraphicsDevice &device, Arena scratch, const ComputeDesc &desc, BindGroupLayout globalBindGroupLayout)
 {
 	const ShaderSource shaderSource = desc.computeShaderSource;
-	const ShaderModule shaderModule = CreateShaderModule(device, shaderSource);
-	const ShaderBindings shaderBindings = ReflectShaderBindings(scratch, shaderSource);
+	const VulkanShaderModule shaderModule = CreateShaderModule(device, shaderSource);
+	const VulkanShaderBindings shaderBindings = ReflectShaderBindings(scratch, shaderSource);
 
 	const VkPipelineShaderStageCreateInfo computeShaderStageInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -3292,7 +3292,7 @@ Pipeline CreateComputePipelineInternal(GraphicsDevice &device, Arena scratch, co
 	};
 
 	// BindGroup layouts
-	const BindGroupLayoutH bindGroupLayouts[MAX_BIND_GROUPS] = {
+	const BindGroupLayout bindGroupLayouts[MAX_BIND_GROUPS] = {
 		globalBindGroupLayout,
 		CreateBindGroupLayout(device, shaderBindings.bindings + shaderBindings.bindGroupBindingBase[1], shaderBindings.bindGroupBindingCount[1]),
 		CreateBindGroupLayout(device, shaderBindings.bindings + shaderBindings.bindGroupBindingBase[2], shaderBindings.bindGroupBindingCount[2]),
@@ -3328,7 +3328,7 @@ Pipeline CreateComputePipelineInternal(GraphicsDevice &device, Arena scratch, co
 
 	DestroyShaderModule(device, shaderModule);
 
-	const Pipeline pipeline = {
+	const VulkanPipeline pipeline = {
 		.name = InternStringGfx(desc.name),
 		.handle = computePipeline,
 		.layout = {
@@ -3347,30 +3347,30 @@ Pipeline CreateComputePipelineInternal(GraphicsDevice &device, Arena scratch, co
 }
 
 
-PipelineH CreateGraphicsPipeline(GraphicsDevice &device, Arena scratch, const PipelineDesc &desc, BindGroupLayoutH globalBindGroupLayout)
+Pipeline CreateGraphicsPipeline(GraphicsDevice &device, Arena scratch, const PipelineDesc &desc, BindGroupLayout globalBindGroupLayout)
 {
-	const Pipeline pipeline = CreateGraphicsPipelineInternal(device, scratch, desc, globalBindGroupLayout);
-	PipelineH pipelineHandle;
+	const VulkanPipeline pipeline = CreateGraphicsPipelineInternal(device, scratch, desc, globalBindGroupLayout);
+	Pipeline pipelineHandle;
 	NewPipeline(device, pipelineHandle) = pipeline;
 	return pipelineHandle;
 }
 
-PipelineH CreateComputePipeline(GraphicsDevice &device, Arena scratch, const ComputeDesc &desc, BindGroupLayoutH globalBindGroupLayout)
+Pipeline CreateComputePipeline(GraphicsDevice &device, Arena scratch, const ComputeDesc &desc, BindGroupLayout globalBindGroupLayout)
 {
-	const Pipeline pipeline = CreateComputePipelineInternal(device, scratch, desc, globalBindGroupLayout);
-	PipelineH pipelineHandle;
+	const VulkanPipeline pipeline = CreateComputePipelineInternal(device, scratch, desc, globalBindGroupLayout);
+	Pipeline pipelineHandle;
 	NewPipeline(device, pipelineHandle) = pipeline;
 	return pipelineHandle;
 }
 
 
-bool IsSamePipeline(PipelineH a, PipelineH b)
+bool IsSamePipeline(Pipeline a, Pipeline b)
 {
 	const bool isSame = a == b;
 	return isSame;
 }
 
-void DestroyPipeline(const GraphicsDevice &device, const Pipeline &pipeline)
+void DestroyPipeline(const GraphicsDevice &device, const VulkanPipeline &pipeline)
 {
 	ASSERT( pipeline.handle != VK_NULL_HANDLE );
 	ASSERT( pipeline.layout.handle != VK_NULL_HANDLE );
@@ -3378,7 +3378,7 @@ void DestroyPipeline(const GraphicsDevice &device, const Pipeline &pipeline)
 	vkDestroyPipelineLayout( device.handle, pipeline.layout.handle, VULKAN_ALLOCATORS );
 }
 
-void DestroyPipelineH(GraphicsDevice &device, PipelineH &handle)
+void DestroyPipeline(GraphicsDevice &device, Pipeline &handle)
 {
 	if ( handle ) {
 		FreeHandle(device.pipelines.handles, handle);
@@ -3391,7 +3391,7 @@ void DestroyPipelineH(GraphicsDevice &device, PipelineH &handle)
 // RenderPass
 //////////////////////////////
 
-RenderPass CreateRenderPassInternal( const GraphicsDevice &device, const RenderpassDesc &desc )
+VulkanRenderPass CreateRenderPassInternal( const GraphicsDevice &device, const RenderpassDesc &desc )
 {
 	CT_ASSERT(MAX_COLOR_ATTACHMENTS + MAX_DEPTH_ATTACHMENTS == MAX_RENDER_TARGETS);
 	ASSERT(desc.colorAttachmentCount <= MAX_COLOR_ATTACHMENTS);
@@ -3462,7 +3462,7 @@ RenderPass CreateRenderPassInternal( const GraphicsDevice &device, const Renderp
 	VkRenderPass vkRenderPass;
 	VK_CALL( vkCreateRenderPass( device.handle, &renderPassCreateInfo, VULKAN_ALLOCATORS, &vkRenderPass ) );
 
-	const RenderPass renderPass = {
+	const VulkanRenderPass renderPass = {
 		.name = InternStringGfx(desc.name),
 		.handle = vkRenderPass
 	};
@@ -3470,26 +3470,26 @@ RenderPass CreateRenderPassInternal( const GraphicsDevice &device, const Renderp
 	return renderPass;
 }
 
-RenderPassH CreateRenderPass( GraphicsDevice &device, const RenderpassDesc &desc )
+RenderPass CreateRenderPass( GraphicsDevice &device, const RenderpassDesc &desc )
 {
-	const RenderPass renderPass = CreateRenderPassInternal(device, desc);
-	RenderPassH renderPassH;
-	NewRenderPass(device, renderPassH) = renderPass;
-	return renderPassH;
+	const VulkanRenderPass vulkanRenderPass = CreateRenderPassInternal(device, desc);
+	RenderPass renderPass;
+	NewRenderPass(device, renderPass) = vulkanRenderPass;
+	return renderPass;
 }
 
 
-void DestroyRenderPass(const GraphicsDevice &device, const RenderPass &renderPass)
+void DestroyRenderPass(const GraphicsDevice &device, const VulkanRenderPass &renderPass)
 {
 	vkDestroyRenderPass( device.handle, renderPass.handle, VULKAN_ALLOCATORS );
 }
 
-void DestroyRenderPassH(GraphicsDevice &device, RenderPassH &renderPassH)
+void DestroyRenderPass(GraphicsDevice &device, RenderPass &renderPass)
 {
-	if ( renderPassH ) {
-		FreeHandle(device.renderPasses.handles, renderPassH);
+	if ( renderPass ) {
+		FreeHandle(device.renderPasses.handles, renderPass);
 	}
-	renderPassH = {};
+	renderPass = {};
 }
 
 
@@ -3498,7 +3498,7 @@ void DestroyRenderPassH(GraphicsDevice &device, RenderPassH &renderPassH)
 //////////////////////////////
 
 
-FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &desc)
+Framebuffer CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &desc)
 {
 	ASSERT(desc.attachmentCount > 0 && desc.attachmentCount < MAX_COLOR_ATTACHMENTS + MAX_DEPTH_ATTACHMENTS);
 
@@ -3508,7 +3508,7 @@ FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &de
 	VkImageView attachments[MAX_COLOR_ATTACHMENTS + MAX_DEPTH_ATTACHMENTS] = {};
 	for (u32 i = 0; i < desc.attachmentCount; ++i)
 	{
-		const Image &image = GetImage(device, desc.attachments[i]);
+		const VulkanImage &image = GetImage(device, desc.attachments[i]);
 		attachments[i] = image.imageViewHandle;
 
 		if ( i == 0 )
@@ -3522,7 +3522,7 @@ FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &de
 		}
 	}
 
-	const RenderPass &renderPass = GetRenderPass(device, desc.renderPass);
+	const VulkanRenderPass &renderPass = GetRenderPass(device, desc.renderPass);
 
 	const VkFramebufferCreateInfo framebufferCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -3537,28 +3537,28 @@ FramebufferH CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &de
 	VkFramebuffer handle;
 	VK_CALL( vkCreateFramebuffer( device.handle, &framebufferCreateInfo, VULKAN_ALLOCATORS, &handle) );
 
-	FramebufferH framebufferH;
-	NewFramebuffer(device, framebufferH) = {
+	Framebuffer framebuffer;
+	NewFramebuffer(device, framebuffer) = {
 		.handle = handle,
 		.renderPassHandle = renderPass.handle,
 		.extent = { width, height },
 		.attachmentCount = desc.attachmentCount,
 	};
-	return framebufferH;
+	return framebuffer;
 }
 
-void DestroyFramebuffer(GraphicsDevice &device, FramebufferH &framebufferH)
+void DestroyFramebuffer(GraphicsDevice &device, Framebuffer &framebuffer)
 {
-	if ( framebufferH ) {
-		FreeHandle(device.framebuffers.handles, framebufferH);
+	if ( framebuffer ) {
+		FreeHandle(device.framebuffers.handles, framebuffer);
 	}
-	framebufferH = {};
+	framebuffer = {};
 }
 
-uint2 GetFramebufferSize(const GraphicsDevice &device, FramebufferH framebufferH)
+uint2 GetFramebufferSize(const GraphicsDevice &device, Framebuffer framebuffer)
 {
-	const Framebuffer &framebuffer = GetFramebuffer(device, framebufferH);
-	return { framebuffer.extent.width, framebuffer.extent.height };
+	const VulkanFramebuffer &vulkanFramebuffer = GetFramebuffer(device, framebuffer);
+	return { vulkanFramebuffer.extent.width, vulkanFramebuffer.extent.height };
 }
 
 
@@ -3657,14 +3657,14 @@ void EndTransientCommandList(GraphicsDevice &device, const CommandList &commandL
 // Commands
 //////////////////////////////
 
-void *GetBufferPtr(const GraphicsDevice &device, BufferH bufferH)
+void *GetBufferPtr(const GraphicsDevice &device, Buffer buffer)
 {
-	const Buffer &buffer = GetBuffer(device, bufferH);
-	const Heap &heap = device.heaps[buffer.alloc.heap];
+	const VulkanBuffer &vulkanBuffer = GetBuffer(device, buffer);
+	const VulkanHeap &heap = device.heaps[vulkanBuffer.alloc.heap];
 
 	if (heap.data) // Check if the heap memory is mapped
 	{
-		void *ptr = heap.data + buffer.alloc.offset;
+		void *ptr = heap.data + vulkanBuffer.alloc.offset;
 		return ptr;
 	}
 	else
@@ -3673,59 +3673,59 @@ void *GetBufferPtr(const GraphicsDevice &device, BufferH bufferH)
 	}
 }
 
-void CopyBufferToBuffer(const CommandList &commandBuffer, BufferH srcBufferH, u32 srcOffset, BufferH dstBufferH, u32 dstOffset, u64 size)
+void CopyBufferToBuffer(const CommandList &commandBuffer, Buffer srcBuffer, u32 srcOffset, Buffer dstBuffer, u32 dstOffset, u64 size)
 {
 	const GraphicsDevice &device = GetDevice(commandBuffer);
-	const Buffer &srcBuffer = GetBuffer(device, srcBufferH);
-	const Buffer &dstBuffer = GetBuffer(device, dstBufferH);
+	const VulkanBuffer &vulkanSrcBuffer = GetBuffer(device, srcBuffer);
+	const VulkanBuffer &vulkanDstBuffer = GetBuffer(device, dstBuffer);
 
-	ASSERT(srcOffset + size <= srcBuffer.size);
-	ASSERT(dstOffset + size <= dstBuffer.size);
+	ASSERT(srcOffset + size <= vulkanSrcBuffer.size);
+	ASSERT(dstOffset + size <= vulkanDstBuffer.size);
 
 	const VkBufferCopy copyRegion = {
 		srcOffset = srcOffset,
 		dstOffset = dstOffset,
 		size = size,
 	};
-	vkCmdCopyBuffer(GetState(commandBuffer).handle, srcBuffer.handle, dstBuffer.handle, 1, &copyRegion);
+	vkCmdCopyBuffer(GetState(commandBuffer).handle, vulkanSrcBuffer.handle, vulkanDstBuffer.handle, 1, &copyRegion);
 }
 
-void CopyBufferToImage(const CommandList &commandBuffer, BufferH bufferH, u32 bufferOffset, ImageH imageH)
+void CopyBufferToImage(const CommandList &commandBuffer, Buffer buffer, u32 bufferOffset, Image image)
 {
 	const GraphicsDevice &device = GetDevice(commandBuffer);
-	const Buffer &buffer = GetBuffer(device, bufferH);
-	const Image &image = GetImage(device, imageH);
+	const VulkanBuffer &vulkanBuffer = GetBuffer(device, buffer);
+	const VulkanImage &vulkanImage = GetImage(device, image);
 
 	const VkBufferImageCopy region = {
 		.bufferOffset = bufferOffset,
 		.bufferRowLength = 0,
 		.bufferImageHeight = 0,
 		.imageSubresource = {
-			.aspectMask = FormatToVulkanAspect(image.format),
+			.aspectMask = FormatToVulkanAspect(vulkanImage.format),
 			.mipLevel = 0,
 			.baseArrayLayer = 0,
 			.layerCount = 1,
 		},
 		.imageOffset = {0, 0, 0},
-		.imageExtent = { image.width, image.height, 1 },
+		.imageExtent = { vulkanImage.width, vulkanImage.height, 1 },
 	};
 
 	vkCmdCopyBufferToImage(
 			GetState(commandBuffer).handle,
-			buffer.handle,
-			image.handle,
+			vulkanBuffer.handle,
+			vulkanImage.handle,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // Assuming the right layout
 			1,
 			&region
 			);
 }
 
-void Blit(const CommandList &commandBuffer, ImageH srcImageH, const BlitRegion &srcRegion, ImageH dstImageH, const BlitRegion &dstRegion)
+void Blit(const CommandList &commandBuffer, Image srcImage, const BlitRegion &srcRegion, Image dstImage, const BlitRegion &dstRegion)
 {
 	const GraphicsDevice &device = GetDevice(commandBuffer);
-	const Image &srcImage = GetImage(device, srcImageH);
-	const Image &dstImage = GetImage(device, dstImageH);
-	const VkImageAspectFlags aspectMask = FormatToVulkanAspect(srcImage.format);
+	const VulkanImage &vulkanSrcImage = GetImage(device, srcImage);
+	const VulkanImage &vulkanDstImage = GetImage(device, dstImage);
+	const VkImageAspectFlags aspectMask = FormatToVulkanAspect(vulkanSrcImage.format);
 
 	const VkImageBlit blit = {
 		.srcSubresource = {
@@ -3751,17 +3751,17 @@ void Blit(const CommandList &commandBuffer, ImageH srcImageH, const BlitRegion &
 	};
 
 	vkCmdBlitImage(GetState(commandBuffer).handle,
-			srcImage.handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, // Assuming the proper layout
-			dstImage.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // Assuming the proper layout
+			vulkanSrcImage.handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, // Assuming the proper layout
+			vulkanDstImage.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // Assuming the proper layout
 			1, &blit,
 			VK_FILTER_LINEAR); // Assuming linear filtering
 }
 
-void TransitionImageLayout(const CommandList &commandBuffer, ImageH imageH, ImageState oldState, ImageState newState, u32 baseMipLevel, u32 levelCount)
+void TransitionImageLayout(const CommandList &commandBuffer, Image image, ImageState oldState, ImageState newState, u32 baseMipLevel, u32 levelCount)
 {
-	const Image &image = GetImage(GetDevice(commandBuffer), imageH);
+	const VulkanImage &vulkanImage = GetImage(GetDevice(commandBuffer), image);
 
-	const bool isDepth = IsDepthFormat(image.format);
+	const bool isDepth = IsDepthFormat(vulkanImage.format);
 
 	VkAccessFlags srcAccess = 0;
 	VkAccessFlags dstAccess = 0;
@@ -3860,9 +3860,9 @@ void TransitionImageLayout(const CommandList &commandBuffer, ImageH imageH, Imag
 		.newLayout = newLayout,
 		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		.image = image.handle,
+		.image = vulkanImage.handle,
 		.subresourceRange = {
-			.aspectMask = FormatToVulkanAspect(image.format),
+			.aspectMask = FormatToVulkanAspect(vulkanImage.format),
 			.baseMipLevel = baseMipLevel,
 			.levelCount = levelCount,
 			.baseArrayLayer = 0,
@@ -3930,11 +3930,11 @@ static void BufferStateToVulkan(BufferState state, VkAccessFlags &access, VkPipe
 	}
 }
 
-void TransitionBufferState(const CommandList &commandBuffer, BufferH bufferH, BufferState oldState, BufferState newState)
+void TransitionBufferState(const CommandList &commandBuffer, Buffer buffer, BufferState oldState, BufferState newState)
 {
 	ASSERT(newState != BufferStateInitial);
 
-	const Buffer &buffer = GetBuffer(GetDevice(commandBuffer), bufferH);
+	const VulkanBuffer &vulkanBuffer = GetBuffer(GetDevice(commandBuffer), buffer);
 
 	VkAccessFlags srcAccess = 0;
 	VkAccessFlags dstAccess = 0;
@@ -3950,7 +3950,7 @@ void TransitionBufferState(const CommandList &commandBuffer, BufferH bufferH, Bu
 		.dstAccessMask = dstAccess,
 		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		.buffer = buffer.handle,
+		.buffer = vulkanBuffer.handle,
 		.offset = 0,
 		.size = VK_WHOLE_SIZE,
 	};
@@ -3965,20 +3965,20 @@ void TransitionBufferState(const CommandList &commandBuffer, BufferH bufferH, Bu
 		);
 }
 
-void BeginRenderPass(const CommandList &commandList, FramebufferH framebufferH)
+void BeginRenderPass(const CommandList &commandList, Framebuffer framebuffer)
 {
-	const Framebuffer &framebuffer = GetFramebuffer(GetDevice(commandList), framebufferH);
-	const CommandListState &state = GetState(commandList);
+	const VulkanFramebuffer &vulkanFramebuffer = GetFramebuffer(GetDevice(commandList), framebuffer);
+	const VulkanCommandListState &state = GetState(commandList);
 
 	const VkRenderPassBeginInfo renderPassBeginInfo = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = framebuffer.renderPassHandle,
-		.framebuffer = framebuffer.handle,
+		.renderPass = vulkanFramebuffer.renderPassHandle,
+		.framebuffer = vulkanFramebuffer.handle,
 		.renderArea = {
 			.offset = { 0, 0 },
-			.extent = framebuffer.extent
+			.extent = vulkanFramebuffer.extent
 		},
-		.clearValueCount = framebuffer.attachmentCount,
+		.clearValueCount = vulkanFramebuffer.attachmentCount,
 		.pClearValues = state.clearValues,
 	};
 
@@ -4046,33 +4046,33 @@ void SetClearStencil(const CommandList &commandList, u32 renderTargetIndex, u32 
 	GetState(commandList).clearValues[renderTargetIndex].depthStencil.stencil = stencil;
 }
 
-void SetPipeline(const CommandList &commandList, PipelineH pipelineH)
+void SetPipeline(const CommandList &commandList, Pipeline pipeline)
 {
-	CommandListState &state = GetState(commandList);
+	VulkanCommandListState &state = GetState(commandList);
 
-	if ( !IsSamePipeline(state.pipeline, pipelineH) )
+	if ( !IsSamePipeline(state.pipeline, pipeline) )
 	{
-		state.pipeline = pipelineH;
-		const Pipeline &pipeline = GetPipeline(GetDevice(commandList), pipelineH);
+		state.pipeline = pipeline;
+		const VulkanPipeline &vulkanPipeline = GetPipeline(GetDevice(commandList), pipeline);
 
 		// Descriptor sets are bound per bind point, but the handles cached here are not. A
 		// graphics pass following a dispatch would ask for the same set it just used, see no
 		// change, and never bind it for graphics. Forget them so the next SetBindGroup binds.
-		if ( state.bindPoint != pipeline.bindPoint )
+		if ( state.bindPoint != vulkanPipeline.bindPoint )
 		{
-			state.bindPoint = pipeline.bindPoint;
+			state.bindPoint = vulkanPipeline.bindPoint;
 			MemSet(state.descriptorSetHandles, sizeof(state.descriptorSetHandles), 0);
 			state.descriptorSetDirtyMask = 0;
 		}
 
-		vkCmdBindPipeline( state.handle, pipeline.bindPoint, pipeline.handle );
+		vkCmdBindPipeline( state.handle, vulkanPipeline.bindPoint, vulkanPipeline.handle );
 	}
 }
 
-void SetBindGroup(const CommandList &commandList, u32 bindGroupIndex, BindGroupH bindGroupH)
+void SetBindGroup(const CommandList &commandList, u32 bindGroupIndex, BindGroup bindGroup)
 {
-	CommandListState &state = GetState(commandList);
-	const i32 index = GetElementIndex(GetDevice(commandList).bindGroups.handles, bindGroupH);
+	VulkanCommandListState &state = GetState(commandList);
+	const i32 index = GetElementIndex(GetDevice(commandList).bindGroups.handles, bindGroup);
 	const VkDescriptorSet descriptorSet = index >= 0 ? GetDevice(commandList).bindGroups.items[index].handle : VK_NULL_HANDLE;
 
 	if ( state.descriptorSetHandles[bindGroupIndex] != descriptorSet )
@@ -4082,28 +4082,28 @@ void SetBindGroup(const CommandList &commandList, u32 bindGroupIndex, BindGroupH
 	}
 }
 
-void SetVertexBuffer(const CommandList &commandList, BufferH bufferH)
+void SetVertexBuffer(const CommandList &commandList, Buffer buffer)
 {
-	const Buffer &buffer = GetBuffer(GetDevice(commandList), bufferH);
+	const VulkanBuffer &vulkanBuffer = GetBuffer(GetDevice(commandList), buffer);
 
-	if ( buffer.handle && buffer.handle != GetState(commandList).vertexBufferHandle )
+	if ( vulkanBuffer.handle && vulkanBuffer.handle != GetState(commandList).vertexBufferHandle )
 	{
-		GetState(commandList).vertexBufferHandle = buffer.handle;
-		VkBuffer vertexBuffers[] = { buffer.handle };
+		GetState(commandList).vertexBufferHandle = vulkanBuffer.handle;
+		VkBuffer vertexBuffers[] = { vulkanBuffer.handle };
 		VkDeviceSize vertexBufferOffsets[] = { 0 };
 		vkCmdBindVertexBuffers(GetState(commandList).handle, 0, ARRAY_COUNT(vertexBuffers), vertexBuffers, vertexBufferOffsets);
 	}
 }
 
-void SetIndexBuffer(const CommandList &commandList, BufferH bufferH)
+void SetIndexBuffer(const CommandList &commandList, Buffer buffer)
 {
-	const Buffer &buffer = GetBuffer(GetDevice(commandList), bufferH);
+	const VulkanBuffer &vulkanBuffer = GetBuffer(GetDevice(commandList), buffer);
 
-	if ( buffer.handle && buffer.handle != GetState(commandList).indexBufferHandle )
+	if ( vulkanBuffer.handle && vulkanBuffer.handle != GetState(commandList).indexBufferHandle )
 	{
-		GetState(commandList).indexBufferHandle = buffer.handle;
+		GetState(commandList).indexBufferHandle = vulkanBuffer.handle;
 		VkDeviceSize indexBufferOffset = 0;
-		vkCmdBindIndexBuffer(GetState(commandList).handle, buffer.handle, indexBufferOffset, VK_INDEX_TYPE_UINT16);
+		vkCmdBindIndexBuffer(GetState(commandList).handle, vulkanBuffer.handle, indexBufferOffset, VK_INDEX_TYPE_UINT16);
 	}
 }
 
@@ -4140,7 +4140,7 @@ void EndRenderPass(const CommandList &commandList)
 //////////////////////////////
 
 
-TimestampPoolH CreateTimestampPool(GraphicsDevice &device, u32 maxQueries)
+TimestampPool CreateTimestampPool(GraphicsDevice &device, u32 maxQueries)
 {
 #if DEVELOPMENT_BUILD
 	const VkQueryPoolCreateInfo createInfo = {
@@ -4152,24 +4152,24 @@ TimestampPoolH CreateTimestampPool(GraphicsDevice &device, u32 maxQueries)
 	VkQueryPool poolHandle;
 	VK_CALL( vkCreateQueryPool(device.handle, &createInfo, VULKAN_ALLOCATORS, &poolHandle) );
 
-	TimestampPoolH poolH;
-	NewTimestampPool(device, poolH) = {
+	TimestampPool pool;
+	NewTimestampPool(device, pool) = {
 		.handle = poolHandle,
 		.queryCount = 0,
 		.maxQueries = maxQueries,
 	};
-	return poolH;
+	return pool;
 #else
 	return {};
 #endif
 }
 
-void DestroyTimestampPool(GraphicsDevice &device, TimestampPoolH &poolH)
+void DestroyTimestampPool(GraphicsDevice &device, TimestampPool &pool)
 {
-	if ( poolH ) {
-		FreeHandle(device.timestampPools.handles, poolH);
+	if ( pool ) {
+		FreeHandle(device.timestampPools.handles, pool);
 	}
-	poolH = {};
+	pool = {};
 }
 
 //void ResetTimestampPool(const GraphicsDevice &device, TimestampPool &pool)
@@ -4179,46 +4179,46 @@ void DestroyTimestampPool(GraphicsDevice &device, TimestampPoolH &poolH)
 //	pool.queryCount = 0;
 //}
 
-void ResetTimestampPool(const CommandList &commandBuffer, TimestampPoolH poolH)
+void ResetTimestampPool(const CommandList &commandBuffer, TimestampPool pool)
 {
 #if DEVELOPMENT_BUILD
-	if ( !poolH ) { return; }
+	if ( !pool ) { return; }
 
-	TimestampPool &pool = GetMutableTimestampPool(GetDevice(commandBuffer), poolH);
-	vkCmdResetQueryPool(GetState(commandBuffer).handle, pool.handle, 0, pool.maxQueries);
-	pool.queryCount = 0;
+	VulkanTimestampPool &vulkanPool = GetMutableTimestampPool(GetDevice(commandBuffer), pool);
+	vkCmdResetQueryPool(GetState(commandBuffer).handle, vulkanPool.handle, 0, vulkanPool.maxQueries);
+	vulkanPool.queryCount = 0;
 #endif
 }
 
-u32 WriteTimestamp(const CommandList &commandBuffer, TimestampPoolH poolH, PipelineStage stage)
+u32 WriteTimestamp(const CommandList &commandBuffer, TimestampPool pool, PipelineStage stage)
 {
 #if DEVELOPMENT_BUILD
-	if ( !poolH ) { return 0; }
+	if ( !pool ) { return 0; }
 
-	TimestampPool &pool = GetMutableTimestampPool(GetDevice(commandBuffer), poolH);
-	ASSERT(pool.queryCount < pool.maxQueries);
+	VulkanTimestampPool &vulkanPool = GetMutableTimestampPool(GetDevice(commandBuffer), pool);
+	ASSERT(vulkanPool.queryCount < vulkanPool.maxQueries);
 	const VkPipelineStageFlagBits vkState = PipelineStageToVulkan(stage);
-	const u32 queryIndex = pool.queryCount++;
-	vkCmdWriteTimestamp(GetState(commandBuffer).handle, vkState, pool.handle, queryIndex);
+	const u32 queryIndex = vulkanPool.queryCount++;
+	vkCmdWriteTimestamp(GetState(commandBuffer).handle, vkState, vulkanPool.handle, queryIndex);
 	return queryIndex;
 #else
 	return 0;
 #endif
 }
 
-Timestamp ReadTimestamp(const GraphicsDevice &device, TimestampPoolH poolH, u32 queryIndex)
+Timestamp ReadTimestamp(const GraphicsDevice &device, TimestampPool pool, u32 queryIndex)
 {
 #if DEVELOPMENT_BUILD
 	double millis = 0.0f;
 
-	if ( poolH && queryIndex < GetTimestampPool(device, poolH).queryCount )
+	if ( pool && queryIndex < GetTimestampPool(device, pool).queryCount )
 	{
-		const TimestampPool &pool = GetTimestampPool(device, poolH);
+		const VulkanTimestampPool &vulkanPool = GetTimestampPool(device, pool);
 		u64 data[2];
 		const VkQueryResultFlags flags = VK_QUERY_RESULT_WITH_AVAILABILITY_BIT | VK_QUERY_RESULT_64_BIT;
 		const VkDeviceSize stride = sizeof(data);
 		const u32 queryCount = 1;
-		VkResult result = vkGetQueryPoolResults(device.handle, pool.handle, queryIndex, queryCount, sizeof(data), data, stride, flags);
+		VkResult result = vkGetQueryPoolResults(device.handle, vulkanPool.handle, queryIndex, queryCount, sizeof(data), data, stride, flags);
 
 		// Exit with error
 		if (result < VK_SUCCESS) {
@@ -4247,15 +4247,15 @@ Timestamp ReadTimestamp(const GraphicsDevice &device, TimestampPoolH poolH, u32 
 // Timestamps are only readable once the GPU is done with the commands that wrote them (normally
 // MAX_FRAMES_IN_FLIGHT frames later), so this returns false, writing nothing, when any query in
 // the range is not available yet. The caller is expected to retry (or drop the frame) in that case.
-bool ReadTimestamps(const GraphicsDevice &device, TimestampPoolH poolH, u32 firstQuery, u32 queryCount, Timestamp *outTimestamps)
+bool ReadTimestamps(const GraphicsDevice &device, TimestampPool pool, u32 firstQuery, u32 queryCount, Timestamp *outTimestamps)
 {
 #if DEVELOPMENT_BUILD
-	if ( !poolH ) {
+	if ( !pool ) {
 		return false;
 	}
 
-	const TimestampPool &pool = GetTimestampPool(device, poolH);
-	if ( firstQuery + queryCount > pool.queryCount ) {
+	const VulkanTimestampPool &vulkanPool = GetTimestampPool(device, pool);
+	if ( firstQuery + queryCount > vulkanPool.queryCount ) {
 		return false;
 	}
 
@@ -4269,7 +4269,7 @@ bool ReadTimestamps(const GraphicsDevice &device, TimestampPoolH poolH, u32 firs
 	{
 		const u32 batchCount = Min(maxBatchCount, queryCount - i);
 		const VkDeviceSize dataSize = batchCount * stride;
-		VkResult result = vkGetQueryPoolResults(device.handle, pool.handle, firstQuery + i, batchCount, dataSize, data, stride, flags);
+		VkResult result = vkGetQueryPoolResults(device.handle, vulkanPool.handle, firstQuery + i, batchCount, dataSize, data, stride, flags);
 
 		// Exit with error
 		if (result < VK_SUCCESS) {
@@ -4377,7 +4377,7 @@ typedef void RetireElementFunc(GraphicsDevice &device, const void *element);
 
 static void RetireBindGroup(GraphicsDevice &device, const void *element)
 {
-	const BindGroup &e = *(const BindGroup*)element;
+	const VulkanBindGroup &e = *(const VulkanBindGroup*)element;
 	if ( e.handle ) {
 		VK_CALL( vkFreeDescriptorSets(device.handle, e.descriptorPool, 1, &e.handle) );
 	}
@@ -4385,61 +4385,61 @@ static void RetireBindGroup(GraphicsDevice &device, const void *element)
 
 static void RetireBindGroupAllocator(GraphicsDevice &device, const void *element)
 {
-	const BindGroupAllocator &e = *(const BindGroupAllocator*)element;
+	const VulkanBindGroupAllocator &e = *(const VulkanBindGroupAllocator*)element;
 	vkDestroyDescriptorPool(device.handle, e.handle, VULKAN_ALLOCATORS);
 }
 
 static void RetirePipeline(GraphicsDevice &device, const void *element)
 {
-	DestroyPipeline(device, *(const Pipeline*)element);
+	DestroyPipeline(device, *(const VulkanPipeline*)element);
 }
 
 static void RetireBindGroupLayout(GraphicsDevice &device, const void *element)
 {
-	const BindGroupLayout &e = *(const BindGroupLayout*)element;
+	const VulkanBindGroupLayout &e = *(const VulkanBindGroupLayout*)element;
 	vkDestroyDescriptorSetLayout(device.handle, e.handle, VULKAN_ALLOCATORS);
 }
 
 static void RetireFramebuffer(GraphicsDevice &device, const void *element)
 {
-	const Framebuffer &e = *(const Framebuffer*)element;
+	const VulkanFramebuffer &e = *(const VulkanFramebuffer*)element;
 	vkDestroyFramebuffer(device.handle, e.handle, VULKAN_ALLOCATORS);
 }
 
 static void RetireRenderPass(GraphicsDevice &device, const void *element)
 {
-	DestroyRenderPass(device, *(const RenderPass*)element);
+	DestroyRenderPass(device, *(const VulkanRenderPass*)element);
 }
 
 static void RetireBufferView(GraphicsDevice &device, const void *element)
 {
-	DestroyBufferView(device, *(const BufferView*)element);
+	DestroyBufferView(device, *(const VulkanBufferView*)element);
 }
 
 static void RetireBuffer(GraphicsDevice &device, const void *element)
 {
-	DestroyBuffer(device, *(const Buffer*)element);
+	DestroyBuffer(device, *(const VulkanBuffer*)element);
 }
 
 static void RetireImage(GraphicsDevice &device, const void *element)
 {
-	DestroyImage(device, *(const Image*)element);
+	DestroyImage(device, *(const VulkanImage*)element);
 }
 
 static void RetireSampler(GraphicsDevice &device, const void *element)
 {
-	DestroySampler(device, *(const Sampler*)element);
+	DestroySampler(device, *(const VulkanSampler*)element);
 }
 
 static void RetireTimestampPool(GraphicsDevice &device, const void *element)
 {
 #if DEVELOPMENT_BUILD
-	const TimestampPool &e = *(const TimestampPool*)element;
+	const VulkanTimestampPool &e = *(const VulkanTimestampPool*)element;
 	vkDestroyQueryPool(device.handle, e.handle, VULKAN_ALLOCATORS);
 #endif
 }
 
-struct PoolCompaction
+struct VulkanPoolCompaction
 {
 	GraphicsDevice *device;
 	byte *elements;
@@ -4449,20 +4449,20 @@ struct PoolCompaction
 
 static MOVE_ELEMENT(MovePoolElement)
 {
-	const PoolCompaction &c = *(const PoolCompaction*)data;
+	const VulkanPoolCompaction &c = *(const VulkanPoolCompaction*)data;
 	MemCopy(c.elements + dstIndex * c.elementSize, c.elements + srcIndex * c.elementSize, c.elementSize);
 }
 
 static REMOVE_ELEMENT(RemovePoolElement)
 {
-	const PoolCompaction &c = *(const PoolCompaction*)data;
+	const VulkanPoolCompaction &c = *(const VulkanPoolCompaction*)data;
 	c.retire(*c.device, c.elements + index * c.elementSize);
 }
 
 static void CompactResourcePool(GraphicsDevice &device, HandlePool &pool, void *elements, u32 elementSize, RetireElementFunc *retire)
 {
 	const u16 oldCount = HandleCount(pool);
-	const PoolCompaction compaction = { &device, (byte*)elements, elementSize, retire };
+	const VulkanPoolCompaction compaction = { &device, (byte*)elements, elementSize, retire };
 	CompactPool(pool, MovePoolElement, RemovePoolElement, (void*)&compaction);
 
 	const u16 newCount = HandleCount(pool);
@@ -4472,7 +4472,7 @@ static void CompactResourcePool(GraphicsDevice &device, HandlePool &pool, void *
 static void CompactResourcePools(GraphicsDevice &device)
 {
 #define COMPACT_RESOURCE_POOL(Type, name, count) \
-	CompactResourcePool(device, device.name.handles, device.name.items, sizeof(Type), Retire##Type);
+	CompactResourcePool(device, device.name.handles, device.name.items, sizeof(Vulkan##Type), Retire##Type);
 	ILU_GFX_EXPAND_RESOURCES(COMPACT_RESOURCE_POOL)
 #undef COMPACT_RESOURCE_POOL
 }
@@ -4696,7 +4696,7 @@ void ResetHeap(GraphicsDevice &device, HeapType heapType)
 	device.heaps[heapType].used = 0;
 }
 
-RenderPassH FindRenderPass(const GraphicsDevice &device, const char *name)
+RenderPass FindRenderPass(const GraphicsDevice &device, const char *name)
 {
 	for (u16 i = 0; i < HandleCount(device.renderPasses.handles); ++i) {
 		const Handle handle = GetHandleAt(device.renderPasses.handles, i);
@@ -4732,7 +4732,7 @@ u32 GetSwapchainImageIndex(const GraphicsDevice &device)
 	return device.swapchain.currentImageIndex;
 }
 
-ImageH GetSwapchainImage(const GraphicsDevice &device, u32 index)
+Image GetSwapchainImage(const GraphicsDevice &device, u32 index)
 {
 	ASSERT(index < device.swapchain.imageCount);
 	return device.swapchain.imageHandles[index];
@@ -4743,34 +4743,34 @@ ImageH GetSwapchainImage(const GraphicsDevice &device, u32 index)
 // Resource accessors
 //////////////////////////////
 
-u32 GetBufferSize(const GraphicsDevice &device, BufferH handle)
+u32 GetBufferSize(const GraphicsDevice &device, Buffer handle)
 {
 	return GetBuffer(device, handle).size;
 }
 
-uint2 GetImageSize(const GraphicsDevice &device, ImageH handle)
+uint2 GetImageSize(const GraphicsDevice &device, Image handle)
 {
-	const Image &image = GetImage(device, handle);
+	const VulkanImage &image = GetImage(device, handle);
 	return { image.width, image.height };
 }
 
-Format GetImageFormat(const GraphicsDevice &device, ImageH handle)
+Format GetImageFormat(const GraphicsDevice &device, Image handle)
 {
 	return GetImage(device, handle).format;
 }
 
-u32 GetImageMipLevels(const GraphicsDevice &device, ImageH handle)
+u32 GetImageMipLevels(const GraphicsDevice &device, Image handle)
 {
 	return GetImage(device, handle).mipLevels;
 }
 
-BindGroupLayoutH GetPipelineBindGroupLayout(const GraphicsDevice &device, PipelineH handle, u32 bindGroupIndex)
+BindGroupLayout GetPipelineBindGroupLayout(const GraphicsDevice &device, Pipeline handle, u32 bindGroupIndex)
 {
 	ASSERT(bindGroupIndex < MAX_BIND_GROUPS);
 	return GetPipeline(device, handle).layout.bindGroupLayouts[bindGroupIndex];
 }
 
-//void FlushBufferMemory(GraphicsDevice &device, BufferH bufferHandle)
+//void FlushBufferMemory(GraphicsDevice &device, Buffer bufferHandle)
 //{
 //	Buffer &buffer = GetBuffer(device, bufferHandle);
 //	const Heap &heap = device.heaps[buffer.alloc.heap];

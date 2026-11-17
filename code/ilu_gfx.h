@@ -240,26 +240,17 @@ enum Format
 	FormatInvalid = FormatCount,
 };
 
-// Freed handles stay valid until the end of the frame, when the pools are compacted
-
-#if defined(ILU_GFX_HANDLES_AS_RESOURCES)
-// The H names are kept as aliases, for the declarations below
-#define ILU_GFX_HANDLE_TYPE(TypeName) DECLARE_HANDLE_TYPE(TypeName); typedef TypeName TypeName ## H
-#else
-#define ILU_GFX_HANDLE_TYPE(TypeName) DECLARE_HANDLE_TYPE(TypeName ## H)
-#endif
-
-ILU_GFX_HANDLE_TYPE(Buffer);
-ILU_GFX_HANDLE_TYPE(BufferView);
-ILU_GFX_HANDLE_TYPE(Image);
-ILU_GFX_HANDLE_TYPE(Sampler);
-ILU_GFX_HANDLE_TYPE(Pipeline);
-ILU_GFX_HANDLE_TYPE(RenderPass);
-ILU_GFX_HANDLE_TYPE(Framebuffer);
-ILU_GFX_HANDLE_TYPE(BindGroupLayout);
-ILU_GFX_HANDLE_TYPE(BindGroupAllocator);
-ILU_GFX_HANDLE_TYPE(BindGroup);
-ILU_GFX_HANDLE_TYPE(TimestampPool);
+DECLARE_HANDLE_TYPE(Buffer);
+DECLARE_HANDLE_TYPE(BufferView);
+DECLARE_HANDLE_TYPE(Image);
+DECLARE_HANDLE_TYPE(Sampler);
+DECLARE_HANDLE_TYPE(Pipeline);
+DECLARE_HANDLE_TYPE(RenderPass);
+DECLARE_HANDLE_TYPE(Framebuffer);
+DECLARE_HANDLE_TYPE(BindGroupLayout);
+DECLARE_HANDLE_TYPE(BindGroupAllocator);
+DECLARE_HANDLE_TYPE(BindGroup);
+DECLARE_HANDLE_TYPE(TimestampPool);
 
 // Its recording state lives in the backend, at `index`
 struct GraphicsDevice;
@@ -340,31 +331,31 @@ struct ResourceBinding
 	{
 		struct
 		{
-			BufferH buffer;
+			Buffer buffer;
 			u32 offset;
 			u32 range;
 		};
-		BufferViewH bufferView;
-		ImageH image;
-		SamplerH sampler;
+		BufferView bufferView;
+		Image image;
+		Sampler sampler;
 	};
 };
 
 struct BindGroupDesc
 {
-	BindGroupLayoutH layout;
+	BindGroupLayout layout;
 	ResourceBinding bindings[MAX_SHADER_BINDINGS];
 };
 
 struct BufferArena
 {
-	BufferH buffer;
+	Buffer buffer;
 	u32 used;
 };
 
 struct BufferChunk
 {
-	BufferH buffer;
+	Buffer buffer;
 	u32 offset;
 	u32 size;
 };
@@ -397,8 +388,8 @@ struct RenderpassDesc
 
 struct FramebufferDesc
 {
-	RenderPassH renderPass;
-	ImageH attachments[4];
+	RenderPass renderPass;
+	Image attachments[4];
 	u32 attachmentCount;
 };
 
@@ -445,7 +436,7 @@ struct PipelineDesc
 	CompareOp depthCompareOp;
 	bool blending;
 	bool additiveBlending;
-	RenderPassH renderPass;
+	RenderPass renderPass;
 };
 
 struct ComputeDesc
@@ -500,8 +491,8 @@ typedef void FN_WaitDeviceIdle(const GraphicsDevice &device);
 typedef void FN_BeginDebugGroup(const CommandList &cmd, const char *labelName, float4 labelColor);
 typedef void FN_EndDebugGroup(const CommandList &cmd);
 typedef void FN_InsertDebugLabel(const CommandList &cmd, const char *labelName, float4 labelColor);
-typedef void FN_SetObjectNamePipeline(const GraphicsDevice &device, PipelineH handle, const char *name);
-typedef void FN_SetObjectNameImage(const GraphicsDevice &device, ImageH handle, const char *name);
+typedef void FN_SetObjectNamePipeline(const GraphicsDevice &device, Pipeline handle, const char *name);
+typedef void FN_SetObjectNameImage(const GraphicsDevice &device, Image handle, const char *name);
 typedef void FN_RecreateSwapchain(GraphicsDevice &device, Window &window);
 typedef void FN_DestroySwapchain(GraphicsDevice &device);
 typedef bool FN_IsValidSwapchain(const GraphicsDevice &device);
@@ -510,43 +501,43 @@ typedef bool FN_InitializeGraphicsDriver(GraphicsDevice &device, Arena scratch);
 typedef bool FN_InitializeGraphicsSurface(GraphicsDevice &device, const Window &window);
 typedef bool FN_InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch);
 typedef bool FN_IsValidGraphicsDevice(const GraphicsDevice &device);
-typedef BindGroupAllocatorH FN_CreateBindGroupAllocator(GraphicsDevice &device, const BindGroupAllocatorDesc &desc);
-typedef void FN_DestroyBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH &allocatorH);
-typedef void FN_ResetBindGroupAllocator(GraphicsDevice &device, BindGroupAllocatorH allocatorH);
-typedef BindGroupLayoutH FN_CreateBindGroupLayout(GraphicsDevice &device, const ShaderBinding bindings[], u8 bindingCount);
-typedef BindGroupH FN_CreateBindGroup(GraphicsDevice &device, BindGroupLayoutH layoutH, BindGroupAllocatorH allocatorH);
-typedef BindGroupH FN_CreateFullBindGroup(GraphicsDevice &device, const BindGroupDesc &desc, BindGroupAllocatorH allocatorH);
-typedef void FN_DestroyBindGroup(GraphicsDevice &device, BindGroupH &bindGroupH);
-typedef void FN_UpdateBindGroup(const GraphicsDevice &device, const BindGroupDesc &bindGroupDesc, BindGroupH bindGroupH);
-typedef BufferH FN_CreateBuffer(GraphicsDevice &device, u32 size, BufferUsageFlags bufferUsageFlags, HeapType heapType);
-typedef void FN_DestroyBufferH(GraphicsDevice &device, BufferH &bufferH);
-typedef BufferViewH FN_CreateBufferView(GraphicsDevice &device, BufferH bufferHandle, Format format, u32 offset, u32 size);
-typedef void FN_DestroyBufferViewH(GraphicsDevice &device, BufferViewH &bufferViewH);
-typedef ImageH FN_CreateImage(GraphicsDevice &device, u32 width, u32 height, u32 mipLevels, Format format, ImageUsageFlags usage, HeapType heapType);
-typedef bool FN_IsSwapchainImage(ImageH image);
-typedef void FN_DestroyImageH(GraphicsDevice &device, ImageH &imageH);
-typedef SamplerH FN_CreateSampler(GraphicsDevice &device, const SamplerDesc &desc);
-typedef void FN_DestroySamplerH(GraphicsDevice &device, SamplerH &samplerH);
-typedef PipelineH FN_CreateGraphicsPipeline(GraphicsDevice &device, Arena scratch, const PipelineDesc &desc, BindGroupLayoutH globalBindGroupLayout);
-typedef PipelineH FN_CreateComputePipeline(GraphicsDevice &device, Arena scratch, const ComputeDesc &desc, BindGroupLayoutH globalBindGroupLayout);
-typedef bool FN_IsSamePipeline(PipelineH a, PipelineH b);
-typedef void FN_DestroyPipelineH(GraphicsDevice &device, PipelineH &handle);
-typedef RenderPassH FN_CreateRenderPass(GraphicsDevice &device, const RenderpassDesc &desc);
-typedef void FN_DestroyRenderPassH(GraphicsDevice &device, RenderPassH &renderPassH);
-typedef FramebufferH FN_CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &desc);
-typedef void FN_DestroyFramebuffer(GraphicsDevice &device, FramebufferH &framebufferH);
-typedef uint2 FN_GetFramebufferSize(const GraphicsDevice &device, FramebufferH framebufferH);
+typedef BindGroupAllocator FN_CreateBindGroupAllocator(GraphicsDevice &device, const BindGroupAllocatorDesc &desc);
+typedef void FN_DestroyBindGroupAllocator(GraphicsDevice &device, BindGroupAllocator &allocator);
+typedef void FN_ResetBindGroupAllocator(GraphicsDevice &device, BindGroupAllocator allocator);
+typedef BindGroupLayout FN_CreateBindGroupLayout(GraphicsDevice &device, const ShaderBinding bindings[], u8 bindingCount);
+typedef BindGroup FN_CreateBindGroup(GraphicsDevice &device, BindGroupLayout layout, BindGroupAllocator allocator);
+typedef BindGroup FN_CreateFullBindGroup(GraphicsDevice &device, const BindGroupDesc &desc, BindGroupAllocator allocator);
+typedef void FN_DestroyBindGroup(GraphicsDevice &device, BindGroup &bindGroup);
+typedef void FN_UpdateBindGroup(const GraphicsDevice &device, const BindGroupDesc &bindGroupDesc, BindGroup bindGroup);
+typedef Buffer FN_CreateBuffer(GraphicsDevice &device, u32 size, BufferUsageFlags bufferUsageFlags, HeapType heapType);
+typedef void FN_DestroyBuffer(GraphicsDevice &device, Buffer &buffer);
+typedef BufferView FN_CreateBufferView(GraphicsDevice &device, Buffer buffer, Format format, u32 offset, u32 size);
+typedef void FN_DestroyBufferView(GraphicsDevice &device, BufferView &bufferView);
+typedef Image FN_CreateImage(GraphicsDevice &device, u32 width, u32 height, u32 mipLevels, Format format, ImageUsageFlags usage, HeapType heapType);
+typedef bool FN_IsSwapchainImage(Image image);
+typedef void FN_DestroyImage(GraphicsDevice &device, Image &image);
+typedef Sampler FN_CreateSampler(GraphicsDevice &device, const SamplerDesc &desc);
+typedef void FN_DestroySampler(GraphicsDevice &device, Sampler &sampler);
+typedef Pipeline FN_CreateGraphicsPipeline(GraphicsDevice &device, Arena scratch, const PipelineDesc &desc, BindGroupLayout globalBindGroupLayout);
+typedef Pipeline FN_CreateComputePipeline(GraphicsDevice &device, Arena scratch, const ComputeDesc &desc, BindGroupLayout globalBindGroupLayout);
+typedef bool FN_IsSamePipeline(Pipeline a, Pipeline b);
+typedef void FN_DestroyPipeline(GraphicsDevice &device, Pipeline &handle);
+typedef RenderPass FN_CreateRenderPass(GraphicsDevice &device, const RenderpassDesc &desc);
+typedef void FN_DestroyRenderPass(GraphicsDevice &device, RenderPass &renderPass);
+typedef Framebuffer FN_CreateFramebuffer(GraphicsDevice &device, const FramebufferDesc &desc);
+typedef void FN_DestroyFramebuffer(GraphicsDevice &device, Framebuffer &framebuffer);
+typedef uint2 FN_GetFramebufferSize(const GraphicsDevice &device, Framebuffer framebuffer);
 typedef CommandList FN_BeginCommandList(GraphicsDevice &device);
 typedef void FN_EndCommandList(const CommandList &commandList);
 typedef CommandList FN_BeginTransientCommandList(GraphicsDevice &device);
 typedef void FN_EndTransientCommandList(GraphicsDevice &device, const CommandList &commandList);
-typedef void* FN_GetBufferPtr(const GraphicsDevice &device, BufferH bufferH);
-typedef void FN_CopyBufferToBuffer(const CommandList &commandBuffer, BufferH srcBufferH, u32 srcOffset, BufferH dstBufferH, u32 dstOffset, u64 size);
-typedef void FN_CopyBufferToImage(const CommandList &commandBuffer, BufferH bufferH, u32 bufferOffset, ImageH imageH);
-typedef void FN_Blit(const CommandList &commandBuffer, ImageH srcImage, const BlitRegion &srcRegion, ImageH dstImage, const BlitRegion &dstRegion);
-typedef void FN_TransitionImageLayout(const CommandList &commandBuffer, ImageH imageH, ImageState oldState, ImageState newState, u32 baseMipLevel, u32 levelCount);
-typedef void FN_TransitionBufferState(const CommandList &commandBuffer, BufferH bufferH, BufferState oldState, BufferState newState);
-typedef void FN_BeginRenderPass(const CommandList &commandList, FramebufferH framebufferH);
+typedef void* FN_GetBufferPtr(const GraphicsDevice &device, Buffer buffer);
+typedef void FN_CopyBufferToBuffer(const CommandList &commandBuffer, Buffer srcBuffer, u32 srcOffset, Buffer dstBuffer, u32 dstOffset, u64 size);
+typedef void FN_CopyBufferToImage(const CommandList &commandBuffer, Buffer buffer, u32 bufferOffset, Image image);
+typedef void FN_Blit(const CommandList &commandBuffer, Image srcImage, const BlitRegion &srcRegion, Image dstImage, const BlitRegion &dstRegion);
+typedef void FN_TransitionImageLayout(const CommandList &commandBuffer, Image image, ImageState oldState, ImageState newState, u32 baseMipLevel, u32 levelCount);
+typedef void FN_TransitionBufferState(const CommandList &commandBuffer, Buffer buffer, BufferState oldState, BufferState newState);
+typedef void FN_BeginRenderPass(const CommandList &commandList, Framebuffer framebuffer);
 typedef void FN_SetViewport(const CommandList &commandList, rect viewport);
 typedef void FN_SetScissor(const CommandList &commandList, rect scissor);
 typedef void FN_SetViewportAndScissor(const CommandList &commandList, uint2 size);
@@ -554,20 +545,20 @@ typedef void FN_SetClearColorFloat4(const CommandList &commandList, u32 renderTa
 typedef void FN_SetClearColorU32(const CommandList &commandList, u32 renderTargetIndex, u32 color);
 typedef void FN_SetClearDepth(const CommandList &commandList, u32 renderTargetIndex, float depth);
 typedef void FN_SetClearStencil(const CommandList &commandList, u32 renderTargetIndex, u32 stencil);
-typedef void FN_SetPipeline(const CommandList &commandList, PipelineH pipelineH);
-typedef void FN_SetBindGroup(const CommandList &commandList, u32 bindGroupIndex, BindGroupH bindGroupH);
-typedef void FN_SetVertexBuffer(const CommandList &commandList, BufferH bufferH);
-typedef void FN_SetIndexBuffer(const CommandList &commandList, BufferH bufferH);
+typedef void FN_SetPipeline(const CommandList &commandList, Pipeline pipeline);
+typedef void FN_SetBindGroup(const CommandList &commandList, u32 bindGroupIndex, BindGroup bindGroup);
+typedef void FN_SetVertexBuffer(const CommandList &commandList, Buffer buffer);
+typedef void FN_SetIndexBuffer(const CommandList &commandList, Buffer buffer);
 typedef void FN_Draw(const CommandList &commandList, u32 vertexCount, u32 firstVertex);
 typedef void FN_DrawIndexed(const CommandList &commandList, u32 indexCount, u32 firstIndex, u32 firstVertex, u32 firstInstance, u32 instanceCount);
 typedef void FN_Dispatch(const CommandList &commandList, u32 x, u32 y, u32 z);
 typedef void FN_EndRenderPass(const CommandList &commandList);
-typedef TimestampPoolH FN_CreateTimestampPool(GraphicsDevice &device, u32 maxQueries);
-typedef void FN_DestroyTimestampPool(GraphicsDevice &device, TimestampPoolH &poolH);
-typedef void FN_ResetTimestampPool(const CommandList &commandBuffer, TimestampPoolH poolH);
-typedef u32 FN_WriteTimestamp(const CommandList &commandBuffer, TimestampPoolH poolH, PipelineStage stage);
-typedef Timestamp FN_ReadTimestamp(const GraphicsDevice &device, TimestampPoolH poolH, u32 queryIndex);
-typedef bool FN_ReadTimestamps(const GraphicsDevice &device, TimestampPoolH poolH, u32 firstQuery, u32 queryCount, Timestamp *outTimestamps);
+typedef TimestampPool FN_CreateTimestampPool(GraphicsDevice &device, u32 maxQueries);
+typedef void FN_DestroyTimestampPool(GraphicsDevice &device, TimestampPool &pool);
+typedef void FN_ResetTimestampPool(const CommandList &commandBuffer, TimestampPool pool);
+typedef u32 FN_WriteTimestamp(const CommandList &commandBuffer, TimestampPool pool, PipelineStage stage);
+typedef Timestamp FN_ReadTimestamp(const GraphicsDevice &device, TimestampPool pool, u32 queryIndex);
+typedef bool FN_ReadTimestamps(const GraphicsDevice &device, TimestampPool pool, u32 firstQuery, u32 queryCount, Timestamp *outTimestamps);
 typedef void FN_Submit(GraphicsDevice &device, const CommandList &commandList);
 typedef bool FN_Present(GraphicsDevice &device);
 typedef bool FN_BeginFrame(GraphicsDevice &device);
@@ -580,18 +571,18 @@ typedef const DeviceCaps& FN_GetDeviceCaps(const GraphicsDevice &device);
 typedef u32 FN_GetFrameSlot(const GraphicsDevice &device);
 typedef u32 FN_GetHeapSize(const GraphicsDevice &device, HeapType heapType);
 typedef void FN_ResetHeap(GraphicsDevice &device, HeapType heapType);
-typedef RenderPassH FN_FindRenderPass(const GraphicsDevice &device, const char *name);
+typedef RenderPass FN_FindRenderPass(const GraphicsDevice &device, const char *name);
 typedef uint2 FN_GetSwapchainSize(const GraphicsDevice &device);
 typedef Format FN_GetSwapchainFormat(const GraphicsDevice &device);
 typedef float FN_GetSwapchainPreRotation(const GraphicsDevice &device);
 typedef u32 FN_GetSwapchainImageCount(const GraphicsDevice &device);
 typedef u32 FN_GetSwapchainImageIndex(const GraphicsDevice &device);
-typedef ImageH FN_GetSwapchainImage(const GraphicsDevice &device, u32 index);
-typedef u32 FN_GetBufferSize(const GraphicsDevice &device, BufferH handle);
-typedef uint2 FN_GetImageSize(const GraphicsDevice &device, ImageH handle);
-typedef Format FN_GetImageFormat(const GraphicsDevice &device, ImageH handle);
-typedef u32 FN_GetImageMipLevels(const GraphicsDevice &device, ImageH handle);
-typedef BindGroupLayoutH FN_GetPipelineBindGroupLayout(const GraphicsDevice &device, PipelineH handle, u32 bindGroupIndex);
+typedef Image FN_GetSwapchainImage(const GraphicsDevice &device, u32 index);
+typedef u32 FN_GetBufferSize(const GraphicsDevice &device, Buffer handle);
+typedef uint2 FN_GetImageSize(const GraphicsDevice &device, Image handle);
+typedef Format FN_GetImageFormat(const GraphicsDevice &device, Image handle);
+typedef u32 FN_GetImageMipLevels(const GraphicsDevice &device, Image handle);
+typedef BindGroupLayout FN_GetPipelineBindGroupLayout(const GraphicsDevice &device, Pipeline handle, u32 bindGroupIndex);
 
 #define ILU_GFX_EXPAND_API(EXPAND_MACRO) \
 	EXPAND_MACRO(SetGraphicsStringInterning) \
@@ -619,20 +610,20 @@ typedef BindGroupLayoutH FN_GetPipelineBindGroupLayout(const GraphicsDevice &dev
 	EXPAND_MACRO(DestroyBindGroup) \
 	EXPAND_MACRO(UpdateBindGroup) \
 	EXPAND_MACRO(CreateBuffer) \
-	EXPAND_MACRO(DestroyBufferH) \
+	EXPAND_MACRO(DestroyBuffer) \
 	EXPAND_MACRO(CreateBufferView) \
-	EXPAND_MACRO(DestroyBufferViewH) \
+	EXPAND_MACRO(DestroyBufferView) \
 	EXPAND_MACRO(CreateImage) \
 	EXPAND_MACRO(IsSwapchainImage) \
-	EXPAND_MACRO(DestroyImageH) \
+	EXPAND_MACRO(DestroyImage) \
 	EXPAND_MACRO(CreateSampler) \
-	EXPAND_MACRO(DestroySamplerH) \
+	EXPAND_MACRO(DestroySampler) \
 	EXPAND_MACRO(CreateGraphicsPipeline) \
 	EXPAND_MACRO(CreateComputePipeline) \
 	EXPAND_MACRO(IsSamePipeline) \
-	EXPAND_MACRO(DestroyPipelineH) \
+	EXPAND_MACRO(DestroyPipeline) \
 	EXPAND_MACRO(CreateRenderPass) \
-	EXPAND_MACRO(DestroyRenderPassH) \
+	EXPAND_MACRO(DestroyRenderPass) \
 	EXPAND_MACRO(CreateFramebuffer) \
 	EXPAND_MACRO(DestroyFramebuffer) \
 	EXPAND_MACRO(GetFramebufferSize) \

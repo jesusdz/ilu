@@ -49,10 +49,10 @@ inline bool operator!=(Handle a, Handle b)
 	return nequal;
 }
 
-// A distinct type per pool, so a MusicH cannot stand in for an AudioClipH. Conversion
+// A distinct type per pool, so a Buffer handle cannot stand in for an Image handle. Conversion
 // to and from the untyped Handle the pool trades in is implicit, which keeps the pool
 // API usable without casts everywhere; C++ allows only one user-defined conversion in
-// a sequence, so MusicH -> Handle -> AudioClipH is still rejected and passing a handle
+// a sequence, so Buffer -> Handle -> Image is still rejected and passing a handle
 // to the wrong accessor will not compile.
 //
 // `if (handle)` only asks whether the handle was filled in. Whether its element is still

@@ -1825,7 +1825,7 @@ void CleanupGraphics(Graphics &gfx);
 ////////////////////////////////////////////////////////////////////////
 // Framebuffer and swapchain queries
 
-const Image GetDisplayImageH(const Graphics &gfx);
+const Image GetDisplayImage(const Graphics &gfx);
 Framebuffer GetDisplayFramebuffer(const Graphics &gfx);
 Framebuffer GetShadowmapFramebuffer(const Graphics &gfx);
 
