@@ -242,24 +242,24 @@ enum Format
 
 // Freed handles stay valid until the end of the frame, when the pools are compacted
 
-#if defined(GFX_HANDLES_AS_RESOURCES)
+#if defined(ILU_GFX_HANDLES_AS_RESOURCES)
 // The H names are kept as aliases, for the declarations below
-#define GFX_HANDLE_TYPE(TypeName) DECLARE_HANDLE_TYPE(TypeName); typedef TypeName TypeName ## H
+#define ILU_GFX_HANDLE_TYPE(TypeName) DECLARE_HANDLE_TYPE(TypeName); typedef TypeName TypeName ## H
 #else
-#define GFX_HANDLE_TYPE(TypeName) DECLARE_HANDLE_TYPE(TypeName ## H)
+#define ILU_GFX_HANDLE_TYPE(TypeName) DECLARE_HANDLE_TYPE(TypeName ## H)
 #endif
 
-GFX_HANDLE_TYPE(Buffer);
-GFX_HANDLE_TYPE(BufferView);
-GFX_HANDLE_TYPE(Image);
-GFX_HANDLE_TYPE(Sampler);
-GFX_HANDLE_TYPE(Pipeline);
-GFX_HANDLE_TYPE(RenderPass);
-GFX_HANDLE_TYPE(Framebuffer);
-GFX_HANDLE_TYPE(BindGroupLayout);
-GFX_HANDLE_TYPE(BindGroupAllocator);
-GFX_HANDLE_TYPE(BindGroup);
-GFX_HANDLE_TYPE(TimestampPool);
+ILU_GFX_HANDLE_TYPE(Buffer);
+ILU_GFX_HANDLE_TYPE(BufferView);
+ILU_GFX_HANDLE_TYPE(Image);
+ILU_GFX_HANDLE_TYPE(Sampler);
+ILU_GFX_HANDLE_TYPE(Pipeline);
+ILU_GFX_HANDLE_TYPE(RenderPass);
+ILU_GFX_HANDLE_TYPE(Framebuffer);
+ILU_GFX_HANDLE_TYPE(BindGroupLayout);
+ILU_GFX_HANDLE_TYPE(BindGroupAllocator);
+ILU_GFX_HANDLE_TYPE(BindGroup);
+ILU_GFX_HANDLE_TYPE(TimestampPool);
 
 // Its recording state lives in the backend, at `index`
 struct GraphicsDevice;
@@ -593,7 +593,7 @@ typedef Format FN_GetImageFormat(const GraphicsDevice &device, ImageH handle);
 typedef u32 FN_GetImageMipLevels(const GraphicsDevice &device, ImageH handle);
 typedef BindGroupLayoutH FN_GetPipelineBindGroupLayout(const GraphicsDevice &device, PipelineH handle, u32 bindGroupIndex);
 
-#define EXPAND_API_TOOLS_GFX(EXPAND_MACRO) \
+#define ILU_GFX_EXPAND_API(EXPAND_MACRO) \
 	EXPAND_MACRO(SetGraphicsStringInterning) \
 	EXPAND_MACRO(WaitQueueIdle) \
 	EXPAND_MACRO(WaitDeviceIdle) \
@@ -693,8 +693,8 @@ typedef BindGroupLayoutH FN_GetPipelineBindGroupLayout(const GraphicsDevice &dev
 	EXPAND_MACRO(GetImageMipLevels) \
 	EXPAND_MACRO(GetPipelineBindGroupLayout)
 
-#define TOOLS_GFX_FUNCTION_POINTER(function_name) FN_ ## function_name * function_name;
-#define TOOLS_GFX_FUNCTION_PROTOTYPE(function_name) FN_ ## function_name function_name;
+#define ILU_GFX_DECLARE_FUNCTION_POINTER(function_name) FN_ ## function_name * function_name;
+#define ILU_GFX_DECLARE_FUNCTION_PROTOTYPE(function_name) FN_ ## function_name function_name;
 
 ////////////////////////////////////////////////////////////////////////
 // API struct
@@ -702,22 +702,22 @@ typedef BindGroupLayoutH FN_GetPipelineBindGroupLayout(const GraphicsDevice &dev
 
 struct GraphicsAPI
 {
-	EXPAND_API_TOOLS_GFX(TOOLS_GFX_FUNCTION_POINTER);
+	ILU_GFX_EXPAND_API(ILU_GFX_DECLARE_FUNCTION_POINTER);
 };
 
 ////////////////////////////////////////////////////////////////////////
 // Function prototypes
 ////////////////////////////////////////////////////////////////////////
 
-#if defined(TOOLS_GFX_FUNCTION_PROTOTYPES)
+#if defined(ILU_GFX_FUNCTION_PROTOTYPES)
 
-EXPAND_API_TOOLS_GFX(TOOLS_GFX_FUNCTION_PROTOTYPE)
+ILU_GFX_EXPAND_API(ILU_GFX_DECLARE_FUNCTION_PROTOTYPE)
 
-#define TOOLS_GFX_PROTOTYPE_TO_TABLE(name) api-> name = name;
+#define ILU_GFX_PROTOTYPE_TO_TABLE(name) api-> name = name;
 
 inline void GetGraphicsAPI(GraphicsAPI *api)
 {
-	EXPAND_API_TOOLS_GFX(TOOLS_GFX_PROTOTYPE_TO_TABLE);
+	ILU_GFX_EXPAND_API(ILU_GFX_PROTOTYPE_TO_TABLE);
 }
 
 static void InvalidateSwapchain();
@@ -728,15 +728,15 @@ static void InvalidateSwapchain();
 // Function pointers
 ////////////////////////////////////////////////////////////////////////
 
-#if defined(GFX_FUNCTION_POINTERS)
+#if defined(ILU_GFX_FUNCTION_POINTERS)
 
-EXPAND_API_TOOLS_GFX(TOOLS_GFX_FUNCTION_POINTER)
+ILU_GFX_EXPAND_API(ILU_GFX_DECLARE_FUNCTION_POINTER)
 
-#define TOOLS_GFX_TABLE_TO_POINTER(name) name = api->name;
+#define ILU_GFX_TABLE_TO_POINTER(name) name = api->name;
 
 inline void SetGraphicsAPI(GraphicsAPI *api)
 {
-	EXPAND_API_TOOLS_GFX(TOOLS_GFX_TABLE_TO_POINTER);
+	ILU_GFX_EXPAND_API(ILU_GFX_TABLE_TO_POINTER);
 }
 
 #endif

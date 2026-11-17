@@ -142,7 +142,7 @@ static const int __android_log_channel[] = {
 	ANDROID_LOG_INFO,
 	ANDROID_LOG_DEBUG,
 };
-#define LOG(channel, fmt, ...) if ( channel <= LOG_VERBOSITY ) { ((void)__android_log_print(__android_log_channel[channel], "tools", fmt, ##__VA_ARGS__)); }
+#define LOG(channel, fmt, ...) if ( channel <= LOG_VERBOSITY ) { ((void)__android_log_print(__android_log_channel[channel], "ilu", fmt, ##__VA_ARGS__)); }
 #else
 #define LOG(channel, fmt, ...) if ( channel <= LOG_VERBOSITY ) { Printf(fmt, ##__VA_ARGS__); }
 #endif
@@ -437,9 +437,9 @@ void LinuxReportError(const char *context)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Intrinsics
 
-#define TOOLS_USE_INTRINSICS 1
+#define ILU_USE_INTRINSICS 1
 
-#if TOOLS_USE_INTRINSICS
+#if ILU_USE_INTRINSICS
 #if PLATFORM_WINDOWS
 // Count trailing zeros
 u32 CTZ(u32 bitMask)
@@ -475,7 +475,7 @@ u32 CLZ(u32 bitMask)
 	return count;
 }
 #endif // #else // #if PLATFORM_WINDOWS
-#else // #if TOOLS_USE_INTRINSICS
+#else // #if ILU_USE_INTRINSICS
 // Count trailing zeros
 u32 CTZ(u32 bitMask)
 {
@@ -500,7 +500,7 @@ u32 CLZ(u32 bitMask)
 	}
 	return count;
 }
-#endif // #else // #if TOOLS_USE_INTRINSICS
+#endif // #else // #if ILU_USE_INTRINSICS
 
 // First bit set
 u32 FBS(u32 bitMask)
@@ -918,9 +918,9 @@ void StrSplit(const String &s, char separator, String *outStrings, u32 &outStrin
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Hashing
 
-#define TOOLS_HASH_FNV_SEED 16777619
+#define ILU_HASH_FNV_SEED 16777619
 
-u32 HashFNV(const void *data, u32 size, u32 initial = 0, u32 prime = TOOLS_HASH_FNV_SEED)
+u32 HashFNV(const void *data, u32 size, u32 initial = 0, u32 prime = ILU_HASH_FNV_SEED)
 {
 	u32 hash = initial;
 	const unsigned char *str = (const unsigned char *)data;
@@ -930,7 +930,7 @@ u32 HashFNV(const void *data, u32 size, u32 initial = 0, u32 prime = TOOLS_HASH_
 	return hash;
 }
 
-u32 HashStringFNV(const char *data, u32 initial = 0, u32 prime = TOOLS_HASH_FNV_SEED)
+u32 HashStringFNV(const char *data, u32 initial = 0, u32 prime = ILU_HASH_FNV_SEED)
 {
 	u32 hash = initial;
 	const unsigned char *str = (const unsigned char *)data;

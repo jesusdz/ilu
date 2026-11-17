@@ -1,4 +1,3 @@
-#define TOOLS_PLATFORM
 #include "ilu_core.h"
 
 // The min/max macros conflict with like-named member functions.

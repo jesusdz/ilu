@@ -1,6 +1,6 @@
 #include "ilu.h"
 
-#define TOOLS_GFX_FUNCTION_PROTOTYPES
+#define ILU_GFX_FUNCTION_PROTOTYPES
 #include "ilu_gfx.h"
 
 #include "platform.h"

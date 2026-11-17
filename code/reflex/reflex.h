@@ -3,8 +3,8 @@
  * Author: Jesus Diaz Garcia
  */
 
-#ifndef TOOLS_REFLEX_H
-#define TOOLS_REFLEX_H
+#ifndef REFLEX_H
+#define REFLEX_H
 
 // Annotation macro used to reflect custom types.
 #define REFLEX(...)
@@ -460,5 +460,5 @@ static String ReflexGetMetaString(const ReflexMeta &meta, const char *name)
 	return arg && arg->type == ReflexMetaArg_String ? arg->stringValue : String{};
 }
 
-#endif // #ifndef TOOLS_REFLEX_H
+#endif // #ifndef REFLEX_H
 

@@ -8,5 +8,5 @@ if %errorlevel% neq 0 (
 	exit /b 1
 )
 
-call %PLATFORM_TOOLS%\adb logcat tools:V *:S
+call %PLATFORM_TOOLS%\adb logcat ilu:V *:S
 

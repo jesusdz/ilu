@@ -4,7 +4,6 @@
  */
 
 #define STB_IMAGE_IMPLEMENTATION
-#define TOOLS_IMAGE_PIXELS
 #include "../ilu_core.h"
 #include "../handle_pool.h"
 #include "../ilu_id.h"

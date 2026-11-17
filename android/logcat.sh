@@ -1,2 +1,2 @@
 #!/bin/bash
-adb logcat tools:V *:S
+adb logcat ilu:V *:S

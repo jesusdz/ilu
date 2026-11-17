@@ -158,8 +158,8 @@ call %ZIPALIGN% -v -f 4 bin\NativeActivity.unaligned.apk bin\NativeActivity.apk 
 REM ------------------------------------------------------
 REM Create a key and sign the APK with it
 
-if not exist "Tools.keystore" call %KEYTOOL% -genkeypair -validity 1000 -dname "CN=tools,O=jesusdz,C=ES" -keystore Tools.keystore -storepass pass4tools -keypass pass4tools -alias ToolsKey -keyalg RSA
-call %APKSIGNER% sign --ks Tools.keystore --ks-key-alias ToolsKey --ks-pass pass:"pass4tools" bin\NativeActivity.apk
+if not exist "Ilu.keystore" call %KEYTOOL% -genkeypair -validity 1000 -dname "CN=ilu,O=jesusdz,C=ES" -keystore Ilu.keystore -storepass pass4ilu -keypass pass4ilu -alias IluKey -keyalg RSA
+call %APKSIGNER% sign --ks Ilu.keystore --ks-key-alias IluKey --ks-pass pass:"pass4ilu" bin\NativeActivity.apk
 
 exit /b 0
 
@@ -198,7 +198,7 @@ REM ######################################################
 echo Cleaning APK data...
 rmdir /Q /S intermediates bin 2> nul
 del /s /q src\R.java 2> nul
-del Tools.keystore
+del Ilu.keystore
 
 : clean
 echo Cleaning compilation data...

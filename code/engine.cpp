@@ -16,8 +16,8 @@
 #define STBI_NO_HDR
 #include "libs/stb/stb_image.h"
 
-#define GFX_FUNCTION_POINTERS
-#define GFX_HANDLES_AS_RESOURCES
+#define ILU_GFX_FUNCTION_POINTERS
+#define ILU_GFX_HANDLES_AS_RESOURCES
 #include "ilu_gfx.h"
 
 #define PLATFORM_API

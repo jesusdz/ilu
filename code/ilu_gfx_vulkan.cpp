@@ -1,5 +1,5 @@
-#ifndef TOOLS_GFX_IMPLEMENTATION_INCLUDED
-#define TOOLS_GFX_IMPLEMENTATION_INCLUDED
+#ifndef ILU_GFX_IMPLEMENTATION_INCLUDED
+#define ILU_GFX_IMPLEMENTATION_INCLUDED
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -239,7 +239,7 @@ struct CommandListState
 };
 
 // Resource types, in destruction order (users before what they use)
-#define EXPAND_GFX_RESOURCES(X) \
+#define ILU_GFX_EXPAND_RESOURCES(X) \
 	X(BindGroup,          bindGroups,          MAX_ALLOCATED_BIND_GROUPS) \
 	X(BindGroupAllocator, bindGroupAllocators, MAX_BIND_GROUP_ALLOCATORS) \
 	X(Pipeline,           pipelines,           MAX_PIPELINES) \
@@ -312,11 +312,11 @@ struct GraphicsDevice
 
 	// Resources: a pool of handles and the elements they index, per type
 #define DECLARE_RESOURCE_POOL(Type, name, count) struct { HandlePool handles; Type items[count]; } name;
-	EXPAND_GFX_RESOURCES(DECLARE_RESOURCE_POOL)
+	ILU_GFX_EXPAND_RESOURCES(DECLARE_RESOURCE_POOL)
 #undef DECLARE_RESOURCE_POOL
 
 #define RESOURCE_POOL_MEMORY(Type, name, count) + count * (sizeof(HandleSlot) + sizeof(Handle))
-	byte poolMemory[0 EXPAND_GFX_RESOURCES(RESOURCE_POOL_MEMORY)];
+	byte poolMemory[0 ILU_GFX_EXPAND_RESOURCES(RESOURCE_POOL_MEMORY)];
 #undef RESOURCE_POOL_MEMORY
 
 	CommandListState commandLists[MAX_COMMAND_LISTS]; // Index 0 unused
@@ -389,13 +389,13 @@ DEFINE_RESOURCE_ACCESSORS(TimestampPool, timestampPools)
 ////////////////////////////////////////////////////////////////////////
 
 // Vulkan 1.0 pre-instance functions
-#define EXPAND_API_VK_PRE_INSTANCE(EXPAND_MACRO) \
+#define ILU_VK_EXPAND_API_PRE_INSTANCE(EXPAND_MACRO) \
 	EXPAND_MACRO(vkCreateInstance) \
 	EXPAND_MACRO(vkEnumerateInstanceExtensionProperties) \
 	EXPAND_MACRO(vkEnumerateInstanceLayerProperties)
 
 // Vulkan 1.0 instance functions
-#define EXPAND_API_VK10_INSTANCE(EXPAND_MACRO) \
+#define ILU_VK_EXPAND_API_VK10_INSTANCE(EXPAND_MACRO) \
 	EXPAND_MACRO(vkCreateDevice) \
 	EXPAND_MACRO(vkDestroyInstance) \
 	EXPAND_MACRO(vkEnumerateDeviceExtensionProperties) \
@@ -408,7 +408,7 @@ DEFINE_RESOURCE_ACCESSORS(TimestampPool, timestampPools)
 	EXPAND_MACRO(vkGetPhysicalDeviceQueueFamilyProperties)
 
 // Debug utils instance functions
-#define EXPAND_API_VK_DEBUG_UTILS(EXPAND_MACRO) \
+#define ILU_VK_EXPAND_API_DEBUG_UTILS(EXPAND_MACRO) \
 	EXPAND_MACRO(vkCmdBeginDebugUtilsLabelEXT) \
 	EXPAND_MACRO(vkCmdEndDebugUtilsLabelEXT) \
 	EXPAND_MACRO(vkCmdInsertDebugUtilsLabelEXT) \
@@ -417,7 +417,7 @@ DEFINE_RESOURCE_ACCESSORS(TimestampPool, timestampPools)
 	EXPAND_MACRO(vkSetDebugUtilsObjectNameEXT)
 
 // Surface instance functions
-#define EXPAND_API_VK_KHR_SURFACE(EXPAND_MACRO) \
+#define ILU_VK_EXPAND_API_KHR_SURFACE(EXPAND_MACRO) \
 	EXPAND_MACRO(vkDestroySurfaceKHR) \
 	EXPAND_MACRO(vkGetPhysicalDeviceSurfaceCapabilitiesKHR) \
 	EXPAND_MACRO(vkGetPhysicalDeviceSurfaceFormatsKHR) \
@@ -438,14 +438,14 @@ DEFINE_RESOURCE_ACCESSORS(TimestampPool, timestampPools)
 #endif /* defined(VK_EXT_metal_surface) */
 
 // All instance functions
-#define EXPAND_API_VK_INSTANCE(EXPAND_MACRO) \
-	EXPAND_API_VK10_INSTANCE(EXPAND_MACRO) \
-	EXPAND_API_VK_DEBUG_UTILS(EXPAND_MACRO) \
-	EXPAND_API_VK_KHR_SURFACE(EXPAND_MACRO) \
+#define ILU_VK_EXPAND_API_INSTANCE(EXPAND_MACRO) \
+	ILU_VK_EXPAND_API_VK10_INSTANCE(EXPAND_MACRO) \
+	ILU_VK_EXPAND_API_DEBUG_UTILS(EXPAND_MACRO) \
+	ILU_VK_EXPAND_API_KHR_SURFACE(EXPAND_MACRO) \
 	VK_INSTANCE_FUNCTION_LIST_KHR_SURFACE_PLATFORM(EXPAND_MACRO)
 
 // Device functions (Vulkan 1.0)
-#define EXPAND_API_VK10_DEVICE(EXPAND_MACRO) \
+#define ILU_VK_EXPAND_API_VK10_DEVICE(EXPAND_MACRO) \
 	EXPAND_MACRO(vkAllocateCommandBuffers) \
 	EXPAND_MACRO(vkAllocateDescriptorSets) \
 	EXPAND_MACRO(vkFreeDescriptorSets) \
@@ -532,10 +532,10 @@ DEFINE_RESOURCE_ACCESSORS(TimestampPool, timestampPools)
 PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
 
 // Expand device function prototypes
-#define EXPAND_VK_PFN(function_name) PFN_##function_name function_name;
-EXPAND_API_VK_PRE_INSTANCE(EXPAND_VK_PFN)
-EXPAND_API_VK_INSTANCE(EXPAND_VK_PFN)
-EXPAND_API_VK10_DEVICE(EXPAND_VK_PFN)
+#define ILU_VK_EXPAND_PFN(function_name) PFN_##function_name function_name;
+ILU_VK_EXPAND_API_PRE_INSTANCE(ILU_VK_EXPAND_PFN)
+ILU_VK_EXPAND_API_INSTANCE(ILU_VK_EXPAND_PFN)
+ILU_VK_EXPAND_API_VK10_DEVICE(ILU_VK_EXPAND_PFN)
 
 static bool VulkanLoadInitFunctions()
 {
@@ -567,8 +567,8 @@ static bool VulkanLoadInitFunctions()
 	vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)LoadSymbol(vulkan, "vkGetInstanceProcAddr");
 
 	// Get all init function pointers
-	#define EXPAND_VK_GET_INSTANCE_PROC_ADDR_INIT(function_name) function_name = (PFN_##function_name)vkGetInstanceProcAddr(NULL, #function_name);
-	EXPAND_API_VK_PRE_INSTANCE(EXPAND_VK_GET_INSTANCE_PROC_ADDR_INIT)
+	#define ILU_VK_EXPAND_GET_INSTANCE_PROC_ADDR_INIT(function_name) function_name = (PFN_##function_name)vkGetInstanceProcAddr(NULL, #function_name);
+	ILU_VK_EXPAND_API_PRE_INSTANCE(ILU_VK_EXPAND_GET_INSTANCE_PROC_ADDR_INIT)
 
 	return true;
 }
@@ -576,15 +576,15 @@ static bool VulkanLoadInitFunctions()
 static void VulkanLoadInstanceFunctions(VkInstance instance)
 {
 	// Get all instance function pointers
-	#define EXPAND_VK_GET_INSTANCE_PROC_ADDR(function_name) function_name = (PFN_##function_name)vkGetInstanceProcAddr(instance, #function_name);
-	EXPAND_API_VK_INSTANCE(EXPAND_VK_GET_INSTANCE_PROC_ADDR)
+	#define ILU_VK_EXPAND_GET_INSTANCE_PROC_ADDR(function_name) function_name = (PFN_##function_name)vkGetInstanceProcAddr(instance, #function_name);
+	ILU_VK_EXPAND_API_INSTANCE(ILU_VK_EXPAND_GET_INSTANCE_PROC_ADDR)
 }
 
 static void VulkanLoadDeviceFunctions(VkDevice device)
 {
 	// Get all device function pointers
-	#define EXPAND_VK_GET_DEVICE_PROC_ADDR(function_name) function_name = (PFN_##function_name)vkGetDeviceProcAddr(device, #function_name);
-	EXPAND_API_VK10_DEVICE(EXPAND_VK_GET_DEVICE_PROC_ADDR)
+	#define ILU_VK_EXPAND_GET_DEVICE_PROC_ADDR(function_name) function_name = (PFN_##function_name)vkGetDeviceProcAddr(device, #function_name);
+	ILU_VK_EXPAND_API_VK10_DEVICE(ILU_VK_EXPAND_GET_DEVICE_PROC_ADDR)
 }
 
 
@@ -2414,7 +2414,7 @@ bool InitializeGraphicsDevice(GraphicsDevice &device, Arena scratch)
 	// Resource pools
 	Arena poolArena = MakeArena(device.poolMemory, sizeof(device.poolMemory), "GraphicsPools");
 #define INITIALIZE_RESOURCE_POOL(Type, name, count) Initialize(device.name.handles, poolArena, count);
-	EXPAND_GFX_RESOURCES(INITIALIZE_RESOURCE_POOL)
+	ILU_GFX_EXPAND_RESOURCES(INITIALIZE_RESOURCE_POOL)
 #undef INITIALIZE_RESOURCE_POOL
 
 
@@ -4473,7 +4473,7 @@ static void CompactResourcePools(GraphicsDevice &device)
 {
 #define COMPACT_RESOURCE_POOL(Type, name, count) \
 	CompactResourcePool(device, device.name.handles, device.name.items, sizeof(Type), Retire##Type);
-	EXPAND_GFX_RESOURCES(COMPACT_RESOURCE_POOL)
+	ILU_GFX_EXPAND_RESOURCES(COMPACT_RESOURCE_POOL)
 #undef COMPACT_RESOURCE_POOL
 }
 
@@ -4620,7 +4620,7 @@ void CleanupGraphicsDevice(GraphicsDevice &device, Arena scratch)
 	for (u16 i = 0; i < HandleCount(device.name.handles); ++i) { \
 		Retire##Type(device, &device.name.items[i]); \
 	}
-	EXPAND_GFX_RESOURCES(DESTROY_RESOURCES)
+	ILU_GFX_EXPAND_RESOURCES(DESTROY_RESOURCES)
 #undef DESTROY_RESOURCES
 
 	vkDestroyPipelineCache( device.handle, device.pipelineCache, VULKAN_ALLOCATORS );
@@ -4790,4 +4790,4 @@ BindGroupLayoutH GetPipelineBindGroupLayout(const GraphicsDevice &device, Pipeli
 #define SPV_PRINTF(...) LOG(Info, ##__VA_ARGS__)
 #include "ilu_spirv.h"
 
-#endif // TOOLS_GFX_IMPLEMENTATION_INCLUDED
+#endif // ILU_GFX_IMPLEMENTATION_INCLUDED

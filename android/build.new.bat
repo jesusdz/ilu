@@ -167,8 +167,8 @@ call %BUILD_TOOLS%\zipalign -v -f 4 bin\NativeActivity.unaligned.apk bin\NativeA
 REM ------------------------------------------------------
 REM Create a key and sign the APK with it
 
-if not exist "Tools.keystore" call %JAVA_HOME%\bin\keytool -genkeypair -validity 1000 -dname "CN=tools,O=jesusdz,C=ES" -keystore Tools.keystore -storepass pass4tools -keypass pass4tools -alias ToolsKey -keyalg RSA
-call %BUILD_TOOLS%\apksigner sign --ks Tools.keystore --ks-key-alias ToolsKey --ks-pass pass:"pass4tools" bin\NativeActivity.apk
+if not exist "Ilu.keystore" call %JAVA_HOME%\bin\keytool -genkeypair -validity 1000 -dname "CN=ilu,O=jesusdz,C=ES" -keystore Ilu.keystore -storepass pass4ilu -keypass pass4ilu -alias IluKey -keyalg RSA
+call %BUILD_TOOLS%\apksigner sign --ks Ilu.keystore --ks-key-alias IluKey --ks-pass pass:"pass4ilu" bin\NativeActivity.apk
 
 exit /b 0
 

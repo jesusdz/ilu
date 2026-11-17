@@ -122,10 +122,10 @@ if [[ ${target} = "apk" ]]; then
 	# ------------------------------------------------------
 	# Create a key and sign the APK with it
 
-	if [ ! -f "Tools.keystore" ]; then
-		${KEYTOOL} -genkeypair -validity 1000 -dname "CN=tools,O=jesusdz,C=ES" -keystore Tools.keystore -storepass pass4tools -keypass pass4tools -alias ToolsKey -keyalg RSA
+	if [ ! -f "Ilu.keystore" ]; then
+		${KEYTOOL} -genkeypair -validity 1000 -dname "CN=ilu,O=jesusdz,C=ES" -keystore Ilu.keystore -storepass pass4ilu -keypass pass4ilu -alias IluKey -keyalg RSA
 	fi
-	${APKSIGNER} sign --ks Tools.keystore --ks-key-alias ToolsKey --ks-pass pass:"pass4tools" bin/NativeActivity.apk
+	${APKSIGNER} sign --ks Ilu.keystore --ks-key-alias IluKey --ks-pass pass:"pass4ilu" bin/NativeActivity.apk
 
 fi
 
@@ -160,7 +160,7 @@ if [[ ${target} = "cleanall" ]]; then
 	rm -rf bin obj lib 2>/dev/null
 	rm -rf bin intermediates 2>/dev/null
 	find src -name R.java -delete
-	rm -rf Tools.keystore
+	rm -rf Ilu.keystore
 fi
 
 if [[ ${target} = "clean" ]]; then

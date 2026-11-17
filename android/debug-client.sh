@@ -19,7 +19,7 @@ if [ ! ${PID} ]; then
 fi
 
 #SYM_DIR="./lib/arm64-v8a"
-SYM_DIR="/home/jesus/Develop/Tools/android/lib/arm64-v8a"
+SYM_DIR="/home/jesus/Develop/ilu/android/lib/arm64-v8a"
 LIB_GAME="./lib/arm64-v8a/libgame.so"
 LIB_CXX_SHARED="./lib/arm64-v8a/libc++_shared.so"
 SRC_DIR="./jni"

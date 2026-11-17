@@ -59,11 +59,11 @@
 // - Memory
 // - Linear arena allocators
 
-#ifndef CAST_USE_TOOLS
-#define CAST_USE_TOOLS 1
-#endif // #ifndef CAST_USE_TOOLS
+#ifndef CAST_USE_ILU
+#define CAST_USE_ILU 1
+#endif // #ifndef CAST_USE_ILU
 
-#if CAST_USE_TOOLS
+#if CAST_USE_ILU
 #include "../ilu_core.h"
 #define CAST_LOG LOG
 #define CAST_ASSERT ASSERT
@@ -92,7 +92,7 @@
 #define CastStrToFloat StrToFloat
 //#define CastStrToDouble StrToFloat
 #define CastStrEq StrEq
-#endif // #if CAST_USE_TOOLS
+#endif // #if CAST_USE_ILU
 
 #include <stdarg.h> // va_args
 #include <stdio.h> // printf

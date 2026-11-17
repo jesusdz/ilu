@@ -1,1 +1,1 @@
-adb logcat | grep tools | grep " E AndroidRuntime"
+adb logcat | grep ilu | grep " E AndroidRuntime"
