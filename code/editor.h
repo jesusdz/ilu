@@ -127,7 +127,7 @@ struct FileNode
 struct SnapshotNode
 {
 	const char *filepath;
-	ImageH imageH;
+	Image image;
 	SnapshotNode *next;
 };
 
@@ -241,13 +241,13 @@ struct Editor
 	EditorCommand commands[128];
 	u32 commandCount;
 
-	ImageH iconAsset;
-	ImageH iconWav;
-	ImageH iconMod;
-	ImageH iconImg;
-	ImageH iluLogo;
-	ImageH gizmoIcons[ComponentType_Count + 1];
-	ImageH roomIcon;
+	Image iconAsset;
+	Image iconWav;
+	Image iconMod;
+	Image iconImg;
+	Image iluLogo;
+	Image gizmoIcons[ComponentType_Count + 1];
+	Image roomIcon;
 
 	SnapshotNode *snapshots;
 

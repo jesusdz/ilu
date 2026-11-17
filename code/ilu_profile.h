@@ -149,7 +149,7 @@ struct ProfileGpuFrame
 // GPU is done with the frame that wrote into it.
 struct ProfileGpuSlot
 {
-	TimestampPoolH pool;
+	TimestampPool pool;
 	u32 queryCount; // Queries written since the pool was reset
 	ProfileGpuEvent events[MAX_PROFILE_GPU_EVENTS];
 	u32 eventCount;

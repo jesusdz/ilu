@@ -18,12 +18,12 @@ static constexpr float4 ColorOrange = { 1.0f, 0.5f, 0.0f, 1.0f };
 ////////////////////////////////////////////////////////////////////////
 // Immediate draw
 
-static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
+static void DebugDrawAppendBatch(Graphics &gfx, Image image, u32 vertexCount)
 {
 	if ( gfx.debugDrawBatchCount > 0 )
 	{
 		DrawBatch &lastBatch = gfx.debugDrawBatches[gfx.debugDrawBatchCount - 1];
-		if ( lastBatch.imageH == imageH )
+		if ( lastBatch.image == image )
 		{
 			lastBatch.vertexCount += vertexCount;
 			return;
@@ -32,12 +32,12 @@ static void DebugDrawAppendBatch(Graphics &gfx, ImageH imageH, u32 vertexCount)
 
 	ASSERT( gfx.debugDrawBatchCount < MAX_DEBUG_DRAW_BATCHES );
 	DrawBatch &batch = gfx.debugDrawBatches[gfx.debugDrawBatchCount++];
-	batch.imageH = imageH;
+	batch.image = image;
 	batch.vertexIndex = gfx.debugDrawVertexCount - vertexCount;
 	batch.vertexCount = vertexCount;
 }
 
-static void DrawImage(ImageH imageH, float2 worldPos, float2 worldSize, float2 uvPos, float2 uvSize, float4 color)
+static void DrawImage(Image image, float2 worldPos, float2 worldSize, float2 uvPos, float2 uvSize, float4 color)
 {
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
@@ -54,15 +54,15 @@ static void DrawImage(ImageH imageH, float2 worldPos, float2 worldSize, float2 u
 	v[5] = DebugDrawVertex{ Float3(worldPos + float2{worldSize.x, worldSize.y}, 0.0f), uvPos + float2{uvSize.x, 0}, rgbaColor };
 	gfx.debugDrawVertexCount += 6;
 
-	DebugDrawAppendBatch(gfx, imageH, 6);
+	DebugDrawAppendBatch(gfx, image, 6);
 }
 
-static void DrawImage(ImageH imageH, float2 worldPos, float2 worldSize, float4 color)
+static void DrawImage(Image image, float2 worldPos, float2 worldSize, float4 color)
 {
-	DrawImage(imageH, worldPos, worldSize, {0, 0}, {1, 1}, color);
+	DrawImage(image, worldPos, worldSize, {0, 0}, {1, 1}, color);
 }
 
-static void DrawImage(ImageH imageH, float3 worldPos, float3 right, float3 up, float4 color)
+static void DrawImage(Image image, float3 worldPos, float3 right, float3 up, float4 color)
 {
 	Engine &engine = GetEngine();
 	Graphics &gfx = engine.gfx;
@@ -79,7 +79,7 @@ static void DrawImage(ImageH imageH, float3 worldPos, float3 right, float3 up, f
 	v[5] = DebugDrawVertex{ worldPos + right + up, float2{1, 0}, rgbaColor };
 	gfx.debugDrawVertexCount += 6;
 
-	DebugDrawAppendBatch(gfx, imageH, 6);
+	DebugDrawAppendBatch(gfx, image, 6);
 }
 
 
@@ -97,8 +97,8 @@ void DrawSprite(ID spriteId, float2 worldPos, float4 color)
 
 	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
 
-	const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
-	DrawImage(imageH, worldPos, worldSize, uvPos, uvSize, color);
+	const Image image = GetTextureImage(gfx, sprite.textureId, gfx.pinkImage);
+	DrawImage(image, worldPos, worldSize, uvPos, uvSize, color);
 }
 
 
@@ -112,7 +112,7 @@ void DrawBox(float3 pos, float2 size, float4 color)
 
 	ASSERT( gfx.debugDrawVertexCount + 6 <= MAX_DEBUG_DRAW_VERTICES );
 	const rgba c = Rgba(color);
-	const float2 uv = {}; // Any UV works here, gfx.whiteImageH is a single white pixel.
+	const float2 uv = {}; // Any UV works here, gfx.whiteImage is a single white pixel.
 	DebugDrawVertex *v = gfx.debugDrawVerticesCPU + gfx.debugDrawVertexCount;
 	v[0] = DebugDrawVertex{ pos + float3{0, 0, 0}, uv, c };
 	v[1] = DebugDrawVertex{ pos + float3{size.x, size.y, 0}, uv, c };
@@ -122,7 +122,7 @@ void DrawBox(float3 pos, float2 size, float4 color)
 	v[5] = DebugDrawVertex{ pos + float3{size.x, size.y, 0}, uv, c };
 	gfx.debugDrawVertexCount += 6;
 
-	DebugDrawAppendBatch(gfx, gfx.whiteImageH, 6);
+	DebugDrawAppendBatch(gfx, gfx.whiteImage, 6);
 }
 
 void DrawBox(float2 pos, float2 size, float4 color)
@@ -218,7 +218,7 @@ static void GenerateParticles(const Scene &scene, bool is2D, bool interpolate, f
 		{
 			ASSERT( gfx.particleBatchCount < MAX_PARTICLE_BATCHES );
 			gfx.particleBatches[gfx.particleBatchCount++] = {
-				.imageH = gfx.whiteImageH,
+				.image = gfx.whiteImage,
 				.vertexIndex = firstVertex,
 				.vertexCount = vertexCount,
 			};
@@ -523,22 +523,22 @@ static void DrawScreenQuad(Graphics &gfx, CommandList &commandList, f32 rotation
 	DrawIndexed(commandList, indexCount, firstIndex, firstVertex, 0, 1);
 }
 
-static void DrawTexturedBatch(Graphics &gfx, CommandList &commandList, BindGroupLayoutH bindGroupLayout, const DrawBatch &batch)
+static void DrawTexturedBatch(Graphics &gfx, CommandList &commandList, BindGroupLayout bindGroupLayout, const DrawBatch &batch)
 {
 	const BindGroupDesc bindGroupDesc = {
 		.layout = bindGroupLayout,
 		.bindings = {
-			{ .index = 0, .sampler = gfx.pointSamplerH },
-			{ .index = 1, .image = batch.imageH },
+			{ .index = 0, .sampler = gfx.pointSampler },
+			{ .index = 1, .image = batch.image },
 		},
 	};
-	const BindGroupH bindGroup = GetOrCreateDynamicBindGroup(gfx, bindGroupDesc);
+	const BindGroup bindGroup = GetOrCreateDynamicBindGroup(gfx, bindGroupDesc);
 	SetBindGroup(commandList, 3, bindGroup);
 
 	Draw(commandList, batch.vertexCount, batch.vertexIndex);
 }
 
-static void DrawBloomPass(Graphics &gfx, CommandList &commandList, FramebufferH framebuffer, PipelineIndex pipelineIndex, ImageH sourceImage)
+static void DrawBloomPass(Graphics &gfx, CommandList &commandList, Framebuffer framebuffer, PipelineIndex pipelineIndex, Image sourceImage)
 {
 	const u32 frameSlot = GetFrameSlot(gpu);
 
@@ -551,11 +551,11 @@ static void DrawBloomPass(Graphics &gfx, CommandList &commandList, FramebufferH 
 	const BindGroupDesc bindGroupDesc = {
 		.layout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[pipelineIndex], 3),
 		.bindings = {
-			{ .index = 0, .sampler = gfx.bloomSamplerH },
+			{ .index = 0, .sampler = gfx.bloomSampler },
 			{ .index = 1, .image = sourceImage },
 		},
 	};
-	const BindGroupH bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+	const BindGroup bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 	SetBindGroup(commandList, 3, bindGroup);
 
 	DrawScreenQuad(gfx, commandList);
@@ -893,7 +893,7 @@ bool RenderGraphics(Engine &engine)
 	{
 		u32 firstTile;
 		u32 tileCount;
-		ImageH image;
+		Image image;
 	};
 
 	// Layer: Update tile data buffer
@@ -987,13 +987,13 @@ bool RenderGraphics(Engine &engine)
 						tileData[tileCount].scale = layerScale;
 						tileCount++;
 
-						const ImageH imageH = GetTextureImage(gfx, sprite.textureId, gfx.pinkImageH);
-						if (currInstanceTileData == nullptr || currInstanceTileData->image != imageH)
+						const Image image = GetTextureImage(gfx, sprite.textureId, gfx.pinkImage);
+						if (currInstanceTileData == nullptr || currInstanceTileData->image != image)
 						{
 							currInstanceTileData = &instanceTileData[instanceTileDataCount++];
 							currInstanceTileData->firstTile = tileCount - 1;
 							currInstanceTileData->tileCount = 1;
-							currInstanceTileData->image = imageH;
+							currInstanceTileData->image = image;
 						}
 						else
 						{
@@ -1079,15 +1079,15 @@ bool RenderGraphics(Engine &engine)
 	#if USE_COMPUTE_TEST
 	{
 
-		SetPipeline(commandList, gfx.computeClearH);
+		SetPipeline(commandList, gfx.computeClear);
 
 		const BindGroupDesc bindGroupDesc = {
-			.layout = GetPipelineBindGroupLayout(gpu, gfx.computeClearH, 0),
+			.layout = GetPipelineBindGroupLayout(gpu, gfx.computeClear, 0),
 			.bindings = {
-				{ .index = 0, .bufferView = gfx.computeBufferViewH },
+				{ .index = 0, .bufferView = gfx.computeBufferView },
 			},
 		};
-		const BindGroupH bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+		const BindGroup bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 		SetBindGroup(commandList, 0, bindGroup);
 
@@ -1095,10 +1095,10 @@ bool RenderGraphics(Engine &engine)
 	}
 	#endif // USE_COMPUTE_TEST
 
-	const BufferH globalsBuffer = gfx.globalsBuffer[frameSlot];
-	const BufferH entityBuffer = gfx.entityBuffer[frameSlot];
-	const BufferH vertexBuffer = gfx.globalVertexArena.buffer;
-	const BufferH indexBuffer = gfx.globalIndexArena.buffer;
+	const Buffer globalsBuffer = gfx.globalsBuffer[frameSlot];
+	const Buffer entityBuffer = gfx.entityBuffer[frameSlot];
+	const Buffer vertexBuffer = gfx.globalVertexArena.buffer;
+	const Buffer indexBuffer = gfx.globalIndexArena.buffer;
 
 	// Shadow map
 	if (camera.projectionType == ProjectionPerspective)
@@ -1107,7 +1107,7 @@ bool RenderGraphics(Engine &engine)
 
 		SetClearDepth(commandList, 0, 0.0f);
 
-		const FramebufferH shadowmapFramebuffer = GetShadowmapFramebuffer(gfx);
+		const Framebuffer shadowmapFramebuffer = GetShadowmapFramebuffer(gfx);
 		BeginRenderPass(commandList, shadowmapFramebuffer);
 
 		const uint2 shadowmapSize = GetFramebufferSize(gpu, shadowmapFramebuffer);
@@ -1143,7 +1143,7 @@ bool RenderGraphics(Engine &engine)
 	}
 
 	const Format depthFormat = GetDeviceCaps(gpu).defaultDepthFormat;
-	const ImageH shadowmapImage = gfx.renderTargets.shadowmapImage;
+	const Image shadowmapImage = gfx.renderTargets.shadowmapImage;
 	TransitionImageLayout(commandList, shadowmapImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
 	// Light binning
@@ -1160,7 +1160,7 @@ bool RenderGraphics(Engine &engine)
 				{ .index = 0, .buffer = gfx.lightGridBuffer[frameSlot] },
 			},
 		};
-		const BindGroupH bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+		const BindGroup bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 		SetBindGroup(commandList, 3, bindGroup);
 
@@ -1176,7 +1176,7 @@ bool RenderGraphics(Engine &engine)
 		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 0.0f } );
 		SetClearDepth(commandList, 1, 0.0f);
 
-		const FramebufferH sceneFramebuffer = gfx.renderTargets.sceneFramebuffer;
+		const Framebuffer sceneFramebuffer = gfx.renderTargets.sceneFramebuffer;
 		BeginRenderPass(commandList, sceneFramebuffer);
 
 		const uint2 displaySize = GetFramebufferSize(gpu, sceneFramebuffer);
@@ -1247,7 +1247,7 @@ bool RenderGraphics(Engine &engine)
 						{ .index = 0, .image = data.image },
 					},
 				};
-				const BindGroupH textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
+				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
 
 				SetBindGroup(commandList, 2, textureBindGroup);
 				DrawIndexed(commandList, tileIndexCount, tileFirstIndex, tileFirstVertex, data.firstTile, data.tileCount);
@@ -1280,14 +1280,14 @@ bool RenderGraphics(Engine &engine)
 				else
 					continue;
 
-				const ImageH imageH = GetTextureImage(gfx, textureId, gfx.pinkImageH);
+				const Image image = GetTextureImage(gfx, textureId, gfx.pinkImage);
 				const BindGroupDesc textureBindGroupDesc = {
 					.layout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_Shading2D], 2),
 					.bindings = {
-						{ .index = 0, .image = imageH },
+						{ .index = 0, .image = image },
 					},
 				};
-				const BindGroupH textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
+				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
 
 				BeginDebugGroup(commandList, entity.name ? entity.name : "sprite", ColorBlack);
 				SetBindGroup(commandList, 2, textureBindGroup);
@@ -1301,16 +1301,16 @@ bool RenderGraphics(Engine &engine)
 		{
 			RENDER_BLOCK(Sky);
 
-			const ImageH &skyImage = GetTextureImage(gfx, gfx.skyTexture, gfx.grayImageH);
+			const Image &skyImage = GetTextureImage(gfx, gfx.skyTexture, gfx.grayImage);
 
 			const BindGroupDesc bindGroupDesc = {
 				.layout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_Sky], 3),
 				.bindings = {
-					{ .index = 0, .sampler = gfx.skySamplerH },
+					{ .index = 0, .sampler = gfx.skySampler },
 					{ .index = 1, .image = skyImage },
 				},
 			};
-			const BindGroupH bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroup bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Sky]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1353,7 +1353,7 @@ bool RenderGraphics(Engine &engine)
 
 		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 0.0f } );
 
-		const FramebufferH distortionFramebuffer = gfx.renderTargets.distortionFramebuffer;
+		const Framebuffer distortionFramebuffer = gfx.renderTargets.distortionFramebuffer;
 		BeginRenderPass(commandList, distortionFramebuffer);
 
 		const uint2 distortionSize = GetFramebufferSize(gpu, distortionFramebuffer);
@@ -1377,7 +1377,7 @@ bool RenderGraphics(Engine &engine)
 		TransitionImageLayout(commandList, gfx.renderTargets.sceneImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 		TransitionImageLayout(commandList, gfx.renderTargets.distortionImage, ImageStateRenderTarget, ImageStateShaderInput, 0, 1);
 
-		const FramebufferH effectsFramebuffer = gfx.renderTargets.effectsFramebuffer;
+		const Framebuffer effectsFramebuffer = gfx.renderTargets.effectsFramebuffer;
 		BeginRenderPass(commandList, effectsFramebuffer);
 
 		const uint2 displaySize = GetFramebufferSize(gpu, effectsFramebuffer);
@@ -1386,7 +1386,7 @@ bool RenderGraphics(Engine &engine)
 		{ // Distortion
 			RENDER_BLOCK(Distortion);
 
-			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_Distortion], 3);
+			const BindGroupLayout bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_Distortion], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Distortion]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1394,12 +1394,12 @@ bool RenderGraphics(Engine &engine)
 			const BindGroupDesc bindGroupDesc = {
 				.layout = bindGroupLayout,
 				.bindings = {
-					{ .index = 0, .sampler = gfx.screenSamplerH },
+					{ .index = 0, .sampler = gfx.screenSampler },
 					{ .index = 1, .image = gfx.renderTargets.sceneImage },
 					{ .index = 2, .image = gfx.renderTargets.distortionImage },
 				},
 			};
-			const BindGroupH textureBindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroup textureBindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 			SetBindGroup(commandList, 3, textureBindGroup);
 
 			DrawScreenQuad(gfx, commandList);
@@ -1408,7 +1408,7 @@ bool RenderGraphics(Engine &engine)
 		{ // Particles
 			RENDER_BLOCK(Particles);
 
-			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_Particles], 3);
+			const BindGroupLayout bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_Particles], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Particles]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1425,7 +1425,7 @@ bool RenderGraphics(Engine &engine)
 
 			MemCopy(gfx.debugDrawVertices[frameSlot], gfx.debugDrawVerticesCPU, gfx.debugDrawVertexCount * sizeof(DebugDrawVertex));
 
-			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_DebugDraw], 3);
+			const BindGroupLayout bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_DebugDraw], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_DebugDraw]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1458,7 +1458,7 @@ bool RenderGraphics(Engine &engine)
 			for (u32 i = 0; i < BLOOM_LEVEL_COUNT; ++i)
 			{
 				const PipelineIndex pipelineIndex = i == 0 ? Pipeline_BloomPrefilter : Pipeline_BloomDownsample;
-				const ImageH sourceImage = i == 0 ? renderTargets.effectsImage : renderTargets.bloomImages[i - 1];
+				const Image sourceImage = i == 0 ? renderTargets.effectsImage : renderTargets.bloomImages[i - 1];
 
 				DrawBloomPass(gfx, commandList, renderTargets.bloomDownsampleFramebuffers[i], pipelineIndex, sourceImage);
 
@@ -1471,7 +1471,7 @@ bool RenderGraphics(Engine &engine)
 
 			for (u32 i = BLOOM_LEVEL_COUNT - 1; i > 0; --i)
 			{
-				const ImageH targetImage = renderTargets.bloomImages[i - 1];
+				const Image targetImage = renderTargets.bloomImages[i - 1];
 
 				TransitionImageLayout(commandList, targetImage, ImageStateShaderInput, ImageStateRenderTarget, 0, 1);
 
@@ -1499,7 +1499,7 @@ bool RenderGraphics(Engine &engine)
 		// Black bars where the integer-scaled scene does not cover the display
 		SetClearColorFloat4(commandList, 0, { 0.0f, 0.0f, 0.0f, 1.0f } );
 
-		const FramebufferH displayFramebuffer = GetDisplayFramebuffer(gfx);
+		const Framebuffer displayFramebuffer = GetDisplayFramebuffer(gfx);
 		{
 		PROFILE_GFX_BLOCK(BeginRenderPass);
 		BeginRenderPass(commandList, displayFramebuffer);
@@ -1518,7 +1518,7 @@ bool RenderGraphics(Engine &engine)
 			SetViewport(commandList, viewport);
 			SetScissor(commandList, scissor);
 
-			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_Blit], 3);
+			const BindGroupLayout bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_Blit], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_Blit]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1526,11 +1526,11 @@ bool RenderGraphics(Engine &engine)
 			const BindGroupDesc bindGroupDesc = {
 				.layout = bindGroupLayout,
 				.bindings = {
-					{ .index = 0, .sampler = gfx.screenSamplerH },
+					{ .index = 0, .sampler = gfx.screenSampler },
 					{ .index = 1, .image = gfx.renderTargets.effectsImage },
 				},
 			};
-			const BindGroupH textureBindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroup textureBindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 			SetBindGroup(commandList, 3, textureBindGroup);
 
 			DrawScreenQuad(gfx, commandList, preRotationDegrees);
@@ -1544,7 +1544,7 @@ bool RenderGraphics(Engine &engine)
 
 			const UI &ui = engine.ui;
 
-			const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_UI], 3);
+			const BindGroupLayout bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_UI], 3);
 
 			SetPipeline(commandList, gfx.pipelines[Pipeline_UI]);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
@@ -1558,11 +1558,11 @@ bool RenderGraphics(Engine &engine)
 				const BindGroupDesc textureBindGroupDesc = {
 					.layout = bindGroupLayout,
 					.bindings = {
-						{ .index = 0, .sampler = gfx.pointSamplerH },
+						{ .index = 0, .sampler = gfx.pointSampler },
 						{ .index = 1, .image = drawList.imageHandle },
 					},
 				};
-				const BindGroupH textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
+				const BindGroup textureBindGroup = GetOrCreateDynamicBindGroup(gfx, textureBindGroupDesc);
 				SetBindGroup(commandList, 3, textureBindGroup);
 
 				for (u32 i = 0; i < drawList.vertexRangeCount; ++i)

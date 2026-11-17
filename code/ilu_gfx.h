@@ -2,9 +2,7 @@
  * ilu_gfx.h
  * Author: Jesus Diaz Garcia
  *
- * Graphics API abstraction made on top of Vulkan.
- *
- * These are the functions abstracted from the low-level API.
+ * Graphics API abstraction.
  *
  * Device initialization:
  * - (Create/Destroy)Swapchain
@@ -244,17 +242,24 @@ enum Format
 
 // Freed handles stay valid until the end of the frame, when the pools are compacted
 
-DECLARE_HANDLE_TYPE(BufferH);
-DECLARE_HANDLE_TYPE(BufferViewH);
-DECLARE_HANDLE_TYPE(ImageH);
-DECLARE_HANDLE_TYPE(SamplerH);
-DECLARE_HANDLE_TYPE(PipelineH);
-DECLARE_HANDLE_TYPE(RenderPassH);
-DECLARE_HANDLE_TYPE(FramebufferH);
-DECLARE_HANDLE_TYPE(BindGroupLayoutH);
-DECLARE_HANDLE_TYPE(BindGroupAllocatorH);
-DECLARE_HANDLE_TYPE(BindGroupH);
-DECLARE_HANDLE_TYPE(TimestampPoolH);
+#if defined(GFX_HANDLES_AS_RESOURCES)
+// The H names are kept as aliases, for the declarations below
+#define GFX_HANDLE_TYPE(TypeName) DECLARE_HANDLE_TYPE(TypeName); typedef TypeName TypeName ## H
+#else
+#define GFX_HANDLE_TYPE(TypeName) DECLARE_HANDLE_TYPE(TypeName ## H)
+#endif
+
+GFX_HANDLE_TYPE(Buffer);
+GFX_HANDLE_TYPE(BufferView);
+GFX_HANDLE_TYPE(Image);
+GFX_HANDLE_TYPE(Sampler);
+GFX_HANDLE_TYPE(Pipeline);
+GFX_HANDLE_TYPE(RenderPass);
+GFX_HANDLE_TYPE(Framebuffer);
+GFX_HANDLE_TYPE(BindGroupLayout);
+GFX_HANDLE_TYPE(BindGroupAllocator);
+GFX_HANDLE_TYPE(BindGroup);
+GFX_HANDLE_TYPE(TimestampPool);
 
 // Its recording state lives in the backend, at `index`
 struct GraphicsDevice;
@@ -723,7 +728,7 @@ static void InvalidateSwapchain();
 // Function pointers
 ////////////////////////////////////////////////////////////////////////
 
-#if defined(TOOLS_GFX_FUNCTION_POINTERS)
+#if defined(GFX_FUNCTION_POINTERS)
 
 EXPAND_API_TOOLS_GFX(TOOLS_GFX_FUNCTION_POINTER)
 

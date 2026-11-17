@@ -240,7 +240,7 @@ struct UIDrawList
 	rect scissorRect;
 	UIVertexRange vertexRanges[UI_MAX_DRAW_LIST_VERTEX_RANGES];
 	u32 vertexRangeCount;
-	ImageH imageHandle;
+	Image imageHandle;
 	UISortKey sortKey;
 };
 
@@ -276,7 +276,7 @@ struct UIDragAndDrop
 {
 	const char *payloadType;
 	UIPayload payload;
-	ImageH imageH;
+	Image image;
 	float4 uvRect;
 };
 
@@ -464,7 +464,7 @@ struct UI
 
 	UIVertex *frontendVertices;
 
-	BufferH vertexBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer vertexBuffer[MAX_FRAMES_IN_FLIGHT];
 	UIVertex *backendVertices[MAX_FRAMES_IN_FLIGHT];
 	UIVertex *vertexPtr;
 	u32 vertexCount;
@@ -478,7 +478,7 @@ struct UI
 	u32 drawListStack[UI_MAX_DRAW_LISTS];
 	u32 drawListStackSize;
 
-	ImageH fontAtlasH;
+	Image fontAtlas;
 	float2 fontAtlasSize;
 	float fontScale, fontAscent, fontDescent, fontLineGap;
 
@@ -962,7 +962,7 @@ const UIDrawList &UI_GetDrawList(const UI &ui)
 	return ui.drawLists[drawListIndex];
 }
 
-void UI_PushDrawList(UI &ui, rect scissorRect, ImageH imageHandle, UIDrawListFlags flags = UIDrawListFlag_None)
+void UI_PushDrawList(UI &ui, rect scissorRect, Image imageHandle, UIDrawListFlags flags = UIDrawListFlag_None)
 {
 	ASSERT(ui.drawListCount < ARRAY_COUNT(ui.drawLists));
 
@@ -985,7 +985,7 @@ void UI_PushDrawList(UI &ui, rect scissorRect, ImageH imageHandle, UIDrawListFla
 	ui.drawListStack[ui.drawListStackSize++] = drawListIndex;
 }
 
-void UI_PushDrawList(UI &ui, ImageH imageHandle)
+void UI_PushDrawList(UI &ui, Image imageHandle)
 {
 	const UIDrawList &currDrawList = UI_GetDrawList(ui);
 	UI_PushDrawList(ui, currDrawList.scissorRect, imageHandle);
@@ -1067,7 +1067,7 @@ void UI_FinalizeDrawData(UI &ui)
 
 }
 
-BufferH UI_GetVertexBuffer(const UI& ui)
+Buffer UI_GetVertexBuffer(const UI& ui)
 {
 	return ui.vertexBuffer[ui.frameIndex];
 }
@@ -1712,7 +1712,7 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 
 	UI_PushCursorPos(ui, window.pos);
 
-	UI_PushDrawList(ui, rect{0, 0, ui.viewportSize.x, ui.viewportSize.y}, ui.fontAtlasH, UIDrawListFlag_None);
+	UI_PushDrawList(ui, rect{0, 0, ui.viewportSize.x, ui.viewportSize.y}, ui.fontAtlas, UIDrawListFlag_None);
 
 	UIDrawList &drawList = UI_GetDrawList(ui);
 	drawList.sortKey.layer = window.layer;
@@ -1885,7 +1885,7 @@ void UI_BeginWindow(UI &ui, UIID windowId, u32 flags, bool *isOpen = nullptr)
 		}
 
 		const rect containerRect = { .pos = containerPos, .size = containerSize };
-		UI_PushDrawList(ui, containerRect, ui.fontAtlasH);
+		UI_PushDrawList(ui, containerRect, ui.fontAtlas);
 
 		panelSize = {(f32)containerSize.x, (f32)containerSize.y};
 
@@ -2526,7 +2526,7 @@ void UI_SeparatorLabel(UI &ui, const char *format, ...)
 	UI_CursorAdvance(ui, size, 12);
 }
 
-bool UI_Image(UI &ui, ImageH image, float2 proposedImageSize = float2{32, 32}, UIWidgetFlags flags = UIWidgetFlag_None, float4 uvRect = {0, 0, 1, 1})
+bool UI_Image(UI &ui, Image image, float2 proposedImageSize = float2{32, 32}, UIWidgetFlags flags = UIWidgetFlag_None, float4 uvRect = {0, 0, 1, 1})
 {
 	const float2 borderSize = { 1, 1 };
 
@@ -4258,7 +4258,7 @@ inline UIPayload UI_Payload(u32 val) {
 	return payload;
 }
 
-void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, ImageH imageH, float4 uvRect = {0, 0, 1, 1})
+void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, Image image, float4 uvRect = {0, 0, 1, 1})
 {
 	// Applies to the widget that was just ended, which UI_EndWidget recorded here.
 	const float2 prevWidgetPos = ui.lastWidgetPos;
@@ -4268,7 +4268,7 @@ void UI_DragAndDropSource(UI &ui, const char *payloadType, UIPayload payload, Im
 	{
 		ui.dragAndDrop.payloadType = payloadType;
 		ui.dragAndDrop.payload = payload;
-		ui.dragAndDrop.imageH = imageH;
+		ui.dragAndDrop.image = image;
 		ui.dragAndDrop.uvRect = uvRect;
 	}
 }
@@ -4311,7 +4311,7 @@ UIPayload UI_DragAndDropPayload(UI &ui)
 
 // TODO: We should depend only on ilu_gfx.h while this is a feature in engine.cpp.
 struct Graphics;
-ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
+Image GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
 
 UIStyle UI_StyleDefault()
 {
@@ -4542,7 +4542,7 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 	}
 
 	// Create texture
-	ui.fontAtlasH = GfxCreateImage(gfx, "texture_font", fontAtlasWidth, fontAtlasHeight, 4, false, (byte*)fontAtlasBitmapRGBA);
+	ui.fontAtlas = GfxCreateImage(gfx, "texture_font", fontAtlasWidth, fontAtlasHeight, 4, false, (byte*)fontAtlasBitmapRGBA);
 	ui.fontAtlasSize = {fontAtlasWidth, fontAtlasHeight};
 
 	UI_ResetWindowDefaults(ui);
@@ -4696,7 +4696,7 @@ void UI_EndFrame(UI &ui)
 		UI_RaiseWindow(ui, window);
 
 		UI_BeginWindow(ui, windowId, UIWindowFlag_None);
-		UI_Image(ui, ui.dragAndDrop.imageH, window.size, UIWidgetFlag_None, ui.dragAndDrop.uvRect);
+		UI_Image(ui, ui.dragAndDrop.image, window.size, UIWidgetFlag_None, ui.dragAndDrop.uvRect);
 		UI_EndWindow(ui);
 
 		if ( UI_IsMouseIdle(ui) )

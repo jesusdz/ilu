@@ -269,7 +269,7 @@ static bool Gizmo_TransformInternal(Gizmo &g, float3 &position, f32 *scale, f32 
 	const float4 colorY = Gizmo_HandleColor(g, GizmoHandle_MoveY, GizmoColorY);
 
 	const rect viewportRect = { .pos = {0, 0}, .size = g.view.viewportSize };
-	UI_PushDrawList(ui, viewportRect, ui.fontAtlasH);
+	UI_PushDrawList(ui, viewportRect, ui.fontAtlas);
 	// Highest layer sorts first: the gizmo draws under every window
 	UI_GetDrawList(ui).sortKey.layer = U16_MAX;
 

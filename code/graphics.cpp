@@ -230,9 +230,9 @@ const u32 FindShaderSourceDescIndex(const char *name)
 	return U32_MAX;
 }
 
-RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name)
+RenderPass FindRenderPassHandle(const Graphics &gfx, const char *name)
 {
-	const RenderPassH handle = FindRenderPass(gpu, name);
+	const RenderPass handle = FindRenderPass(gpu, name);
 	if ( handle ) {
 		return handle;
 	}
@@ -243,7 +243,7 @@ RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name)
 
 struct StagedData
 {
-	BufferH buffer;
+	Buffer buffer;
 	u32 offset;
 };
 
@@ -288,16 +288,16 @@ static StagedData StageData(Graphics &gfx, const void *data, u32 size, u32 align
 	return staging;
 }
 
-BufferH CreateStagingBuffer(Graphics &gfx)
+Buffer CreateStagingBuffer(Graphics &gfx)
 {
 	const u32 stagingHeapSize = GetHeapSize(gpu, HeapType_Staging);
-	BufferH stagingBufferHandle = CreateBuffer(gpu, stagingHeapSize, BufferUsageTransferSrc, HeapType_Staging);
+	Buffer stagingBufferHandle = CreateBuffer(gpu, stagingHeapSize, BufferUsageTransferSrc, HeapType_Staging);
 	return stagingBufferHandle;
 }
 
-BufferH CreateVertexBuffer(Graphics &gfx, u32 size)
+Buffer CreateVertexBuffer(Graphics &gfx, u32 size)
 {
-	BufferH vertexBufferHandle = CreateBuffer(
+	Buffer vertexBufferHandle = CreateBuffer(
 			gpu,
 			size,
 			BufferUsageVertexBuffer | BufferUsageTransferDst,
@@ -306,9 +306,9 @@ BufferH CreateVertexBuffer(Graphics &gfx, u32 size)
 	return vertexBufferHandle;
 }
 
-BufferH CreateIndexBuffer(Graphics &gfx, u32 size)
+Buffer CreateIndexBuffer(Graphics &gfx, u32 size)
 {
-	BufferH indexBufferHandle = CreateBuffer(
+	Buffer indexBufferHandle = CreateBuffer(
 			gpu,
 			size,
 			BufferUsageIndexBuffer | BufferUsageTransferDst,
@@ -317,7 +317,7 @@ BufferH CreateIndexBuffer(Graphics &gfx, u32 size)
 	return indexBufferHandle;
 }
 
-BufferArena MakeBufferArena(Graphics &gfx, BufferH bufferHandle)
+BufferArena MakeBufferArena(Graphics &gfx, Buffer bufferHandle)
 {
 	const BufferArena arena = {
 		.buffer = bufferHandle,
@@ -326,7 +326,7 @@ BufferArena MakeBufferArena(Graphics &gfx, BufferH bufferHandle)
 	return arena;
 }
 
-void UploadData(Graphics &gfx, const CommandList &commandList, const void *data, u32 size, BufferH destBuffer, u32 destOffset, u32 alignment)
+void UploadData(Graphics &gfx, const CommandList &commandList, const void *data, u32 size, Buffer destBuffer, u32 destOffset, u32 alignment)
 {
 	StagedData staged = StageData(gfx, data, size, alignment);
 
@@ -355,11 +355,11 @@ BufferChunk PushData(Graphics &gfx, const CommandList &commandList, BufferArena 
 ////////////////////////////////////////////////////////////////////////
 // Image management
 
-void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandList, ImageH imageH)
+void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandList, Image image)
 {
-	const Format format = GetImageFormat(device, imageH);
-	const uint2 size = GetImageSize(device, imageH);
-	const u32 mipLevels = GetImageMipLevels(device, imageH);
+	const Format format = GetImageFormat(device, image);
+	const uint2 size = GetImageSize(device, image);
+	const u32 mipLevels = GetImageMipLevels(device, image);
 
 	if (!GetDeviceCaps(device).formatSupport[format].linearFilteredSampling) {
 		LOG(Error, "GenerateMipmaps() - Linear filtering not supported for format %s.\n", FormatName(format));
@@ -368,7 +368,7 @@ void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandLis
 
 	for (u32 i = 1; i < mipLevels; ++i)
 	{
-		TransitionImageLayout(commandList, imageH, ImageStateTransferDst, ImageStateTransferSrc, i - 1, 1);
+		TransitionImageLayout(commandList, image, ImageStateTransferDst, ImageStateTransferSrc, i - 1, 1);
 
 		const i32 srcWidth = Max(size.x >> (i-1), 1u);
 		const i32 srcHeight = Max(size.y >> (i-1), 1u);
@@ -377,15 +377,15 @@ void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandLis
 		const BlitRegion srcRegion = { .x = 0, .y = 0, .width = srcWidth, .height = srcHeight, .mipLevel = i - 1 };
 		const BlitRegion dstRegion = { .x = 0, .y = 0, .width = dstWidth, .height = dstHeight, .mipLevel = i };
 
-		Blit(commandList, imageH, srcRegion, imageH, dstRegion);
+		Blit(commandList, image, srcRegion, image, dstRegion);
 
-		TransitionImageLayout(commandList, imageH, ImageStateTransferSrc, ImageStateShaderInput, i - 1, 1);
+		TransitionImageLayout(commandList, image, ImageStateTransferSrc, ImageStateShaderInput, i - 1, 1);
 	}
 
-	TransitionImageLayout(commandList, imageH, ImageStateTransferDst, ImageStateShaderInput, mipLevels - 1, 1);
+	TransitionImageLayout(commandList, image, ImageStateTransferDst, ImageStateShaderInput, mipLevels - 1, 1);
 }
 
-ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels)
+Image GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels)
 {
 	const u32 pixelSize = channels * sizeof(byte);
 	const u32 size = width * height * pixelSize;
@@ -402,7 +402,7 @@ ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, in
 		channels == 2 ? FormatRG8_SRGB :
 		FormatR8;
 
-	ImageH image = CreateImage(gpu,
+	Image image = CreateImage(gpu,
 			width, height, mipLevels,
 			texFormat,
 			ImageUsageTransferSrc | // for mipmap blits
@@ -435,9 +435,9 @@ ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, in
 	return image;
 }
 
-ImageH GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, bool createMipmaps)
+Image GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, bool createMipmaps)
 {
-	const ImageH imageHandle = GfxCreateImage(gfx, name, img.width, img.height, img.channelCount, createMipmaps, img.pixels);
+	const Image imageHandle = GfxCreateImage(gfx, name, img.width, img.height, img.channelCount, createMipmaps, img.pixels);
 	return imageHandle;
 }
 
@@ -477,18 +477,18 @@ static Texture *PushTexture(Graphics &gfx, const Texture &desc)
 	return &texture;
 }
 
-ID CreateTexture(Graphics &gfx, const Texture &desc, ImageH imageH)
+ID CreateTexture(Graphics &gfx, const Texture &desc, Image image)
 {
 	Texture *texture = PushTexture(gfx, desc);
 	if ( !texture ) {
 		return {};
 	}
 
-	texture->image = imageH;
+	texture->image = image;
 	texture->ownsImage = false;
 	texture->ts = 0;
 
-	texture->size = GetImageSize(gpu, imageH);
+	texture->size = GetImageSize(gpu, image);
 
 	return texture->id;
 }
@@ -505,7 +505,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 	{
 		const byte *pixels = PushDataFromFile(scratch.arena, gfx.assetsFile, desc.location.offset, desc.location.size);
 
-		ImageH imageHandle = GfxCreateImage(gfx, desc.name, desc.width, desc.height, desc.channels, desc.mipmap, pixels);
+		Image imageHandle = GfxCreateImage(gfx, desc.name, desc.width, desc.height, desc.channels, desc.mipmap, pixels);
 
 		id = CreateTexture(gfx, desc, imageHandle);
 
@@ -522,7 +522,7 @@ ID CreateTexture(Graphics &gfx, const Texture &desc)
 		ImagePixels img;
 		if ( ReadImagePixels(scratch.arena, imagePath.str, img) )
 		{
-			ImageH imageHandle = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
+			Image imageHandle = GfxCreateImage(gfx, img, desc.name, desc.mipmap);
 
 			id = CreateTexture(gfx, desc, imageHandle);
 
@@ -566,9 +566,9 @@ ID GetOrCreateTexture(Graphics &gfx, const Texture &desc)
 	return id;
 }
 
-ImageH GetTextureImage(Graphics &gfx, ID id, ImageH imageH)
+Image GetTextureImage(Graphics &gfx, ID id, Image image)
 {
-	ImageH res = imageH;
+	Image res = image;
 
 	if ( id ) {
 		const Texture &texture = GetTexture(id);
@@ -935,7 +935,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Scene framebuffer
 	{
 		const FramebufferDesc desc = {
-			.renderPass = gfx.litRenderPassH,
+			.renderPass = gfx.litRenderPass,
 			.attachments = {
 				renderTargets.sceneImage,
 				renderTargets.depthImage,
@@ -958,7 +958,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Distortion framebuffer
 	{
 		const FramebufferDesc desc = {
-			.renderPass = gfx.distortionRenderPassH,
+			.renderPass = gfx.distortionRenderPass,
 			.attachments = {
 				renderTargets.distortionImage,
 				renderTargets.depthImage,
@@ -981,7 +981,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	// Effects framebuffer
 	{
 		const FramebufferDesc desc = {
-			.renderPass = gfx.effectsRenderPassH,
+			.renderPass = gfx.effectsRenderPass,
 			.attachments = {
 				renderTargets.effectsImage,
 				renderTargets.depthImage,
@@ -1000,7 +1000,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			char debugName[16];
 			SPrintf(debugName, "bloom_%u", i);
 
-			const ImageH image = CreateImage(gpu,
+			const Image image = CreateImage(gpu,
 				Max(sceneWidth >> (i + 1), 1u), Max(sceneHeight >> (i + 1), 1u), 1,
 				HdrColorFormat(gpu),
 				ImageUsageColorAttachment | ImageUsageSampled,
@@ -1010,7 +1010,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			renderTargets.bloomImages[i] = image;
 
 			const FramebufferDesc downsampleDesc = {
-				.renderPass = gfx.bloomDownsampleRenderPassH,
+				.renderPass = gfx.bloomDownsampleRenderPass,
 				.attachments = { image },
 				.attachmentCount = 1,
 			};
@@ -1019,7 +1019,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 			if ( i < BLOOM_LEVEL_COUNT - 1 )
 			{
 				const FramebufferDesc upsampleDesc = {
-					.renderPass = gfx.bloomUpsampleRenderPassH,
+					.renderPass = gfx.bloomUpsampleRenderPass,
 					.attachments = { image },
 					.attachmentCount = 1,
 				};
@@ -1028,7 +1028,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 		}
 
 		const FramebufferDesc compositeDesc = {
-			.renderPass = gfx.bloomUpsampleRenderPassH,
+			.renderPass = gfx.bloomUpsampleRenderPass,
 			.attachments = { renderTargets.effectsImage },
 			.attachmentCount = 1,
 		};
@@ -1039,7 +1039,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 	for ( u32 i = 0; i < GetSwapchainImageCount(gpu); ++i )
 	{
 		const FramebufferDesc desc = {
-			.renderPass = gfx.displayRenderPassH,
+			.renderPass = gfx.displayRenderPass,
 			.attachments = {
 				GetSwapchainImage(gpu, i),
 			},
@@ -1060,7 +1060,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 		SetObjectNameImage(gpu, renderTargets.shadowmapImage, "scene_shadowmap");
 
 		const FramebufferDesc desc = {
-			.renderPass = gfx.shadowmapRenderPassH,
+			.renderPass = gfx.shadowmapRenderPass,
 			.attachments = { renderTargets.shadowmapImage },
 			.attachmentCount = 1,
 		};
@@ -1080,7 +1080,7 @@ void CreateRenderTargets(Graphics &gfx, u32 sceneWidth, u32 sceneHeight)
 		SetObjectNameImage(gpu, renderTargets.idImage, "scene_id");
 
 		const FramebufferDesc desc = {
-			.renderPass = gfx.idRenderPassH,
+			.renderPass = gfx.idRenderPass,
 			.attachments = { renderTargets.idImage, renderTargets.depthImage },
 			.attachmentCount = 2,
 		};
@@ -1674,10 +1674,10 @@ void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipel
 {
 	Graphics &gfx = engine.gfx;
 
-	const RenderPassH renderPassH = FindRenderPassHandle(gfx, shaderPipeDesc.renderPass);
+	const RenderPass renderPass = FindRenderPassHandle(gfx, shaderPipeDesc.renderPass);
 
 	PipelineDesc desc = shaderPipeDesc.desc;
-	desc.renderPass = renderPassH;
+	desc.renderPass = renderPass;
 
 	if ( sLoadShadersFromText )
 	{
@@ -1692,12 +1692,12 @@ void CompileGraphicsPipeline(Engine &engine, Arena scratch, const ShaderAndPipel
 
 	LOG(Info, "Creating Graphics Pipeline: %s\n", desc.name);
 	// Written in place, so everything reading through gfx.pipelines picks up the new one
-	PipelineH &pipelineH = gfx.pipelines[shaderPipeDesc.index];
-	if ( pipelineH ) {
-		DestroyPipelineH( gpu, pipelineH );
+	Pipeline &pipeline = gfx.pipelines[shaderPipeDesc.index];
+	if ( pipeline ) {
+		DestroyPipelineH( gpu, pipeline );
 	}
-	pipelineH = CreateGraphicsPipeline(gpu, scratch, desc, gfx.globalBindGroupLayout);
-	SetObjectNamePipeline(gpu, pipelineH, desc.name);
+	pipeline = CreateGraphicsPipeline(gpu, scratch, desc, gfx.globalBindGroupLayout);
+	SetObjectNamePipeline(gpu, pipeline, desc.name);
 }
 
 void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComputeDesc &shaderComputeDesc)
@@ -1716,12 +1716,12 @@ void CompileComputePipeline(Engine &engine, Arena scratch, const ShaderAndComput
 	}
 
 	LOG(Info, "Creating Compute Pipeline: %s\n", desc.name);
-	PipelineH &pipelineH = gfx.pipelines[shaderComputeDesc.index];
-	if ( pipelineH ) {
-		DestroyPipelineH( gpu, pipelineH );
+	Pipeline &pipeline = gfx.pipelines[shaderComputeDesc.index];
+	if ( pipeline ) {
+		DestroyPipelineH( gpu, pipeline );
 	}
-	pipelineH = CreateComputePipeline(gpu, scratch, desc, gfx.globalBindGroupLayout);
-	SetObjectNamePipeline(gpu, pipelineH, desc.name);
+	pipeline = CreateComputePipeline(gpu, scratch, desc, gfx.globalBindGroupLayout);
+	SetObjectNamePipeline(gpu, pipeline, desc.name);
 }
 
 
@@ -1748,7 +1748,7 @@ void ResetDynamicBindGroups( Graphics &gfx )
 	gfx.dynamicBindGroupCount = 0;
 }
 
-BindGroupH GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindGroupDesc)
+BindGroup GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindGroupDesc)
 {
 	for (u32 i = 0; i < gfx.dynamicBindGroupCount; ++i)
 	{
@@ -1759,7 +1759,7 @@ BindGroupH GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindG
 	}
 
 	ASSERT( gfx.dynamicBindGroupCount < ARRAY_COUNT(gfx.dynamicBindGroups) );
-	const BindGroupH bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[GetFrameSlot(gpu)]);
+	const BindGroup bindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[GetFrameSlot(gpu)]);
 	gfx.dynamicBindGroupDescs[gfx.dynamicBindGroupCount] = bindGroupDesc;
 	gfx.dynamicBindGroups[gfx.dynamicBindGroupCount] = bindGroup;
 	return gfx.dynamicBindGroups[gfx.dynamicBindGroupCount++];
@@ -1791,7 +1791,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.loadOp = LoadOpClear, .storeOp = StoreOpStore,
 			}
 		};
-		gfx.litRenderPassH = CreateRenderPass( gpu, renderpassDesc );
+		gfx.litRenderPass = CreateRenderPass( gpu, renderpassDesc );
 	}
 
 	// Distortion render pass
@@ -1808,7 +1808,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.loadOp = LoadOpLoad, .storeOp = StoreOpStore,
 			}
 		};
-		gfx.distortionRenderPassH = CreateRenderPass( gpu, renderpassDesc );
+		gfx.distortionRenderPass = CreateRenderPass( gpu, renderpassDesc );
 	}
 
 	// Effects render pass (continue after scene render pass)
@@ -1825,7 +1825,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.loadOp = LoadOpLoad, .storeOp = StoreOpStore,
 			}
 		};
-		gfx.effectsRenderPassH = CreateRenderPass( gpu, renderpassDesc );
+		gfx.effectsRenderPass = CreateRenderPass( gpu, renderpassDesc );
 	}
 
 	// Bloom render passes
@@ -1837,7 +1837,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				{ .format = HdrColorFormat(gpu), .loadOp = LoadOpDontCare, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 		};
-		gfx.bloomDownsampleRenderPassH = CreateRenderPass( gpu, downsampleDesc );
+		gfx.bloomDownsampleRenderPass = CreateRenderPass( gpu, downsampleDesc );
 
 		const RenderpassDesc upsampleDesc = {
 			.name = "bloom_upsample_renderpass",
@@ -1846,7 +1846,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				{ .format = HdrColorFormat(gpu), .loadOp = LoadOpLoad, .storeOp = StoreOpStore, .isSwapchain = false },
 			},
 		};
-		gfx.bloomUpsampleRenderPassH = CreateRenderPass( gpu, upsampleDesc );
+		gfx.bloomUpsampleRenderPass = CreateRenderPass( gpu, upsampleDesc );
 	}
 
 	// Display render pass
@@ -1861,7 +1861,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			},
 			.hasDepthAttachment = false,
 		};
-		gfx.displayRenderPassH = CreateRenderPass( gpu, renderpassDesc );
+		gfx.displayRenderPass = CreateRenderPass( gpu, renderpassDesc );
 	}
 
 	// Shadowmap render pass
@@ -1874,7 +1874,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.loadOp = LoadOpClear, .storeOp = StoreOpStore
 			}
 		};
-		gfx.shadowmapRenderPassH = CreateRenderPass( gpu, renderpassDesc );
+		gfx.shadowmapRenderPass = CreateRenderPass( gpu, renderpassDesc );
 	}
 
 	// ID render pass
@@ -1890,7 +1890,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 				.loadOp = LoadOpLoad, .storeOp = StoreOpStore
 			}
 		};
-		gfx.idRenderPassH = CreateRenderPass( gpu, renderpassDesc );
+		gfx.idRenderPass = CreateRenderPass( gpu, renderpassDesc );
 	}
 
 	// Create staging buffer
@@ -2022,13 +2022,13 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 	// Create buffer for computes
 	const u32 computeBufferSize = sizeof(float);
-	gfx.computeBufferH = CreateBuffer(gpu, computeBufferSize, BufferUsageStorageTexelBuffer, HeapType_General);
-	gfx.computeBufferViewH = CreateBufferView(gpu, gfx.computeBufferH, FormatFloat, 0, 0);
+	gfx.computeBuffer = CreateBuffer(gpu, computeBufferSize, BufferUsageStorageTexelBuffer, HeapType_General);
+	gfx.computeBufferView = CreateBufferView(gpu, gfx.computeBuffer, FormatFloat, 0, 0);
 
 #if USE_EDITOR
 	const u32 selectionBufferSize = AlignUp( sizeof(u32), GetDeviceCaps(gpu).alignment.storageBufferOffset );
-	gfx.selectionBufferH = CreateBuffer(gpu, selectionBufferSize, BufferUsageStorageTexelBuffer, HeapType_Readback);
-	gfx.selectionBufferViewH = CreateBufferView(gpu, gfx.selectionBufferH, FormatUInt, 0, 0);
+	gfx.selectionBuffer = CreateBuffer(gpu, selectionBufferSize, BufferUsageStorageTexelBuffer, HeapType_Readback);
+	gfx.selectionBufferView = CreateBufferView(gpu, gfx.selectionBuffer, FormatUInt, 0, 0);
 #endif // USE_EDITOR
 
 
@@ -2101,13 +2101,13 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 
 	// Builtin images
 	const byte whiteImagePixels[] = { 255, 255, 255, 255 };
-	gfx.whiteImageH = GfxCreateImage(gfx, "whiteImage", 1, 1, 4, false, whiteImagePixels);
+	gfx.whiteImage = GfxCreateImage(gfx, "whiteImage", 1, 1, 4, false, whiteImagePixels);
 	const byte pinkImagePixels[] = { 255, 0, 255, 255 };
-	gfx.pinkImageH = GfxCreateImage(gfx, "pinkImage", 1, 1, 4, false, pinkImagePixels);
+	gfx.pinkImage = GfxCreateImage(gfx, "pinkImage", 1, 1, 4, false, pinkImagePixels);
 	const byte grayImagePixels[] = { 127, 127, 127, 255 };
-	gfx.grayImageH = GfxCreateImage(gfx, "grayImage", 1, 1, 4, false, grayImagePixels);
+	gfx.grayImage = GfxCreateImage(gfx, "grayImage", 1, 1, 4, false, grayImagePixels);
 	const byte blackImagePixels[] = { 0, 0, 0, 0 };
-	gfx.blackImageH = GfxCreateImage(gfx, "blackImage", 1, 1, 4, false, blackImagePixels);
+	gfx.blackImage = GfxCreateImage(gfx, "blackImage", 1, 1, 4, false, blackImagePixels);
 	const u32 noiseWidth = 32;
 	const u32 noiseHeight = 32;
 	ResetArena(scratch.arena);
@@ -2121,7 +2121,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 			noiseImagePixels[y * noiseWidth + x] = {r, g, b, a};
 		}
 	}
-	gfx.noiseImageH = GfxCreateImage(gfx, "noiseImage", noiseWidth, noiseHeight, 4, false, (byte*)noiseImagePixels);
+	gfx.noiseImage = GfxCreateImage(gfx, "noiseImage", noiseWidth, noiseHeight, 4, false, (byte*)noiseImagePixels);
 
 	// Builtin texture
 	const Texture defaultTextureDesc = {
@@ -2131,7 +2131,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.mipmap = 0,
 		.flags = AssetFlag_Ghost | AssetFlag_Builtin,
 	};
-	gfx.defaultTexture = CreateTexture(gfx, defaultTextureDesc, gfx.pinkImageH);
+	gfx.defaultTexture = CreateTexture(gfx, defaultTextureDesc, gfx.pinkImage);
 
 	// Builtin noise texture
 	const Texture noiseTextureDesc = {
@@ -2141,7 +2141,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.mipmap = 0,
 		.flags = AssetFlag_Ghost | AssetFlag_Builtin,
 	};
-	gfx.noiseTexture = CreateTexture(gfx, noiseTextureDesc, gfx.noiseImageH);
+	gfx.noiseTexture = CreateTexture(gfx, noiseTextureDesc, gfx.noiseImage);
 
 	// Builtin material
 	const Material materialDesc = {
@@ -2159,34 +2159,34 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		.addressMode = AddressModeRepeat,
 		.filter = FilterNearest,
 	};
-	gfx.pointSamplerH = CreateSampler(gpu, pointSamplerDesc);
+	gfx.pointSampler = CreateSampler(gpu, pointSamplerDesc);
 	const SamplerDesc materialSamplerDesc = {
 		.addressMode = AddressModeRepeat,
 		.filter = FilterLinear,
 	};
-	gfx.linearSamplerH = CreateSampler(gpu, materialSamplerDesc);
+	gfx.linearSampler = CreateSampler(gpu, materialSamplerDesc);
 	const SamplerDesc screenSamplerDesc = {
 		.addressMode = AddressModeClampToEdge,
 		.filter = FilterNearest,
 	};
-	gfx.screenSamplerH = CreateSampler(gpu, screenSamplerDesc);
+	gfx.screenSampler = CreateSampler(gpu, screenSamplerDesc);
 	const SamplerDesc bloomSamplerDesc = {
 		.addressMode = AddressModeClampToEdge,
 		.filter = FilterLinear,
 	};
-	gfx.bloomSamplerH = CreateSampler(gpu, bloomSamplerDesc);
+	gfx.bloomSampler = CreateSampler(gpu, bloomSamplerDesc);
 	const SamplerDesc shadowmapSamplerDesc = {
 		.addressMode = AddressModeClampToBorder,
 		.filter = FilterNearest,
 		.borderColor = BorderColorBlackFloat,
 		.compareOp = CompareOpGreater,
 	};
-	gfx.shadowmapSamplerH = CreateSampler(gpu, shadowmapSamplerDesc);
+	gfx.shadowmapSampler = CreateSampler(gpu, shadowmapSamplerDesc);
 	const SamplerDesc skySamplerDesc = {
 		.addressMode = AddressModeClampToEdge,
 		.filter = FilterLinear,
 	};
-	gfx.skySamplerH = CreateSampler(gpu, skySamplerDesc);
+	gfx.skySampler = CreateSampler(gpu, skySamplerDesc);
 
 	// BindGroups for globals
 	for (u32 i = 0; i < ARRAY_COUNT(gfx.globalBindGroups); ++i)
@@ -2233,14 +2233,14 @@ BindGroupDesc GlobalBindGroupDesc(const Graphics &gfx, u32 frameSlot)
 		.layout = gfx.globalBindGroupLayout,
 		.bindings = {
 			{ .index = BINDING_GLOBALS, .buffer = gfx.globalsBuffer[frameSlot] },
-			{ .index = BINDING_SAMPLER_POINT, .sampler = gfx.pointSamplerH },
-			{ .index = BINDING_SAMPLER_LINEAR, .sampler = gfx.linearSamplerH },
+			{ .index = BINDING_SAMPLER_POINT, .sampler = gfx.pointSampler },
+			{ .index = BINDING_SAMPLER_LINEAR, .sampler = gfx.linearSampler },
 			{ .index = BINDING_ENTITIES, .buffer = gfx.entityBuffer[frameSlot] },
 			{ .index = BINDING_SHADOWMAP, .image = gfx.renderTargets.shadowmapImage },
-			{ .index = BINDING_SHADOWMAP_SAMPLER, .sampler = gfx.shadowmapSamplerH },
+			{ .index = BINDING_SHADOWMAP_SAMPLER, .sampler = gfx.shadowmapSampler },
 			{ .index = BINDING_SPRITE_DATA, .buffer = gfx.spriteDataBuffer[frameSlot] },
 			{ .index = BINDING_TILE_DATA, .buffer = gfx.tileDataBuffer[frameSlot] },
-			{ .index = BINDING_NOISE2D, .image = gfx.noiseImageH },
+			{ .index = BINDING_NOISE2D, .image = gfx.noiseImage },
 			{ .index = BINDING_LIGHTS, .buffer = gfx.lightBuffer[frameSlot] },
 			{ .index = BINDING_LIGHT_GRID, .buffer = gfx.lightGridBuffer[frameSlot] },
 		},
@@ -2256,8 +2256,8 @@ void UpdateGlobalBindGroup(Graphics &gfx, u32 frameSlot)
 
 BindGroupDesc MaterialBindGroupDesc(Graphics &gfx, const Material &material)
 {
-	const BindGroupLayoutH bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[material.pipelineIndex], BIND_GROUP_MATERIAL);
-	const ImageH &albedoImage = GetTextureImage(gfx, material.textureId, gfx.pinkImageH );
+	const BindGroupLayout bindGroupLayout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[material.pipelineIndex], BIND_GROUP_MATERIAL);
+	const Image &albedoImage = GetTextureImage(gfx, material.textureId, gfx.pinkImage );
 
 	const BindGroupDesc bindGroupDesc = {
 		.layout = bindGroupLayout,
@@ -2340,20 +2340,20 @@ void CleanupGraphics(Graphics &gfx)
 }
 
 
-const ImageH GetDisplayImageH(const Graphics &gfx)
+const Image GetDisplayImageH(const Graphics &gfx)
 {
 	const u32 imageIndex = GetSwapchainImageIndex(gpu);
-	const ImageH displayImageH = GetSwapchainImage(gpu, imageIndex);
-	return displayImageH;
+	const Image displayImage = GetSwapchainImage(gpu, imageIndex);
+	return displayImage;
 }
 
-FramebufferH GetDisplayFramebuffer(const Graphics &gfx)
+Framebuffer GetDisplayFramebuffer(const Graphics &gfx)
 {
 	const u32 imageIndex = GetSwapchainImageIndex(gpu);
 	return gfx.renderTargets.displayFramebuffers[imageIndex];
 }
 
-FramebufferH GetShadowmapFramebuffer(const Graphics &gfx)
+Framebuffer GetShadowmapFramebuffer(const Graphics &gfx)
 {
 	return gfx.renderTargets.shadowmapFramebuffer;
 }

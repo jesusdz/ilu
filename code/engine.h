@@ -228,7 +228,7 @@ struct DistortionVertex
 
 struct DrawBatch
 {
-	ImageH imageH;
+	Image image;
 	u32 vertexIndex;
 	u32 vertexCount;
 };
@@ -473,7 +473,7 @@ struct Texture
 	BinLocation location;
 	AssetFlags flags;
 
-	ImageH image;
+	Image image;
 	bool ownsImage;
 	uint2 size;
 	u64 ts;
@@ -511,27 +511,27 @@ struct RenderTargets
 	uint2 sceneSize;
 	f32 scenePixelsPerMeter;
 	bool scaleSceneToDisplay;
-	ImageH depthImage;
-	ImageH sceneImage;
-	FramebufferH sceneFramebuffer;
-	ImageH distortionImage;
-	FramebufferH distortionFramebuffer;
-	ImageH effectsImage;
-	FramebufferH effectsFramebuffer;
+	Image depthImage;
+	Image sceneImage;
+	Framebuffer sceneFramebuffer;
+	Image distortionImage;
+	Framebuffer distortionFramebuffer;
+	Image effectsImage;
+	Framebuffer effectsFramebuffer;
 
 	bool hasBloom;
-	ImageH bloomImages[BLOOM_LEVEL_COUNT];
-	FramebufferH bloomDownsampleFramebuffers[BLOOM_LEVEL_COUNT];
-	FramebufferH bloomUpsampleFramebuffers[BLOOM_LEVEL_COUNT - 1];
-	FramebufferH bloomCompositeFramebuffer;
+	Image bloomImages[BLOOM_LEVEL_COUNT];
+	Framebuffer bloomDownsampleFramebuffers[BLOOM_LEVEL_COUNT];
+	Framebuffer bloomUpsampleFramebuffers[BLOOM_LEVEL_COUNT - 1];
+	Framebuffer bloomCompositeFramebuffer;
 
-	FramebufferH displayFramebuffers[MAX_SWAPCHAIN_IMAGE_COUNT];
+	Framebuffer displayFramebuffers[MAX_SWAPCHAIN_IMAGE_COUNT];
 
-	ImageH shadowmapImage;
-	FramebufferH shadowmapFramebuffer;
+	Image shadowmapImage;
+	Framebuffer shadowmapFramebuffer;
 
-	ImageH idImage;
-	FramebufferH idFramebuffer;
+	Image idImage;
+	Framebuffer idFramebuffer;
 
 	bool initialized;
 };
@@ -634,7 +634,7 @@ struct Graphics
 
 	RenderTargets renderTargets;
 
-	BufferH stagingBuffer;
+	Buffer stagingBuffer;
 	u32 stagingBufferOffset;
 	bool inUploadContext;
 
@@ -655,51 +655,51 @@ struct Graphics
 	BufferChunk screenTriangleVertices270;
 	BufferChunk screenTriangleIndices;
 
-	BufferH globalsBuffer[MAX_FRAMES_IN_FLIGHT];
-	BufferH entityBuffer[MAX_FRAMES_IN_FLIGHT];
-	BufferH materialBuffer;
-	BufferH computeBufferH;
-	BufferViewH computeBufferViewH;
+	Buffer globalsBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer entityBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer materialBuffer;
+	Buffer computeBuffer;
+	BufferView computeBufferView;
 #if USE_EDITOR
-	BufferH selectionBufferH;
-	BufferViewH selectionBufferViewH;
+	Buffer selectionBuffer;
+	BufferView selectionBufferView;
 #endif
 
-	BufferH debugDrawVertexBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer debugDrawVertexBuffer[MAX_FRAMES_IN_FLIGHT];
 	DebugDrawVertex *debugDrawVertices[MAX_FRAMES_IN_FLIGHT];
 	DebugDrawVertex *debugDrawVerticesCPU;
 	u32 debugDrawVertexCount;
 	DrawBatch debugDrawBatches[MAX_DEBUG_DRAW_BATCHES];
 	u32 debugDrawBatchCount;
 
-	BufferH particleVertexBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer particleVertexBuffer[MAX_FRAMES_IN_FLIGHT];
 	u32 particleVertexCount;
 	DrawBatch particleBatches[MAX_PARTICLE_BATCHES];
 	u32 particleBatchCount;
 
-	BufferH distortionVertexBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer distortionVertexBuffer[MAX_FRAMES_IN_FLIGHT];
 	u32 distortionVertexCount;
 
-	BufferH spriteDataBuffer[MAX_FRAMES_IN_FLIGHT];
-	BufferH tileDataBuffer[MAX_FRAMES_IN_FLIGHT];
-	BufferH lightBuffer[MAX_FRAMES_IN_FLIGHT];
-	BufferH lightGridBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer spriteDataBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer tileDataBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer lightBuffer[MAX_FRAMES_IN_FLIGHT];
+	Buffer lightGridBuffer[MAX_FRAMES_IN_FLIGHT];
 
-	SamplerH pointSamplerH;
-	SamplerH linearSamplerH;
-	SamplerH shadowmapSamplerH;
-	SamplerH skySamplerH;
-	SamplerH screenSamplerH;
-	SamplerH bloomSamplerH;
+	Sampler pointSampler;
+	Sampler linearSampler;
+	Sampler shadowmapSampler;
+	Sampler skySampler;
+	Sampler screenSampler;
+	Sampler bloomSampler;
 
-	RenderPassH litRenderPassH;
-	RenderPassH distortionRenderPassH;
-	RenderPassH effectsRenderPassH;
-	RenderPassH bloomDownsampleRenderPassH;
-	RenderPassH bloomUpsampleRenderPassH;
-	RenderPassH shadowmapRenderPassH;
-	RenderPassH idRenderPassH;
-	RenderPassH displayRenderPassH;
+	RenderPass litRenderPass;
+	RenderPass distortionRenderPass;
+	RenderPass effectsRenderPass;
+	RenderPass bloomDownsampleRenderPass;
+	RenderPass bloomUpsampleRenderPass;
+	RenderPass shadowmapRenderPass;
+	RenderPass idRenderPass;
+	RenderPass displayRenderPass;
 
 	u32 textureCount;
 	Texture textures[MAX_TEXTURES];
@@ -709,28 +709,28 @@ struct Graphics
 	Material materials[MAX_MATERIALS];
 	bool shouldUpdateMaterials;
 
-	BindGroupAllocatorH globalBindGroupAllocator;
-	BindGroupAllocatorH materialBindGroupAllocator;
-	BindGroupAllocatorH dynamicBindGroupAllocator[MAX_FRAMES_IN_FLIGHT];
+	BindGroupAllocator globalBindGroupAllocator;
+	BindGroupAllocator materialBindGroupAllocator;
+	BindGroupAllocator dynamicBindGroupAllocator[MAX_FRAMES_IN_FLIGHT];
 
-	BindGroupLayoutH globalBindGroupLayout;
+	BindGroupLayout globalBindGroupLayout;
 
 	// Updated each frame so we need MAX_FRAMES_IN_FLIGHT elements
-	BindGroupH globalBindGroups[MAX_FRAMES_IN_FLIGHT];
+	BindGroup globalBindGroups[MAX_FRAMES_IN_FLIGHT];
 	u32 globalBindGroupUpdateMask;
 
-	BindGroupH materialBindGroups[MAX_MATERIALS]; // Parallel to materials
+	BindGroup materialBindGroups[MAX_MATERIALS]; // Parallel to materials
 	bool shouldUpdateMaterialBindGroups;
 
 	BindGroupDesc dynamicBindGroupDescs[MAX_DYNAMIC_BIND_GROUPS];
-	BindGroupH dynamicBindGroups[MAX_DYNAMIC_BIND_GROUPS];
+	BindGroup dynamicBindGroups[MAX_DYNAMIC_BIND_GROUPS];
 	u32 dynamicBindGroupCount;
 
-	ImageH whiteImageH;
-	ImageH pinkImageH;
-	ImageH grayImageH;
-	ImageH blackImageH;
-	ImageH noiseImageH;
+	Image whiteImage;
+	Image pinkImage;
+	Image grayImage;
+	Image blackImage;
+	Image noiseImage;
 
 	ID skyTexture;
 	ID defaultTexture;
@@ -738,7 +738,7 @@ struct Graphics
 
 	ID defaultMaterial;
 
-	PipelineH pipelines[Pipeline_Count];
+	Pipeline pipelines[Pipeline_Count];
 
 	bool deviceInitialized;
 
@@ -1724,7 +1724,7 @@ ShaderSourceDesc *GetShaderSourceDescs();
 u32 GetShaderSourceDescCount();
 
 const u32 FindShaderSourceDescIndex(const char *name);
-RenderPassH FindRenderPassHandle(const Graphics &gfx, const char *name);
+RenderPass FindRenderPassHandle(const Graphics &gfx, const char *name);
 
 // Pipelines are named in asset files, so that adding or reordering one never invalidates
 // a file. Compute pipelines are deliberately not searched: only a graphics pipeline can
@@ -1736,20 +1736,20 @@ const char *GetPipelineName(u16 index);
 ////////////////////////////////////////////////////////////////////////
 // Buffers and data upload
 
-BufferH CreateStagingBuffer(Graphics &gfx);
-BufferH CreateVertexBuffer(Graphics &gfx, u32 size);
-BufferH CreateIndexBuffer(Graphics &gfx, u32 size);
-BufferArena MakeBufferArena(Graphics &gfx, BufferH bufferHandle);
-void UploadData(Graphics &gfx, const CommandList &commandList, const void *data, u32 size, BufferH destBuffer, u32 destOffset, u32 alignment = 0);
+Buffer CreateStagingBuffer(Graphics &gfx);
+Buffer CreateVertexBuffer(Graphics &gfx, u32 size);
+Buffer CreateIndexBuffer(Graphics &gfx, u32 size);
+BufferArena MakeBufferArena(Graphics &gfx, Buffer bufferHandle);
+void UploadData(Graphics &gfx, const CommandList &commandList, const void *data, u32 size, Buffer destBuffer, u32 destOffset, u32 alignment = 0);
 BufferChunk PushData(Graphics &gfx, const CommandList &commandList, BufferArena &arena, const void *data, u32 size, u32 alignment = 0);
 
 
 ////////////////////////////////////////////////////////////////////////
 // Image management
 
-void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandList, ImageH imageH);
-ImageH GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
-ImageH GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, bool createMipmaps);
+void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandList, Image image);
+Image GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
+Image GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, bool createMipmaps);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -1757,10 +1757,10 @@ ImageH GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, b
 
 Texture &GetTexture(ID id);
 Texture &GetTextureAt(Graphics &gfx, u32 index);
-ID CreateTexture(Graphics &gfx, const Texture &desc, ImageH imageH);
+ID CreateTexture(Graphics &gfx, const Texture &desc, Image image);
 ID CreateTexture(Graphics &gfx, const Texture &desc);
 ID GetOrCreateTexture(Graphics &gfx, const Texture &desc);
-ImageH GetTextureImage(Graphics &gfx, ID textureId, ImageH imageH);
+Image GetTextureImage(Graphics &gfx, ID textureId, Image image);
 void RemoveTexture(Graphics &gfx, ID textureId);
 void CompactTextures(Graphics &gfx);
 void RecreateModifiedTextures(Engine &engine);
@@ -1797,7 +1797,7 @@ void RecompilePipelines(Engine &engine, Arena scratch);
 // Dynamic bind groups
 
 void ResetDynamicBindGroups(Graphics &gfx);
-BindGroupH GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindGroupDesc);
+BindGroup GetOrCreateDynamicBindGroup(Graphics &gfx, const BindGroupDesc &bindGroupDesc);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -1825,9 +1825,9 @@ void CleanupGraphics(Graphics &gfx);
 ////////////////////////////////////////////////////////////////////////
 // Framebuffer and swapchain queries
 
-const ImageH GetDisplayImageH(const Graphics &gfx);
-FramebufferH GetDisplayFramebuffer(const Graphics &gfx);
-FramebufferH GetShadowmapFramebuffer(const Graphics &gfx);
+const Image GetDisplayImageH(const Graphics &gfx);
+Framebuffer GetDisplayFramebuffer(const Graphics &gfx);
+Framebuffer GetShadowmapFramebuffer(const Graphics &gfx);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // FUNCTIONS: Scene

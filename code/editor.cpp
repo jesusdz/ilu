@@ -134,25 +134,25 @@ static void AddEditorCommand(const EditorCommand &command)
 	editor.commands[editor.commandCount++] = command;
 }
 
-static ImageH EditorLoadIcon(const char *filename, const char *name)
+static Image EditorLoadIcon(const char *filename, const char *name)
 {
 	Engine &engine = GetEngine();
 	const FilePath path = MakePath(ProjectDir, filename);
 	ImagePixels imagePixels;
 	Scratch scratch;
 	ReadImagePixels(scratch.arena, path.str, imagePixels);
-	const ImageH handle = GfxCreateImage(engine.gfx, imagePixels, name, false);
+	const Image handle = GfxCreateImage(engine.gfx, imagePixels, name, false);
 	return handle;
 }
 
-static ImageH EditorLoadSnapshot(const char *filepath, const char *name)
+static Image EditorLoadSnapshot(const char *filepath, const char *name)
 {
 	Engine &engine = GetEngine();
 	ImagePixels imagePixels;
 	Scratch scratch;
 	ReadImagePixels(scratch.arena, filepath, imagePixels);
 	imagePixels = ResizeImagePixels(scratch.arena, imagePixels, 32, 32);
-	const ImageH handle = GfxCreateImage(engine.gfx, imagePixels, name, false);
+	const Image handle = GfxCreateImage(engine.gfx, imagePixels, name, false);
 	return handle;
 }
 
@@ -179,7 +179,7 @@ static SnapshotNode *EditorGetOrCreateSnapshotNode(const char *filepath)
 		}
 		editor.snapshots = snapshot;
 		snapshot->filepath = InternString(filepath);
-		snapshot->imageH = EditorLoadSnapshot(filepath, "editor_snapshot");
+		snapshot->image = EditorLoadSnapshot(filepath, "editor_snapshot");
 	}
 
 	return snapshot;
@@ -197,7 +197,7 @@ struct EditorViewportIcon
 {
 	ID id;
 	EditorSelectedType type;
-	ImageH image;
+	Image image;
 	float3 pos;
 	float2 pivot;
 };
@@ -845,10 +845,10 @@ static void EditorAssetContextMenu(const char *name, EditorSelectedType type, ID
 	UI_PopID(ui);
 }
 
-static void EditorIDDragSource(ID id, ImageH imageH, float4 uvRect = {0, 0, 1, 1})
+static void EditorIDDragSource(ID id, Image image, float4 uvRect = {0, 0, 1, 1})
 {
 	UI &ui = GetEngine().ui;
-	UI_DragAndDropSource(ui, ReflexGetTypeName(GetIDType(id)), UI_Payload(id.slot), imageH, uvRect);
+	UI_DragAndDropSource(ui, ReflexGetTypeName(GetIDType(id)), UI_Payload(id.slot), image, uvRect);
 }
 
 static void EditorEntityDropTarget(ID layerId)
@@ -1269,15 +1269,15 @@ static void EditorUpdateUI_Assets()
 		path = MakePath(AssetDir, node->filename);
 
 		// For images, we get a snapshot
-		ImageH iconImg = editor.iconImg;
+		Image iconImg = editor.iconImg;
 		if ( isImg ) {
 			SnapshotNode *snapshot = EditorGetOrCreateSnapshotNode(path.str);
 			if ( snapshot ) {
-				iconImg = snapshot->imageH;
+				iconImg = snapshot->image;
 			}
 		}
 
-		const ImageH icon =
+		const Image icon =
 			isWav ? editor.iconWav :
 			isMusic ? editor.iconMod :
 			isImg ? iconImg :
@@ -1432,7 +1432,7 @@ static void EditorUpdateUI_SpriteSheet()
 			// the one binding the texture. Sibling draw lists are drawn in push order,
 			// so this one lands on top of the image instead of under it.
 			const float2 spritePos = imagePos + Float2(spriteRelPos);
-			UI_PushDrawList(ui, ui.fontAtlasH);
+			UI_PushDrawList(ui, ui.fontAtlas);
 			UI_PushColor(ui, ui.style.accentColor);
 			UI_AddBorder(ui, spritePos, Float2(spriteSize), 1);
 			UI_PopColor(ui);
@@ -1739,8 +1739,8 @@ static void EditorUpdateUI_Inspector()
 			UI_SeparatorLabel(ui, "Image");
 
 			const Texture &texture = GetTexture(inspector.tmpTextureId);
-			const ImageH imageH = GetTextureImage(engine.gfx, inspector.tmpTextureId, engine.gfx.grayImageH);
-			UI_Image(ui, imageH, float2{(f32)texture.size.x, (f32)texture.size.y}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
+			const Image image = GetTextureImage(engine.gfx, inspector.tmpTextureId, engine.gfx.grayImage);
+			UI_Image(ui, image, float2{(f32)texture.size.x, (f32)texture.size.y}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
 
 			if ( UI_Button(ui, "Import texture") )
 			{
@@ -1919,8 +1919,8 @@ static void EditorUpdateUI_Inspector()
 					}
 				}
 
-				const ImageH imageH = GetTextureImage(engine.gfx, desc.textureId, engine.gfx.grayImageH);
-				UI_Image(ui, imageH, float2{32, 32}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
+				const Image image = GetTextureImage(engine.gfx, desc.textureId, engine.gfx.grayImage);
+				UI_Image(ui, image, float2{32, 32}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
 
 				if (texture && UI_Button(ui, "Go to texture"))
 				{
@@ -1936,8 +1936,8 @@ static void EditorUpdateUI_Inspector()
 				UI_Text(ui, "Name", "%s", texture.name);
 				UI_Text(ui, "Size", "%u x %u", texture.size.x, texture.size.y);
 
-				const ImageH imageH = GetTextureImage(engine.gfx, inspector.selected.id, engine.gfx.grayImageH);
-				UI_Image(ui, imageH, float2{(f32)texture.size.x, (f32)texture.size.y}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
+				const Image image = GetTextureImage(engine.gfx, inspector.selected.id, engine.gfx.grayImage);
+				UI_Image(ui, image, float2{(f32)texture.size.x, (f32)texture.size.y}, UIWidgetFlag_Expand | UIWidgetFlag_Centered);
 
 				UI_SeparatorLabel(ui, "Sprite");
 				UI_BeginLayout(ui, UILayout_Horizontal);
@@ -3307,7 +3307,7 @@ static void EditorBeginSceneEditing(const EditorActions &actions)
 		WaitDeviceIdle(gpu);
 		// What the id pass wrote is a draw id, not an ID: its low half is the entity's
 		// ID slot, the high half its position in the array at the time it was drawn
-		const u32 drawId = *(u32*)GetBufferPtr(gpu, engine.gfx.selectionBufferH);
+		const u32 drawId = *(u32*)GetBufferPtr(gpu, engine.gfx.selectionBuffer);
 		const ID entityId = EntityFromDrawId(drawId);
 
 		if (entityId)
@@ -3933,8 +3933,8 @@ void EditorRender(Engine &engine, CommandList &commandList)
 	Graphics &gfx = engine.gfx;
 	Scene &scene = engine.scene;
 	const u32 frameSlot = GetFrameSlot(gpu);
-	const BufferH vertexBuffer = gfx.globalVertexArena.buffer;
-	const BufferH indexBuffer = gfx.globalIndexArena.buffer;
+	const Buffer vertexBuffer = gfx.globalVertexArena.buffer;
+	const Buffer indexBuffer = gfx.globalIndexArena.buffer;
 
 	if ( editor.selectEntity )
 	{
@@ -3998,11 +3998,11 @@ void EditorRender(Engine &engine, CommandList &commandList)
 			const BindGroupDesc bindGroupDesc = {
 				.layout = GetPipelineBindGroupLayout(gpu, gfx.pipelines[Pipeline_ComputeSelect], 3),
 				.bindings = {
-					{ .index = 0, .bufferView = gfx.selectionBufferViewH },
+					{ .index = 0, .bufferView = gfx.selectionBufferView },
 					{ .index = 1, .image = gfx.renderTargets.idImage },
 				},
 			};
-			const BindGroupH dynamicBindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
+			const BindGroup dynamicBindGroup = CreateFullBindGroup(gpu, bindGroupDesc, gfx.dynamicBindGroupAllocator[frameSlot]);
 
 			SetBindGroup(commandList, 0, dynamicBindGroup);
 			SetBindGroup(commandList, 0, gfx.globalBindGroups[frameSlot]);
