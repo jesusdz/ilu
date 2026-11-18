@@ -921,6 +921,12 @@ void EntitySetPosition(Entity &entity, float3 position)
 	entity.prevPosition = position;
 }
 
+void EntityTeleport(Entity &entity, float3 position)
+{
+	EntitySetPosition(entity, position);
+	GetEngine().game.next.isTeleporting = true;
+}
+
 ComponentDesc *PushComponentDesc(ComponentDescArray &components, ComponentType type)
 {
 	ComponentDesc *desc = PushArrayElement(components);
@@ -1768,30 +1774,72 @@ static int2 WorldPosToGridCoord(float2 worldPos)
 	return int2{ (i32)Floor(worldPos.x / cellWorldSize), (i32)Floor(worldPos.y / cellWorldSize) };
 }
 
+static u32 GetRoomColliderAtGridCoord(const Room &room, int2 coord)
+{
+	const int2 localCoord = coord - room.origin;
+
+	for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+	{
+		const Layer &layer = room.layers[i];
+		if (!layer.initialized || !layer.isCollider) continue;
+
+		const CellChunk *chunk = FindCellChunk(layer, localCoord);
+		if (!chunk) continue;
+
+		u32 coord_x = localCoord.x - chunk->x;
+		u32 coord_y = localCoord.y - chunk->y;
+		if ( chunk->cells[coord_x][coord_y].collider != 0 )
+		{
+			return chunk->cells[coord_x][coord_y].collider;
+		}
+	}
+	return 0;
+}
+
 static u32 GetColliderAtGridCoord(Scene &scene, int2 coord)
 {
 	for (u32 roomIndex = 0; roomIndex < scene.roomCount; ++roomIndex)
 	{
-		const Room &room = scene.rooms[roomIndex];
-		const int2 localCoord = coord - room.origin;
-
-		for (u32 i = 0; i < ARRAY_COUNT(room.layers); ++i)
+		if ( const u32 collider = GetRoomColliderAtGridCoord(scene.rooms[roomIndex], coord) )
 		{
-			const Layer &layer = room.layers[i];
-			if (!layer.initialized || !layer.isCollider) continue;
-
-			const CellChunk *chunk = FindCellChunk(layer, localCoord);
-			if (!chunk) continue;
-
-			u32 coord_x = localCoord.x - chunk->x;
-			u32 coord_y = localCoord.y - chunk->y;
-			if ( chunk->cells[coord_x][coord_y].collider != 0 )
-			{
-				return chunk->cells[coord_x][coord_y].collider;
-			}
+			return collider;
 		}
 	}
 	return 0;
+}
+
+// Ladder tops can be stood on too
+static bool IsWalkableCollider(u32 collider)
+{
+	return collider == COLLIDER_SOLID || collider == COLLIDER_PLATFORM || collider == COLLIDER_LADDER;
+}
+
+// Drops down each column, left to right, onto the first walkable collider.
+// Scanning from the top avoids pockets sealed inside the ground.
+float2 FindSpawnPosition(ID roomId)
+{
+	const Room &room = GetRoom(roomId);
+	const f32 cellWorldSize = TILE_SIZE_PIXELS / ART_PIXELS_PER_METER;
+
+	const int2 minCoord = room.pos + int2{2, 0}; // small margin in X
+	const int2 maxCoord = room.pos + room.size;
+	for (i32 x = minCoord.x; x < maxCoord.x; ++x)
+	{
+		for (i32 y = maxCoord.y - 1; y >= minCoord.y; --y)
+		{
+			const u32 collider = GetRoomColliderAtGridCoord(room, int2{x, y});
+			if ( collider == 0 ) {
+				continue;
+			}
+			if ( IsWalkableCollider(collider) && y + 1 < maxCoord.y ) {
+				return cellWorldSize * Float2(int2{x, y + 1});
+			}
+			break;
+		}
+	}
+
+	LOG(Warning, "FindSpawnPosition: room \"%s\" has no cell over a walkable collider.\n", room.name);
+	return cellWorldSize * Float2(room.pos);
 }
 
 u32 GetColliderAtWorldPos(float2 worldPos)

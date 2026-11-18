@@ -33,7 +33,6 @@ struct PlayerController
 	REFLEX()
 	u32 randomProperty;
 
-	ID roomId;
 	float2 speed;
 	f32 accel;
 };
@@ -44,7 +43,6 @@ struct CameraController
 	REFLEX(Entity)
 	ID playerId;
 
-	ID roomId;
 	Camera camera;
 	f32 cameraTargetX;
 	f32 cameraTargetY;
@@ -64,25 +62,22 @@ struct Teleport
 REFLEX()
 void OnTriggerEnter(Teleport &script)
 {
+	// No chaining into the teleport we arrive at
 	const Entity *target = TryGetEntity(script.teleportId);
-	if ( !target ) {
+	if ( !target || CurrentlyTeleporting() ) {
 		return;
 	}
 
-	// The room goes along with the position so the controllers clamp to the new one
-	Entity &other = GetOther();
-	EntitySetPosition(other, target->position);
-	other.roomId = target->roomId;
+	// Applied next step
+	SetNextRoomId(target->roomId);
+	SetNextSpawnPosition(target->position.xy);
 }
 
 REFLEX()
 void Start(PlayerController &script)
 {
+	// Simulate places the player on the first step
 	script.playerState = OnAir;
-	script.roomId = GetDefaultRoomId();
-
-	Entity &player = GetSelf();
-	//player.position.xy = float2{1, 1};
 	script.speed = {};
 	script.accel = 50;
 }
@@ -90,6 +85,7 @@ void Start(PlayerController &script)
 REFLEX()
 void Simulate(PlayerController &script)
 {
+	const ID roomId = GetCurrentRoomId();
 	const GameInput &input = GetInput();
 
 	const f32 deltaSeconds = SIMULATE_SECONDS;
@@ -98,12 +94,14 @@ void Simulate(PlayerController &script)
 	SpriteComponent &sprite = GetSpriteComponent(player.id);
 	const ColliderComponent &collider = GetColliderComponent(player.id);
 
-	// The entity's room changes when it is teleported elsewhere
-	if ( player.roomId ) {
-		script.roomId = player.roomId;
+	// Spawn on entering a room
+	if ( CurrentRoomChanged() ) {
+		const float2 spawnPos = GetSpawnPosition();
+		EntityTeleport(player, float3{spawnPos.x, spawnPos.y, player.position.z});
+		script.speed = {};
 	}
 
-	const Room &room = GetRoom(script.roomId);
+	const Room &room = GetRoom(roomId);
 	const float4 roomBounds = RoomOuterBounds(room);
 	const f32 screenLeft = roomBounds.x;
 	const f32 screenRight = roomBounds.z;
@@ -328,9 +326,6 @@ void Simulate(PlayerController &script)
 REFLEX()
 void Update(PlayerController &script)
 {
-	//const Room *roomPtr = TryGetRoom(script.roomId);
-	//DrawBoxOutline(Float2(roomPtr->pos), LayerSize(roomPtr->layers[0]), ColorOrange);
-	//DrawBox(script.box1.pos, script.box1.size, script.box1.color);
 }
 
 REFLEX()
@@ -356,27 +351,27 @@ void Start(CameraController &script)
 
 	SetCamera(script.camera);
 
-	script.roomId = GetDefaultRoomId();
 	script.boundsValid = false;
 }
 
 REFLEX()
 void Simulate(CameraController &script)
 {
+	const ID roomId = GetCurrentRoomId();
+
 	Entity &player = GetEntity(script.playerId);
 
-	// Following the player into another room is a cut, panning across would show the gap
-	const bool roomChanged = player.roomId && player.roomId != script.roomId;
+	// Cut into a new room, at the spawn as the player may not have moved yet
+	const bool roomChanged = CurrentRoomChanged();
+	const float2 playerPos = roomChanged ? GetSpawnPosition() : player.position.xy;
 	if ( roomChanged ) {
-		script.roomId = player.roomId;
 		script.boundsValid = false;
-		script.camera.position.xy = player.position.xy;
-		script.cameraTargetY = player.position.y;
+		script.camera.position.xy = playerPos;
+		script.cameraTargetY = playerPos.y;
 	}
 
-	const Room &room = GetRoom(script.roomId);
+	const Room &room = GetRoom(roomId);
 
-	const float2 playerPos = player.position.xy;
 	const f32 visHalfWidth = 0.5f * LOW_SCENE_WIDTH / ART_PIXELS_PER_METER;
 	const f32 visHalfHeight = 0.5f * LOW_SCENE_HEIGHT / ART_PIXELS_PER_METER;
 	const float2 visCenter = script.boundsValid ? script.camera.position.xy : playerPos;

@@ -1496,6 +1496,17 @@ struct InputAccumulator
 constexpr f32 SIMULATE_SECONDS = (1.0f / 60.0f);
 constexpr f32 MAX_FRAME_SECONDS = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 
+// State shared between scripts, see Game::curr
+struct GameState
+{
+	ID roomId;
+
+	bool isSpawning;
+	float2 spawnPosition;
+
+	bool isTeleporting; // Set by EntityTeleport
+};
+
 struct Game
 {
 	GameRunState runState;
@@ -1509,6 +1520,11 @@ struct Game
 
 	ID currentEntity;
 	ID otherEntity; // The entity entering or exiting, during a trigger hook
+
+	// Scripts read curr and write next, committed each step so script order doesn't matter
+	GameState prev;
+	GameState curr;
+	GameState next;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1874,6 +1890,7 @@ void CompactSprites(Scene &scene);
 Entity &GetEntity(ID entityId);
 u16 GetEntityIndex(const Scene &scene, ID entityId);
 void EntitySetPosition(Entity &entity, float3 position);
+void EntityTeleport(Entity &entity, float3 position);
 EntityDesc GetEntityDesc(Engine &engine, ID entityId);
 ID CreateEntity(Engine &engine, const EntityDesc &desc);
 void AddComponent(Engine &engine, ID entityId, ComponentType type);
@@ -1946,6 +1963,7 @@ void SetGridTileAtCoord(Engine &engine, Layer &layer, u32 collider, int2 coord);
 void SetGridTileAtCoord(Engine &engine, Layer &layer, ID spriteId, int2 coord);
 const CellChunk *FindCellChunk(const Layer &layer, int2 localCoord); // Room-local coord, null where the layer has no chunk
 u32 GetColliderAtWorldPos(float2 worldPos);
+float2 FindSpawnPosition(ID roomId);
 bool IsColliderInBox(float2 pos, float2 size, u32 collider);
 
 

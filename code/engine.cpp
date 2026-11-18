@@ -302,6 +302,15 @@ static void SnapshotPositions(Engine &engine)
 	engine.game.prevCameraPosition = engine.gfx.camera.position;
 }
 
+// Runs at the start of a step, so rendered frames never show unhandled changes
+static void CommitGameState(Game &game)
+{
+	game.prev = game.curr;
+	game.curr = game.next;
+	game.next.isSpawning = false;
+	game.next.isTeleporting = false;
+}
+
 static void GameUpdate(Engine &engine, const Host &host)
 {
 	PROFILE_BLOCK(GameUpdate);
@@ -315,6 +324,14 @@ static void GameUpdate(Engine &engine, const Host &host)
 
 		game.accumulatedInput = {};
 		game.accumulatedSeconds = 0.0f;
+
+		// Committed on the first step, which then sees it as a room change
+		game.prev = {};
+		game.curr = {};
+		game.next = {};
+		game.next.roomId = engine.scene.defaultRoomId;
+		game.next.spawnPosition = FindSpawnPosition(game.next.roomId);
+		game.next.isSpawning = true;
 
 		StartParticles(engine.scene);
 		ResetTriggers(engine.scene);
@@ -336,6 +353,7 @@ static void GameUpdate(Engine &engine, const Host &host)
 			game.deltaSeconds = fixedStepSeconds;
 			GameSetInput(game, game.accumulatedInput, *host.window);
 			SnapshotPositions(engine);
+			CommitGameState(game);
 			// Ahead of Simulate, so a camera reacts to a teleport in the same step
 			RunTriggerHooks(engine);
 			RunScriptHooks(engine, ScriptHook_Simulate);
