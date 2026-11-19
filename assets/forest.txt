@@ -376,7 +376,6 @@ Entity player = {
    .sprPlayerJump = 1037,
    .sprPlayerFall = 1036,
    .sndJump = 0,
-   .randomProperty = 0,
   },
  },
  .sprite = {
