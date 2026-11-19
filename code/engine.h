@@ -274,11 +274,14 @@ constexpr u32 SCRIPT_DATA_MEMORY = MB(1);
 constexpr u32 PROPERTY_POOL_MEMORY = MB(1);
 constexpr u32 DESC_POOL_MEMORY = MB(1);
 
+// Per step: Commit -> Simulate -> Follow -> triggers. Per frame: DrawFrame.
 enum ScriptHookType
 {
 	ScriptHook_Start,
-	ScriptHook_Simulate,
-	ScriptHook_Update,
+	ScriptHook_Commit,    // Applies global changes requested last step. GameController only
+	ScriptHook_Simulate,  // Updates the script's own entity, may request global changes
+	ScriptHook_Follow,    // Like Simulate, but sees where every entity ended up this step
+	ScriptHook_DrawFrame, // Presentation only, never gameplay state
 	ScriptHook_Stop,
 	ScriptHook_TriggerEnter,
 	ScriptHook_TriggerExit,
@@ -1496,17 +1499,6 @@ struct InputAccumulator
 constexpr f32 SIMULATE_SECONDS = (1.0f / 60.0f);
 constexpr f32 MAX_FRAME_SECONDS = 0.25f; // avoid catch-up bursts after stalls (hot-reload, shader compiles...)
 
-// State shared between scripts, see Game::curr
-struct GameState
-{
-	ID roomId;
-
-	bool isSpawning;
-	float2 spawnPosition;
-
-	bool isTeleporting; // Set by EntityTeleport
-};
-
 struct Game
 {
 	GameRunState runState;
@@ -1517,14 +1509,13 @@ struct Game
 	f32 deltaSeconds;
 	f32 accumulatedSeconds;
 	float3 prevCameraPosition;
+	bool cutInterpolation; // The next frame renders without interpolating, cleared by the renderer
 
 	ID currentEntity;
 	ID otherEntity; // The entity entering or exiting, during a trigger hook
 
-	// Scripts read curr and write next, committed each step so script order doesn't matter
-	GameState prev;
-	GameState curr;
-	GameState next;
+	ID roomId;        // Only changed during Commit
+	ID teleportedEntity; // Set by EntityTeleport, cleared by the next trigger pass
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

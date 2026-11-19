@@ -72,21 +72,11 @@ f32 GetScenePixelsPerMeter()
 	return GetEngine().gfx.renderTargets.scenePixelsPerMeter;
 }
 
-// Rendering blends the camera here from where it was on the previous step
-GAME_API
-void MoveCamera(const Camera &camera)
-{
-	Engine &engine = GetEngine();
-	engine.gfx.camera = camera;
-}
-
-// Places the camera with no blend, like EntitySetPosition does for an entity
 GAME_API
 void SetCamera(const Camera &camera)
 {
 	Engine &engine = GetEngine();
 	engine.gfx.camera = camera;
-	engine.game.prevCameraPosition = camera.position;
 }
 
 GAME_API
@@ -95,57 +85,23 @@ ID GetDefaultRoomId()
 	return GetEngine().scene.defaultRoomId;
 }
 
-// Game state: SetNextXXX takes effect next step
+// Game state
 
 GAME_API
 ID GetCurrentRoomId()
 {
-	return GetGame().curr.roomId;
+	return GetGame().roomId;
 }
 
+// Commit only
 GAME_API
-void SetNextRoomId(ID roomId)
+void SetCurrentRoom(ID roomId)
 {
-	GetGame().next.roomId = roomId;
-}
-
-// True on the step after EntityTeleport
-GAME_API
-bool CurrentlyTeleporting()
-{
-	return GetGame().curr.isTeleporting;
-}
-
-// True for one step, including the first
-GAME_API
-bool CurrentRoomChanged()
-{
-	const Game &game = GetGame();
-	const bool changed = game.curr.roomId != game.prev.roomId;
-	return changed;
-}
-
-GAME_API
-float2 GetSpawnPosition()
-{
-	float2 spawnPosition = {};
-	if ( GetGame().curr.isSpawning )
-	{
-		spawnPosition = GetGame().curr.spawnPosition;
+	Game &game = GetGame();
+	if ( game.roomId != roomId ) {
+		game.roomId = roomId;
+		game.cutInterpolation = true;
 	}
-	else
-	{
-		ID roomId = GetCurrentRoomId();
-		// TODO: Look for teleports and get the first one in this room
-	}
-	return spawnPosition;
-}
-
-GAME_API
-void SetNextSpawnPosition(float2 pos)
-{
-	GetGame().next.isSpawning = true;
-	GetGame().next.spawnPosition = pos;
 }
 
 // Nullable counterpart to GetRoom, which asserts. Game code holds an ID across frames

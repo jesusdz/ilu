@@ -2,6 +2,19 @@
 constexpr f32 LOW_SCENE_WIDTH = 320;
 constexpr f32 LOW_SCENE_HEIGHT = 180;
 
+REFLEX(Script)
+struct GameController
+{
+	REFLEX(Room)
+	ID startRoom;
+
+	REFLEX(Entity)
+	ID playerId;
+
+	ID nextRoomId; // Set by anyone, applied and cleared by Commit
+	float2 nextSpawnPosition;
+};
+
 enum PlayerState
 {
 	OnFloor,
@@ -47,7 +60,7 @@ struct CameraController
 	f32 cameraTargetX;
 	f32 cameraTargetY;
 
-	bool boundsValid;
+	bool cutToTarget;
 	float2 boundsMin;
 	float2 boundsMax;
 };
@@ -59,24 +72,52 @@ struct Teleport
 	ID teleportId;
 };
 
+// Singletons. Also assigned every step, as a hot-reload resets them and may move script data.
+static GameController *sGameController = nullptr;
+#define gGameController (*sGameController)
+
+static CameraController *sCameraController = nullptr;
+#define gCameraController (*sCameraController)
+
+REFLEX()
+void Start(GameController &script)
+{
+	sGameController = &script;
+	script.nextRoomId = script.startRoom ? script.startRoom : GetDefaultRoomId();
+	script.nextSpawnPosition = FindSpawnPosition(script.nextRoomId);
+}
+
+REFLEX()
+void Commit(GameController &script)
+{
+	sGameController = &script;
+
+	if ( script.nextRoomId )
+	{
+		SetCurrentRoom(script.nextRoomId);
+		if ( Entity *player = TryGetEntity(script.playerId) ) {
+			EntityTeleport(*player, float3{script.nextSpawnPosition.x, script.nextSpawnPosition.y, player->position.z});
+		}
+		if ( sCameraController ) { // Null for the first step after a hot-reload
+			gCameraController.cutToTarget = true;
+		}
+		script.nextRoomId = {};
+	}
+}
+
 REFLEX()
 void OnTriggerEnter(Teleport &script)
 {
-	// No chaining into the teleport we arrive at
 	const Entity *target = TryGetEntity(script.teleportId);
-	if ( !target || CurrentlyTeleporting() ) {
-		return;
+	if ( target && GetOther().id == gGameController.playerId ) {
+		gGameController.nextRoomId = target->roomId;
+		gGameController.nextSpawnPosition = target->position.xy;
 	}
-
-	// Applied next step
-	SetNextRoomId(target->roomId);
-	SetNextSpawnPosition(target->position.xy);
 }
 
 REFLEX()
 void Start(PlayerController &script)
 {
-	// Simulate places the player on the first step
 	script.playerState = OnAir;
 	script.speed = {};
 	script.accel = 50;
@@ -93,13 +134,6 @@ void Simulate(PlayerController &script)
 	Entity &player = GetSelf();
 	SpriteComponent &sprite = GetSpriteComponent(player.id);
 	const ColliderComponent &collider = GetColliderComponent(player.id);
-
-	// Spawn on entering a room
-	if ( CurrentRoomChanged() ) {
-		const float2 spawnPos = GetSpawnPosition();
-		EntityTeleport(player, float3{spawnPos.x, spawnPos.y, player.position.z});
-		script.speed = {};
-	}
 
 	const Room &room = GetRoom(roomId);
 	const float4 roomBounds = RoomOuterBounds(room);
@@ -208,9 +242,8 @@ void Simulate(PlayerController &script)
 
 		speed.x = Clamp(speed.x, -runSpeed, runSpeed);
 
-		//// Only without input: the first accelerating step advances less than the epsilon,
-		//// so the player could never start moving.
-		//if ( !direction && Abs(speed.x * deltaSeconds) < ADVANCE_EPSILON ) { speed.x = 0.0f; }
+		// Only without input: the first accelerating step advances less than the epsilon,
+		// so the player could never start moving.
 		if ( !direction && Abs(speed.x) < SPEED_EPSILON ) { speed.x = 0.0f; }
 
 		const f32 prevX = pos.x;
@@ -324,7 +357,7 @@ void Simulate(PlayerController &script)
 }
 
 REFLEX()
-void Update(PlayerController &script)
+void DrawFrame(PlayerController &script)
 {
 }
 
@@ -337,6 +370,7 @@ void Stop(PlayerController &script)
 REFLEX()
 void Start(CameraController &script)
 {
+	sCameraController = &script;
 	const f32 fovyDeg = GAME_CAMERA_FOVY;
 	const f32 zcam = GameCameraDistance();
 
@@ -351,30 +385,24 @@ void Start(CameraController &script)
 
 	SetCamera(script.camera);
 
-	script.boundsValid = false;
+	script.cutToTarget = true;
 }
 
 REFLEX()
-void Simulate(CameraController &script)
+void Follow(CameraController &script)
 {
+	sCameraController = &script;
+
 	const ID roomId = GetCurrentRoomId();
 
 	Entity &player = GetEntity(script.playerId);
-
-	// Cut into a new room, at the spawn as the player may not have moved yet
-	const bool roomChanged = CurrentRoomChanged();
-	const float2 playerPos = roomChanged ? GetSpawnPosition() : player.position.xy;
-	if ( roomChanged ) {
-		script.boundsValid = false;
-		script.camera.position.xy = playerPos;
-		script.cameraTargetY = playerPos.y;
-	}
+	const float2 playerPos = player.position.xy;
 
 	const Room &room = GetRoom(roomId);
 
 	const f32 visHalfWidth = 0.5f * LOW_SCENE_WIDTH / ART_PIXELS_PER_METER;
 	const f32 visHalfHeight = 0.5f * LOW_SCENE_HEIGHT / ART_PIXELS_PER_METER;
-	const float2 visCenter = script.boundsValid ? script.camera.position.xy : playerPos;
+	const float2 visCenter = script.cutToTarget ? playerPos : script.camera.position.xy;
 	const float2 visRegionMin = float2{visCenter.x - visHalfWidth, visCenter.y - visHalfHeight};
 	const float2 visRegionMax = float2{visCenter.x + visHalfWidth, visCenter.y + visHalfHeight};
 
@@ -430,10 +458,9 @@ void Simulate(CameraController &script)
 	targetMin = Max(targetMin, roomMin);
 	targetMax = Min(targetMax, roomMax);
 
-	if (!script.boundsValid) {
+	if (script.cutToTarget) {
 		script.boundsMin = targetMin;
 		script.boundsMax = targetMax;
-		script.boundsValid = true;
 	} else {
 		const f32 boundsT = 1.0f - Pow(1.0f - boundsAt60Hz, SIMULATE_SECONDS * 60.0f);
 		script.boundsMin = Lerp(script.boundsMin, targetMin, boundsT);
@@ -465,11 +492,17 @@ void Simulate(CameraController &script)
 	script.cameraTargetX = playerPos.x;
 	script.cameraTargetY = Clamp(script.cameraTargetY, playerPos.y - verticalWindow, playerPos.y + verticalWindow);
 
+	// Camera easing / interpolation
 	const float2 target = { script.cameraTargetX, script.cameraTargetY };
 	const f32 t = 1.0f - Pow(1.0f - followAt60Hz, SIMULATE_SECONDS * 60.0f);
 	const float2 prevCameraPos = script.camera.position.xy;
 	float2 cameraPos = Lerp(prevCameraPos, target, t);
 	if (Length(target - cameraPos) < snapEpsilon) {
+		cameraPos = target;
+	}
+
+	// Cancel easing
+	if ( script.cutToTarget ) {
 		cameraPos = target;
 	}
 
@@ -494,15 +527,13 @@ void Simulate(CameraController &script)
 		camera.position.y = playerPos.y + Round(offset.y / pixelSize) * pixelSize;
 	}
 
-	if ( roomChanged ) {
-		SetCamera(camera);
-	} else {
-		MoveCamera(camera);
-	}
+	SetCamera(camera);
+
+	script.cutToTarget = false;
 }
 
 REFLEX()
-void Update(CameraController &script)
+void DrawFrame(CameraController &script)
 {
 }
 

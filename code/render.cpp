@@ -618,8 +618,10 @@ bool RenderGraphics(Engine &engine)
 	float4 frustumTopLeft = {};
 	float4 frustumBottomRight = {};
 
-	const bool interpolate = engine.game.runState == GameStateRunning;
+	const bool allowInterpolation = !engine.game.cutInterpolation;
+	const bool interpolate = engine.game.runState == GameStateRunning && allowInterpolation;
 	const f32 interpolationAlpha = engine.game.accumulatedSeconds / SIMULATE_SECONDS;
+	engine.game.cutInterpolation = false;
 
 	Camera camera = engine.gfx.camera;
 	if (interpolate) {

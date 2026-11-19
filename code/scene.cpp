@@ -924,7 +924,7 @@ void EntitySetPosition(Entity &entity, float3 position)
 void EntityTeleport(Entity &entity, float3 position)
 {
 	EntitySetPosition(entity, position);
-	GetEngine().game.next.isTeleporting = true;
+	GetEngine().game.teleportedEntity = entity.id;
 }
 
 ComponentDesc *PushComponentDesc(ComponentDescArray &components, ComponentType type)

@@ -355,7 +355,7 @@ ParticleEffect fireflies_fx = {
 Entity player = {
  .id = 1027,
  .roomId = 1021,
- .pos = {4.000000, 1.000000, 0.000000},
+ .pos = {2.000000, 1.000000, 0.000000},
  .scale = 1.000000,
  .collider = {
   .size = {1.000000, 1.000000},
@@ -512,6 +512,20 @@ Entity CameraController = {
  .script = {
   .name = "CameraController",
   .properties = {
+   .playerId = 1027,
+  },
+ },
+};
+
+Entity GameController = {
+ .id = 1074,
+ .roomId = 1021,
+ .pos = {-2.000000, 4.000000, 0.000000},
+ .scale = 1.000000,
+ .script = {
+  .name = "GameController",
+  .properties = {
+   .startRoom = 1021,
    .playerId = 1027,
   },
  },

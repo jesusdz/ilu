@@ -17,8 +17,10 @@ static ScriptRegistry scriptRegistry = {};
 // The function name each hook is looked up by, in ScriptHookType order
 static constexpr const char *sScriptHookNames[] = {
 	"Start",
+	"Commit",
 	"Simulate",
-	"Update",
+	"Follow",
+	"DrawFrame",
 	"Stop",
 	"OnTriggerEnter",
 	"OnTriggerExit",
@@ -152,6 +154,15 @@ void RegisterScripts(Engine &engine)
 	// A reload rebuilds the registry, so every component re-resolves its index by name. A
 	// struct whose size changed gets a fresh block, but one that only moved its members
 	// around keeps its data and reads it back under the new layout.
+	// Global changes are applied from a single point
+	u32 commitCount = 0;
+	for (u32 i = 0; i < scriptRegistry.scriptCount; ++i) {
+		commitCount += scriptRegistry.scripts[i].hooks[ScriptHook_Commit] ? 1 : 0;
+	}
+	if ( commitCount > 1 ) {
+		LOG(Warning, "RegisterScripts: %u scripts define Commit, only the GameController should.\n", commitCount);
+	}
+
 	Scene &scene = engine.scene;
 	for (u32 i = 0; i < scene.componentPools[ComponentType_Script].count; ++i)
 	{
@@ -277,6 +288,10 @@ void RunTriggerHooks(Engine &engine)
 	const u32 triggerCount = scene.componentPools[ComponentType_Trigger].count;
 	const u32 colliderCount = scene.componentPools[ComponentType_Collider].count;
 
+	// Appearing inside a trigger is not entering it
+	const ID teleportedId = engine.game.teleportedEntity;
+	engine.game.teleportedEntity = {};
+
 	if ( triggerCount == 0 ) {
 		return;
 	}
@@ -346,7 +361,9 @@ void RunTriggerHooks(Engine &engine)
 			}
 
 			trigger.overlapIds[trigger.overlapCount++] = otherId;
-			events[eventCount++] = { trigger.entityId, otherId, ScriptHook_TriggerEnter };
+			if ( otherId != teleportedId ) {
+				events[eventCount++] = { trigger.entityId, otherId, ScriptHook_TriggerEnter };
+			}
 		}
 	}
 
