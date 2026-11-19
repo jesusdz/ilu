@@ -43,9 +43,6 @@ struct PlayerController
 	REFLEX(AudioClip)
 	ID sndJump;
 
-	REFLEX()
-	u32 randomProperty;
-
 	float2 speed;
 	f32 accel;
 };
@@ -57,7 +54,6 @@ struct CameraController
 	ID playerId;
 
 	Camera camera;
-	f32 cameraTargetX;
 	f32 cameraTargetY;
 
 	bool cutToTarget;
@@ -356,16 +352,6 @@ void Simulate(PlayerController &script)
 
 }
 
-REFLEX()
-void DrawFrame(PlayerController &script)
-{
-}
-
-REFLEX()
-void Stop(PlayerController &script)
-{
-}
-
 
 REFLEX()
 void Start(CameraController &script)
@@ -489,11 +475,10 @@ void Follow(CameraController &script)
 	//if (script.playerState == OnFloor || script.playerState == OnPlatform) {
 	//	script.cameraTargetY = playerPos.y;
 	//}
-	script.cameraTargetX = playerPos.x;
 	script.cameraTargetY = Clamp(script.cameraTargetY, playerPos.y - verticalWindow, playerPos.y + verticalWindow);
 
 	// Camera easing / interpolation
-	const float2 target = { script.cameraTargetX, script.cameraTargetY };
+	const float2 target = { playerPos.x, script.cameraTargetY };
 	const f32 t = 1.0f - Pow(1.0f - followAt60Hz, SIMULATE_SECONDS * 60.0f);
 	const float2 prevCameraPos = script.camera.position.xy;
 	float2 cameraPos = Lerp(prevCameraPos, target, t);
@@ -531,14 +516,3 @@ void Follow(CameraController &script)
 
 	script.cutToTarget = false;
 }
-
-REFLEX()
-void DrawFrame(CameraController &script)
-{
-}
-
-REFLEX()
-void Stop(CameraController &script)
-{
-}
-

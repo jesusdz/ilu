@@ -104,19 +104,8 @@ void SetCurrentRoom(ID roomId)
 	}
 }
 
-// Nullable counterpart to GetRoom, which asserts. Game code holds an ID across frames
-// and has to cope with the room going away.
-GAME_API
-Room *TryGetRoom(ID roomId)
-{
-	Room *roomPtr = nullptr;
-	if ( roomId ) {
-		roomPtr = &GetRoom(roomId);
-	}
-	return roomPtr;
-}
-
-// See TryGetRoom
+// Nullable counterpart to GetEntity, which asserts. Game code holds an ID across frames
+// and has to cope with the entity going away.
 GAME_API
 Entity *TryGetEntity(ID entityId)
 {
