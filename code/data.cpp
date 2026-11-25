@@ -887,11 +887,6 @@ static DParser DParser_Init(const DTokenList &tokenList, Arena &arena, AssetDesc
 	return parser;
 }
 
-static u32 DParser_RemainingTokens(const DParser &parser)
-{
-	return parser.tokenList->count - parser.nextToken;
-}
-
 static const DToken &DParser_GetPreviousToken( const DParser &parser )
 {
 	ASSERT(parser.nextToken > 0);

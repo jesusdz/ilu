@@ -626,9 +626,9 @@ struct ShaderSourceDesc
 ////////////////////////////////////////////////////////////////////////
 // Graphics state
 
-#define MAX_TEXTURES 4092
-#define MAX_MATERIALS 4092
-#define MAX_DYNAMIC_BIND_GROUPS 4092
+#define MAX_TEXTURES 4096
+#define MAX_MATERIALS 4096
+#define MAX_DYNAMIC_BIND_GROUPS 4096
 #define MAX_DEBUG_DRAW_BATCHES 64
 #define MAX_PARTICLE_BATCHES 64
 
@@ -1300,11 +1300,11 @@ typedef Prefab PrefabDesc;
 ////////////////////////////////////////////////////////////////////////
 // Scene state
 
-#define MAX_ENTITIES 4092
-#define MAX_SPRITES 4092
+#define MAX_ENTITIES 4096
+#define MAX_SPRITES 4096
 #define MAX_ROOMS 256
 #define MAX_PREFABS 256
-#define MAX_TILES 16 * 16 * 8 * MAX_ROOMS
+#define MAX_TILES (16 * 16 * 8 * MAX_ROOMS)
 
 constexpr u32 MAX_PARTICLES = 2048;
 constexpr u32 MAX_PARTICLE_EFFECTS = 64;

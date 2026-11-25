@@ -503,16 +503,6 @@ static void EditorSelectRoom(ID roomId)
 	editor.inspector.nextSelected.type = EditorSelectedType_Room;
 }
 
-static void EditorUnselectRoom(ID roomId)
-{
-	Editor &editor = GetEditor();
-	if (editor.context.roomId == roomId) {
-		editor.context.roomId = {};
-		editor.context.layerIndex = EditorNoLayer;
-		editor.inspector.nextSelected.type = EditorSelectedType_None;
-	}
-}
-
 static void EditorSelectLayer(ID roomId, u32 layerIndex)
 {
 	Editor &editor = GetEditor();
@@ -585,15 +575,6 @@ static void EditorSelectParticleEffect(ID particleEffectId)
 	Editor &editor = GetEditor();
 	editor.inspector.nextSelected.id = particleEffectId;
 	editor.inspector.nextSelected.type = EditorSelectedType_ParticleEffect;
-}
-
-static void EditorUnselectSprite(ID spriteId)
-{
-	Editor &editor = GetEditor();
-	if (editor.context.spriteId == spriteId) {
-		editor.context.spriteId = {};
-		editor.inspector.nextSelected.type = EditorSelectedType_None;
-	}
 }
 
 
@@ -3669,7 +3650,7 @@ void EditorInitialize(Engine &engine)
 	EditorUnselectAll();
 
 	// Make a liked list of free file nodes
-	constexpr u32 maxFileNodes = 4092;
+	constexpr u32 maxFileNodes = 4096;
 	editor.freeNodes = PushZeroArray(GlobalArena, FileNode, maxFileNodes);
 	for (u32 i = 0; i < maxFileNodes; ++i) {
 		if ( i < maxFileNodes - 1) {

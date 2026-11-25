@@ -54,8 +54,8 @@ static constexpr bool sLoadShadersFromText = false;
 
 constexpr u32 ART_WIDTH = 320;
 constexpr u32 ART_HEIGHT = 180;
-constexpr u32 SCENE_WIDTH = 320; //1920;
-constexpr u32 SCENE_HEIGHT = 180; //1080;
+constexpr u32 SCENE_WIDTH = 320;
+constexpr u32 SCENE_HEIGHT = 180;
 
 
 // Access to singletons
@@ -603,22 +603,6 @@ ENGINE_API void OnPlatformUpdate(Host &host)
 	lastClock = currentClock;
 
 	SmoothDeltaSeconds(gfx.deltaSeconds);
-
-#if PLATFORM_ANDROID
-	// TODO(jesus): This is test code
-	static bool firstUpdate = true;
-	if ( firstUpdate )
-	{
-		firstUpdate = false;
-		//LoadSceneFromBin(engine);
-		// Plays whichever module came first out of the asset file. LoadSceneFromBin ran
-		// back in OnPlatformWindowInit, so the pool is already populated here.
-		if ( engine.audio.musicFileCount > 0 )
-		{
-			MusicPlay(engine, engine.audio.musicFiles[0].id);
-		}
-	}
-#endif
 
 #if USE_UI
 	UI &ui = engine.ui;

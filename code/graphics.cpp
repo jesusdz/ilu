@@ -1985,7 +1985,7 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 	// Create tile data buffer
 	for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
 	{
-		const u32 tileDataBufferSize = (MAX_TILES) * sizeof(STileData);
+		const u32 tileDataBufferSize = MAX_TILES * sizeof(STileData);
 		gfx.tileDataBuffer[i] = CreateBuffer(
 			gpu,
 			tileDataBufferSize,
