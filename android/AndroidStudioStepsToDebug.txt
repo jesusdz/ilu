@@ -1,8 +1,0 @@
-Install successfully finished in 146 ms.
-$ adb shell am start -n "com.example.myapplication/com.example.myapplication.MainActivity" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -D
-Connected to process 14791 on device 'realme-rmx3085-YTLNLJEYTGVGJBH6'.
-Now Launching Native Debug Session
-$ adb shell cat /data/local/tmp/lldb-server | run-as com.example.myapplication sh -c 'cat > /data/data/com.example.myapplication/lldb/bin/lldb-server && chmod 700 /data/data/com.example.myapplication/lldb/bin/lldb-server'
-$ adb shell cat /data/local/tmp/start_lldb_server.sh | run-as com.example.myapplication sh -c 'cat > /data/data/com.example.myapplication/lldb/bin/start_lldb_server.sh && chmod 700 /data/data/com.example.myapplication/lldb/bin/start_lldb_server.sh'
-Starting LLDB server: /data/data/com.example.myapplication/lldb/bin/start_lldb_server.sh /data/data/com.example.myapplication/lldb unix-abstract /com.example.myapplication-0 platform-1693166601774.sock "lldb process:gdb-remote packets"
-Debugger attached to process 14791

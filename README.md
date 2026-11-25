@@ -48,6 +48,12 @@ Utilities to parse SPIRV shader modules and extract descriptor set layouts, so c
 Lightweight instrumentation/profiling macros for timing code blocks and frames, with multi-threading support.
 
 
+## Code generation (code/reflex)
+
+* `cast.h`: a basic C AST (abstract syntax tree) generator. Parses a C source file and populates a `Cast` object describing the type and data definitions found in it (structs, nested structs, fixed-length arrays, pointer members, etc).
+* `reflex.h` / `reflex.cpp`: C reflection / RTTI data generator, built on `cast.h`. Parses C files and emits the code that populates reflection structs for their types. The build runs it on `engine.h` and `game.cpp` to generate `code/reflex.generated.h`, which the engine's data pipeline relies on to serialize assets.
+
+
 ## Building
 
 `make` builds on both platforms: `make.bat` on Windows, the `Makefile` on Linux. Both take the same target names.

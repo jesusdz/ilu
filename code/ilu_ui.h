@@ -4405,7 +4405,7 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 
 	const SizedFont fonts[] = {
 		{ "editor/fonts/proggy/ProggyClean.ttf", 13 },
-		{ "editor/fonts/pixelarial/PIXEARG_.ttf", 11 },
+		{ "editor/fonts/pixelarial/PIXEARG_.TTF", 11 },
 		{ "editor/fonts/refixedsys/refixedsys-mono.ttf", 15 },
 		//{ "editor/fonts/kode.ttf", 17 },
 	};

@@ -2,7 +2,7 @@
 
 #define CAST_IMPLEMENTATION
 #define CAST_PRINT
-#include "cast.h"
+#include "../reflex/cast.h"
 
 int main(int argc, char **argv)
 {

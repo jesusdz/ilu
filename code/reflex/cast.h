@@ -2605,6 +2605,7 @@ static void Cast_Print( const CastTypeSpecifier *ast )
 		{
 			case CAST_STRUCT: Cast_Print(ast->structSpecifier); break;
 			case CAST_ENUM: Cast_Print(ast->enumSpecifier); break;
+			default: break;
 		}
 		CastPrintEndScope();
 	}

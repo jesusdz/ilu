@@ -10,21 +10,66 @@
 #define MAX_TOKEN_COUNT KB(10)
 
 
+#define TOKEN_LIST(X) \
+	/* Single character tokens */ \
+	X(TOKEN_LEFT_PAREN) \
+	X(TOKEN_RIGHT_PAREN) \
+	X(TOKEN_LEFT_BRACE) \
+	X(TOKEN_RIGHT_BRACE) \
+	X(TOKEN_COMMA) \
+	X(TOKEN_DOT) \
+	X(TOKEN_MINUS) \
+	X(TOKEN_PLUS) \
+	X(TOKEN_SEMICOLON) \
+	X(TOKEN_SLASH) \
+	X(TOKEN_STAR) \
+	/* One or two-character tokens */ \
+	X(TOKEN_NOT) \
+	X(TOKEN_NOT_EQUAL) \
+	X(TOKEN_EQUAL) \
+	X(TOKEN_EQUAL_EQUAL) \
+	X(TOKEN_GREATER) \
+	X(TOKEN_GREATER_EQUAL) \
+	X(TOKEN_LESS) \
+	X(TOKEN_LESS_EQUAL) \
+	X(TOKEN_AND) \
+	X(TOKEN_ANDAND) \
+	X(TOKEN_OR) \
+	X(TOKEN_OROR) \
+	/* Literals */ \
+	X(TOKEN_IDENTIFIER) \
+	X(TOKEN_STRING) \
+	X(TOKEN_NUMBER) \
+	/* Keywords */ \
+	X(TOKEN_IF) \
+	X(TOKEN_ELSE) \
+	X(TOKEN_FOR) \
+	X(TOKEN_WHILE) \
+	X(TOKEN_CLASS) \
+	X(TOKEN_SUPER) \
+	X(TOKEN_THIS) \
+	X(TOKEN_FUN) \
+	X(TOKEN_RETURN) \
+	X(TOKEN_TRUE) \
+	X(TOKEN_FALSE) \
+	X(TOKEN_NIL) \
+	X(TOKEN_VAR) \
+	X(TOKEN_PRINT) \
+	X(TOKEN_EOF)
+
 // Enum values
-#define ENUM_ENTRY(entryName) entryName,
+#define TOKEN_ENUM_VALUE(tokenName) tokenName,
 enum TokenId {
-#include "token_list.h"
+	TOKEN_LIST(TOKEN_ENUM_VALUE)
 };
-#undef ENUM_ENTRY
-
-
+#undef TOKEN_ENUM_VALUE
 
 // Enum names
-#define ENUM_ENTRY(entryName) #entryName,
+#define TOKEN_ENUM_NAME(tokenName) #tokenName,
 const char *TokenNames[] = {
-#include "token_list.h"
+	TOKEN_LIST(TOKEN_ENUM_NAME)
 };
-#undef ENUM_ENTRY
+#undef TOKEN_ENUM_NAME
 
 
 

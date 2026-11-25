@@ -1,4 +1,4 @@
-#include "ilu_core.h"
+#include "../ilu_core.h"
 #include <stdlib.h> // atof
 
 #define TEST_FUNCTIONALITY 1
@@ -55,9 +55,9 @@ int main()
 
 	Clock c2 = GetClock();
 
-	LOG(Info, "- atof: %f seconds\n", GetSecondsElapsed(c0, c1), sum);
-	LOG(Info, "- myatof: %f seconds\n", GetSecondsElapsed(c1, c2), sum);
-	// NOTE: The last unused argument 'sum' is to avoid optimizing the loops
+	LOG(Info, "- atof: %f seconds\n", GetSecondsElapsed(c0, c1));
+	LOG(Info, "- myatof: %f seconds\n", GetSecondsElapsed(c1, c2));
+	LOG(Info, "- checksum: %f\n", sum); // NOTE: Using 'sum' prevents optimizing the loops away
 #endif
 
 	return 0;

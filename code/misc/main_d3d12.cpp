@@ -1,4 +1,4 @@
-#include "ilu_core.h"
+#include "../ilu_core.h"
 
 // The min/max macros conflict with like-named member functions.
 // Only use std::min and std::max defined in <algorithm>.
@@ -680,7 +680,7 @@ int main()
 	// Allocate base memory
 	u32 baseMemorySize = MB(64);
 	byte *baseMemory = (byte*)AllocateVirtualMemory(baseMemorySize);
-	Arena arena = MakeArena(baseMemory, baseMemorySize);
+	Arena arena = MakeArena(baseMemory, baseMemorySize, "Main arena");
 
 	// Initialize graphics
 	GfxDevice gfxDevice = {};

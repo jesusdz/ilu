@@ -1,4 +1,4 @@
-.PHONY: default build_and_run build_and_debug main_interpreter ilu dll game unit_test_ilu main_spirv main_atof reflex reflection main_reflect_serialize main_clon cast data clean main_alsa main_gamepad directories
+.PHONY: default build_and_run build_and_debug ilu dll reflex data clean directories unit_test_ilu main_interpreter main_spirv main_atof main_cast main_alsa main_gamepad
 
 UNAME_S := $(shell uname -s)
 
@@ -30,53 +30,30 @@ build_and_run: ilu
 build_and_debug: ilu
 	gf2 ${BUILD_DIR}/ilu
 
-ilu: directories ${BUILD_DIR}/reflex
-	${BUILD_DIR}/reflex code/engine.h code/game.cpp > code/reflex.generated.h
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/ilu ${PLATFORM_LANG} code/platform.cpp -I"vulkan/include" ${PLATFORM_LIBS}
-	${CXX} ${CXXFLAGS} ${SHARED_FLAGS} -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
+VULKAN_INCLUDE= -I"vulkan/include"
+
+# Builds code/misc/<target>.cpp into ${BUILD_DIR}/<target>
+BUILD_MISC_TOOL= ${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/$@ code/misc/$@.cpp
+
+ilu: dll
+	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/ilu ${PLATFORM_LANG} code/platform.cpp ${VULKAN_INCLUDE} ${PLATFORM_LIBS}
 
 dll: directories ${BUILD_DIR}/reflex
 	${BUILD_DIR}/reflex code/engine.h code/game.cpp > code/reflex.generated.h
-	${CXX} ${CXXFLAGS} ${SHARED_FLAGS} -o ${BUILD_DIR}/engine.so code/engine.cpp -I"vulkan/include"
+	${CXX} ${CXXFLAGS} ${SHARED_FLAGS} -o ${BUILD_DIR}/engine.so code/engine.cpp ${VULKAN_INCLUDE}
 
-game:
-	echo No build configuration to compile the game yet
-
-unit_test_ilu: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/unit_test_ilu code/tests/unit_test_ilu.cpp
-
-main_interpreter: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/main_interpreter code/misc/main_interpreter.cpp
-
-main_spirv: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/main_spirv code/misc/main_spirv.cpp
-
-main_atof: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/main_atof code/misc/main_atof.cpp
-
+# `reflex` always rebuilds the tool, ${BUILD_DIR}/reflex only builds it when missing
 reflex: directories
 	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/reflex code/reflex/reflex.cpp
 
 ${BUILD_DIR}/reflex: | directories
 	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/reflex code/reflex/reflex.cpp
 
-reflection: reflex
-	${BUILD_DIR}/reflex assets/assets.h > code/assets.reflex.h
+unit_test_ilu: directories
+	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/unit_test_ilu code/tests/unit_test_ilu.cpp
 
-main_reflect_serialize: reflection
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/main_reflect_serialize code/misc/main_reflect_serialize.cpp
-
-main_clon: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/main_clon code/misc/main_clon.cpp
-
-cast: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/cast code/misc/cast.cpp
-
-main_alsa: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/main_alsa code/misc/main_alsa.cpp
-
-main_gamepad: directories
-	${CXX} ${CXXFLAGS} -o ${BUILD_DIR}/main_gamepad code/misc/main_gamepad.cpp
+main_interpreter main_spirv main_atof main_cast main_alsa main_gamepad: directories
+	${BUILD_MISC_TOOL}
 
 directories:
 	mkdir -p ${BUILD_DIR}
