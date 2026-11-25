@@ -667,23 +667,6 @@ static THREAD_FUNCTION(WorkQueueThread) // void *WorkQueueThread(void* arguments
 	return 0;
 }
 
-#if 0 // Threading test code
-static void PrintString(const ThreadInfo &threadInfo, void *data)
-{
-	const char *work = (const char *)data;
-	LOG(Debug, "Thread %u work: %s\n", threadInfo.globalIndex, work);
-}
-
-static void WorkQueuePushString(const char *str)
-{
-	WorkQueueEntry entry = {
-		.callback = PrintString,
-		.data = (void*)str
-	};
-	WorkQueuePush(entry);
-}
-#endif
-
 static bool InitializeWorkQueue(Platform &platform)
 {
 	static ThreadInfo threadInfos[WORK_QUEUE_WORKER_COUNT];
@@ -720,46 +703,6 @@ static bool InitializeWorkQueue(Platform &platform)
 			return false;
 		}
 	}
-
-	return true;
-
-#if 0 // Threading test code
-	WorkQueuePushString("A0");
-	WorkQueuePushString("A1");
-	WorkQueuePushString("A2");
-	WorkQueuePushString("A3");
-	WorkQueuePushString("A4");
-	WorkQueuePushString("A5");
-	WorkQueuePushString("A6");
-	WorkQueuePushString("A7");
-	WorkQueuePushString("A8");
-	WorkQueuePushString("A9");
-	WorkQueuePushString("B0");
-	WorkQueuePushString("B1");
-	WorkQueuePushString("B2");
-	WorkQueuePushString("B3");
-	WorkQueuePushString("B4");
-	WorkQueuePushString("B5");
-	WorkQueuePushString("B6");
-	WorkQueuePushString("B7");
-	WorkQueuePushString("B8");
-	WorkQueuePushString("B9");
-	WorkQueuePushString("C0");
-	WorkQueuePushString("C1");
-	WorkQueuePushString("C2");
-	WorkQueuePushString("C3");
-	WorkQueuePushString("C4");
-	WorkQueuePushString("C5");
-	WorkQueuePushString("C6");
-	WorkQueuePushString("C7");
-	WorkQueuePushString("C8");
-	WorkQueuePushString("C9");
-
-	ThreadInfo threadInfo = { 16 };
-	while (!WorkQueueEmpty()) {
-		WorkQueueProcess(threadInfo);
-	}
-#endif
 
 	return true;
 }

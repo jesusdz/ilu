@@ -4024,12 +4024,3 @@ void EditorPostRender(Engine &engine)
 	Scratch scratch;
 	EditorProcessCommands(scratch.arena);
 }
-
-#if 0
-		const float4 white = {1.0f, 1.0f, 1.0f, 1.0f};
-		const float4 hueColor = {hueRgb.r, hueRgb.g, hueRgb.b, 1.0f};
-		const float4 transparentBlack = {0.0f, 0.0f, 0.0f, 0.0f};
-		const float4 opaqueBlack = {0.0f, 0.0f, 0.0f, 1.0f};
-		UI_AddGradientQuad(ui, svPos, svSize, white, hueColor, white, hueColor);
-		UI_AddGradientQuad(ui, svPos, svSize, transparentBlack, transparentBlack, opaqueBlack, opaqueBlack);
-#endif

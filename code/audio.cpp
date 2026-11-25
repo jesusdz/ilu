@@ -667,7 +667,6 @@ void RenderAudio(Engine &engine, AudioBuffer &audioBuffer)
 		return;
 	}
 
-#if 1
 	AudioCmdQueue_Process(audio);
 
 	Scratch scratch;
@@ -807,29 +806,6 @@ void RenderAudio(Engine &engine, AudioBuffer &audioBuffer)
 		*dstSample++ = (i16)*srcSample++;
 		*dstSample++ = (i16)*srcSample++;
 	}
-#else
-	// Wave parameters
-	const u32 ToneHz = 256;
-	const i32 ToneVolume = 4000;
-	const u32 WavePeriod = audioBuffer.framesPerSecond / ToneHz;
-	static f32 tSine = 0.0f;
-
-	//LOG(Debug, "bitrate:%u, wavePeriod:%u\n", audioBuffer.framesPerSecond, WavePeriod);
-
-	samplePtr = audioBuffer.samples;
-	for (u32 i = 0; i < audioBuffer.frameCount; ++i)
-	{
-		// Sine wave
-		tSine += TwoPi/(f32)WavePeriod;
-		while ( tSine >= TwoPi ) { tSine -= TwoPi; }
-		const f32 sinValue = Sin(tSine);
-		const i16 sample = (i16)(sinValue * ToneVolume);
-
-		*samplePtr++ = sample;
-		*samplePtr++ = sample;
-	}
-#endif
-
 }
 
 
