@@ -4311,7 +4311,7 @@ UIPayload UI_DragAndDropPayload(UI &ui)
 
 // TODO: We should depend only on ilu_gfx.h while this is a feature in engine.cpp.
 struct Graphics;
-Image GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
+Image CreateImageFromPixels(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
 
 UIStyle UI_StyleDefault()
 {
@@ -4542,7 +4542,7 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 	}
 
 	// Create texture
-	ui.fontAtlas = GfxCreateImage(gfx, "texture_font", fontAtlasWidth, fontAtlasHeight, 4, false, (byte*)fontAtlasBitmapRGBA);
+	ui.fontAtlas = CreateImageFromPixels(gfx, "texture_font", fontAtlasWidth, fontAtlasHeight, 4, false, (byte*)fontAtlasBitmapRGBA);
 	ui.fontAtlasSize = {fontAtlasWidth, fontAtlasHeight};
 
 	UI_ResetWindowDefaults(ui);

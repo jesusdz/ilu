@@ -56,7 +56,7 @@ Lightweight instrumentation/profiling macros for timing code blocks and frames, 
 
 ## Building
 
-`make` builds on both platforms: `make.bat` on Windows, the `Makefile` on Linux. Both take the same target names.
+`make` builds on Windows (`make.bat`), and on Linux and macOS (the `Makefile`). All take the same target names.
 
 ```
 # Windows (requires Visual Studio; vcenv.bat auto-detects it)
@@ -64,6 +64,10 @@ make
 build\ilu.exe
 
 # Linux (builds and runs)
+make
+
+# macOS (builds and runs; Vulkan through MoltenVK)
+brew install vulkan-loader molten-vk vulkan-validationlayers
 make
 ```
 
@@ -76,7 +80,7 @@ Main targets:
 * `data`: builds `ilu`, then runs `ilu --build-assets` to turn `assets/assets.txt` into `build/assets.dat`
 * `reflex`: builds the reflection generator
 * `clean`: deletes `build/`
-* `build_and_run`, `build_and_debug` (Linux only, `make` defaults to `build_and_run`)
+* `build_and_run` (Linux and macOS, `make` defaults to it), `build_and_debug` (Linux only, uses `gf2`)
 
 Shaders are compiled into `build/shaders.dat` by the engine itself when the file is missing, using the vendored DXC.
 
@@ -98,7 +102,7 @@ To the greatest extent possible, the engine avoids heavy external dependencies. 
 ## Tool dependencies
 
 * **C++ compiler:** any compiler supporting C++20. The codebase is mostly C, with a light layer of C++ on top (operator overloads and RAII objects here and there).
-* [DXC](https://github.com/microsoft/DirectXShaderCompiler) (the DirectX Shader Compiler binary and library, used to compile HLSL shaders to SPIRV) — vendored in this repository for both Windows and Linux, so no external install is needed.
+* [DXC](https://github.com/microsoft/DirectXShaderCompiler) (the DirectX Shader Compiler binary and library, used to compile HLSL shaders to SPIRV) — vendored in this repository for Windows, Linux and macOS, so no external install is needed.
 * [Android SDK](https://developer.android.com/studio) (tools and packages required to build and deploy `.apk` files) — not vendored, install separately; see [android/README.md](android/README.md) for setup.
 
 

@@ -141,7 +141,7 @@ static Image EditorLoadIcon(const char *filename, const char *name)
 	ImagePixels imagePixels;
 	Scratch scratch;
 	ReadImagePixels(scratch.arena, path.str, imagePixels);
-	const Image handle = GfxCreateImage(engine.gfx, imagePixels, name, false);
+	const Image handle = CreateImageFromPixels(engine.gfx, imagePixels, name, false);
 	return handle;
 }
 
@@ -152,7 +152,7 @@ static Image EditorLoadSnapshot(const char *filepath, const char *name)
 	Scratch scratch;
 	ReadImagePixels(scratch.arena, filepath, imagePixels);
 	imagePixels = ResizeImagePixels(scratch.arena, imagePixels, 32, 32);
-	const Image handle = GfxCreateImage(engine.gfx, imagePixels, name, false);
+	const Image handle = CreateImageFromPixels(engine.gfx, imagePixels, name, false);
 	return handle;
 }
 

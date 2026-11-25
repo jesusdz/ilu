@@ -1755,8 +1755,8 @@ BufferChunk PushData(Graphics &gfx, const CommandList &commandList, BufferArena 
 // Image management
 
 void GenerateMipmaps(const GraphicsDevice &device, const CommandList &commandList, Image image);
-Image GfxCreateImage(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
-Image GfxCreateImage(Graphics &gfx, const ImagePixels &img, const char *name, bool createMipmaps);
+Image CreateImageFromPixels(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
+Image CreateImageFromPixels(Graphics &gfx, const ImagePixels &img, const char *name, bool createMipmaps);
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -1825,7 +1825,7 @@ void UpdateMaterialBindGroups(Graphics &gfx);
 void UploadMaterialData(Graphics &gfx);
 void CreateMaterialBindGroup(Graphics &gfx, ID materialId);
 void CreateMaterialBindGroups(Graphics &gfx);
-void GfxWaitDeviceIdle(Graphics &gfx);
+void WaitIdleAndResetStaging(Graphics &gfx);
 void CleanupGraphics(Graphics &gfx);
 
 
