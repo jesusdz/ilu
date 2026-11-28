@@ -2211,7 +2211,12 @@ bool InitializeGraphics(Engine &engine, Arena &globalArena)
 		ReadImagePixels(scratch.arena, filepath.str, icons[i].image);
 	}
 #endif
-	UI_Initialize(engine.ui, gfx, gpu, globalArena, icons, iconCount);
+	const ImagePixels fontAtlas = UI_Initialize(engine.ui, gpu, globalArena, scratch.arena, icons, iconCount);
+	if ( fontAtlas.pixels )
+	{
+		Image atlasImage = CreateImageFromPixels(gfx, fontAtlas, "texture_font", false);
+		UI_SetFontAtlas(engine.ui, atlasImage);
+	}
 #endif
 
 	gfx.camera = {

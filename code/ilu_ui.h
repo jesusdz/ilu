@@ -4309,10 +4309,6 @@ UIPayload UI_DragAndDropPayload(UI &ui)
 	return ui.dragAndDrop.payload;
 }
 
-// TODO: We should depend only on ilu_gfx.h while this is a feature in engine.cpp.
-struct Graphics;
-Image CreateImageFromPixels(Graphics &gfx, const char *name, int width, int height, int channels, bool mipmap, const byte *pixels);
-
 UIStyle UI_StyleDefault()
 {
 	UIStyle style = {};
@@ -4373,7 +4369,9 @@ void UI_ResetStyle(UI &ui)
 	UI_ResetStyleOverrides(ui);
 }
 
-void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalArena, UIIcon *icons, u32 iconCount)
+// Packs the font and the icons into an RGBA atlas allocated in atlasArena and returns it (pixels
+// are null on failure). The caller uploads it to the GPU and passes the image to UI_SetFontAtlas.
+ImagePixels UI_Initialize(UI &ui, GraphicsDevice &gfxDev, Arena &globalArena, Arena &atlasArena, UIIcon *icons, u32 iconCount)
 {
 	ui.tempString = PushArray(globalArena, char, UI_TEMP_STRING_SIZE);
 
@@ -4430,7 +4428,7 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 	if ( !chunk )
 	{
 		LOG(Error, "Could not open file %s\n", fontPath.str);
-		return;
+		return {};
 	}
 	const byte *fontData = chunk->bytes;
 
@@ -4510,7 +4508,7 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 	stbtt_PackEnd(&packContext);
 
 	// One channel to RGBA
-	rgba *fontAtlasBitmapRGBA = PushArray(scratch.arena, rgba, fontAtlasWidth * fontAtlasHeight);
+	rgba *fontAtlasBitmapRGBA = PushArray(atlasArena, rgba, fontAtlasWidth * fontAtlasHeight);
 
 	byte *srcPtr = fontAtlasBitmap;
 	rgba *dstPtr = fontAtlasBitmapRGBA;
@@ -4541,11 +4539,22 @@ void UI_Initialize(UI &ui, Graphics &gfx, GraphicsDevice &gfxDev, Arena &globalA
 		}
 	}
 
-	// Create texture
-	ui.fontAtlas = CreateImageFromPixels(gfx, "texture_font", fontAtlasWidth, fontAtlasHeight, 4, false, (byte*)fontAtlasBitmapRGBA);
 	ui.fontAtlasSize = {fontAtlasWidth, fontAtlasHeight};
 
 	UI_ResetWindowDefaults(ui);
+
+	const ImagePixels atlas = {
+		.pixels = (byte*)fontAtlasBitmapRGBA,
+		.width = (i32)fontAtlasWidth,
+		.height = (i32)fontAtlasHeight,
+		.channelCount = 4,
+	};
+	return atlas;
+}
+
+void UI_SetFontAtlas(UI &ui, Image fontAtlas)
+{
+	ui.fontAtlas = fontAtlas;
 }
 
 void UI_BeginFrame(UI &ui)
